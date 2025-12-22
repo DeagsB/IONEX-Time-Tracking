@@ -1,0 +1,329 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext';
+import { projectsService, customersService } from '../services/supabaseServices';
+
+export default function Projects() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [editingProject, setEditingProject] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    customer_id: '',
+    rate: '',
+    billing_type: 'hourly',
+    status: 'active',
+    start_date: '',
+    end_date: '',
+    budget: '',
+  });
+
+  const { data: projects } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsService.getAll(),
+  });
+
+  const { data: customers } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => customersService.getAll(),
+    enabled: user?.role === 'ADMIN',
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const projectData: any = {
+        name: data.name,
+        description: data.description || null,
+        customer_id: data.customer_id || null,
+        rate: parseFloat(data.rate),
+        billing_type: data.billing_type,
+        status: data.status,
+        start_date: data.start_date || null,
+        end_date: data.end_date || null,
+        budget: data.budget ? parseFloat(data.budget) : null,
+      };
+      return await projectsService.create(projectData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setShowForm(false);
+      resetForm();
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const projectData: any = {};
+      if (data.name !== undefined) projectData.name = data.name;
+      if (data.description !== undefined) projectData.description = data.description || null;
+      if (data.customer_id !== undefined) projectData.customer_id = data.customer_id || null;
+      if (data.rate !== undefined) projectData.rate = parseFloat(data.rate);
+      if (data.billing_type !== undefined) projectData.billing_type = data.billing_type;
+      if (data.status !== undefined) projectData.status = data.status;
+      if (data.start_date !== undefined) projectData.start_date = data.start_date || null;
+      if (data.end_date !== undefined) projectData.end_date = data.end_date || null;
+      if (data.budget !== undefined) projectData.budget = data.budget ? parseFloat(data.budget) : null;
+
+      return await projectsService.update(id, projectData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setEditingProject(null);
+      resetForm();
+    },
+  });
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      customer_id: '',
+      rate: '',
+      billing_type: 'hourly',
+      status: 'active',
+      start_date: '',
+      end_date: '',
+      budget: '',
+    });
+  };
+
+  const handleEdit = (project: any) => {
+    setEditingProject(project);
+    setFormData({
+      name: project.name || '',
+      description: project.description || '',
+      customer_id: project.customer_id || '',
+      rate: project.rate?.toString() || '',
+      billing_type: project.billing_type || 'hourly',
+      status: project.status || 'active',
+      start_date: project.start_date ? new Date(project.start_date).toISOString().split('T')[0] : '',
+      end_date: project.end_date ? new Date(project.end_date).toISOString().split('T')[0] : '',
+      budget: project.budget?.toString() || '',
+    });
+    setShowForm(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingProject) {
+      updateMutation.mutate({ id: editingProject.id, data: formData });
+    } else {
+      createMutation.mutate(formData);
+    }
+  };
+
+  if (user?.role !== 'ADMIN') {
+    return (
+      <div>
+        <h2>Projects</h2>
+        <div className="card">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Customer</th>
+                <th>Rate</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projects && projects.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: '20px' }}>
+                    No projects found.
+                  </td>
+                </tr>
+              )}
+              {projects?.map((project: any) => (
+                <tr key={project.id}>
+                  <td>{project.name}</td>
+                  <td>{project.customer?.name || '-'}</td>
+                  <td>${project.rate}/hr</td>
+                  <td>{project.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2>Projects</h2>
+        <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingProject(null); resetForm(); }}>
+          {showForm ? 'Cancel' : 'Add Project'}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <h3>{editingProject ? 'Edit Project' : 'New Project'}</h3>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="label">Name</label>
+              <input
+                type="text"
+                className="input"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="label">Customer</label>
+              <select
+                className="input"
+                value={formData.customer_id}
+                onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+                required
+              >
+                <option value="">Select Customer</option>
+                {customers?.map((customer: any) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Description</label>
+              <textarea
+                className="input"
+                rows={3}
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Rate ($/hr)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input"
+                  value={formData.rate}
+                  onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Billing Type</label>
+                <select
+                  className="input"
+                  value={formData.billing_type}
+                  onChange={(e) => setFormData({ ...formData, billing_type: e.target.value })}
+                >
+                  <option value="hourly">Hourly</option>
+                  <option value="fixed">Fixed</option>
+                  <option value="retainer">Retainer</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Status</label>
+                <select
+                  className="input"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                >
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="on-hold">On Hold</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Start Date</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={formData.start_date}
+                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">End Date</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Budget</label>
+              <input
+                type="number"
+                step="0.01"
+                className="input"
+                value={formData.budget}
+                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+              />
+            </div>
+
+            <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+              {editingProject ? 'Update' : 'Create'} Project
+            </button>
+          </form>
+        </div>
+      )}
+
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Customer</th>
+              <th>Rate</th>
+              <th>Billing Type</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {projects && projects.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
+                  No projects found. Create your first project above.
+                </td>
+              </tr>
+            )}
+            {projects?.map((project: any) => (
+              <tr key={project.id}>
+                <td>{project.name}</td>
+                <td>{project.customer?.name || '-'}</td>
+                <td>${project.rate}/hr</td>
+                <td>{project.billing_type}</td>
+                <td>{project.status}</td>
+                <td>
+                  <button
+                    className="button button-secondary"
+                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                    onClick={() => handleEdit(project)}
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

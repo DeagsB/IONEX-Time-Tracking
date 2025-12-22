@@ -1,0 +1,209 @@
+import { supabase } from './supabaseClient';
+
+// Service functions for interacting with Supabase tables
+
+export const timeEntriesService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        *,
+        user:users(id, email, first_name, last_name),
+        project:projects(id, name, customer:customers(id, name))
+      `)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getById(id: string) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        *,
+        user:users(id, email, first_name, last_name),
+        project:projects(id, name, customer:customers(id, name))
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async create(entry: any) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .insert(entry)
+      .select(`
+        *,
+        project:projects(id, name, customer:customers(id, name))
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id: string, updates: any) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('time_entries')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async approve(id: string, approvedBy: string) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .update({
+        approved: true,
+        approved_by: approvedBy,
+        approved_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+};
+
+export const customersService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('*, projects(*)')
+      .order('name');
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getById(id: string) {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('*, projects(*)')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async create(customer: any) {
+    const { data, error } = await supabase
+      .from('customers')
+      .insert(customer)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id: string, updates: any) {
+    const { data, error } = await supabase
+      .from('customers')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('customers')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+};
+
+export const projectsService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('projects')
+      .select(`
+        *,
+        customer:customers(*)
+      `)
+      .order('name');
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getById(id: string) {
+    const { data, error } = await supabase
+      .from('projects')
+      .select(`
+        *,
+        customer:customers(*)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async create(project: any) {
+    const { data, error } = await supabase
+      .from('projects')
+      .insert(project)
+      .select(`
+        *,
+        customer:customers(*)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id: string, updates: any) {
+    const { data, error } = await supabase
+      .from('projects')
+      .update(updates)
+      .eq('id', id)
+      .select(`
+        *,
+        customer:customers(*)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+};
+
+
