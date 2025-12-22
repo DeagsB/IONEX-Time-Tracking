@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { timeEntriesService } from '../services/supabaseServices';
+import { timeEntriesService, projectsService, employeesService } from '../services/supabaseServices';
 import { useAuth } from '../context/AuthContext';
 
 interface TimeEntry {
@@ -50,27 +50,24 @@ export default function Dashboard() {
   const { data: timeEntries } = useQuery({
     queryKey: ['timeEntries', 'week', weekStart.toISOString()],
     queryFn: async () => {
-      const response = await axios.get(
-        `/api/time-entries?startDate=${weekStart.toISOString()}&endDate=${weekEnd.toISOString()}`
-      );
-      return response.data || [];
+      const allEntries = await timeEntriesService.getAll();
+      return allEntries?.filter((entry: any) => {
+        const entryDate = new Date(entry.date);
+        return entryDate >= weekStart && entryDate <= weekEnd;
+      }) || [];
     },
   });
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
-    queryFn: async () => {
-      const response = await axios.get('/api/projects');
-      return response.data || [];
-    },
+    queryFn: () => projectsService.getAll(),
   });
 
   const { data: employees } = useQuery({
     queryKey: ['employees'],
     queryFn: async () => {
       if (user?.role !== 'ADMIN') return [];
-      const response = await axios.get('/api/employees');
-      return response.data || [];
+      return await employeesService.getAll();
     },
     enabled: user?.role === 'ADMIN',
   });
