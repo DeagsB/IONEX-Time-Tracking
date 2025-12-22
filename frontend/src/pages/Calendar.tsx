@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { projectsService } from '../services/supabaseServices';
+import { projectsService, timeEntriesService } from '../services/supabaseServices';
 import { useAuth } from '../context/AuthContext';
 
 interface TimerState {
@@ -30,15 +30,8 @@ export default function Calendar() {
   });
 
   const { data: timeEntries } = useQuery({
-    queryKey: ['timeEntries', 'calendar'],
-    queryFn: async () => {
-      const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-      const response = await axios.get(
-        `/api/time-entries?startDate=${start.toISOString()}&endDate=${end.toISOString()}`
-      );
-      return response.data;
-    },
+    queryKey: ['timeEntries', 'calendar', currentDate.getMonth(), currentDate.getFullYear()],
+    queryFn: () => timeEntriesService.getAll(),
   });
 
 
