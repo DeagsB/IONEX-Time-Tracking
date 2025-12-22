@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import { timeEntriesService } from '../services/supabaseServices';
 import { useAuth } from '../context/AuthContext';
 
 interface TimeEntry {
@@ -276,7 +276,7 @@ export default function WeekView() {
   const weekTotal = getWeekTotal();
 
   // Time slots from 8 AM to 11 PM
-  const timeSlots = [];
+  const timeSlots: number[] = [];
   for (let hour = 8; hour <= 23; hour++) {
     timeSlots.push(hour);
   }

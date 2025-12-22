@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { projectsService } from '../services/supabaseServices';
 import { useAuth } from '../context/AuthContext';
 
 interface TimerState {
@@ -26,10 +26,7 @@ export default function Calendar() {
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
-    queryFn: async () => {
-      const response = await axios.get('/api/projects');
-      return response.data;
-    },
+    queryFn: () => projectsService.getAll(),
   });
 
   const { data: timeEntries } = useQuery({
