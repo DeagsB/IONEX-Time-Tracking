@@ -6,7 +6,6 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import WeekView from './pages/WeekView';
 import TimeEntries from './pages/TimeEntries';
-import Calendar from './pages/Calendar';
 import DayDetail from './pages/DayDetail';
 import Projects from './pages/Projects';
 import Customers from './pages/Customers';

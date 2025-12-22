@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
+import { projectsService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
@@ -25,29 +25,27 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
-    queryFn: async () => {
-      const response = await axios.get('/api/projects');
-      return response.data;
-    },
+    queryFn: () => projectsService.getAll(),
   });
-
-  // Update current entry with project name when projects load
-  useEffect(() => {
-    if (currentEntry?.projectId && projects && !currentEntry.projectName) {
-      const project = projects.find((p: any) => p.id === currentEntry.projectId);
-      if (project) {
-        setCurrentEntry(prev => prev ? {
-          ...prev,
-          projectName: project.name,
-        } : null);
-      }
-    }
-  }, [projects, currentEntry?.projectId]);
 
   const createTimeEntryMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await axios.post('/api/time-entries', data);
-      return response.data;
+      const { timeEntriesService } = await import('../services/supabaseServices');
+      if (!user) throw new Error('Not authenticated');
+      
+      const entryData = {
+        user_id: user.id,
+        project_id: data.projectId || null,
+        date: data.date,
+        start_time: data.startTime || null,
+        end_time: data.endTime || null,
+        hours: parseFloat(data.hours),
+        rate: parseFloat(data.rate || 0),
+        billable: data.billable !== undefined ? data.billable : true,
+        description: data.description || null,
+      };
+      
+      return await timeEntriesService.create(entryData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
@@ -101,9 +99,9 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     // Get project data if needed
     if (!projects && currentEntry.projectId) {
       try {
-        const response = await axios.get(`/api/projects/${currentEntry.projectId}`);
-        projectRate = response.data.rate || 0;
-        projectName = response.data.name;
+        const project = await projectsService.getById(currentEntry.projectId);
+        projectRate = project.rate || 0;
+        projectName = project.name;
       } catch (e) {
         // Project not found, use default rate
       }
@@ -152,7 +150,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       navigate('/calendar');
     } catch (error: any) {
       console.error('Error creating time entry:', error);
-      alert(error.response?.data?.error || 'Failed to save time entry');
+      alert(error instanceof Error ? error.message : 'Failed to save time entry');
       // Still stop the timer
       onTimerStop();
     }
