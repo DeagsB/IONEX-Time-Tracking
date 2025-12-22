@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { timeEntriesService, projectsService } from '../services/supabaseServices';
 import { useAuth } from '../context/AuthContext';
+import { timeEntriesService, projectsService } from '../services/supabaseServices';
 
 interface TimeEntry {
   id: string;
-  projectId?: string;
-  startTime?: string;
-  endTime?: string;
+  project_id?: string;
+  start_time?: string;
+  end_time?: string;
   hours: number;
   rate: number;
   billable: boolean;
@@ -29,89 +29,73 @@ export default function DayDetail() {
   const [showEntryForm, setShowEntryForm] = useState(false);
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
   const [formData, setFormData] = useState({
-    projectId: '',
-    startTime: '',
-    endTime: '',
-    hours: '',
-    rate: '',
-    billable: true,
+    project_id: '',
+    hours: '1',
     description: '',
+    start_time: '',
+    end_time: '',
   });
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
-    queryFn: async () => {
-      const response = await axios.get('/api/projects');
-      return response.data;
-    },
+    queryFn: () => projectsService.getAll(),
   });
 
   const { data: timeEntries } = useQuery({
     queryKey: ['timeEntries', 'day', date],
     queryFn: async () => {
-      const startOfDay = new Date(selectedDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(selectedDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      const response = await axios.get(
-        `/api/time-entries?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`
-      );
-      return response.data || [];
+      // Fetch all entries and filter locally for now since we don't have a specific date endpoint yet
+      // In a real app, you'd add a date filter to the service
+      const entries = await timeEntriesService.getAll();
+      return entries?.filter((entry: any) => entry.date === date);
     },
   });
 
-  // Handle timer data from URL params
-  useEffect(() => {
-    const timerElapsed = searchParams.get('timer');
-    const timerProjectId = searchParams.get('projectId');
-    
-    if (timerElapsed && timerProjectId && projects) {
-      const hours = parseFloat(timerElapsed) / (1000 * 60 * 60);
-      const project = projects.find((p: any) => p.id === timerProjectId);
-      
-      setFormData({
-        projectId: timerProjectId,
-        startTime: `${selectedDate.toISOString().split('T')[0]}T09:00`,
-        endTime: `${selectedDate.toISOString().split('T')[0]}T${(9 + Math.ceil(hours)).toString().padStart(2, '0')}:00`,
-        hours: hours.toFixed(2),
-        rate: project?.rate?.toString() || '',
-        billable: true,
-        description: '',
-      });
-      
-      setShowEntryForm(true);
-      
-      // Clean URL params
-      navigate(`/calendar/${date}`, { replace: true });
-    }
-  }, [searchParams, date, navigate, projects, selectedDate]);
-
-  const createMutation = useMutation({
+  const createEntryMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await axios.post('/api/time-entries', data);
-      return response.data;
+      if (!user) throw new Error("No user");
+      
+      const entryData = {
+        user_id: user.id,
+        project_id: data.project_id || null,
+        date: date,
+        start_time: data.start_time || null,
+        end_time: data.end_time || null,
+        hours: parseFloat(data.hours),
+        rate: 0, // Should fetch project rate
+        billable: true,
+        description: data.description || null,
+      };
+      
+      // Get project rate if project selected
+      if (data.project_id && projects) {
+        const project = projects.find((p: any) => p.id === data.project_id);
+        if (project) entryData.rate = project.rate;
+      }
+      
+      return await timeEntriesService.create(entryData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      setShowEntryForm(false);
       resetForm();
     },
   });
 
-  const updateMutation = useMutation({
+  const updateEntryMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const response = await axios.put(`/api/time-entries/${id}`, data);
-      return response.data;
+      return await timeEntriesService.update(id, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      setEditingEntry(null);
       resetForm();
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteEntryMutation = useMutation({
     mutationFn: async (id: string) => {
-      await axios.delete(`/api/time-entries/${id}`);
+      await timeEntriesService.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
@@ -120,282 +104,217 @@ export default function DayDetail() {
 
   const resetForm = () => {
     setFormData({
-      projectId: '',
-      startTime: '',
-      endTime: '',
-      hours: '',
-      rate: '',
-      billable: true,
+      project_id: '',
+      hours: '1',
       description: '',
+      start_time: '',
+      end_time: '',
     });
     setEditingEntry(null);
-    setShowEntryForm(false);
     setSelectedHour(null);
   };
 
   const handleHourClick = (hour: number) => {
     setSelectedHour(hour);
-    const startTime = `${hour.toString().padStart(2, '0')}:00`;
-    const endTime = `${(hour + 1).toString().padStart(2, '0')}:00`;
-    
+    const startTime = new Date(selectedDate);
+    startTime.setHours(hour, 0, 0, 0);
+    const endTime = new Date(startTime);
+    endTime.setHours(hour + 1);
+
     setFormData({
-      projectId: '',
-      startTime: `${selectedDate.toISOString().split('T')[0]}T${startTime}`,
-      endTime: `${selectedDate.toISOString().split('T')[0]}T${endTime}`,
+      ...formData,
+      start_time: startTime.toTimeString().slice(0, 5),
+      end_time: endTime.toTimeString().slice(0, 5),
       hours: '1',
-      rate: '',
-      billable: true,
-      description: '',
     });
     setShowEntryForm(true);
   };
 
-  const handleEditEntry = (entry: TimeEntry) => {
+  const handleEditEntry = (entry: any) => {
     setEditingEntry(entry);
+    const startTime = entry.start_time ? new Date(entry.start_time) : null;
+    const endTime = entry.end_time ? new Date(entry.end_time) : null;
+
     setFormData({
-      projectId: entry.projectId || '',
-      startTime: entry.startTime ? new Date(entry.startTime).toISOString().slice(0, 16) : '',
-      endTime: entry.endTime ? new Date(entry.endTime).toISOString().slice(0, 16) : '',
+      project_id: entry.project_id || '',
       hours: entry.hours.toString(),
-      rate: entry.rate.toString(),
-      billable: entry.billable,
       description: entry.description || '',
+      start_time: startTime ? startTime.toTimeString().slice(0, 5) : '',
+      end_time: endTime ? endTime.toTimeString().slice(0, 5) : '',
     });
     setShowEntryForm(true);
-  };
-
-  const handleDeleteEntry = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this time entry?')) {
-      deleteMutation.mutate(id);
-    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const entryDate = selectedDate.toISOString().split('T')[0];
+    // Construct ISO strings for start/end times if provided
+    let startTimeISO = null;
+    let endTimeISO = null;
+    
+    if (formData.start_time) {
+      const start = new Date(selectedDate);
+      const [sh, sm] = formData.start_time.split(':').map(Number);
+      start.setHours(sh, sm, 0, 0);
+      startTimeISO = start.toISOString();
+    }
+    
+    if (formData.end_time) {
+      const end = new Date(selectedDate);
+      const [eh, em] = formData.end_time.split(':').map(Number);
+      end.setHours(eh, em, 0, 0);
+      endTimeISO = end.toISOString();
+    }
+
     const data = {
-      ...formData,
-      date: entryDate,
-      hours: parseFloat(formData.hours) || 0,
-      rate: parseFloat(formData.rate) || 0,
-      startTime: formData.startTime || null,
-      endTime: formData.endTime || null,
+      project_id: formData.project_id,
+      hours: formData.hours,
+      description: formData.description,
+      start_time: startTimeISO,
+      end_time: endTimeISO,
     };
 
     if (editingEntry) {
-      updateMutation.mutate({ id: editingEntry.id, data });
+      updateEntryMutation.mutate({ id: editingEntry.id, data });
     } else {
-      createMutation.mutate(data);
+      createEntryMutation.mutate(data);
     }
   };
 
-  const getEntryForHour = (hour: number): TimeEntry[] => {
-    if (!timeEntries) return [];
-    
-    return timeEntries.filter((entry: TimeEntry) => {
-      if (!entry.startTime) return false;
-      const entryHour = new Date(entry.startTime).getHours();
-      const entryEndHour = entry.endTime ? new Date(entry.endTime).getHours() : entryHour + Math.ceil(entry.hours);
-      return hour >= entryHour && hour < entryEndHour;
-    });
+  const handleDelete = (id: string) => {
+    if (window.confirm('Are you sure?')) {
+      deleteEntryMutation.mutate(id);
+    }
   };
 
-  const formatTime = (timeString: string) => {
-    if (!timeString) return '';
-    const date = new Date(timeString);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  };
-
-  const getHourLabel = (hour: number) => {
-    const period = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:00 ${period}`;
-  };
-
+  // Generate time slots
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
   return (
-    <div>
+    <div style={{ height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <div>
-          <button className="button button-secondary" onClick={() => navigate('/calendar')} style={{ marginRight: '10px' }}>
-            ← Back to Calendar
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <button 
+            className="button"
+            onClick={() => navigate('/calendar')}
+          >
+            ← Back to Week
           </button>
-          <h2>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h2>
+          <h2>
+            {selectedDate.toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
+          </h2>
         </div>
-        <button className="button button-primary" onClick={() => {
-          resetForm();
-          setShowEntryForm(true);
-        }}>
-          + Add Time Entry
+        <button 
+          className="button button-primary"
+          onClick={() => {
+            resetForm();
+            setShowEntryForm(true);
+          }}
+        >
+          Add Entry
         </button>
       </div>
 
-      {/* 24-Hour Timeline */}
-      <div className="card">
-        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px' }}>
-          {/* Hour labels */}
-          <div></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 10px', marginBottom: '10px', fontWeight: 'bold' }}>
-            <span>Time Slots</span>
-            <span>Total: {timeEntries?.reduce((sum: number, e: TimeEntry) => sum + e.hours, 0).toFixed(2) || '0'} hours</span>
-          </div>
-
-          {hours.map((hour) => {
-            const entries = getEntryForHour(hour);
-            const hourEntries = entries.filter((e: TimeEntry) => {
-              if (!e.startTime) return false;
-              const entryHour = new Date(e.startTime).getHours();
-              return entryHour === hour;
-            });
-
-            return (
-              <div key={hour} style={{ display: 'contents' }}>
-                {/* Hour label */}
-                <div
-                  style={{
-                    padding: '10px',
-                    borderRight: '1px solid var(--border-color)',
-                    fontWeight: '500',
-                    color: 'var(--text-secondary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  {getHourLabel(hour)}
-                </div>
-
-                {/* Time slot */}
-                <div
-                  onClick={() => handleHourClick(hour)}
-                  style={{
-                    minHeight: '60px',
-                    padding: '8px',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    marginBottom: '8px',
-                    cursor: 'pointer',
-                    backgroundColor: entries.length > 0 ? 'rgba(0, 123, 255, 0.1)' : 'var(--bg-primary)',
-                    transition: 'background-color 0.2s',
-                    position: 'relative',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (entries.length === 0) {
-                      e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (entries.length === 0) {
-                      e.currentTarget.style.backgroundColor = 'var(--bg-primary)';
-                    }
-                  }}
-                >
-                  {hourEntries.length === 0 ? (
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                      Click to add time entry
-                    </div>
-                  ) : (
-                    hourEntries.map((entry: TimeEntry) => (
-                      <div
-                        key={entry.id}
-                        style={{
-                          backgroundColor: 'var(--bg-secondary)',
-                          padding: '8px',
-                          borderRadius: '4px',
-                          marginBottom: '4px',
-                          border: '1px solid var(--border-color)',
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditEntry(entry);
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
-                              {entry.project?.name || 'No Project'}
-                            </div>
-                            {entry.startTime && entry.endTime && (
-                              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                                {formatTime(entry.startTime)} - {formatTime(entry.endTime)}
-                              </div>
-                            )}
-                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                              {entry.hours}h @ ${entry.rate}/hr = ${(entry.hours * entry.rate).toFixed(2)}
-                              {entry.billable && <span style={{ marginLeft: '8px', color: '#28a745' }}>● Billable</span>}
-                            </div>
-                            {entry.description && (
-                              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', fontStyle: 'italic' }}>
-                                {entry.description}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            className="button button-danger"
-                            style={{ padding: '4px 8px', fontSize: '12px', marginLeft: '8px' }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteEntry(entry.id);
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+      <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0 }}>
+        {/* Time Grid */}
+        <div className="card" style={{ flex: 1, overflowY: 'auto', padding: 0, display: 'flex', flexDirection: 'column' }}>
+          {hours.map((hour) => (
+            <div 
+              key={hour}
+              style={{
+                height: '60px',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                position: 'relative',
+              }}
+            >
+              <div style={{
+                width: '60px',
+                borderRight: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '12px',
+                color: 'var(--text-secondary)',
+                flexShrink: 0,
+              }}>
+                {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
               </div>
-            );
-          })}
+              <div 
+                style={{ flex: 1, cursor: 'pointer' }}
+                onClick={() => handleHourClick(hour)}
+              >
+                {/* Render entries for this hour */}
+                {timeEntries?.filter((entry: any) => {
+                  if (!entry.start_time) return false;
+                  const entryHour = new Date(entry.start_time).getHours();
+                  return entryHour === hour;
+                }).map((entry: any) => (
+                  <div
+                    key={entry.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditEntry(entry);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: '2px',
+                      left: '5px',
+                      right: '5px',
+                      bottom: '2px',
+                      backgroundColor: 'var(--primary-light)',
+                      border: '1px solid var(--primary-color)',
+                      borderRadius: '4px',
+                      padding: '4px 8px',
+                      fontSize: '12px',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      zIndex: 10,
+                    }}
+                  >
+                    <strong>{entry.project?.name || 'No Project'}</strong>
+                    {entry.description && <span style={{ marginLeft: '5px' }}>- {entry.description}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
 
-      {/* Time Entry Form Modal */}
-      {showEntryForm && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 1000,
-          }}
-          onClick={resetForm}
-        >
-          <div
-            className="card"
-            style={{ width: '600px', maxWidth: '90vw', maxHeight: '90vh', overflowY: 'auto' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3>{editingEntry ? 'Edit Time Entry' : 'Add Time Entry'}</h3>
-            
-            <form onSubmit={handleSubmit}>
+        {/* Entry Form Sidebar */}
+        {showEntryForm && (
+          <div className="card" style={{ width: '300px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3>{editingEntry ? 'Edit Entry' : 'New Entry'}</h3>
+              <button 
+                className="button" 
+                style={{ padding: '4px 8px' }}
+                onClick={() => {
+                  setShowEntryForm(false);
+                  resetForm();
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div className="form-group">
                 <label className="label">Project</label>
                 <select
                   className="input"
-                  value={formData.projectId}
-                  onChange={(e) => {
-                    const project = projects?.find((p: any) => p.id === e.target.value);
-                    setFormData({
-                      ...formData,
-                      projectId: e.target.value,
-                      rate: project?.rate?.toString() || formData.rate,
-                    });
-                  }}
-                  required
+                  value={formData.project_id}
+                  onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
                 >
                   <option value="">Select Project</option>
                   {projects?.map((project: any) => (
                     <option key={project.id} value={project.id}>
-                      {project.name} - {project.customer?.name}
+                      {project.name}
                     </option>
                   ))}
                 </select>
@@ -403,91 +322,65 @@ export default function DayDetail() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div className="form-group">
-                  <label className="label">Start Time</label>
+                  <label className="label">Start</label>
                   <input
-                    type="datetime-local"
+                    type="time"
                     className="input"
-                    value={formData.startTime}
-                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                    value={formData.start_time}
+                    onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                   />
                 </div>
-
                 <div className="form-group">
-                  <label className="label">End Time</label>
+                  <label className="label">End</label>
                   <input
-                    type="datetime-local"
+                    type="time"
                     className="input"
-                    value={formData.endTime}
-                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div className="form-group">
-                  <label className="label">Hours</label>
-                  <input
-                    type="number"
-                    step="0.25"
-                    className="input"
-                    value={formData.hours}
-                    onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="label">Rate ($/hr)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input"
-                    value={formData.rate}
-                    onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
-                    required
+                    value={formData.end_time}
+                    onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
                   />
                 </div>
               </div>
 
               <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.billable}
-                    onChange={(e) => setFormData({ ...formData, billable: e.target.checked })}
-                  />
-                  Billable to Client
-                </label>
+                <label className="label">Hours</label>
+                <input
+                  type="number"
+                  step="0.25"
+                  className="input"
+                  value={formData.hours}
+                  onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
+                  required
+                />
               </div>
 
               <div className="form-group">
                 <label className="label">Description</label>
                 <textarea
                   className="input"
-                  rows={4}
+                  rows={3}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="What did you work on?"
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  onClick={resetForm}
-                >
-                  Cancel
+              <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
+                <button type="submit" className="button button-primary" style={{ flex: 1 }}>
+                  Save
                 </button>
-                <button type="submit" className="button button-primary">
-                  {editingEntry ? 'Update' : 'Create'} Time Entry
-                </button>
+                {editingEntry && (
+                  <button 
+                    type="button" 
+                    className="button button-danger"
+                    onClick={() => handleDelete(editingEntry.id)}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
-

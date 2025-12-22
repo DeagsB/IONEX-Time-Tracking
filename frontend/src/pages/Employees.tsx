@@ -1,17 +1,18 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { employeesService } from '../services/supabaseServices';
 
 export default function Employees() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<any>(null);
   const [formData, setFormData] = useState({
-    userId: '',
-    employeeId: '',
-    wageRate: '',
-    hourlyRate: '',
+    user_id: '', // Will need to fetch users to link
+    employee_id: '',
+    wage_rate: '',
+    hourly_rate: '',
     salary: '',
-    hireDate: new Date().toISOString().split('T')[0],
+    hire_date: new Date().toISOString().split('T')[0],
     department: '',
     position: '',
     status: 'active',
@@ -19,24 +20,19 @@ export default function Employees() {
 
   const { data: employees } = useQuery({
     queryKey: ['employees'],
-    queryFn: async () => {
-      const response = await axios.get('/api/employees');
-      return response.data;
-    },
-  });
-
-  const { data: users } = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => {
-      const response = await axios.get('/api/users');
-      return response.data;
-    },
+    queryFn: () => employeesService.getAll(),
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await axios.post('/api/employees', data);
-      return response.data;
+      // Convert form data to DB format
+      const employeeData = {
+        ...data,
+        wage_rate: parseFloat(data.wage_rate),
+        hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
+        salary: data.salary ? parseFloat(data.salary) : null,
+      };
+      return await employeesService.create(employeeData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
@@ -47,8 +43,13 @@ export default function Employees() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const response = await axios.put(`/api/employees/${id}`, data);
-      return response.data;
+      const employeeData = {
+        ...data,
+        wage_rate: parseFloat(data.wage_rate),
+        hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
+        salary: data.salary ? parseFloat(data.salary) : null,
+      };
+      return await employeesService.update(id, employeeData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
@@ -57,14 +58,23 @@ export default function Employees() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await employeesService.delete(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
-      userId: '',
-      employeeId: '',
-      wageRate: '',
-      hourlyRate: '',
+      user_id: '',
+      employee_id: '',
+      wage_rate: '',
+      hourly_rate: '',
       salary: '',
-      hireDate: new Date().toISOString().split('T')[0],
+      hire_date: new Date().toISOString().split('T')[0],
       department: '',
       position: '',
       status: 'active',
@@ -74,15 +84,15 @@ export default function Employees() {
   const handleEdit = (employee: any) => {
     setEditingEmployee(employee);
     setFormData({
-      userId: employee.userId,
-      employeeId: employee.employeeId,
-      wageRate: employee.wageRate.toString(),
-      hourlyRate: employee.hourlyRate?.toString() || '',
+      user_id: employee.user_id || '',
+      employee_id: employee.employee_id || '',
+      wage_rate: employee.wage_rate?.toString() || '',
+      hourly_rate: employee.hourly_rate?.toString() || '',
       salary: employee.salary?.toString() || '',
-      hireDate: new Date(employee.hireDate).toISOString().split('T')[0],
+      hire_date: employee.hire_date || '',
       department: employee.department || '',
       position: employee.position || '',
-      status: employee.status,
+      status: employee.status || 'active',
     });
     setShowForm(true);
   };
@@ -93,6 +103,12 @@ export default function Employees() {
       updateMutation.mutate({ id: editingEmployee.id, data: formData });
     } else {
       createMutation.mutate(formData);
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this employee?')) {
+      deleteMutation.mutate(id);
     }
   };
 
@@ -110,60 +126,84 @@ export default function Employees() {
           <h3>{editingEmployee ? 'Edit Employee' : 'New Employee'}</h3>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label className="label">User</label>
-              <select
-                className="input"
-                value={formData.userId}
-                onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
-                required
-                disabled={!!editingEmployee}
-              >
-                <option value="">Select User</option>
-                {users?.filter((u: any) => !u.employee).map((user: any) => (
-                  <option key={user.id} value={user.id}>
-                    {user.firstName} {user.lastName} ({user.email})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Employee ID *</label>
+              <label className="label">Employee ID</label>
               <input
                 type="text"
                 className="input"
-                value={formData.employeeId}
-                onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                value={formData.employee_id}
+                onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
                 required
               />
             </div>
 
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">First Name</label>
+                <input type="text" className="input" placeholder="Linked to User" disabled />
+              </div>
+              <div className="form-group">
+                <label className="label">Last Name</label>
+                <input type="text" className="input" placeholder="Linked to User" disabled />
+              </div>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
-                <label className="label">Wage Rate ($) *</label>
+                <label className="label">Department</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.department}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Position</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.position}
+                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Status</label>
+                <select
+                  className="input"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="terminated">Terminated</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Wage Rate</label>
                 <input
                   type="number"
                   step="0.01"
                   className="input"
-                  value={formData.wageRate}
-                  onChange={(e) => setFormData({ ...formData, wageRate: e.target.value })}
+                  value={formData.wage_rate}
+                  onChange={(e) => setFormData({ ...formData, wage_rate: e.target.value })}
                   required
                 />
               </div>
-
               <div className="form-group">
-                <label className="label">Hourly Rate ($)</label>
+                <label className="label">Hourly Rate (Billing)</label>
                 <input
                   type="number"
                   step="0.01"
                   className="input"
-                  value={formData.hourlyRate}
-                  onChange={(e) => setFormData({ ...formData, hourlyRate: e.target.value })}
+                  value={formData.hourly_rate}
+                  onChange={(e) => setFormData({ ...formData, hourly_rate: e.target.value })}
                 />
               </div>
-
               <div className="form-group">
-                <label className="label">Salary ($)</label>
+                <label className="label">Salary (Annual)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -174,50 +214,15 @@ export default function Employees() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-              <div className="form-group">
-                <label className="label">Hire Date *</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={formData.hireDate}
-                  onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="label">Department</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.department}
-                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="label">Position</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.position}
-                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                />
-              </div>
-            </div>
-
             <div className="form-group">
-              <label className="label">Status</label>
-              <select
+              <label className="label">Hire Date</label>
+              <input
+                type="date"
                 className="input"
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="terminated">Terminated</option>
-              </select>
+                value={formData.hire_date}
+                onChange={(e) => setFormData({ ...formData, hire_date: e.target.value })}
+                required
+              />
             </div>
 
             <button type="submit" className="button button-primary">
@@ -231,10 +236,8 @@ export default function Employees() {
         <table className="table">
           <thead>
             <tr>
-              <th>Employee ID</th>
+              <th>ID</th>
               <th>Name</th>
-              <th>Email</th>
-              <th>Wage Rate</th>
               <th>Department</th>
               <th>Position</th>
               <th>Status</th>
@@ -244,20 +247,25 @@ export default function Employees() {
           <tbody>
             {employees?.map((employee: any) => (
               <tr key={employee.id}>
-                <td>{employee.employeeId}</td>
-                <td>{employee.user?.firstName} {employee.user?.lastName}</td>
-                <td>{employee.user?.email}</td>
-                <td>${employee.wageRate}/hr</td>
-                <td>{employee.department || '-'}</td>
-                <td>{employee.position || '-'}</td>
+                <td>{employee.employee_id}</td>
+                <td>{employee.user ? `${employee.user.first_name} ${employee.user.last_name}` : 'Unlinked'}</td>
+                <td>{employee.department}</td>
+                <td>{employee.position}</td>
                 <td>{employee.status}</td>
                 <td>
                   <button
                     className="button button-secondary"
-                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                    style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
                     onClick={() => handleEdit(employee)}
                   >
                     Edit
+                  </button>
+                  <button
+                    className="button button-danger"
+                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                    onClick={() => handleDelete(employee.id)}
+                  >
+                    Delete
                   </button>
                 </td>
               </tr>
@@ -268,4 +276,3 @@ export default function Employees() {
     </div>
   );
 }
-

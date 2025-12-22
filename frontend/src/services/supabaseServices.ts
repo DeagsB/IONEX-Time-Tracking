@@ -206,4 +206,148 @@ export const projectsService = {
   },
 };
 
+export const employeesService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('employees')
+      .select(`
+        *,
+        user:users(id, email, first_name, last_name)
+      `)
+      .order('employee_id');
 
+    if (error) throw error;
+    return data;
+  },
+
+  async getById(id: string) {
+    const { data, error } = await supabase
+      .from('employees')
+      .select(`
+        *,
+        user:users(id, email, first_name, last_name)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async create(employee: any) {
+    const { data, error } = await supabase
+      .from('employees')
+      .insert(employee)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id: string, updates: any) {
+    const { data, error } = await supabase
+      .from('employees')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('employees')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+};
+
+export const formsService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('forms')
+      .select(`
+        *,
+        employee:employees(
+          id,
+          user:users(first_name, last_name)
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getById(id: string) {
+    const { data, error } = await supabase
+      .from('forms')
+      .select(`
+        *,
+        employee:employees(
+          id,
+          user:users(first_name, last_name)
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async create(form: any) {
+    const { data, error } = await supabase
+      .from('forms')
+      .insert(form)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id: string, updates: any) {
+    const { data, error } = await supabase
+      .from('forms')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('forms')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+};
+
+export const reportsService = {
+  async getEmployeeReport(startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        *,
+        user:users(first_name, last_name),
+        project:projects(name, customer:customers(name))
+      `)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date');
+
+    if (error) throw error;
+    return data;
+  },
+};
