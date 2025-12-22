@@ -67,14 +67,6 @@ export default function Layout() {
     // Don't reset elapsed here - Header will handle that after saving
   };
 
-  const handleLogout = () => {
-    // Stop timer if running
-    if (timerRunning) {
-      handleTimerStop();
-    }
-    logout();
-    navigate('/login');
-  };
 
   // Save timer state to localStorage
   useEffect(() => {
