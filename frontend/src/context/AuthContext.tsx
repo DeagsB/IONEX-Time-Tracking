@@ -15,7 +15,6 @@ interface AuthContextType {
   session: Session | null;
   login: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
-  loginWithMicrosoft: () => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
 }
@@ -36,16 +35,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🔐 AuthProvider: Initializing auth state...');
+    
+    // Set a timeout to prevent infinite loading
+    const loadingTimeout = setTimeout(() => {
+      console.warn('⚠️ AuthProvider: Loading timeout - forcing loading to complete');
+      setLoading(false);
+    }, 5000); // 5 second timeout
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(loadingTimeout);
+      console.log('🔐 AuthProvider: Session retrieved', session ? 'User authenticated' : 'No session');
       setSession(session);
       if (session?.user) {
         fetchUserProfile(session.user);
       } else {
         setLoading(false);
+        console.log('🔐 AuthProvider: No user, loading complete');
       }
     }).catch((error) => {
-      console.error("Error getting session:", error);
+      clearTimeout(loadingTimeout);
+      console.error("❌ AuthProvider: Error getting session:", error);
       setLoading(false);
     });
 
@@ -62,7 +73,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(loadingTimeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchUserProfile = async (supabaseUser: SupabaseUser) => {
@@ -150,17 +164,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // User profile will be created automatically via trigger
   };
 
-  const loginWithMicrosoft = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'azure',
-      options: {
-        redirectTo: `${window.location.origin}/`,
-      },
-    });
-
-    if (error) throw error;
-  };
-
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -174,7 +177,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         session,
         login,
         signUp,
-        loginWithMicrosoft,
         logout,
         loading,
       }}

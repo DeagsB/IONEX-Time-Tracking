@@ -16,6 +16,7 @@ import Approvals from './pages/Approvals';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
+import AppErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient();
 
@@ -23,7 +24,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '18px',
+        color: 'var(--text-primary)'
+      }}>
+        <div>Loading...</div>
+      </div>
+    );
   }
 
   if (!user) {
@@ -37,7 +49,18 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '18px',
+        color: 'var(--text-primary)'
+      }}>
+        <div>Loading...</div>
+      </div>
+    );
   }
 
   if (!user) {
@@ -96,16 +119,19 @@ function AppRoutes() {
 }
 
 function App() {
+  console.log('📱 App component rendering...');
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <Router>
-            <AppRoutes />
-          </Router>
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 }
 

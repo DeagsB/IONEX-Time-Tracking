@@ -5,10 +5,23 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>IONEX Time Tracking</title>
+    <style>
+      /* Show a loading indicator while React loads */
+      #root:empty::before {
+        content: "Loading IONEX Time Tracking...";
+        display: block;
+        padding: 20px;
+        text-align: center;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
