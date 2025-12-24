@@ -5,11 +5,14 @@ let supabase: SupabaseClient;
 
 try {
   // Validate configuration
+  console.log('🔍 Environment variables check:');
+  console.log('  VITE_SUPABASE_URL:', supabaseConfig.url || '❌ MISSING');
+  console.log('  VITE_SUPABASE_ANON_KEY:', supabaseConfig.anonKey ? `✅ Set (${supabaseConfig.anonKey.substring(0, 20)}...)` : '❌ MISSING');
+  
   if (!supabaseConfig.url || !supabaseConfig.anonKey) {
     console.error('❌ Supabase configuration is missing!');
-    console.error('Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local');
-    console.error('Current values:', { url: supabaseConfig.url ? 'Set' : 'Missing', anonKey: supabaseConfig.anonKey ? 'Set' : 'Missing' });
-    throw new Error('Supabase configuration is missing. Please check your .env.local file.');
+    console.error('Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel environment variables');
+    throw new Error('Supabase configuration is missing. Check Vercel environment variables.');
   }
 
   console.log('✅ Supabase client initializing with URL:', supabaseConfig.url.substring(0, 30) + '...');
