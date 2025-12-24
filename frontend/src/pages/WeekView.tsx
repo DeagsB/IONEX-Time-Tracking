@@ -270,48 +270,8 @@ export default function WeekView() {
     
     const dateStr = selectedSlot.date.toISOString().split('T')[0];
     
-    // For dev mode, ensure dev user exists in database
-    let actualUserId = user?.id;
-    const DEV_USER_ID = '00000000-0000-0000-0000-000000000001';
-    
-    // If we're in dev mode with mock user
-    if (user?.id === DEV_USER_ID) {
-      try {
-        // Check if dev user exists
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .eq('id', DEV_USER_ID)
-          .single();
-        
-        if (!existingUser) {
-          // Create dev user if it doesn't exist
-          console.log('Creating dev user in database...');
-          const { error: insertError } = await supabase
-            .from('users')
-            .insert({
-              id: DEV_USER_ID,
-              email: 'admin@ionexsystems.com',
-              first_name: 'Admin',
-              last_name: 'User',
-              role: 'ADMIN',
-            });
-          
-          if (insertError) {
-            console.error('Error creating dev user:', insertError);
-            alert('Could not create dev user. Please check database permissions.');
-            return;
-          }
-          console.log('Dev user created successfully');
-        }
-        
-        actualUserId = DEV_USER_ID;
-      } catch (error) {
-        console.error('Error setting up dev user:', error);
-        alert('Error: Could not set up dev user. Please check your database setup.');
-        return;
-      }
-    }
+    // Use the dev user ID directly
+    const actualUserId = user?.id || '00000000-0000-0000-0000-000000000001';
     
     const timeEntryData: any = {
       user_id: actualUserId,
