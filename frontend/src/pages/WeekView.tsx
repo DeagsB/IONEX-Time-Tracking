@@ -28,9 +28,7 @@ export default function WeekView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [runningTimer, setRunningTimer] = useState<number>(0);
   const [currentProject, setCurrentProject] = useState<string>('Time Tracking Software');
-  const [isTimerRunning, setIsTimerRunning] = useState(true);
   const [viewMode, setViewMode] = useState<'week' | 'calendar' | 'list' | 'timesheet'>('calendar');
   
   // Zoom level: number of divisions per hour (2=halves, 4=quarters, 5=fifths, 6=sixths, etc.)
@@ -104,16 +102,6 @@ export default function WeekView() {
   const weekStart = getWeekStart(currentDate);
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
-
-  // Running timer effect
-  useEffect(() => {
-    if (isTimerRunning) {
-      const interval = setInterval(() => {
-        setRunningTimer(prev => prev + 1);
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [isTimerRunning]);
 
   const { data: timeEntries } = useQuery({
     queryKey: ['timeEntries', 'week', weekStart.toISOString()],
@@ -406,7 +394,7 @@ export default function WeekView() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           {/* View toggles */}
-          <div style={{ display: 'flex', gap: '5px', marginRight: '20px' }}>
+          <div style={{ display: 'flex', gap: '5px' }}>
             <button
               className="button"
               onClick={() => setViewMode('week')}
@@ -453,38 +441,6 @@ export default function WeekView() {
               }}
             >
               Timesheet
-            </button>
-          </div>
-
-          {/* Running timer */}
-          <div style={{
-            backgroundColor: '#1a1a1a',
-            padding: '8px 16px',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}>
-            <span style={{ color: 'white', fontFamily: 'monospace', fontSize: '16px' }}>
-              {formatTime(runningTimer)}
-            </span>
-            <button
-              onClick={() => setIsTimerRunning(!isTimerRunning)}
-              style={{
-                backgroundColor: '#ff6b6b',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                fontSize: '18px'
-              }}
-            >
-              ⬛
             </button>
           </div>
         </div>
