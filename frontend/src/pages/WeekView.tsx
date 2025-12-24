@@ -297,11 +297,26 @@ export default function WeekView() {
   const getEntryStyle = (entry: any) => {
     if (!entry.start_time || !entry.end_time) return null;
     
-    const [startHour, startMin] = entry.start_time.split(':').map(Number);
-    const [endHour, endMin] = entry.end_time.split(':').map(Number);
+    // Parse ISO timestamp or HH:MM format
+    const parseTime = (timeStr: string) => {
+      // If it's an ISO timestamp (contains 'T' or space), extract time portion
+      if (timeStr.includes('T') || timeStr.includes(' ')) {
+        const date = new Date(timeStr);
+        return {
+          hour: date.getHours(),
+          minute: date.getMinutes()
+        };
+      }
+      // Otherwise parse as HH:MM format
+      const [hour, minute] = timeStr.split(':').map(Number);
+      return { hour, minute };
+    };
     
-    const startMinutes = startHour * 60 + startMin;
-    const endMinutes = endHour * 60 + endMin;
+    const startTime = parseTime(entry.start_time);
+    const endTime = parseTime(entry.end_time);
+    
+    const startMinutes = startTime.hour * 60 + startTime.minute;
+    const endMinutes = endTime.hour * 60 + endTime.minute;
     const duration = endMinutes - startMinutes;
     
     const rowHeight = 60; // Each hour is 60px
@@ -312,6 +327,20 @@ export default function WeekView() {
   };
 
   const projectColors = ['#4ecdc4', '#ff6b6b', '#ffd93d', '#a8e6cf', '#dda0dd'];
+
+  // Format time for display (handles both ISO timestamps and HH:MM format)
+  const formatTimeDisplay = (timeStr: string) => {
+    if (!timeStr) return '';
+    // If it's an ISO timestamp, extract time portion
+    if (timeStr.includes('T') || timeStr.includes(' ')) {
+      const date = new Date(timeStr);
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    }
+    // Otherwise return first 5 chars (HH:MM)
+    return timeStr.slice(0, 5);
+  };
 
   return (
     <div style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -693,7 +722,7 @@ export default function WeekView() {
                       >
                         <div style={{ fontWeight: '600' }}>{project?.name || currentProject}</div>
                         <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                          {entry.start_time?.slice(0, 5)} - {entry.end_time?.slice(0, 5)}
+                          {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
                         </div>
                         {entry.description && style.height > 50 && (
                           <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.9 }}>
