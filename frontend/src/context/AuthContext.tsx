@@ -31,8 +31,10 @@ export const useAuth = () => {
 
 // Development mode - bypass authentication
 const DEV_MODE = true; // Set to false for production
+const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'; // Fixed UUID for dev user
+
 const DEV_USER: User = {
-  id: 'dev-admin-id',
+  id: DEV_USER_ID,
   email: 'admin@ionexsystems.com',
   firstName: 'Admin',
   lastName: 'User',
@@ -48,6 +50,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Skip auth initialization in development mode
     if (DEV_MODE) {
       console.log('🔧 DEV MODE: Using mock admin user');
+      
+      // Ensure dev user exists in database
+      const ensureDevUser = async () => {
+        try {
+          const { data: existingUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', DEV_USER_ID)
+            .single();
+          
+          if (!existingUser) {
+            console.log('Creating dev user in database...');
+            await supabase.from('users').insert({
+              id: DEV_USER_ID,
+              email: 'admin@ionexsystems.com',
+              first_name: 'Admin',
+              last_name: 'User',
+              role: 'ADMIN',
+            });
+            console.log('✅ Dev user created in database');
+          } else {
+            console.log('✅ Dev user already exists in database');
+          }
+        } catch (error) {
+          console.error('⚠️ Could not ensure dev user exists:', error);
+        }
+      };
+      
+      ensureDevUser();
       return;
     }
 
