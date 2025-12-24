@@ -751,13 +751,22 @@ export default function WeekView() {
                         }}
                         onClick={() => navigate(`/calendar/${dateStr}`)}
                       >
-                        <div style={{ fontWeight: '600' }}>{project?.name || currentProject}</div>
-                        <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                          {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
-                        </div>
-                        {entry.description && style.height > 50 && (
-                          <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.9 }}>
+                        {/* Description - main text (if exists) */}
+                        {entry.description && (
+                          <div style={{ fontWeight: '600', fontSize: '11px', marginBottom: '2px' }}>
                             {entry.description}
+                          </div>
+                        )}
+                        
+                        {/* Project name */}
+                        <div style={{ fontSize: '10px', opacity: 0.9 }}>
+                          {project?.name || '(No Project)'}
+                        </div>
+                        
+                        {/* Time range (only show if there's enough space) */}
+                        {style.height > 45 && (
+                          <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.8 }}>
+                            {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
                           </div>
                         )}
                       </div>
@@ -804,16 +813,21 @@ export default function WeekView() {
                           animation: 'pulse 2s ease-in-out infinite'
                         }}
                       >
-                        <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {/* Timer icon + Description (main text) */}
+                        <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
                           <span style={{ fontSize: '10px' }}>⏱️</span>
-                          {timerProject?.name || 'Timer Running'}
+                          {currentEntry?.description || 'Timer Running'}
                         </div>
-                        <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                          {String(startHour).padStart(2, '0')}:{String(startMin).padStart(2, '0')} - Now
+                        
+                        {/* Project name */}
+                        <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.9 }}>
+                          {timerProject?.name || '(No Project)'}
                         </div>
-                        {currentEntry?.description && height > 50 && (
-                          <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.9 }}>
-                            {currentEntry.description}
+                        
+                        {/* Time range (only if there's space) */}
+                        {height > 45 && (
+                          <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.8 }}>
+                            {String(startHour).padStart(2, '0')}:{String(startMin).padStart(2, '0')} - Now
                           </div>
                         )}
                       </div>
