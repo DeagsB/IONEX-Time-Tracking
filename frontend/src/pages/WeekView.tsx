@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { timeEntriesService, projectsService } from '../services/supabaseServices';
+import { supabase } from '../lib/supabaseClient';
 
 interface TimeEntry {
   id: string;
@@ -94,11 +95,22 @@ export default function WeekView() {
   });
 
   const createTimeEntryMutation = useMutation({
-    mutationFn: (data: any) => timeEntriesService.create(data),
-    onSuccess: () => {
+    mutationFn: async (data: any) => {
+      console.log('Creating time entry:', data);
+      const result = await timeEntriesService.create(data);
+      console.log('Time entry created:', result);
+      return result;
+    },
+    onSuccess: (data) => {
+      console.log('Time entry saved successfully:', data);
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       setShowTimeEntryModal(false);
       setNewEntry({ description: '', project_id: '', hours: 0.25 });
+      setSelectedSlot(null);
+    },
+    onError: (error: any) => {
+      console.error('Error creating time entry:', error);
+      alert('Error creating time entry: ' + (error.message || 'Unknown error'));
     },
   });
 
@@ -201,20 +213,49 @@ export default function WeekView() {
   };
 
   // Handle submitting the new time entry
-  const handleSubmitTimeEntry = () => {
+  const handleSubmitTimeEntry = async () => {
     if (!selectedSlot) return;
     
     const dateStr = selectedSlot.date.toISOString().split('T')[0];
     
-    createTimeEntryMutation.mutate({
-      user_id: user?.id,
-      project_id: newEntry.project_id || null,
+    // For dev mode, we need to get or create a real user
+    let actualUserId = user?.id;
+    
+    // If we're in dev mode with mock user, get the first real user from database
+    if (user?.id === 'dev-admin-id') {
+      try {
+        const { data: users } = await supabase.from('users').select('id').limit(1);
+        if (users && users.length > 0) {
+          actualUserId = users[0].id;
+        } else {
+          alert('No users found in database. Please create a user first.');
+          return;
+        }
+      } catch (error) {
+        console.error('Error getting user:', error);
+        alert('Error: Could not find a user. Please check your database setup.');
+        return;
+      }
+    }
+    
+    const timeEntryData: any = {
+      user_id: actualUserId,
       date: dateStr,
-      start_time: selectedSlot.startTime,
-      end_time: selectedSlot.endTime,
+      start_time: `${dateStr}T${selectedSlot.startTime}:00`,
+      end_time: `${dateStr}T${selectedSlot.endTime}:00`,
       hours: newEntry.hours,
-      description: newEntry.description,
-    });
+      rate: 0, // Default rate, can be updated later
+      description: newEntry.description || '',
+      billable: true,
+    };
+
+    // Only add project_id if one is selected
+    if (newEntry.project_id) {
+      timeEntryData.project_id = newEntry.project_id;
+    }
+
+    console.log('Submitting time entry:', timeEntryData);
+    createTimeEntryMutation.mutate(timeEntryData);
   };
 
   // Get time entry position and height for rendering on grid
