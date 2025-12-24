@@ -644,10 +644,10 @@ export default function WeekView() {
                 </div>
 
                 {/* Time grid with clickable divisions */}
-                <div style={{ position: 'relative' }}>
+                <div key={`grid-${divisionsPerHour}`} style={{ position: 'relative' }}>
                   {timeSlots.map((_, hourIndex) => (
                     <div
-                      key={hourIndex}
+                      key={`hour-${hourIndex}-${divisionsPerHour}`}
                       style={{
                         height: '60px',
                         borderBottom: '1px solid var(--border-color)',
@@ -660,7 +660,7 @@ export default function WeekView() {
                       {/* Clickable divisions based on zoom level */}
                       {Array.from({ length: divisionsPerHour }).map((_, divisionIndex) => (
                         <div
-                          key={divisionIndex}
+                          key={`div-${hourIndex}-${divisionIndex}-${divisionsPerHour}`}
                           onClick={() => handleSlotClick(day.date, hourIndex, divisionIndex)}
                           style={{
                             flex: 1,
