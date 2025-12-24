@@ -37,7 +37,9 @@ export default function Login() {
         navigate('/dashboard');
       }
     } catch (err: any) {
-      setError(err.message || (isSignUp ? 'Sign up failed' : 'Login failed'));
+      console.error('❌ Authentication error:', err);
+      const errorMessage = err.message || (isSignUp ? 'Sign up failed' : 'Login failed');
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
