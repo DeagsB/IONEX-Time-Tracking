@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { TimerProvider } from './context/TimerContext';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
@@ -127,9 +128,11 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AuthProvider>
-            <Router>
-              <AppRoutes />
-            </Router>
+            <TimerProvider>
+              <Router>
+                <AppRoutes />
+              </Router>
+            </TimerProvider>
           </AuthProvider>
         </ThemeProvider>
       </QueryClientProvider>

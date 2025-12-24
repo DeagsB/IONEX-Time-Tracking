@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTimer } from '../context/TimerContext';
 import { timeEntriesService, projectsService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 
@@ -25,11 +26,13 @@ interface Project {
 
 export default function WeekView() {
   const { user } = useAuth();
+  const { timerRunning, timerStartTime, currentEntry } = useTimer();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentProject, setCurrentProject] = useState<string>('Time Tracking Software');
   const [viewMode, setViewMode] = useState<'week' | 'calendar' | 'list' | 'timesheet'>('calendar');
+  const [currentTime, setCurrentTime] = useState(Date.now());
   
   // Zoom level: number of divisions per hour (2=halves, 4=quarters, 5=fifths, 6=sixths, etc.)
   const [divisionsPerHour, setDivisionsPerHour] = useState(4);
@@ -217,6 +220,16 @@ export default function WeekView() {
   };
 
   // Zoom controls
+  // Update current time every second for running timer display
+  useEffect(() => {
+    if (timerRunning) {
+      const interval = setInterval(() => {
+        setCurrentTime(Date.now());
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [timerRunning]);
+
   const zoomIn = () => {
     if (divisionsPerHour < 12) {
       setDivisionsPerHour(prev => {
@@ -729,6 +742,62 @@ export default function WeekView() {
                       </div>
                     );
                   })}
+
+                  {/* Running timer indicator */}
+                  {timerRunning && timerStartTime && day.isToday && (() => {
+                    const startDate = new Date(timerStartTime);
+                    const startHour = startDate.getHours();
+                    const startMin = startDate.getMinutes();
+                    const startMinutes = startHour * 60 + startMin;
+
+                    const now = new Date(currentTime);
+                    const endHour = now.getHours();
+                    const endMin = now.getMinutes();
+                    const endMinutes = endHour * 60 + endMin;
+
+                    const duration = endMinutes - startMinutes;
+                    const rowHeight = 60;
+                    const top = (startMinutes / 60) * rowHeight;
+                    const height = Math.max((duration / 60) * rowHeight, 30);
+
+                    const timerProject = projects?.find((p: any) => p.id === currentEntry?.projectId);
+
+                    return (
+                      <div
+                        key="running-timer"
+                        style={{
+                          position: 'absolute',
+                          top: `${top}px`,
+                          height: `${height}px`,
+                          left: '4px',
+                          right: '4px',
+                          backgroundColor: '#ff6b6b',
+                          borderRadius: '4px',
+                          padding: '6px 8px',
+                          fontSize: '12px',
+                          color: 'white',
+                          overflow: 'hidden',
+                          boxShadow: '0 2px 8px rgba(255, 107, 107, 0.4)',
+                          zIndex: 2,
+                          border: '2px solid #ff5252',
+                          animation: 'pulse 2s ease-in-out infinite'
+                        }}
+                      >
+                        <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '10px' }}>⏱️</span>
+                          {timerProject?.name || 'Timer Running'}
+                        </div>
+                        <div style={{ fontSize: '11px', marginTop: '2px' }}>
+                          {String(startHour).padStart(2, '0')}:{String(startMin).padStart(2, '0')} - Now
+                        </div>
+                        {currentEntry?.description && height > 50 && (
+                          <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.9 }}>
+                            {currentEntry.description}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
