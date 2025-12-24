@@ -278,16 +278,31 @@ export default function WeekView() {
   const handleSubmitTimeEntry = async () => {
     if (!selectedSlot) return;
     
-    const dateStr = selectedSlot.date.toISOString().split('T')[0];
+    // Format date in local timezone (YYYY-MM-DD)
+    const year = selectedSlot.date.getFullYear();
+    const month = String(selectedSlot.date.getMonth() + 1).padStart(2, '0');
+    const day = String(selectedSlot.date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
     
     // Use the dev user ID directly
     const actualUserId = user?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
     
+    // Create Date objects with local time, then convert to ISO with timezone
+    const [startHour, startMin] = selectedSlot.startTime.split(':').map(Number);
+    const [endHour, endMin] = selectedSlot.endTime.split(':').map(Number);
+    
+    const startDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), startHour, startMin);
+    const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), endHour, endMin);
+    
+    // Convert to ISO string (includes timezone offset)
+    const startDateTime = startDate.toISOString();
+    const endDateTime = endDate.toISOString();
+    
     const timeEntryData: any = {
       user_id: actualUserId,
       date: dateStr,
-      start_time: `${dateStr}T${selectedSlot.startTime}:00`,
-      end_time: `${dateStr}T${selectedSlot.endTime}:00`,
+      start_time: startDateTime,
+      end_time: endDateTime,
       hours: newEntry.hours,
       rate: 0, // Default rate, can be updated later
       description: newEntry.description || '',
@@ -299,7 +314,9 @@ export default function WeekView() {
       timeEntryData.project_id = newEntry.project_id;
     }
 
-    console.log('Submitting time entry:', timeEntryData);
+    console.log('Submitting time entry (with timezone):', timeEntryData);
+    console.log('  Local time clicked:', selectedSlot.startTime, '-', selectedSlot.endTime);
+    console.log('  ISO timestamps:', startDateTime, endDateTime);
     createTimeEntryMutation.mutate(timeEntryData);
   };
 
@@ -612,7 +629,11 @@ export default function WeekView() {
 
           {/* Days columns */}
           {weekDays.map((day, dayIndex) => {
-            const dateStr = day.date.toISOString().split('T')[0];
+            // Format date in local timezone (YYYY-MM-DD)
+            const year = day.date.getFullYear();
+            const month = String(day.date.getMonth() + 1).padStart(2, '0');
+            const dayNum = String(day.date.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${dayNum}`;
             const dayEntries = timeEntries?.filter((e: any) => e.date === dateStr) || [];
 
             return (
