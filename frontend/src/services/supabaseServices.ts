@@ -6,25 +6,21 @@ export const timeEntriesService = {
   async getAll() {
     const { data, error } = await supabase
       .from('time_entries')
-      .select(`
-        *,
-        user:users(id, email, first_name, last_name),
-        project:projects(id, name, customer:customers(id, name))
-      `)
+      .select('*')
       .order('date', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching time entries:', error);
+      throw error;
+    }
+    console.log('✅ Time entries fetched successfully:', data?.length, 'entries');
     return data;
   },
 
   async getById(id: string) {
     const { data, error } = await supabase
       .from('time_entries')
-      .select(`
-        *,
-        user:users(id, email, first_name, last_name),
-        project:projects(id, name, customer:customers(id, name))
-      `)
+      .select('*')
       .eq('id', id)
       .single();
 
@@ -33,16 +29,17 @@ export const timeEntriesService = {
   },
 
   async create(entry: any) {
-    const { data, error } = await supabase
+    const { data, error} = await supabase
       .from('time_entries')
       .insert(entry)
-      .select(`
-        *,
-        project:projects(id, name, customer:customers(id, name))
-      `)
+      .select('*')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error creating time entry:', error);
+      throw error;
+    }
+    console.log('✅ Time entry created successfully:', data);
     return data;
   },
 
