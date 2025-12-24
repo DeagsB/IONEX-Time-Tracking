@@ -37,7 +37,7 @@ export default function WeekView() {
   // Zoom level: number of divisions per hour (2=halves, 4=quarters, 5=fifths, 6=sixths, etc.)
   const [divisionsPerHour, setDivisionsPerHour] = useState(4);
   
-  // Time entry modal state
+  // Time entry modal state (for creating new entries)
   const [showTimeEntryModal, setShowTimeEntryModal] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{
     date: Date;
@@ -48,6 +48,17 @@ export default function WeekView() {
     description: '',
     project_id: '',
     hours: 0.25,
+  });
+
+  // Edit existing entry modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<any>(null);
+  const [editedEntry, setEditedEntry] = useState({
+    description: '',
+    project_id: '',
+    start_time: '',
+    end_time: '',
+    hours: 0,
   });
   
   // Get week start (Monday)
@@ -139,6 +150,42 @@ export default function WeekView() {
     onError: (error: any) => {
       console.error('Error creating time entry:', error);
       alert('Error creating time entry: ' + (error.message || 'Unknown error'));
+    },
+  });
+
+  const updateTimeEntryMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      console.log('Updating time entry:', id, data);
+      const result = await timeEntriesService.update(id, data);
+      console.log('Time entry updated:', result);
+      return result;
+    },
+    onSuccess: () => {
+      console.log('Time entry updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      setShowEditModal(false);
+      setEditingEntry(null);
+    },
+    onError: (error: any) => {
+      console.error('Error updating time entry:', error);
+      alert('Error updating time entry: ' + (error.message || 'Unknown error'));
+    },
+  });
+
+  const deleteTimeEntryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      console.log('Deleting time entry:', id);
+      await timeEntriesService.delete(id);
+    },
+    onSuccess: () => {
+      console.log('Time entry deleted successfully');
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      setShowEditModal(false);
+      setEditingEntry(null);
+    },
+    onError: (error: any) => {
+      console.error('Error deleting time entry:', error);
+      alert('Error deleting time entry: ' + (error.message || 'Unknown error'));
     },
   });
 
@@ -318,6 +365,77 @@ export default function WeekView() {
     console.log('  Local time clicked:', selectedSlot.startTime, '-', selectedSlot.endTime);
     console.log('  ISO timestamps:', startDateTime, endDateTime);
     createTimeEntryMutation.mutate(timeEntryData);
+  };
+
+  // Handle clicking on an existing time entry to edit it
+  const handleEntryClick = (entry: any, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setEditingEntry(entry);
+    
+    // Parse the times for display
+    const parseTime = (timeStr: string) => {
+      if (timeStr.includes('T') || timeStr.includes(' ')) {
+        const date = new Date(timeStr);
+        return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+      }
+      return timeStr.slice(0, 5);
+    };
+    
+    setEditedEntry({
+      description: entry.description || '',
+      project_id: entry.project_id || '',
+      start_time: parseTime(entry.start_time),
+      end_time: parseTime(entry.end_time),
+      hours: entry.hours || 0,
+    });
+    setShowEditModal(true);
+  };
+
+  // Handle saving edited time entry
+  const handleSaveEdit = () => {
+    if (!editingEntry) return;
+    
+    // Parse the date from the original entry
+    const entryDate = new Date(editingEntry.date);
+    const year = entryDate.getFullYear();
+    const month = String(entryDate.getMonth() + 1).padStart(2, '0');
+    const day = String(entryDate.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
+    // Parse edited times
+    const [startHour, startMin] = editedEntry.start_time.split(':').map(Number);
+    const [endHour, endMin] = editedEntry.end_time.split(':').map(Number);
+    
+    // Create Date objects with local time
+    const startDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), startHour, startMin);
+    const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), endHour, endMin);
+    
+    // Calculate hours
+    const durationMs = endDate.getTime() - startDate.getTime();
+    const hours = durationMs / (1000 * 60 * 60);
+    
+    const updateData: any = {
+      description: editedEntry.description,
+      start_time: startDate.toISOString(),
+      end_time: endDate.toISOString(),
+      hours: hours,
+      date: dateStr,
+    };
+    
+    // Only include project_id if one is selected
+    if (editedEntry.project_id) {
+      updateData.project_id = editedEntry.project_id;
+    }
+    
+    updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
+  };
+
+  // Handle deleting time entry
+  const handleDeleteEntry = () => {
+    if (!editingEntry) return;
+    if (window.confirm('Are you sure you want to delete this time entry?')) {
+      deleteTimeEntryMutation.mutate(editingEntry.id);
+    }
   };
 
   // Get time entry position and height for rendering on grid
@@ -749,7 +867,7 @@ export default function WeekView() {
                           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                           zIndex: 1
                         }}
-                        onClick={() => navigate(`/calendar/${dateStr}`)}
+                        onClick={(e) => handleEntryClick(entry, e)}
                       >
                         {/* Description - main text (if exists) */}
                         {entry.description && (
@@ -1037,6 +1155,221 @@ export default function WeekView() {
               >
                 {createTimeEntryMutation.isPending ? 'Adding...' : 'Add'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Time Entry Modal */}
+      {showEditModal && editingEntry && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-secondary)',
+              borderRadius: '12px',
+              padding: '25px',
+              width: '500px',
+              maxWidth: '90%',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+              border: '1px solid var(--border-color)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: '20px',
+              borderBottom: '1px solid var(--border-color)',
+              paddingBottom: '15px',
+            }}>
+              <div>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                  {new Date(editingEntry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                </div>
+              </div>
+              <button
+                onClick={() => setShowEditModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  padding: '0',
+                  width: '30px',
+                  height: '30px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              {/* Description input */}
+              <input
+                type="text"
+                placeholder="What are you working on?"
+                value={editedEntry.description}
+                onChange={(e) => setEditedEntry({ ...editedEntry, description: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '15px',
+                  marginBottom: '15px',
+                }}
+              />
+
+              {/* Project select with icon */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
+                <div style={{
+                  backgroundColor: projects?.find((p: any) => p.id === editedEntry.project_id)?.color || '#666',
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                }} />
+                <select
+                  value={editedEntry.project_id}
+                  onChange={(e) => setEditedEntry({ ...editedEntry, project_id: e.target.value })}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                  }}
+                >
+                  <option value="">No Project</option>
+                  {projects?.map((project: any) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Time inputs */}
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '20px' }}>
+                <input
+                  type="time"
+                  value={editedEntry.start_time}
+                  onChange={(e) => {
+                    setEditedEntry({ ...editedEntry, start_time: e.target.value });
+                    // Recalculate hours
+                    if (editedEntry.end_time) {
+                      const [startH, startM] = e.target.value.split(':').map(Number);
+                      const [endH, endM] = editedEntry.end_time.split(':').map(Number);
+                      const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+                      setEditedEntry({ ...editedEntry, start_time: e.target.value, hours });
+                    }
+                  }}
+                  style={{
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                  }}
+                />
+                <span style={{ color: 'var(--text-secondary)' }}>→</span>
+                <input
+                  type="time"
+                  value={editedEntry.end_time}
+                  onChange={(e) => {
+                    setEditedEntry({ ...editedEntry, end_time: e.target.value });
+                    // Recalculate hours
+                    if (editedEntry.start_time) {
+                      const [startH, startM] = editedEntry.start_time.split(':').map(Number);
+                      const [endH, endM] = e.target.value.split(':').map(Number);
+                      const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+                      setEditedEntry({ ...editedEntry, end_time: e.target.value, hours });
+                    }
+                  }}
+                  style={{
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                  }}
+                />
+                <div
+                  style={{
+                    padding: '10px 15px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    color: 'var(--text-primary)',
+                    minWidth: '70px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {editedEntry.hours.toFixed(2)}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  className="button button-primary"
+                  onClick={handleSaveEdit}
+                  disabled={updateTimeEntryMutation.isPending}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    backgroundColor: '#c770f0',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {updateTimeEntryMutation.isPending ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={handleDeleteEntry}
+                  disabled={deleteTimeEntryMutation.isPending}
+                  style={{
+                    padding: '12px 20px',
+                    backgroundColor: 'transparent',
+                    color: '#ff6b6b',
+                    border: '1px solid #ff6b6b',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {deleteTimeEntryMutation.isPending ? '...' : '🗑️'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
