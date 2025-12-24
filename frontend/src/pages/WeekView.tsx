@@ -33,6 +33,9 @@ export default function WeekView() {
   const [isTimerRunning, setIsTimerRunning] = useState(true);
   const [viewMode, setViewMode] = useState<'week' | 'calendar' | 'list' | 'timesheet'>('calendar');
   
+  // Zoom level: number of divisions per hour (2=halves, 4=quarters, 5=fifths, 6=sixths, etc.)
+  const [divisionsPerHour, setDivisionsPerHour] = useState(4);
+  
   // Time entry modal state
   const [showTimeEntryModal, setShowTimeEntryModal] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{
@@ -191,13 +194,29 @@ export default function WeekView() {
     setCurrentDate(newDate);
   };
 
-  // Handle clicking on a time slot quarter
-  const handleQuarterClick = (date: Date, hour: number, quarter: number) => {
-    const minutes = quarter * 15;
+  // Zoom controls
+  const zoomIn = () => {
+    if (divisionsPerHour < 12) {
+      setDivisionsPerHour(prev => prev + 1);
+    }
+  };
+
+  const zoomOut = () => {
+    if (divisionsPerHour > 2) {
+      setDivisionsPerHour(prev => prev - 1);
+    }
+  };
+
+  // Handle clicking on a time slot division
+  const handleSlotClick = (date: Date, hour: number, division: number) => {
+    const minutesPerDivision = 60 / divisionsPerHour;
+    const startMinutes = division * minutesPerDivision;
+    const endMinutes = (division + 1) * minutesPerDivision;
+    
     const startHour = String(hour).padStart(2, '0');
-    const startMin = String(minutes).padStart(2, '0');
-    const endMin = String((minutes + 15) % 60).padStart(2, '0');
-    const endHour = String(minutes + 15 >= 60 ? hour + 1 : hour).padStart(2, '0');
+    const startMin = String(Math.floor(startMinutes)).padStart(2, '0');
+    const endMin = String(Math.floor(endMinutes) % 60).padStart(2, '0');
+    const endHour = String(endMinutes >= 60 ? hour + 1 : hour).padStart(2, '0');
     
     setSelectedSlot({
       date,
@@ -207,7 +226,7 @@ export default function WeekView() {
     setNewEntry({
       description: '',
       project_id: projects?.[0]?.id || '',
-      hours: 0.25,
+      hours: minutesPerDivision / 60,
     });
     setShowTimeEntryModal(true);
   };
@@ -447,12 +466,61 @@ export default function WeekView() {
             backgroundColor: 'var(--bg-primary)',
             zIndex: 2
           }}>
-            {/* Empty header cell */}
+            {/* Zoom controls in header */}
             <div style={{ 
-              height: '80px', 
+              height: '50px', 
               borderBottom: '1px solid var(--border-color)',
-              backgroundColor: 'var(--bg-secondary)'
-            }} />
+              backgroundColor: 'var(--bg-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}>
+              <button
+                onClick={zoomOut}
+                disabled={divisionsPerHour <= 2}
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '4px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  cursor: divisionsPerHour <= 2 ? 'not-allowed' : 'pointer',
+                  opacity: divisionsPerHour <= 2 ? 0.5 : 1,
+                  fontSize: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                }}
+                title="Zoom out (larger time blocks)"
+              >
+                −
+              </button>
+              <button
+                onClick={zoomIn}
+                disabled={divisionsPerHour >= 12}
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '4px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  cursor: divisionsPerHour >= 12 ? 'not-allowed' : 'pointer',
+                  opacity: divisionsPerHour >= 12 ? 0.5 : 1,
+                  fontSize: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                }}
+                title="Zoom in (smaller time blocks)"
+              >
+                +
+              </button>
+            </div>
             
             {/* Time slots */}
             {timeSlots.map((time, index) => (
@@ -489,36 +557,47 @@ export default function WeekView() {
                   position: 'relative'
                 }}
               >
-                {/* Day header */}
+                {/* Day header - compact layout */}
                 <div style={{
-                  height: '80px',
+                  height: '50px',
                   borderBottom: '1px solid var(--border-color)',
-                  backgroundColor: day.isToday ? '#ff69b440' : 'var(--bg-secondary)',
-                  padding: '10px',
-                  textAlign: 'center'
+                  backgroundColor: day.isToday ? '#c770f050' : 'var(--bg-secondary)',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  gap: '2px'
                 }}>
                   <div style={{ 
-                    fontSize: '24px', 
-                    fontWeight: 'bold',
-                    color: day.isToday ? '#ff69b4' : 'var(--text-primary)'
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    fontSize: '14px',
                   }}>
-                    {day.displayDate}
+                    <span style={{ 
+                      fontSize: '18px', 
+                      fontWeight: 'bold',
+                      color: day.isToday ? '#c770f0' : 'var(--text-primary)'
+                    }}>
+                      {day.displayDate}
+                    </span>
+                    <span style={{ 
+                      fontSize: '11px', 
+                      textTransform: 'uppercase', 
+                      fontWeight: '600',
+                      letterSpacing: '0.5px',
+                      color: 'var(--text-secondary)'
+                    }}>
+                      {day.name}
+                    </span>
                   </div>
-                  <div style={{ 
-                    fontSize: '11px', 
-                    textTransform: 'uppercase', 
-                    marginTop: '4px',
-                    fontWeight: '600',
-                    letterSpacing: '0.5px'
-                  }}>
-                    {day.name}
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                     {getDayTotal(day.date)}
                   </div>
                 </div>
 
-                {/* Time grid with clickable quarters */}
+                {/* Time grid with clickable divisions */}
                 <div style={{ position: 'relative' }}>
                   {timeSlots.map((_, hourIndex) => (
                     <div
@@ -532,14 +611,14 @@ export default function WeekView() {
                         position: 'relative'
                       }}
                     >
-                      {/* 4 clickable quarters (15-min each) */}
-                      {[0, 1, 2, 3].map((quarter) => (
+                      {/* Clickable divisions based on zoom level */}
+                      {Array.from({ length: divisionsPerHour }).map((_, divisionIndex) => (
                         <div
-                          key={quarter}
-                          onClick={() => handleQuarterClick(day.date, hourIndex, quarter)}
+                          key={divisionIndex}
+                          onClick={() => handleSlotClick(day.date, hourIndex, divisionIndex)}
                           style={{
                             flex: 1,
-                            borderBottom: quarter < 3 ? '1px dashed rgba(128, 128, 128, 0.1)' : 'none',
+                            borderBottom: divisionIndex < divisionsPerHour - 1 ? '1px dashed rgba(128, 128, 128, 0.1)' : 'none',
                             cursor: 'pointer',
                             transition: 'background-color 0.2s',
                           }}
