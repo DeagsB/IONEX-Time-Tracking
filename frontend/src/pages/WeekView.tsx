@@ -271,7 +271,7 @@ export default function WeekView() {
     const dateStr = selectedSlot.date.toISOString().split('T')[0];
     
     // Use the dev user ID directly
-    const actualUserId = user?.id || '00000000-0000-0000-0000-000000000001';
+    const actualUserId = user?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
     
     const timeEntryData: any = {
       user_id: actualUserId,

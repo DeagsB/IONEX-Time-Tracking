@@ -31,14 +31,14 @@ export const useAuth = () => {
 
 // Development mode - bypass authentication
 const DEV_MODE = true; // Set to false for production
-const DEV_USER_ID = '00000000-0000-0000-0000-000000000001'; // Fixed UUID for dev user
+const DEV_USER_ID = '235d854a-1b7d-4e00-a5a4-43835c85c086'; // Existing user from database
 
 const DEV_USER: User = {
   id: DEV_USER_ID,
-  email: 'admin@ionexsystems.com',
-  firstName: 'Admin',
-  lastName: 'User',
-  role: 'ADMIN',
+  email: 'bespalkodeagan@gmail.com',
+  firstName: 'Deagan',
+  lastName: 'Bespalko',
+  role: 'ADMIN', // Override to ADMIN for dev mode
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -49,36 +49,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     // Skip auth initialization in development mode
     if (DEV_MODE) {
-      console.log('🔧 DEV MODE: Using mock admin user');
-      
-      // Ensure dev user exists in database
-      const ensureDevUser = async () => {
-        try {
-          const { data: existingUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', DEV_USER_ID)
-            .single();
-          
-          if (!existingUser) {
-            console.log('Creating dev user in database...');
-            await supabase.from('users').insert({
-              id: DEV_USER_ID,
-              email: 'admin@ionexsystems.com',
-              first_name: 'Admin',
-              last_name: 'User',
-              role: 'ADMIN',
-            });
-            console.log('✅ Dev user created in database');
-          } else {
-            console.log('✅ Dev user already exists in database');
-          }
-        } catch (error) {
-          console.error('⚠️ Could not ensure dev user exists:', error);
-        }
-      };
-      
-      ensureDevUser();
+      console.log('🔧 DEV MODE: Using existing user as admin');
+      console.log('✅ Dev user ID:', DEV_USER_ID);
       return;
     }
 
