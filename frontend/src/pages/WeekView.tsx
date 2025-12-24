@@ -67,6 +67,40 @@ export default function WeekView() {
     return weekNo;
   };
 
+  // Get week display label
+  const getWeekLabel = () => {
+    const today = new Date();
+    const todayWeekStart = getWeekStart(today);
+    const currentWeekStart = weekStart;
+    
+    // Check if current displayed week is this week
+    if (currentWeekStart.toDateString() === todayWeekStart.toDateString()) {
+      return 'This week';
+    }
+    
+    // Check if current displayed week is last week
+    const lastWeekStart = new Date(todayWeekStart);
+    lastWeekStart.setDate(todayWeekStart.getDate() - 7);
+    if (currentWeekStart.toDateString() === lastWeekStart.toDateString()) {
+      return 'Last week';
+    }
+    
+    // Otherwise show date range: "08 - 14 Dec 2025"
+    const startDay = weekStart.getDate();
+    const endDay = weekEnd.getDate();
+    const startMonth = weekStart.toLocaleDateString('en-US', { month: 'short' });
+    const endMonth = weekEnd.toLocaleDateString('en-US', { month: 'short' });
+    const year = weekEnd.getFullYear();
+    
+    // If same month
+    if (startMonth === endMonth) {
+      return `${String(startDay).padStart(2, '0')} - ${String(endDay).padStart(2, '0')} ${startMonth} ${year}`;
+    } else {
+      // If different months
+      return `${String(startDay).padStart(2, '0')} ${startMonth} - ${String(endDay).padStart(2, '0')} ${endMonth} ${year}`;
+    }
+  };
+
   const weekStart = getWeekStart(currentDate);
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
@@ -312,7 +346,13 @@ export default function WeekView() {
           <button 
             className="button" 
             onClick={() => navigateWeek('prev')}
-            style={{ padding: '5px 10px' }}
+            style={{ 
+              padding: '5px 10px',
+              backgroundColor: 'transparent',
+              border: 'none',
+              fontSize: '20px',
+              cursor: 'pointer'
+            }}
           >
             ‹
           </button>
@@ -320,16 +360,41 @@ export default function WeekView() {
             padding: '8px 16px', 
             backgroundColor: 'var(--bg-secondary)', 
             borderRadius: '6px',
-            border: '1px solid var(--border-color)'
+            border: '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            minWidth: '220px'
           }}>
-            <strong>This week</strong> · W{getWeekNumber(currentDate)}
+            <span>📅</span>
+            <strong>{getWeekLabel()}</strong>
+            <span style={{ color: 'var(--text-secondary)' }}>· W{getWeekNumber(currentDate)}</span>
           </div>
           <button 
             className="button" 
             onClick={() => navigateWeek('next')}
-            style={{ padding: '5px 10px' }}
+            style={{ 
+              padding: '5px 10px',
+              backgroundColor: 'transparent',
+              border: 'none',
+              fontSize: '20px',
+              cursor: 'pointer'
+            }}
           >
             ›
+          </button>
+          <button
+            className="button"
+            onClick={() => setCurrentDate(new Date())}
+            style={{
+              padding: '6px 12px',
+              fontSize: '13px',
+              backgroundColor: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)'
+            }}
+            title="Go to current week"
+          >
+            ✕
           </button>
           <div style={{ marginLeft: '20px', color: 'var(--text-secondary)' }}>
             <span style={{ fontSize: '12px', textTransform: 'uppercase' }}>Week Total</span>
