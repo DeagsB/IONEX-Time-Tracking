@@ -24,7 +24,16 @@ export default function Login() {
 
     try {
       if (isSignUp) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Login.tsx:26',message:'UI signUp attempt',data:{email,emailDomain:email.split('@')[1],hasFirstName:!!firstName,hasLastName:!!lastName},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,B,C'})}).catch(()=>{});
+        // #endregion
+        
         await signUp(email, password, firstName, lastName);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Login.tsx:29',message:'UI signUp succeeded',data:{email,emailDomain:email.split('@')[1]},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        
         setSuccess('Account created successfully! Please check your email to confirm your account before logging in.');
         // Reset form
         setEmail('');
@@ -38,6 +47,10 @@ export default function Login() {
       }
     } catch (err: any) {
       console.error('❌ Authentication error:', err);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Login.tsx:42',message:'UI caught error',data:{errorMessage:err.message,errorCode:err.code,errorStatus:err.status,errorName:err.name,isSignUp},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,D'})}).catch(()=>{});
+      // #endregion
+      
       const errorMessage = err.message || (isSignUp ? 'Sign up failed' : 'Login failed');
       setError(errorMessage);
     } finally {
