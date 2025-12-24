@@ -32,6 +32,19 @@ export default function WeekView() {
   const [isTimerRunning, setIsTimerRunning] = useState(true);
   const [viewMode, setViewMode] = useState<'week' | 'calendar' | 'list' | 'timesheet'>('calendar');
   
+  // Time entry modal state
+  const [showTimeEntryModal, setShowTimeEntryModal] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<{
+    date: Date;
+    startTime: string;
+    endTime: string;
+  } | null>(null);
+  const [newEntry, setNewEntry] = useState({
+    description: '',
+    project_id: '',
+    hours: 0.25,
+  });
+  
   // Get week start (Monday)
   const getWeekStart = (date: Date) => {
     const d = new Date(date);
@@ -78,6 +91,15 @@ export default function WeekView() {
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: projectsService.getAll,
+  });
+
+  const createTimeEntryMutation = useMutation({
+    mutationFn: (data: any) => timeEntriesService.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      setShowTimeEntryModal(false);
+      setNewEntry({ description: '', project_id: '', hours: 0.25 });
+    },
   });
 
   const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
@@ -155,6 +177,44 @@ export default function WeekView() {
     const newDate = new Date(currentDate);
     newDate.setDate(currentDate.getDate() + (direction === 'next' ? 7 : -7));
     setCurrentDate(newDate);
+  };
+
+  // Handle clicking on a time slot quarter
+  const handleQuarterClick = (date: Date, hour: number, quarter: number) => {
+    const minutes = quarter * 15;
+    const startHour = String(hour).padStart(2, '0');
+    const startMin = String(minutes).padStart(2, '0');
+    const endMin = String((minutes + 15) % 60).padStart(2, '0');
+    const endHour = String(minutes + 15 >= 60 ? hour + 1 : hour).padStart(2, '0');
+    
+    setSelectedSlot({
+      date,
+      startTime: `${startHour}:${startMin}`,
+      endTime: `${endHour}:${endMin}`,
+    });
+    setNewEntry({
+      description: '',
+      project_id: projects?.[0]?.id || '',
+      hours: 0.25,
+    });
+    setShowTimeEntryModal(true);
+  };
+
+  // Handle submitting the new time entry
+  const handleSubmitTimeEntry = () => {
+    if (!selectedSlot) return;
+    
+    const dateStr = selectedSlot.date.toISOString().split('T')[0];
+    
+    createTimeEntryMutation.mutate({
+      user_id: user?.id,
+      project_id: newEntry.project_id || null,
+      date: dateStr,
+      start_time: selectedSlot.startTime,
+      end_time: selectedSlot.endTime,
+      hours: newEntry.hours,
+      description: newEntry.description,
+    });
   };
 
   // Get time entry position and height for rendering on grid
@@ -417,17 +477,40 @@ export default function WeekView() {
                   </div>
                 </div>
 
-                {/* Time grid */}
+                {/* Time grid with clickable quarters */}
                 <div style={{ position: 'relative' }}>
-                  {timeSlots.map((_, index) => (
+                  {timeSlots.map((_, hourIndex) => (
                     <div
-                      key={index}
+                      key={hourIndex}
                       style={{
                         height: '60px',
                         borderBottom: '1px solid var(--border-color)',
-                        backgroundColor: index % 2 === 0 ? 'var(--bg-primary)' : 'var(--bg-secondary)'
+                        backgroundColor: hourIndex % 2 === 0 ? 'var(--bg-primary)' : 'var(--bg-secondary)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        position: 'relative'
                       }}
-                    />
+                    >
+                      {/* 4 clickable quarters (15-min each) */}
+                      {[0, 1, 2, 3].map((quarter) => (
+                        <div
+                          key={quarter}
+                          onClick={() => handleQuarterClick(day.date, hourIndex, quarter)}
+                          style={{
+                            flex: 1,
+                            borderBottom: quarter < 3 ? '1px dashed rgba(128, 128, 128, 0.1)' : 'none',
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'rgba(200, 112, 240, 0.15)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                          }}
+                        />
+                      ))}
+                    </div>
                   ))}
 
                   {/* Time entries */}
@@ -477,6 +560,208 @@ export default function WeekView() {
           })}
         </div>
       </div>
+
+      {/* Time Entry Modal */}
+      {showTimeEntryModal && selectedSlot && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setShowTimeEntryModal(false)}
+        >
+          <div
+            className="card"
+            style={{
+              width: '500px',
+              padding: '0',
+              backgroundColor: 'var(--bg-secondary)',
+              position: 'relative',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setShowTimeEntryModal(false)}
+              style={{
+                position: 'absolute',
+                top: '15px',
+                right: '15px',
+                background: 'none',
+                border: 'none',
+                fontSize: '20px',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                padding: '5px',
+              }}
+            >
+              ✕
+            </button>
+
+            <div style={{ padding: '20px' }}>
+              <h3 style={{ marginBottom: '20px' }}>Add a description</h3>
+
+              {/* Description input */}
+              <textarea
+                placeholder="What are you working on?"
+                value={newEntry.description}
+                onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
+                style={{
+                  width: '100%',
+                  minHeight: '80px',
+                  padding: '12px',
+                  marginBottom: '20px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '14px',
+                  resize: 'vertical',
+                }}
+              />
+
+              {/* Icon buttons */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <button
+                  className="button"
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                  }}
+                  title="Project"
+                >
+                  📁
+                </button>
+                <button
+                  className="button"
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                  }}
+                  title="Tags"
+                >
+                  🏷️
+                </button>
+                <button
+                  className="button"
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                  }}
+                  title="Billable"
+                >
+                  💰
+                </button>
+              </div>
+
+              {/* Time inputs */}
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px' }}>
+                <input
+                  type="time"
+                  value={selectedSlot.startTime}
+                  onChange={(e) => setSelectedSlot({ ...selectedSlot, startTime: e.target.value })}
+                  style={{
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                  }}
+                />
+                <span>→</span>
+                <input
+                  type="time"
+                  value={selectedSlot.endTime}
+                  onChange={(e) => {
+                    setSelectedSlot({ ...selectedSlot, endTime: e.target.value });
+                    // Calculate hours
+                    const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
+                    const [endH, endM] = e.target.value.split(':').map(Number);
+                    const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+                    setNewEntry({ ...newEntry, hours });
+                  }}
+                  style={{
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                  }}
+                />
+                <div
+                  style={{
+                    padding: '10px 15px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                  }}
+                >
+                  {newEntry.hours.toFixed(2)}h
+                </div>
+              </div>
+
+              {/* Project select */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Project</label>
+                <select
+                  className="input"
+                  value={newEntry.project_id}
+                  onChange={(e) => setNewEntry({ ...newEntry, project_id: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="">No Project</option>
+                  {projects?.map((project: any) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Add button */}
+              <button
+                className="button button-primary"
+                onClick={handleSubmitTimeEntry}
+                disabled={createTimeEntryMutation.isPending}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: '#c770f0',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '15px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                {createTimeEntryMutation.isPending ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
