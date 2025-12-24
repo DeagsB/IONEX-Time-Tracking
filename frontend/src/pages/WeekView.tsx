@@ -219,15 +219,26 @@ export default function WeekView() {
   // Zoom controls
   const zoomIn = () => {
     if (divisionsPerHour < 12) {
-      setDivisionsPerHour(prev => prev + 1);
+      setDivisionsPerHour(prev => {
+        const newValue = prev + 1;
+        console.log(`🔍 Zoom IN: ${prev} → ${newValue} divisions per hour (${60/newValue} min blocks)`);
+        return newValue;
+      });
     }
   };
 
   const zoomOut = () => {
     if (divisionsPerHour > 2) {
-      setDivisionsPerHour(prev => prev - 1);
+      setDivisionsPerHour(prev => {
+        const newValue = prev - 1;
+        console.log(`🔍 Zoom OUT: ${prev} → ${newValue} divisions per hour (${60/newValue} min blocks)`);
+        return newValue;
+      });
     }
   };
+
+  // Log current divisions when component renders
+  console.log(`📊 Calendar rendering with ${divisionsPerHour} divisions per hour (${60/divisionsPerHour} min blocks)`);
 
   // Handle clicking on a time slot division
   const handleSlotClick = (date: Date, hour: number, division: number) => {
@@ -493,54 +504,68 @@ export default function WeekView() {
               borderBottom: '1px solid var(--border-color)',
               backgroundColor: 'var(--bg-secondary)',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '8px'
+              gap: '4px'
             }}>
-              <button
-                onClick={zoomOut}
-                disabled={divisionsPerHour <= 2}
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '4px',
-                  border: '1px solid var(--border-color)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  cursor: divisionsPerHour <= 2 ? 'not-allowed' : 'pointer',
-                  opacity: divisionsPerHour <= 2 ? 0.5 : 1,
-                  fontSize: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 0,
-                }}
-                title="Zoom out (larger time blocks)"
-              >
-                −
-              </button>
-              <button
-                onClick={zoomIn}
-                disabled={divisionsPerHour >= 12}
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '4px',
-                  border: '1px solid var(--border-color)',
-                  backgroundColor: 'var(--bg-primary)',
-                  color: 'var(--text-primary)',
-                  cursor: divisionsPerHour >= 12 ? 'not-allowed' : 'pointer',
-                  opacity: divisionsPerHour >= 12 ? 0.5 : 1,
-                  fontSize: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 0,
-                }}
-                title="Zoom in (smaller time blocks)"
-              >
-                +
-              </button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    console.log('Zoom OUT button clicked, current:', divisionsPerHour);
+                    zoomOut();
+                  }}
+                  disabled={divisionsPerHour <= 2}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    cursor: divisionsPerHour <= 2 ? 'not-allowed' : 'pointer',
+                    opacity: divisionsPerHour <= 2 ? 0.5 : 1,
+                    fontSize: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                  }}
+                  title={`Zoom out (larger blocks) - Current: ${60/divisionsPerHour}min`}
+                >
+                  −
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    console.log('Zoom IN button clicked, current:', divisionsPerHour);
+                    zoomIn();
+                  }}
+                  disabled={divisionsPerHour >= 12}
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    cursor: divisionsPerHour >= 12 ? 'not-allowed' : 'pointer',
+                    opacity: divisionsPerHour >= 12 ? 0.5 : 1,
+                    fontSize: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                  }}
+                  title={`Zoom in (smaller blocks) - Current: ${60/divisionsPerHour}min`}
+                >
+                  +
+                </button>
+              </div>
+              <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                {Math.round(60/divisionsPerHour)}m
+              </div>
             </div>
             
             {/* Time slots */}
