@@ -78,7 +78,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
+      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
         path="/"
@@ -88,7 +88,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/calendar" />} />
+        <Route index element={<Navigate to="/dashboard" />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="calendar" element={<WeekView />} />
         <Route path="calendar/:date" element={<DayDetail />} />

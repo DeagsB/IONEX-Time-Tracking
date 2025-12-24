@@ -29,12 +29,28 @@ export const useAuth = () => {
   return context;
 };
 
+// Development mode - bypass authentication
+const DEV_MODE = true; // Set to false for production
+const DEV_USER: User = {
+  id: 'dev-admin-id',
+  email: 'admin@ionexsystems.com',
+  firstName: 'Admin',
+  lastName: 'User',
+  role: 'ADMIN',
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(DEV_MODE ? DEV_USER : null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(DEV_MODE ? false : true);
 
   useEffect(() => {
+    // Skip auth initialization in development mode
+    if (DEV_MODE) {
+      console.log('🔧 DEV MODE: Using mock admin user');
+      return;
+    }
+
     console.log('🔐 AuthProvider: Initializing auth state...');
     
     // Set a timeout to prevent infinite loading
@@ -133,6 +149,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const login = async (email: string, password: string) => {
+    if (DEV_MODE) {
+      console.log('🔧 DEV MODE: Login bypassed');
+      return;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -148,11 +169,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const signUp = async (email: string, password: string, firstName: string, lastName: string) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:150',message:'signUp called',data:{email,emailDomain:email.split('@')[1]},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
-    // #endregion
-    
-    const response = await supabase.auth.signUp({
+    if (DEV_MODE) {
+      console.log('🔧 DEV MODE: SignUp bypassed');
+      return;
+    }
+
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -164,26 +186,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       },
     });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:167',message:'signUp response received',data:{hasError:!!response.error,errorMessage:response.error?.message,errorStatus:response.error?.status,hasUser:!!response.data?.user,userId:response.data?.user?.id,userConfirmed:response.data?.user?.email_confirmed_at,sessionExists:!!response.data?.session},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,D,E'})}).catch(()=>{});
-    // #endregion
-
-    if (response.error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:169',message:'signUp error detected',data:{errorCode:response.error.code,errorMessage:response.error.message,errorStatus:response.error.status,errorName:response.error.name},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,D'})}).catch(()=>{});
-      // #endregion
-      throw response.error;
-    }
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthContext.tsx:172',message:'signUp completed successfully',data:{userId:response.data?.user?.id,userEmail:response.data?.user?.email,emailConfirmed:!!response.data?.user?.email_confirmed_at},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-    
+    if (error) throw error;
     // Note: Supabase requires email confirmation by default
     // User profile will be created automatically via trigger
   };
 
   const logout = async () => {
+    if (DEV_MODE) {
+      console.log('🔧 DEV MODE: Logout bypassed');
+      return;
+    }
+
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
