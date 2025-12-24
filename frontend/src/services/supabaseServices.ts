@@ -9,11 +9,7 @@ export const timeEntriesService = {
       .select('*')
       .order('date', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching time entries:', error);
-      throw error;
-    }
-    console.log('✅ Time entries fetched successfully:', data?.length, 'entries');
+    if (error) throw error;
     return data;
   },
 
@@ -29,17 +25,13 @@ export const timeEntriesService = {
   },
 
   async create(entry: any) {
-    const { data, error} = await supabase
+    const { data, error } = await supabase
       .from('time_entries')
       .insert(entry)
       .select('*')
       .single();
 
-    if (error) {
-      console.error('Error creating time entry:', error);
-      throw error;
-    }
-    console.log('✅ Time entry created successfully:', data);
+    if (error) throw error;
     return data;
   },
 

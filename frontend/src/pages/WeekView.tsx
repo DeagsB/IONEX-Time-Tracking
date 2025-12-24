@@ -107,15 +107,10 @@ export default function WeekView() {
     queryKey: ['timeEntries', 'week', weekStart.toISOString()],
     queryFn: async () => {
       const allEntries = await timeEntriesService.getAll();
-      console.log('📋 All time entries from database:', allEntries);
-      const filtered = allEntries?.filter((entry: any) => {
+      return allEntries?.filter((entry: any) => {
         const entryDate = new Date(entry.date);
-        const inRange = entryDate >= weekStart && entryDate <= weekEnd;
-        console.log(`  Entry ${entry.id}: date=${entry.date}, inRange=${inRange}`);
-        return inRange;
+        return entryDate >= weekStart && entryDate <= weekEnd;
       });
-      console.log('✅ Filtered time entries for this week:', filtered);
-      return filtered;
     },
   });
 
@@ -241,9 +236,6 @@ export default function WeekView() {
       });
     }
   };
-
-  // Log current divisions when component renders
-  console.log(`📊 Calendar rendering with ${divisionsPerHour} divisions per hour (${60/divisionsPerHour} min blocks)`);
 
   // Handle clicking on a time slot division
   const handleSlotClick = (date: Date, hour: number, division: number) => {
@@ -609,7 +601,6 @@ export default function WeekView() {
           {weekDays.map((day, dayIndex) => {
             const dateStr = day.date.toISOString().split('T')[0];
             const dayEntries = timeEntries?.filter((e: any) => e.date === dateStr) || [];
-            console.log(`📅 Day ${day.name} (${dateStr}): ${dayEntries.length} entries`, dayEntries);
 
             return (
               <div
