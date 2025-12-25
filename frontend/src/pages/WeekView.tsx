@@ -49,6 +49,7 @@ export default function WeekView() {
     project_id: '',
     hours: 0.25,
     billable: true,
+    rate_type: 'Shop Time',
   });
 
   // Edit existing entry modal state
@@ -61,6 +62,7 @@ export default function WeekView() {
     end_time: '',
     hours: 0,
     billable: true,
+    rate_type: 'Shop Time',
   });
   
   // Get week start (Monday)
@@ -146,7 +148,7 @@ export default function WeekView() {
       console.log('Time entry saved successfully:', data);
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       setShowTimeEntryModal(false);
-      setNewEntry({ description: '', project_id: '', hours: 0.25, billable: true });
+      setNewEntry({ description: '', project_id: '', hours: 0.25, billable: true, rate_type: 'Shop Time' });
       setSelectedSlot(null);
     },
     onError: (error: any) => {
@@ -320,6 +322,7 @@ export default function WeekView() {
       project_id: projects?.[0]?.id || '',
       hours: minutesPerDivision / 60,
       billable: true,
+      rate_type: 'Shop Time',
     });
     setShowTimeEntryModal(true);
   };
@@ -357,6 +360,7 @@ export default function WeekView() {
       rate: 0, // Default rate, can be updated later
       description: newEntry.description || '',
       billable: newEntry.billable,
+      rate_type: newEntry.rate_type,
     };
 
     // Only add project_id if one is selected
@@ -391,6 +395,7 @@ export default function WeekView() {
       end_time: parseTime(entry.end_time),
       hours: entry.hours || 0,
       billable: entry.billable !== undefined ? entry.billable : true,
+      rate_type: entry.rate_type || 'Shop Time',
     });
     setShowEditModal(true);
   };
@@ -425,6 +430,7 @@ export default function WeekView() {
       hours: hours,
       date: dateStr,
       billable: editedEntry.billable,
+      rate_type: editedEntry.rate_type,
     };
     
     // Only include project_id if one is selected
@@ -1149,6 +1155,30 @@ export default function WeekView() {
                 </select>
               </div>
 
+              {/* Rate Type dropdown */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Rate Type</label>
+                <select
+                  className="input"
+                  value={newEntry.rate_type}
+                  onChange={(e) => setNewEntry({ ...newEntry, rate_type: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="Shop Time">Shop Time</option>
+                  <option value="Shop Overtime">Shop Overtime</option>
+                  <option value="Travel Time">Travel Time</option>
+                  <option value="Field Time">Field Time</option>
+                  <option value="Field Overtime">Field Overtime</option>
+                </select>
+              </div>
+
               {/* Billable toggle */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ 
@@ -1372,6 +1402,30 @@ export default function WeekView() {
                 >
                   {editedEntry.hours.toFixed(2)}
                 </div>
+              </div>
+
+              {/* Rate Type dropdown */}
+              <div style={{ marginBottom: '20px' }}>
+                <label className="label" style={{ marginBottom: '8px', display: 'block', fontSize: '14px' }}>Rate Type</label>
+                <select
+                  value={editedEntry.rate_type}
+                  onChange={(e) => setEditedEntry({ ...editedEntry, rate_type: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                  }}
+                >
+                  <option value="Shop Time">Shop Time</option>
+                  <option value="Shop Overtime">Shop Overtime</option>
+                  <option value="Travel Time">Travel Time</option>
+                  <option value="Field Time">Field Time</option>
+                  <option value="Field Overtime">Field Overtime</option>
+                </select>
               </div>
 
               {/* Billable toggle */}
