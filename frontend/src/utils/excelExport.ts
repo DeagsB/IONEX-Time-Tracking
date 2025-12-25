@@ -33,93 +33,86 @@ export async function exportServiceTicketToExcel(ticket: ServiceTicket): Promise
       worksheet[cell] = { v: value, t: typeof value === 'number' ? 'n' : 's' };
     };
     
-    // Based on the screenshot, mapping data to cells:
+    // Based on the actual template structure:
     
-    // Customer Information (Yellow section - top right)
-    setCellValue('D3', ticket.customerInfo.name); // Customer Name
-    setCellValue('D4', ticket.customerInfo.address || ''); // Billing Address
-    setCellValue('D5', `${ticket.customerInfo.city || ''}, ${ticket.customerInfo.state || ''} ${ticket.customerInfo.zip_code || ''}`); // City, State, ZIP
+    // Ticket Number (top right)
+    const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
+    setCellValue('M1', ticketId);
+    
+    // Customer Information (right side, rows 3-11)
+    setCellValue('H3', ticket.customerInfo.name); // Customer Name
+    setCellValue('H4', ticket.customerInfo.address || ''); // Billing Address
     
     // Contact info
-    const contactName = ticket.userName; // Using tech name as contact for now
-    setCellValue('D7', contactName); // Contact Name
-    setCellValue('D8', ticket.customerInfo.phone || ''); // Contact Phone
-    setCellValue('D9', ticket.customerInfo.email || ''); // Contact Email
+    setCellValue('H7', ticket.userName); // Contact Name (using tech name)
+    setCellValue('H8', ticket.customerInfo.phone || ''); // Contact Phone
+    setCellValue('H9', ticket.customerInfo.email || ''); // Contact Email
+    setCellValue('H10', ticket.customerInfo.address || ''); // Service Location
+    setCellValue('H11', ticket.customerInfo.tax_id || ''); // PO/CC/AFE
     
-    // Service Location (Orange section)
-    setCellValue('D10', ticket.customerInfo.address || ''); // Service Location
-    setCellValue('D11', ticket.customerInfo.tax_id || ''); // PO/CC/AFE
+    // Service Info (left side, rows 9-11)
+    setCellValue('C9', ticket.entries[0]?.id.substring(0, 8) || 'N/A'); // Job ID
+    setCellValue('E9', 'Auto'); // Job Type
+    setCellValue('C10', ticket.userName); // Tech
     
-    // Ticket info (top left)
-    const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
-    setCellValue('D1', ticketId); // Ticket Number
+    // Date (B11 label is "Date", C11 has the value)
+    const dateValue = new Date(ticket.date);
+    setCellValue('C11', dateValue); // Excel date format
     
-    // Job info
-    setCellValue('B3', ticket.entries[0]?.id.substring(0, 8) || 'N/A'); // Job ID
-    setCellValue('B4', 'Auto'); // Job Type
-    
-    // Date
-    const formattedDate = new Date(ticket.date).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-    });
-    setCellValue('B5', formattedDate); // Date Start
-    setCellValue('B6', formattedDate); // Date End
-    
-    // Service Description (Green section - starting around row 12)
-    let descriptionRow = 12;
+    // Service Description section starts at row 14 (after row 13 headers)
+    // Headers in row 13: K13=RT, L13=TT, M13=FT, N13=OT
+    let descriptionRow = 14;
     ticket.entries.forEach((entry) => {
       const description = entry.description || 'No description';
-      setCellValue(`A${descriptionRow}`, description);
+      setCellValue(`B${descriptionRow}`, description); // Description in column B
       
       // Time columns based on rate_type
       const rateType = entry.rate_type || 'Shop Time';
       const hours = entry.hours || 0;
       
-      // Map rate types to columns (assuming columns D, E, F, G for RT, TT, FT, OT)
+      // Map rate types to columns (K=RT, L=TT, M=FT, N=OT)
       if (rateType === 'Shop Time') {
-        setCellValue(`D${descriptionRow}`, hours); // RT
+        setCellValue(`K${descriptionRow}`, hours); // RT (column K)
       } else if (rateType === 'Travel Time') {
-        setCellValue(`E${descriptionRow}`, hours); // TT
+        setCellValue(`L${descriptionRow}`, hours); // TT (column L)
       } else if (rateType === 'Field Time') {
-        setCellValue(`F${descriptionRow}`, hours); // FT
+        setCellValue(`M${descriptionRow}`, hours); // FT (column M)
       } else if (rateType === 'Shop Overtime' || rateType === 'Field Overtime') {
-        setCellValue(`G${descriptionRow}`, hours); // OT
+        setCellValue(`N${descriptionRow}`, hours); // OT (column N)
       }
       
       descriptionRow++;
     });
     
-    // Totals (Red section - bottom)
-    const totalsRow = 26; // Approximate row for totals
+    // Rates are in row 24: C24=130 (RT Rate), E24=140 (FT Rate)
+    // These are already in template, no need to change unless rates vary
     
-    // RT Rate and Total
-    setCellValue(`B${totalsRow}`, '$130.00'); // RT Rate
-    setCellValue(`D${totalsRow}`, ticket.hoursByRateType['Shop Time'].toFixed(2)); // Total RT
+    // Total Time in row 24: K24, L24, M24, N24
+    setCellValue('K24', ticket.hoursByRateType['Shop Time']); // Total RT
+    setCellValue('L24', ticket.hoursByRateType['Travel Time']); // Total TT
+    setCellValue('M24', ticket.hoursByRateType['Field Time']); // Total FT
+    setCellValue('N24', ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']); // Total OT
     
-    // FT Rate and Total  
-    setCellValue(`B${totalsRow + 1}`, '$140.00'); // FT Rate
-    setCellValue(`D${totalsRow + 1}`, ticket.hoursByRateType['Field Time'].toFixed(2)); // Total FT
+    // Service Ticket Summary (rows 35-40, column I for values)
+    const rtRate = 130.00;
+    const ftRate = 140.00;
+    const ttRate = 140.00;
+    const otRate = 195.00;
     
-    // Calculate totals
-    const rtTotal = ticket.hoursByRateType['Shop Time'] * 130;
-    const ftTotal = ticket.hoursByRateType['Field Time'] * 140;
-    const ttTotal = ticket.hoursByRateType['Travel Time'] * 140;
-    const otTotal = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * 195;
+    const rtTotal = ticket.hoursByRateType['Shop Time'] * rtRate;
+    const ttTotal = ticket.hoursByRateType['Travel Time'] * ttRate;
+    const ftTotal = ticket.hoursByRateType['Field Time'] * ftRate;
+    const otTotal = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
     
-    setCellValue(`E${totalsRow}`, rtTotal.toFixed(2)); // Total RT $
-    setCellValue(`E${totalsRow + 1}`, ftTotal.toFixed(2)); // Total FT $
+    setCellValue('I35', rtTotal.toFixed(2)); // Total RT $
+    setCellValue('I36', ttTotal.toFixed(2)); // Total TT $
+    setCellValue('I37', ftTotal.toFixed(2)); // Total FT $
+    setCellValue('I38', otTotal.toFixed(2)); // Total OT $
+    setCellValue('I39', '0.00'); // Total Expenses
     
-    // Total Time
-    setCellValue(`D${totalsRow + 3}`, ticket.totalHours.toFixed(2));
-    
-    // Total Expenses
-    setCellValue(`E${totalsRow + 4}`, '0.00');
-    
-    // TOTAL SERVICE TICKET
-    const grandTotal = rtTotal + ftTotal + ttTotal + otTotal;
-    setCellValue(`E${totalsRow + 5}`, grandTotal.toFixed(2));
+    // TOTAL SERVICE TICKET (M40)
+    const grandTotal = rtTotal + ttTotal + ftTotal + otTotal;
+    setCellValue('M40', grandTotal.toFixed(2));
     
     // Generate the Excel file
     const outputBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
