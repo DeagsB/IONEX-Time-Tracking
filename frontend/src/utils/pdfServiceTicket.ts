@@ -6,64 +6,76 @@ import { ServiceTicket } from './serviceTickets';
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
 
-// Field coordinates (adjust these to match your blank template)
+// Excel column to PDF X coordinate conversion
+// Excel columns are ~47 points wide starting at x=36
+const excelColToX = (col: string): number => {
+  const colIndex = col.charCodeAt(0) - 'A'.charCodeAt(0);
+  return 36 + (colIndex * 47);
+};
+
+// Excel row to PDF Y coordinate conversion (row 1 is at top)
+const excelRowToY = (row: number): number => {
+  return PAGE_HEIGHT - (row * 15.5); // ~15.5 points per Excel row
+};
+
+// Field coordinates based on Excel template structure
 const LAYOUT = {
-  // Ticket number (top right)
-  ticketNumber: { x: 500, y: 760 },
+  // Ticket number (M1)
+  ticketNumber: { x: excelColToX('M'), y: excelRowToY(1) },
   
-  // Customer info (right side)
-  customerName: { x: 320, y: 710 },
-  billingAddress: { x: 320, y: 690 },
-  contactName: { x: 320, y: 650 },
-  contactPhone: { x: 320, y: 630 },
-  contactEmail: { x: 320, y: 610 },
-  serviceLocation: { x: 320, y: 590 },
-  poAfeCc: { x: 320, y: 570 },
+  // Customer info (column H, rows 3-11)
+  customerName: { x: excelColToX('H'), y: excelRowToY(3) },
+  billingAddress: { x: excelColToX('H'), y: excelRowToY(4) },
+  contactName: { x: excelColToX('H'), y: excelRowToY(7) },
+  contactPhone: { x: excelColToX('H'), y: excelRowToY(8) },
+  contactEmail: { x: excelColToX('H'), y: excelRowToY(9) },
+  serviceLocation: { x: excelColToX('H'), y: excelRowToY(10) },
+  poAfeCc: { x: excelColToX('H'), y: excelRowToY(11) },
   
   // Service info (left side)
-  jobId: { x: 100, y: 710 },
-  jobType: { x: 200, y: 710 },
-  tech: { x: 100, y: 690 },
-  date: { x: 100, y: 670 },
+  jobId: { x: excelColToX('C'), y: excelRowToY(9) },
+  jobType: { x: excelColToX('E'), y: excelRowToY(9) },
+  tech: { x: excelColToX('C'), y: excelRowToY(10) },
+  date: { x: excelColToX('C'), y: excelRowToY(11) },
   
-  // Service description box
+  // Service description box (rows 14-23, 10 rows available)
   descriptionBox: {
-    x: 50,
-    y: 250, // Bottom of box
-    width: 512,
-    height: 350, // Total height available
-    startY: 580, // Top position to start drawing rows
-    rowHeight: 18, // Height per row
-    maxRows: 19, // Maximum rows per page
+    x: excelColToX('B'),
+    y: excelRowToY(24), // Bottom of box
+    width: 400,
+    height: 155, // 10 rows * 15.5
+    startY: excelRowToY(14), // First data row
+    rowHeight: 15.5,
+    maxRows: 10, // Rows 14-23
   },
   
-  // Column X positions for time entries
+  // Column X positions for time entries (row 13 headers: K, L, M, N)
   columns: {
-    description: 55,
-    rt: 420,
-    tt: 460,
-    ft: 500,
-    ot: 540,
+    description: excelColToX('B'),
+    rt: excelColToX('K'),
+    tt: excelColToX('L'),
+    ft: excelColToX('M'),
+    ot: excelColToX('N'),
   },
   
-  // Totals row
+  // Totals row (row 24, columns K-N)
   totals: {
-    y: 210,
-    rt: 420,
-    tt: 460,
-    ft: 500,
-    ot: 540,
+    y: excelRowToY(24),
+    rt: excelColToX('K'),
+    tt: excelColToX('L'),
+    ft: excelColToX('M'),
+    ot: excelColToX('N'),
   },
   
-  // Summary section (bottom right)
+  // Summary section (column I, rows 35-40)
   summary: {
-    x: 480,
-    totalRT: { y: 165 },
-    totalTT: { y: 150 },
-    totalFT: { y: 135 },
-    totalOT: { y: 120 },
-    totalExpenses: { y: 105 },
-    grandTotal: { y: 75 },
+    x: excelColToX('I'),
+    totalRT: { y: excelRowToY(35) },
+    totalTT: { y: excelRowToY(36) },
+    totalFT: { y: excelRowToY(37) },
+    totalOT: { y: excelRowToY(38) },
+    totalExpenses: { y: excelRowToY(39) },
+    grandTotal: { y: excelRowToY(40), x: excelColToX('M') }, // Grand total in column M
   },
 };
 
@@ -410,7 +422,7 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     });
     
     firstPage.drawText(`$${grandTotal.toFixed(2)}`, {
-      x: LAYOUT.summary.x,
+      x: LAYOUT.summary.grandTotal.x,
       y: LAYOUT.summary.grandTotal.y,
       size: 11,
       font: boldFont,
