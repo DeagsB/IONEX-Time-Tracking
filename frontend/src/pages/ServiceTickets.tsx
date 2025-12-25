@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { serviceTicketsService, customersService, employeesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
-import { exportServiceTicketToExcel, examineTemplate } from '../utils/excelExport';
+import { downloadPdfServiceTicket } from '../utils/pdfServiceTicket';
 
 export default function ServiceTickets() {
   const { user } = useAuth();
@@ -23,28 +23,21 @@ export default function ServiceTickets() {
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  // Handler for exporting ticket
+  // Handler for exporting ticket as PDF
   const handleExportTicket = async (ticket: ServiceTicket) => {
     setIsExporting(true);
     try {
-      await exportServiceTicketToExcel(ticket);
-      alert('Service ticket exported successfully!');
+      await downloadPdfServiceTicket(ticket);
     } catch (error) {
       console.error('Export error:', error);
-      alert('Failed to export service ticket. Check console for details.');
+      alert('Failed to export service ticket PDF. Check console for details.');
     } finally {
       setIsExporting(false);
     }
   };
 
-  // Debug handler to examine template
-  const handleExamineTemplate = async () => {
-    await examineTemplate();
-    alert('Check browser console for template structure');
-  };
-
   // Fetch billable entries
-  const { data: billableEntries, isLoading: isLoadingEntries } = useQuery({
+  const { data: billableEntries, isLoading: isLoadingEntries, error: entriesError } = useQuery({
     queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, selectedUserId, approvedOnly],
     queryFn: () => serviceTicketsService.getBillableEntries({
       startDate,
@@ -99,13 +92,6 @@ export default function ServiceTickets() {
         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
           Service Tickets
         </h2>
-        <button
-          className="button button-secondary"
-          onClick={handleExamineTemplate}
-          style={{ padding: '8px 16px', fontSize: '13px' }}
-        >
-          🔍 Debug Template
-        </button>
       </div>
 
       {/* Filters */}
@@ -206,7 +192,16 @@ export default function ServiceTickets() {
       </div>
 
       {/* Tickets List */}
-      {isLoadingEntries ? (
+      {entriesError ? (
+        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
+          <p style={{ color: '#ef5350', marginBottom: '10px', fontWeight: '600' }}>
+            Error loading service tickets
+          </p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+            {entriesError instanceof Error ? entriesError.message : 'Unknown error occurred'}
+          </p>
+        </div>
+      ) : isLoadingEntries ? (
         <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-secondary)' }}>Loading service tickets...</p>
         </div>
@@ -556,7 +551,7 @@ export default function ServiceTickets() {
                   style={{ padding: '10px 24px' }}
                   disabled={isExporting}
                 >
-                  {isExporting ? 'Exporting...' : 'Export to Excel'}
+                  {isExporting ? 'Generating PDF...' : 'Export PDF'}
                 </button>
               </div>
             </div>

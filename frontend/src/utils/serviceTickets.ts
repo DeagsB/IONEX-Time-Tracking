@@ -74,13 +74,43 @@ export function groupEntriesIntoTickets(
   const ticketMap = new Map<string, ServiceTicket>();
 
   for (const entry of entries) {
-    // Skip entries without project/customer (or handle as "Unassigned")
-    if (!entry.project?.customer) {
-      continue; // Skip unassigned entries for now
+    // Handle entries without project/customer as "Unassigned Client"
+    let customerId: string;
+    let customerName: string;
+    let customerInfo: ServiceTicket['customerInfo'];
+    
+    if (!entry.project || !entry.project.customer) {
+      // Create unassigned bucket
+      customerId = 'unassigned';
+      customerName = 'Unassigned Client';
+      customerInfo = {
+        name: 'Unassigned Client',
+        email: undefined,
+        phone: undefined,
+        address: undefined,
+        city: undefined,
+        state: undefined,
+        zip_code: undefined,
+        country: undefined,
+        tax_id: undefined,
+      };
+    } else {
+      customerId = entry.project.customer.id;
+      customerName = entry.project.customer.name;
+      customerInfo = {
+        name: entry.project.customer.name,
+        email: entry.project.customer.email,
+        phone: entry.project.customer.phone,
+        address: entry.project.customer.address,
+        city: entry.project.customer.city,
+        state: entry.project.customer.state,
+        zip_code: entry.project.customer.zip_code,
+        country: entry.project.customer.country,
+        tax_id: entry.project.customer.tax_id,
+      };
     }
 
     const date = entry.date;
-    const customerId = entry.project.customer.id;
     const userId = entry.user_id;
 
     // Create composite key
@@ -93,18 +123,8 @@ export function groupEntriesIntoTickets(
         id: ticketKey,
         date,
         customerId,
-        customerName: entry.project.customer.name,
-        customerInfo: {
-          name: entry.project.customer.name,
-          email: entry.project.customer.email,
-          phone: entry.project.customer.phone,
-          address: entry.project.customer.address,
-          city: entry.project.customer.city,
-          state: entry.project.customer.state,
-          zip_code: entry.project.customer.zip_code,
-          country: entry.project.customer.country,
-          tax_id: entry.project.customer.tax_id,
-        },
+        customerName,
+        customerInfo,
         userId,
         userName: entry.user
           ? `${entry.user.first_name || ''} ${entry.user.last_name || ''}`.trim() || entry.user.email
