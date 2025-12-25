@@ -340,3 +340,56 @@ export const reportsService = {
     return data;
   },
 };
+
+export const serviceTicketsService = {
+  async getBillableEntries(filters?: {
+    startDate?: string;
+    endDate?: string;
+    customerId?: string;
+    userId?: string;
+    approvedOnly?: boolean;
+  }) {
+    let query = supabase
+      .from('time_entries')
+      .select(`
+        *,
+        user:users(id, email, first_name, last_name),
+        project:projects(
+          id,
+          name,
+          customer:customers(
+            id,
+            name,
+            email,
+            phone,
+            address,
+            city,
+            state,
+            zip_code,
+            country,
+            tax_id
+          )
+        )
+      `)
+      .eq('billable', true)
+      .order('date', { ascending: false });
+
+    if (filters?.startDate) {
+      query = query.gte('date', filters.startDate);
+    }
+    if (filters?.endDate) {
+      query = query.lte('date', filters.endDate);
+    }
+    if (filters?.userId) {
+      query = query.eq('user_id', filters.userId);
+    }
+    if (filters?.approvedOnly) {
+      query = query.eq('approved', true);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+    return data;
+  },
+};

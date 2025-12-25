@@ -38,3 +38,4 @@ CREATE POLICY "Allow dev mode deletes" ON public.time_entries
 SELECT id, email, first_name, last_name, role FROM public.users WHERE id = '00000000-0000-0000-0000-000000000001';
 
 
+
