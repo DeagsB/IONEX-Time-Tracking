@@ -48,6 +48,7 @@ export default function WeekView() {
     description: '',
     project_id: '',
     hours: 0.25,
+    billable: true,
   });
 
   // Edit existing entry modal state
@@ -59,6 +60,7 @@ export default function WeekView() {
     start_time: '',
     end_time: '',
     hours: 0,
+    billable: true,
   });
   
   // Get week start (Monday)
@@ -144,7 +146,7 @@ export default function WeekView() {
       console.log('Time entry saved successfully:', data);
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       setShowTimeEntryModal(false);
-      setNewEntry({ description: '', project_id: '', hours: 0.25 });
+      setNewEntry({ description: '', project_id: '', hours: 0.25, billable: true });
       setSelectedSlot(null);
     },
     onError: (error: any) => {
@@ -353,7 +355,7 @@ export default function WeekView() {
       hours: newEntry.hours,
       rate: 0, // Default rate, can be updated later
       description: newEntry.description || '',
-      billable: true,
+      billable: newEntry.billable,
     };
 
     // Only add project_id if one is selected
@@ -387,6 +389,7 @@ export default function WeekView() {
       start_time: parseTime(entry.start_time),
       end_time: parseTime(entry.end_time),
       hours: entry.hours || 0,
+      billable: entry.billable !== undefined ? entry.billable : true,
     });
     setShowEditModal(true);
   };
@@ -420,6 +423,7 @@ export default function WeekView() {
       end_time: endDate.toISOString(),
       hours: hours,
       date: dateStr,
+      billable: editedEntry.billable,
     };
     
     // Only include project_id if one is selected
@@ -1143,6 +1147,34 @@ export default function WeekView() {
                 </select>
               </div>
 
+              {/* Billable toggle */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '10px', 
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: 'var(--text-primary)'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={newEntry.billable}
+                    onChange={(e) => setNewEntry({ ...newEntry, billable: e.target.checked })}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      accentColor: '#c770f0'
+                    }}
+                  />
+                  <span>Billable?</span>
+                  <span style={{ fontSize: '12px', opacity: 0.7 }}>
+                    {newEntry.billable ? 'Yes' : 'No'}
+                  </span>
+                </label>
+              </div>
+
               {/* Add button */}
               <button
                 className="button button-primary"
@@ -1338,6 +1370,34 @@ export default function WeekView() {
                 >
                   {editedEntry.hours.toFixed(2)}
                 </div>
+              </div>
+
+              {/* Billable toggle */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '10px', 
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: 'var(--text-primary)'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={editedEntry.billable}
+                    onChange={(e) => setEditedEntry({ ...editedEntry, billable: e.target.checked })}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      accentColor: '#c770f0'
+                    }}
+                  />
+                  <span>Billable?</span>
+                  <span style={{ fontSize: '12px', opacity: 0.7 }}>
+                    {editedEntry.billable ? 'Yes' : 'No'}
+                  </span>
+                </label>
               </div>
 
               {/* Action buttons */}
