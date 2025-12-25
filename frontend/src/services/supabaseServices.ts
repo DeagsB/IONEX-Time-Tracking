@@ -353,11 +353,11 @@ export const serviceTicketsService = {
       .from('time_entries')
       .select(`
         *,
-        user:users(id, email, first_name, last_name),
-        project:projects(
+        user:users!time_entries_user_id_fkey(id, email, first_name, last_name),
+        project:projects!time_entries_project_id_fkey(
           id,
           name,
-          customer:customers(
+          customer:customers!projects_customer_id_fkey(
             id,
             name,
             email,
@@ -389,7 +389,12 @@ export const serviceTicketsService = {
 
     const { data, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching billable entries:', error);
+      throw error;
+    }
+    
+    console.log('Fetched billable entries:', data);
     return data;
   },
 };
