@@ -18,6 +18,7 @@ export default function Projects() {
     start_date: '',
     end_date: '',
     budget: '',
+    color: '#4ecdc4',
   });
 
   const { data: projects } = useQuery({
@@ -43,6 +44,7 @@ export default function Projects() {
         start_date: data.start_date || null,
         end_date: data.end_date || null,
         budget: data.budget ? parseFloat(data.budget) : null,
+        color: data.color || '#4ecdc4',
       };
       return await projectsService.create(projectData);
     },
@@ -65,6 +67,7 @@ export default function Projects() {
       if (data.start_date !== undefined) projectData.start_date = data.start_date || null;
       if (data.end_date !== undefined) projectData.end_date = data.end_date || null;
       if (data.budget !== undefined) projectData.budget = data.budget ? parseFloat(data.budget) : null;
+      if (data.color !== undefined) projectData.color = data.color;
 
       return await projectsService.update(id, projectData);
     },
@@ -86,6 +89,7 @@ export default function Projects() {
       start_date: '',
       end_date: '',
       budget: '',
+      color: '#4ecdc4',
     });
   };
 
@@ -101,6 +105,7 @@ export default function Projects() {
       start_date: project.start_date ? new Date(project.start_date).toISOString().split('T')[0] : '',
       end_date: project.end_date ? new Date(project.end_date).toISOString().split('T')[0] : '',
       budget: project.budget?.toString() || '',
+      color: project.color || '#4ecdc4',
     });
     setShowForm(true);
   };
@@ -262,6 +267,31 @@ export default function Projects() {
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                 />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Project Color</label>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <input
+                  type="color"
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  style={{
+                    width: '60px',
+                    height: '40px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                />
+                <span style={{ 
+                  fontSize: '14px', 
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'monospace'
+                }}>
+                  {formData.color}
+                </span>
               </div>
             </div>
 

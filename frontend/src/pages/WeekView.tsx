@@ -856,7 +856,8 @@ export default function WeekView() {
                     if (!style) return null;
 
                     const project = projects?.find((p: any) => p.id === entry.project_id);
-                    const color = project?.color || projectColors[entryIndex % projectColors.length];
+                    // Use project color if available, otherwise grey for no project
+                    const color = entry.project_id && project?.color ? project.color : '#808080';
 
                     return (
                       <div
