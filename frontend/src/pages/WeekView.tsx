@@ -319,6 +319,7 @@ export default function WeekView() {
       description: '',
       project_id: projects?.[0]?.id || '',
       hours: minutesPerDivision / 60,
+      billable: true,
     });
     setShowTimeEntryModal(true);
   };
