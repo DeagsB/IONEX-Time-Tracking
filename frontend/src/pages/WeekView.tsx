@@ -761,7 +761,8 @@ export default function WeekView() {
                   flex: 1,
                   minWidth: '150px',
                   borderRight: dayIndex < 6 ? '1px solid var(--border-color)' : 'none',
-                  position: 'relative'
+                  position: 'relative',
+                  overflow: 'visible'
                 }}
               >
                 {/* Day header - compact layout */}
@@ -805,7 +806,7 @@ export default function WeekView() {
                 </div>
 
                 {/* Time grid with clickable divisions */}
-                <div key={`grid-${divisionsPerHour}`} style={{ position: 'relative' }}>
+                <div key={`grid-${divisionsPerHour}`} style={{ position: 'relative', overflow: 'visible' }}>
                   {timeSlots.map((_, hourIndex) => (
                     <div
                       key={`hour-${hourIndex}-${divisionsPerHour}`}
@@ -815,7 +816,8 @@ export default function WeekView() {
                         backgroundColor: hourIndex % 2 === 0 ? 'var(--bg-primary)' : 'var(--bg-secondary)',
                         display: 'flex',
                         flexDirection: 'column',
-                        position: 'relative'
+                        position: 'relative',
+                        overflow: 'visible'
                       }}
                     >
                       {/* Clickable divisions based on zoom level */}
@@ -828,6 +830,9 @@ export default function WeekView() {
                             borderBottom: divisionIndex < divisionsPerHour - 1 ? '1px dashed rgba(128, 128, 128, 0.1)' : 'none',
                             cursor: 'pointer',
                             transition: 'background-color 0.2s',
+                            pointerEvents: 'auto',
+                            position: 'relative',
+                            zIndex: 1
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.backgroundColor = 'rgba(200, 112, 240, 0.15)';
@@ -865,7 +870,8 @@ export default function WeekView() {
                           overflow: 'hidden',
                           cursor: 'pointer',
                           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                          zIndex: 1
+                          zIndex: 10,
+                          pointerEvents: 'auto'
                         }}
                         onClick={(e) => handleEntryClick(entry, e)}
                       >
@@ -926,9 +932,10 @@ export default function WeekView() {
                           color: 'white',
                           overflow: 'hidden',
                           boxShadow: '0 2px 8px rgba(255, 107, 107, 0.4)',
-                          zIndex: 2,
+                          zIndex: 11,
                           border: '2px solid #ff5252',
-                          animation: 'pulse 2s ease-in-out infinite'
+                          animation: 'pulse 2s ease-in-out infinite',
+                          pointerEvents: 'auto'
                         }}
                       >
                         {/* Timer icon + Description (main text) */}
