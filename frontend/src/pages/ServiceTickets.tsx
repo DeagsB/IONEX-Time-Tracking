@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { serviceTicketsService, customersService, employeesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
+import { exportServiceTicketToExcel, examineTemplate } from '../utils/excelExport';
 
 export default function ServiceTickets() {
   const { user } = useAuth();
@@ -20,6 +21,27 @@ export default function ServiceTickets() {
   
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Handler for exporting ticket
+  const handleExportTicket = async (ticket: ServiceTicket) => {
+    setIsExporting(true);
+    try {
+      await exportServiceTicketToExcel(ticket);
+      alert('Service ticket exported successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export service ticket. Check console for details.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Debug handler to examine template
+  const handleExamineTemplate = async () => {
+    await examineTemplate();
+    alert('Check browser console for template structure');
+  };
 
   // Fetch billable entries
   const { data: billableEntries, isLoading: isLoadingEntries } = useQuery({
@@ -77,6 +99,13 @@ export default function ServiceTickets() {
         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
           Service Tickets
         </h2>
+        <button
+          className="button button-secondary"
+          onClick={handleExamineTemplate}
+          style={{ padding: '8px 16px', fontSize: '13px' }}
+        >
+          🔍 Debug Template
+        </button>
       </div>
 
       {/* Filters */}
@@ -517,17 +546,17 @@ export default function ServiceTickets() {
                   className="button button-secondary"
                   onClick={() => setSelectedTicket(null)}
                   style={{ padding: '10px 24px' }}
+                  disabled={isExporting}
                 >
                   Close
                 </button>
                 <button
                   className="button button-primary"
-                  onClick={() => {
-                    alert('Export functionality will be implemented in Phase 2');
-                  }}
+                  onClick={() => handleExportTicket(selectedTicket)}
                   style={{ padding: '10px 24px' }}
+                  disabled={isExporting}
                 >
-                  Export (Coming Soon)
+                  {isExporting ? 'Exporting...' : 'Export to Excel'}
                 </button>
               </div>
             </div>
