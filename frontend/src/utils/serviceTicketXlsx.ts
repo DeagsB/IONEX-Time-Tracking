@@ -92,8 +92,6 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         const cell = worksheet.getCell(cellAddress);
         // Only update the value - ExcelJS preserves all formatting automatically
         cell.value = value;
-        // Mark the cell as modified by triggering a property change
-        cell.style = cell.style || {};
         console.log(`    ✓ Set ${cellAddress} = "${value}"`);
       }
     }
@@ -133,9 +131,7 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       const descCell = worksheet.getCell(descAddr);
       const descValue = entry.description || 'No description';
       descCell.value = descValue;
-      // Force cell to be marked as modified
-      descCell.style = descCell.style || {};
-      console.log(`    ✓ Set ${descAddr} = "${descValue}" (cell object: ${!!descCell})`);
+      console.log(`    ✓ Set ${descAddr} = "${descValue}"`);
       
       // Hours in the appropriate column based on rate_type
       const rateType = entry.rate_type || 'Shop Time';
@@ -152,9 +148,7 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       const hoursAddr = createCellAddress(currentRow, hoursCol);
       const hoursCell = worksheet.getCell(hoursAddr);
       hoursCell.value = entry.hours;
-      // Force cell to be marked as modified
-      hoursCell.style = hoursCell.style || {};
-      console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs (cell object: ${!!hoursCell})`);
+      console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs`);
       
       currentRow++;
     }
@@ -196,11 +190,14 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       });
     });
     
+    // Ensure Excel recalculates formulas when opening
+    if (workbook.calcProperties) {
+      workbook.calcProperties.fullCalcOnLoad = true;
+    }
+    
     // Generate the output file - ExcelJS preserves all formatting, borders, images
-    const buffer = await workbook.xlsx.writeBuffer({
-      useStyles: true,
-      useSharedStrings: true,
-    });
+    // Remove useStyles/useSharedStrings options which can cause data loss
+    const buffer = await workbook.xlsx.writeBuffer();
     
     return new Uint8Array(buffer);
     
