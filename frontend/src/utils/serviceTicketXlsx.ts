@@ -80,8 +80,10 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     }
     
     // Fill in the ticket number (M1 in Template sheet)
+    // Note: M1 has a complex _xlfn formula that causes corruption - replace with simple text
     const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
     const ticketCell = worksheet.getCell('M1');
+    // Set as plain string value (this clears any formula)
     ticketCell.value = ticketId;
     
     // Fill in line items (starting at row 14, based on DB_25101 structure)
@@ -133,8 +135,28 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       workbook.removeWorksheet(dbSheet.id);
     }
     
+    // Fix any problematic _xlfn formulas that cause Excel corruption
+    // These are modern Excel functions that ExcelJS doesn't fully support
+    worksheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        if (cell.formula) {
+          const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
+          if (formulaStr && formulaStr.includes('_xlfn')) {
+            // Replace with result value to avoid corruption
+            const result = typeof cell.formula === 'object' ? (cell.formula as any).result : cell.result;
+            if (result !== undefined && result !== null) {
+              cell.value = result;
+            }
+          }
+        }
+      });
+    });
+    
     // Generate the output file - ExcelJS preserves all formatting, borders, images
-    const buffer = await workbook.xlsx.writeBuffer();
+    const buffer = await workbook.xlsx.writeBuffer({
+      useStyles: true,
+      useSharedStrings: true,
+    });
     return new Uint8Array(buffer);
     
   } catch (error) {
