@@ -1,16 +1,16 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { ServiceTicket } from './serviceTickets';
-import { parseExcelTemplateMapping, createCellAddress, getRowFromAddress, getColumnFromAddress } from './excelTemplateMapping';
+import { parseExcelTemplateMapping, createCellAddress } from './excelTemplateMapping';
 
 /**
  * Maps ticket data fields to placeholder strings in the Excel template
  */
-function getFieldValueForPlaceholder(placeholder: string, ticket: ServiceTicket): string {
+function getFieldValueForPlaceholder(placeholder: string, ticket: ServiceTicket): string | number {
   const customer = ticket.customerInfo;
   
   // Map placeholders to actual data
-  const mappings: { [key: string]: string } = {
+  const mappings: { [key: string]: string | number } = {
     '(Customer Here)': customer.name || '',
     '(Street address)': customer.address || '',
     '(City, Province)': customer.city && customer.state 
@@ -31,15 +31,15 @@ function getFieldValueForPlaceholder(placeholder: string, ticket: ServiceTicket)
       day: '2-digit',
       year: 'numeric',
     }),
-    '(Billable Rate)': '130',
-    '(Field Time Rate)': '140',
+    '(Billable Rate)': 130,
+    '(Field Time Rate)': 140,
   };
   
   return mappings[placeholder] || '';
 }
 
 /**
- * Generates a filled Excel file from the template and ticket data
+ * Generates a filled Excel file from the template and ticket data using ExcelJS
  */
 export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise<Uint8Array> {
   try {
@@ -50,25 +50,19 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     }
     
     const templateBytes = await templateResponse.arrayBuffer();
-    const workbook = XLSX.read(templateBytes, { 
-      type: 'array',
-      cellStyles: true,
-      cellDates: true,
-      cellHTML: false,
-      cellFormula: true,
-      sheetStubs: false
-    });
+    
+    // Load workbook with ExcelJS
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(templateBytes);
     
     // Get the mapping from DB_25101 sheet
     const mapping = await parseExcelTemplateMapping();
     
     // Get the Template sheet (the one we'll fill and export)
-    const templateSheetName = 'Template';
-    if (!workbook.SheetNames.includes(templateSheetName)) {
-      throw new Error(`Template sheet "${templateSheetName}" not found`);
+    const worksheet = workbook.getWorksheet('Template');
+    if (!worksheet) {
+      throw new Error('Template sheet not found in workbook');
     }
-    
-    const worksheet = workbook.Sheets[templateSheetName];
     
     // Fill in header fields using the mapping
     for (const [placeholder, cellAddresses] of Object.entries(mapping)) {
@@ -79,30 +73,16 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       
       // Fill all cells that use this placeholder
       for (const cellAddress of cellAddresses) {
-        // Write to the Template sheet at the same address, preserving existing cell properties
-        if (!worksheet[cellAddress]) {
-          worksheet[cellAddress] = { t: 's' };
-        }
-        // Only update the value, preserve all other properties (style, format, etc.)
-        worksheet[cellAddress].v = value;
-        worksheet[cellAddress].w = value; // formatted text
-        // Keep the type as string
-        if (!worksheet[cellAddress].t || worksheet[cellAddress].t === 's') {
-          worksheet[cellAddress].t = 's';
-        }
+        const cell = worksheet.getCell(cellAddress);
+        // Only update the value - ExcelJS preserves all formatting automatically
+        cell.value = value;
       }
     }
     
     // Fill in the ticket number (M1 in Template sheet)
     const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
-    if (!worksheet['M1']) {
-      worksheet['M1'] = { t: 's' };
-    }
-    worksheet['M1'].v = ticketId;
-    worksheet['M1'].w = ticketId;
-    if (!worksheet['M1'].t || worksheet['M1'].t === 's') {
-      worksheet['M1'].t = 's';
-    }
+    const ticketCell = worksheet.getCell('M1');
+    ticketCell.value = ticketId;
     
     // Fill in line items (starting at row 14, based on DB_25101 structure)
     const firstDataRow = 14;
@@ -120,17 +100,10 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         break;
       }
       
-      // Description - preserve cell formatting
+      // Description - ExcelJS preserves cell formatting automatically
       const descAddr = createCellAddress(currentRow, descriptionCol);
-      if (!worksheet[descAddr]) {
-        worksheet[descAddr] = { t: 's' };
-      }
-      const description = entry.description || 'No description';
-      worksheet[descAddr].v = description;
-      worksheet[descAddr].w = description;
-      if (!worksheet[descAddr].t || worksheet[descAddr].t === 's') {
-        worksheet[descAddr].t = 's';
-      }
+      const descCell = worksheet.getCell(descAddr);
+      descCell.value = entry.description || 'No description';
       
       // Hours in the appropriate column based on rate_type
       const rateType = entry.rate_type || 'Shop Time';
@@ -145,36 +118,24 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       }
       
       const hoursAddr = createCellAddress(currentRow, hoursCol);
-      if (!worksheet[hoursAddr]) {
-        worksheet[hoursAddr] = { t: 'n' };
-      }
-      worksheet[hoursAddr].v = entry.hours;
-      worksheet[hoursAddr].w = entry.hours.toFixed(2);
-      if (!worksheet[hoursAddr].t || worksheet[hoursAddr].t === 'n') {
-        worksheet[hoursAddr].t = 'n';
-      }
+      const hoursCell = worksheet.getCell(hoursAddr);
+      hoursCell.value = entry.hours;
       
       currentRow++;
     }
     
     // The totals row (row 24) has formulas that will auto-calculate
-    // Just make sure the formulas are preserved (they should be from the template)
+    // ExcelJS preserves them automatically
     
-    // Remove the DB_25101 mapping sheet before exporting (keep only Template)
-    const dbSheetIndex = workbook.SheetNames.indexOf('DB_25101');
-    if (dbSheetIndex > -1) {
-      workbook.SheetNames.splice(dbSheetIndex, 1);
-      delete workbook.Sheets['DB_25101'];
+    // Remove the DB_25101 mapping sheet before exporting
+    const dbSheet = workbook.getWorksheet('DB_25101');
+    if (dbSheet) {
+      workbook.removeWorksheet(dbSheet.id);
     }
     
-    // Generate the output file with full preservation of styles, borders, images
-    const outputBytes = XLSX.write(workbook, { 
-      type: 'array', 
-      bookType: 'xlsx',
-      cellStyles: true
-    });
-    
-    return new Uint8Array(outputBytes);
+    // Generate the output file - ExcelJS preserves all formatting, borders, images
+    const buffer = await workbook.xlsx.writeBuffer();
+    return new Uint8Array(buffer);
     
   } catch (error) {
     console.error('Error generating Excel service ticket:', error);
@@ -201,4 +162,3 @@ export async function downloadExcelServiceTicket(ticket: ServiceTicket): Promise
     throw error;
   }
 }
-

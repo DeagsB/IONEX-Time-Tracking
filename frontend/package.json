@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "@tanstack/react-query": "^5.14.2",
+    "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "pdf-lib": "^1.17.1",
     "react": "^18.2.0",
