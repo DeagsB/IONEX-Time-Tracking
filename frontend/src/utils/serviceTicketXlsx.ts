@@ -92,6 +92,8 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         const cell = worksheet.getCell(cellAddress);
         // Only update the value - ExcelJS preserves all formatting automatically
         cell.value = value;
+        // Mark the cell as modified by triggering a property change
+        cell.style = cell.style || {};
         console.log(`    ✓ Set ${cellAddress} = "${value}"`);
       }
     }
@@ -129,8 +131,11 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       // Description - ExcelJS preserves cell formatting automatically
       const descAddr = createCellAddress(currentRow, descriptionCol);
       const descCell = worksheet.getCell(descAddr);
-      descCell.value = entry.description || 'No description';
-      console.log(`    ✓ Set ${descAddr} = "${entry.description}"`);
+      const descValue = entry.description || 'No description';
+      descCell.value = descValue;
+      // Force cell to be marked as modified
+      descCell.style = descCell.style || {};
+      console.log(`    ✓ Set ${descAddr} = "${descValue}" (cell object: ${!!descCell})`);
       
       // Hours in the appropriate column based on rate_type
       const rateType = entry.rate_type || 'Shop Time';
@@ -147,12 +152,22 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       const hoursAddr = createCellAddress(currentRow, hoursCol);
       const hoursCell = worksheet.getCell(hoursAddr);
       hoursCell.value = entry.hours;
-      console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs`);
+      // Force cell to be marked as modified
+      hoursCell.style = hoursCell.style || {};
+      console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs (cell object: ${!!hoursCell})`);
       
       currentRow++;
     }
     
     console.log(`\n✅ Filled ${currentRow - firstDataRow} time entries total`);
+    
+    // Verify values are in the worksheet before writing
+    console.log('\n🔍 Verification - Reading back values:');
+    console.log('  I3 (Customer):', worksheet.getCell('I3').value);
+    console.log('  C9 (Job ID):', worksheet.getCell('C9').value);
+    console.log('  C10 (Tech):', worksheet.getCell('C10').value);
+    console.log('  B14 (First entry):', worksheet.getCell('B14').value);
+    console.log('  K14 (First hours):', worksheet.getCell('K14').value);
     
     // The totals row (row 24) has formulas that will auto-calculate
     // ExcelJS preserves them automatically
