@@ -90,7 +90,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       // Fill all cells that use this placeholder
       for (const cellAddress of cellAddresses) {
         const cell = worksheet.getCell(cellAddress);
-        // Set the value - this should override any formula
+        // ExcelJS bug workaround: Delete cell model and recreate
+        (cell as any).model = {
+          ...((cell as any).model || {}),
+          value: typeof value === 'number' ? value : String(value),
+          type: typeof value === 'number' ? 2 : 6 // 2=number, 6=sharedString/text
+        };
         cell.value = value;
         console.log(`    ✓ Set ${cellAddress} = "${value}" (type: ${cell.type}, text: ${cell.text})`);
       }
@@ -100,7 +105,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     // Note: M1 has a complex _xlfn formula that causes corruption - replace with simple text
     const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
     const ticketCell = worksheet.getCell('M1');
-    // Set as plain string value (this clears any formula)
+    // ExcelJS bug workaround: Force model update
+    (ticketCell as any).model = {
+      ...((ticketCell as any).model || {}),
+      value: ticketId,
+      type: 6 // sharedString/text
+    };
     ticketCell.value = ticketId;
     
     // Fill in line items (starting at row 14, based on DB_25101 structure)
@@ -130,6 +140,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       const descAddr = createCellAddress(currentRow, descriptionCol);
       const descCell = worksheet.getCell(descAddr);
       const descValue = entry.description || 'No description';
+      // ExcelJS bug workaround: Force model update
+      (descCell as any).model = {
+        ...((descCell as any).model || {}),
+        value: String(descValue),
+        type: 6 // sharedString/text
+      };
       descCell.value = descValue;
       console.log(`    ✓ Set ${descAddr} = "${descValue}" (type: ${descCell.type}, text: ${descCell.text})`);
       
@@ -147,6 +163,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       
       const hoursAddr = createCellAddress(currentRow, hoursCol);
       const hoursCell = worksheet.getCell(hoursAddr);
+      // ExcelJS bug workaround: Force model update
+      (hoursCell as any).model = {
+        ...((hoursCell as any).model || {}),
+        value: entry.hours,
+        type: 2 // number
+      };
       hoursCell.value = entry.hours;
       console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs (type: ${hoursCell.type}, text: ${hoursCell.text})`);
       
