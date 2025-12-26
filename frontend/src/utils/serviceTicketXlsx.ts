@@ -90,9 +90,9 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       // Fill all cells that use this placeholder
       for (const cellAddress of cellAddresses) {
         const cell = worksheet.getCell(cellAddress);
-        // Only update the value - ExcelJS preserves all formatting automatically
+        // Set the value - this should override any formula
         cell.value = value;
-        console.log(`    ✓ Set ${cellAddress} = "${value}"`);
+        console.log(`    ✓ Set ${cellAddress} = "${value}" (type: ${cell.type}, text: ${cell.text})`);
       }
     }
     
@@ -131,7 +131,7 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       const descCell = worksheet.getCell(descAddr);
       const descValue = entry.description || 'No description';
       descCell.value = descValue;
-      console.log(`    ✓ Set ${descAddr} = "${descValue}"`);
+      console.log(`    ✓ Set ${descAddr} = "${descValue}" (type: ${descCell.type}, text: ${descCell.text})`);
       
       // Hours in the appropriate column based on rate_type
       const rateType = entry.rate_type || 'Shop Time';
@@ -148,7 +148,7 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       const hoursAddr = createCellAddress(currentRow, hoursCol);
       const hoursCell = worksheet.getCell(hoursAddr);
       hoursCell.value = entry.hours;
-      console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs`);
+      console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs (type: ${hoursCell.type}, text: ${hoursCell.text})`);
       
       currentRow++;
     }
@@ -195,9 +195,14 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       workbook.calcProperties.fullCalcOnLoad = true;
     }
     
+    // Log workbook state before writing
+    console.log('📦 About to write workbook with sheets:', workbook.worksheets.map(ws => `${ws.name} (${ws.state})`));
+    console.log('📝 Template sheet has', worksheet.rowCount, 'rows');
+    
     // Generate the output file - ExcelJS preserves all formatting, borders, images
     // Remove useStyles/useSharedStrings options which can cause data loss
     const buffer = await workbook.xlsx.writeBuffer();
+    console.log('✅ Buffer generated, size:', buffer.byteLength, 'bytes');
     
     return new Uint8Array(buffer);
     
@@ -212,15 +217,21 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
  */
 export async function downloadExcelServiceTicket(ticket: ServiceTicket): Promise<void> {
   try {
+    console.log('🔽 Starting download...');
     const excelBytes = await generateExcelServiceTicket(ticket);
+    console.log('📊 Generated Excel bytes:', excelBytes.byteLength);
+    
     const blob = new Blob([excelBytes as any], { 
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
     });
+    console.log('📦 Blob created, size:', blob.size);
     
     const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
     const fileName = `ServiceTicket_${ticketId}_${ticket.customerName.replace(/\s+/g, '_')}.xlsx`;
     
+    console.log('💾 Saving file as:', fileName);
     saveAs(blob, fileName);
+    console.log('✅ File download initiated');
   } catch (error) {
     console.error('Error downloading Excel service ticket:', error);
     throw error;
