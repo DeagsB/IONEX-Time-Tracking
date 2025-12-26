@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { ServiceTicket } from './serviceTickets';
-import { parseExcelTemplateMapping, createCellAddress } from './excelTemplateMapping';
+import { createCellAddress } from './excelTemplateMapping';
 
 /**
  * Maps ticket data fields to placeholder strings in the Excel template
@@ -64,42 +64,63 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       totalHours: ticket.totalHours
     });
     
-    // Get the mapping from DB_25101 sheet
-    const mapping = await parseExcelTemplateMapping();
-    
     // Get the Template sheet (the one we'll fill and export)
     const worksheet = workbook.getWorksheet('Template');
     if (!worksheet) {
       throw new Error('Template sheet not found in workbook');
     }
     
-    // Fill in header fields using the mapping
-    console.log('📋 Mapping entries found:', Object.keys(mapping).length);
+    // Fill in header fields using hardcoded positions
+    // (The DB_25101 mapping sheet may not exist after logo update)
+    console.log('📋 Filling header fields with hardcoded positions');
     
-    for (const [placeholder, cellAddresses] of Object.entries(mapping)) {
-      const value = getFieldValueForPlaceholder(placeholder, ticket);
-      
-      console.log(`  ${placeholder} → "${value}" @ ${cellAddresses.join(', ')}`);
-      
-      // Skip if no value
-      if (!value) {
-        console.warn(`  ⚠️ Skipping ${placeholder} - no value`);
-        continue;
-      }
-      
-      // Fill all cells that use this placeholder
-      for (const cellAddress of cellAddresses) {
-        const cell = worksheet.getCell(cellAddress);
-        // ExcelJS bug workaround: Delete cell model and recreate
-        (cell as any).model = {
-          ...((cell as any).model || {}),
-          value: typeof value === 'number' ? value : String(value),
-          type: typeof value === 'number' ? 2 : 6 // 2=number, 6=sharedString/text
-        };
-        cell.value = value;
-        console.log(`    ✓ Set ${cellAddress} = "${value}" (type: ${cell.type}, text: ${cell.text})`);
-      }
+    const customer = ticket.customerInfo;
+    
+    // Helper function to set cell value with ExcelJS bug workaround
+    const setCellValue = (address: string, value: string | number) => {
+      const cell = worksheet.getCell(address);
+      (cell as any).model = {
+        ...((cell as any).model || {}),
+        value: typeof value === 'number' ? value : String(value),
+        type: typeof value === 'number' ? 2 : 6
+      };
+      cell.value = value;
+      console.log(`  ✓ Set ${address} = "${value}"`);
+    };
+    
+    // Customer information (right side of template)
+    if (customer.name) setCellValue('I3', customer.name);
+    if (customer.address) setCellValue('I4', customer.address);
+    const cityState = customer.city && customer.state 
+      ? `${customer.city}, ${customer.state}` 
+      : customer.city || customer.state || '';
+    if (cityState) setCellValue('I5', cityState);
+    if (customer.zip_code) setCellValue('I6', customer.zip_code);
+    if (ticket.userName) setCellValue('I7', ticket.userName);
+    if (customer.phone) setCellValue('I8', customer.phone);
+    if (customer.email) setCellValue('I9', customer.email);
+    const location = customer.service_location || customer.address || '';
+    if (location) setCellValue('I10', location);
+    if (customer.location_code) setCellValue('L10', customer.location_code);
+    if (customer.po_number) {
+      setCellValue('I11', customer.po_number);
+      setCellValue('C37', customer.po_number);
     }
+    if (customer.approver_name) {
+      setCellValue('L11', customer.approver_name);
+      setCellValue('C35', customer.approver_name);
+    }
+    
+    // Left side fields
+    const jobId = ticket.entries[0]?.id.substring(0, 8) || 'AUTO';
+    setCellValue('C9', jobId);
+    setCellValue('C10', ticket.userName);
+    const dateStr = new Date(ticket.date).toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+    });
+    setCellValue('C11', dateStr);
     
     // Fill in the ticket number (M1 in Template sheet)
     // Note: M1 has a complex _xlfn formula that causes corruption - replace with simple text
