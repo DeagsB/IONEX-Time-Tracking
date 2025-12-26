@@ -15,6 +15,10 @@ export interface ServiceTicket {
     zip_code?: string;
     country?: string;
     tax_id?: string;
+    po_number?: string;
+    approver_name?: string;
+    location_code?: string;
+    service_location?: string;
   };
   userId: string;
   userName: string;
@@ -58,6 +62,10 @@ export interface TimeEntryWithRelations {
       zip_code?: string;
       country?: string;
       tax_id?: string;
+      po_number?: string;
+      approver_name?: string;
+      location_code?: string;
+      service_location?: string;
     };
   };
   user_id: string;
@@ -93,6 +101,10 @@ export function groupEntriesIntoTickets(
         zip_code: undefined,
         country: undefined,
         tax_id: undefined,
+        po_number: undefined,
+        approver_name: undefined,
+        location_code: undefined,
+        service_location: undefined,
       };
     } else {
       customerId = entry.project.customer.id;
@@ -107,6 +119,10 @@ export function groupEntriesIntoTickets(
         zip_code: entry.project.customer.zip_code,
         country: entry.project.customer.country,
         tax_id: entry.project.customer.tax_id,
+        po_number: entry.project.customer.po_number,
+        approver_name: entry.project.customer.approver_name,
+        location_code: entry.project.customer.location_code,
+        service_location: entry.project.customer.service_location,
       };
     }
 

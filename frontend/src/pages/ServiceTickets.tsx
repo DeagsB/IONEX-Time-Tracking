@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { serviceTicketsService, customersService, employeesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
 import { downloadPdfServiceTicket } from '../utils/pdfServiceTicket';
+import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 
 export default function ServiceTickets() {
   const { user } = useAuth();
@@ -21,18 +22,32 @@ export default function ServiceTickets() {
   
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   // Handler for exporting ticket as PDF
-  const handleExportTicket = async (ticket: ServiceTicket) => {
-    setIsExporting(true);
+  const handleExportPdf = async (ticket: ServiceTicket) => {
+    setIsExportingPdf(true);
     try {
       await downloadPdfServiceTicket(ticket);
     } catch (error) {
-      console.error('Export error:', error);
+      console.error('PDF export error:', error);
       alert('Failed to export service ticket PDF. Check console for details.');
     } finally {
-      setIsExporting(false);
+      setIsExportingPdf(false);
+    }
+  };
+
+  // Handler for exporting ticket as Excel
+  const handleExportExcel = async (ticket: ServiceTicket) => {
+    setIsExportingExcel(true);
+    try {
+      await downloadExcelServiceTicket(ticket);
+    } catch (error) {
+      console.error('Excel export error:', error);
+      alert('Failed to export service ticket Excel. Check console for details.');
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
@@ -541,17 +556,29 @@ export default function ServiceTickets() {
                   className="button button-secondary"
                   onClick={() => setSelectedTicket(null)}
                   style={{ padding: '10px 24px' }}
-                  disabled={isExporting}
+                  disabled={isExportingPdf || isExportingExcel}
                 >
                   Close
                 </button>
                 <button
                   className="button button-primary"
-                  onClick={() => handleExportTicket(selectedTicket)}
-                  style={{ padding: '10px 24px' }}
-                  disabled={isExporting}
+                  onClick={() => handleExportExcel(selectedTicket)}
+                  style={{ 
+                    padding: '10px 24px',
+                    backgroundColor: '#4caf50',
+                    borderColor: '#4caf50',
+                  }}
+                  disabled={isExportingExcel || isExportingPdf}
                 >
-                  {isExporting ? 'Generating PDF...' : 'Export PDF'}
+                  {isExportingExcel ? 'Generating Excel...' : 'Export Excel'}
+                </button>
+                <button
+                  className="button button-primary"
+                  onClick={() => handleExportPdf(selectedTicket)}
+                  style={{ padding: '10px 24px' }}
+                  disabled={isExportingPdf || isExportingExcel}
+                >
+                  {isExportingPdf ? 'Generating PDF...' : 'Export PDF'}
                 </button>
               </div>
             </div>

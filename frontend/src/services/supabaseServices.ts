@@ -367,7 +367,11 @@ export const serviceTicketsService = {
             state,
             zip_code,
             country,
-            tax_id
+            tax_id,
+            po_number,
+            approver_name,
+            location_code,
+            service_location
           )
         )
       `)

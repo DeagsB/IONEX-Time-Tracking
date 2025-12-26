@@ -1,86 +1,44 @@
 import { PDFDocument, PDFPage, PDFFont, rgb } from 'pdf-lib';
 import { ServiceTicket } from './serviceTickets';
+import { parseExcelTemplateMapping, excelCellToPdfCoords, getRowFromAddress, createCellAddress } from './excelTemplateMapping';
 
-// PDF coordinate system: (0,0) is bottom-left
-// Template dimensions based on standard letter size (612 x 792 points)
-const PAGE_WIDTH = 612;
+// PDF page dimensions
 const PAGE_HEIGHT = 792;
 
-// Excel column to PDF X coordinate conversion
-// Excel columns are ~47 points wide starting at x=36
-const excelColToX = (col: string): number => {
-  const colIndex = col.charCodeAt(0) - 'A'.charCodeAt(0);
-  return 36 + (colIndex * 47);
-};
-
-// Excel row to PDF Y coordinate conversion (row 1 is at top)
-const excelRowToY = (row: number): number => {
-  return PAGE_HEIGHT - (row * 15.5); // ~15.5 points per Excel row
-};
-
-// Field coordinates based on Excel template structure
-const LAYOUT = {
-  // Ticket number (M1)
-  ticketNumber: { x: excelColToX('M'), y: excelRowToY(1) },
+/**
+ * Maps ticket data fields to placeholder strings (same as Excel export)
+ */
+function getFieldValueForPlaceholder(placeholder: string, ticket: ServiceTicket): string {
+  const customer = ticket.customerInfo;
   
-  // Customer info (column H, rows 3-11)
-  customerName: { x: excelColToX('H'), y: excelRowToY(3) },
-  billingAddress: { x: excelColToX('H'), y: excelRowToY(4) },
-  contactName: { x: excelColToX('H'), y: excelRowToY(7) },
-  contactPhone: { x: excelColToX('H'), y: excelRowToY(8) },
-  contactEmail: { x: excelColToX('H'), y: excelRowToY(9) },
-  serviceLocation: { x: excelColToX('H'), y: excelRowToY(10) },
-  poAfeCc: { x: excelColToX('H'), y: excelRowToY(11) },
+  const mappings: { [key: string]: string } = {
+    '(Customer Here)': customer.name || '',
+    '(Street address)': customer.address || '',
+    '(City, Province)': customer.city && customer.state 
+      ? `${customer.city}, ${customer.state}` 
+      : customer.city || customer.state || '',
+    '(Postal Code)': customer.zip_code || '',
+    '(Name)': ticket.userName || '',
+    '(Phone number)': customer.phone || '',
+    '(Email)': customer.email || '',
+    '(Location)': customer.service_location || customer.address || '',
+    '(Location Code)': customer.location_code || '',
+    '(PO)': customer.po_number || '',
+    '(Approver)': customer.approver_name || '',
+    '(Job ID)': ticket.entries[0]?.id.substring(0, 8) || 'AUTO',
+    '(Employee Name)': ticket.userName || '',
+    '(Date from time entry)': new Date(ticket.date).toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+    }),
+  };
   
-  // Service info (left side)
-  jobId: { x: excelColToX('C'), y: excelRowToY(9) },
-  jobType: { x: excelColToX('E'), y: excelRowToY(9) },
-  tech: { x: excelColToX('C'), y: excelRowToY(10) },
-  date: { x: excelColToX('C'), y: excelRowToY(11) },
-  
-  // Service description box (rows 14-23, 10 rows available)
-  descriptionBox: {
-    x: excelColToX('B'),
-    y: excelRowToY(24), // Bottom of box
-    width: 400,
-    height: 155, // 10 rows * 15.5
-    startY: excelRowToY(14), // First data row
-    rowHeight: 15.5,
-    maxRows: 10, // Rows 14-23
-  },
-  
-  // Column X positions for time entries (row 13 headers: K, L, M, N)
-  columns: {
-    description: excelColToX('B'),
-    rt: excelColToX('K'),
-    tt: excelColToX('L'),
-    ft: excelColToX('M'),
-    ot: excelColToX('N'),
-  },
-  
-  // Totals row (row 24, columns K-N)
-  totals: {
-    y: excelRowToY(24),
-    rt: excelColToX('K'),
-    tt: excelColToX('L'),
-    ft: excelColToX('M'),
-    ot: excelColToX('N'),
-  },
-  
-  // Summary section (column I, rows 35-40)
-  summary: {
-    x: excelColToX('I'),
-    totalRT: { y: excelRowToY(35) },
-    totalTT: { y: excelRowToY(36) },
-    totalFT: { y: excelRowToY(37) },
-    totalOT: { y: excelRowToY(38) },
-    totalExpenses: { y: excelRowToY(39) },
-    grandTotal: { y: excelRowToY(40), x: excelColToX('M') }, // Grand total in column M
-  },
-};
+  return mappings[placeholder] || '';
+}
 
 /**
- * Wrap text to fit within a maximum width
+ * Wrap text to fit within a maximum width (word wrap)
  */
 function wrapTextToWidth(
   text: string,
@@ -114,52 +72,11 @@ function wrapTextToWidth(
 }
 
 /**
- * Truncate text if it exceeds max lines
- */
-function truncateLines(lines: string[], maxLines: number): string[] {
-  if (lines.length <= maxLines) {
-    return lines;
-  }
-  return lines.slice(0, maxLines);
-}
-
-/**
- * Draw wrapped and truncated text
- */
-function drawWrappedText(
-  page: PDFPage,
-  text: string,
-  font: PDFFont,
-  fontSize: number,
-  x: number,
-  y: number,
-  maxWidth: number,
-  maxLines: number
-): number {
-  const lines = wrapTextToWidth(text, font, fontSize, maxWidth);
-  const truncated = truncateLines(lines, maxLines);
-  
-  let currentY = y;
-  for (const line of truncated) {
-    page.drawText(line, {
-      x,
-      y: currentY,
-      size: fontSize,
-      font,
-      color: rgb(0, 0, 0),
-    });
-    currentY -= fontSize + 2; // Line spacing
-  }
-  
-  return truncated.length;
-}
-
-/**
- * Generate PDF service ticket from template
+ * Generate PDF service ticket using Excel template mapping
  */
 export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<Uint8Array> {
   try {
-    // Fetch the blank template
+    // Fetch the blank PDF template
     const templateResponse = await fetch('/templates/Service-Ticket-Example.pdf');
     if (!templateResponse.ok) {
       throw new Error('Failed to fetch PDF template');
@@ -174,207 +91,162 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
       throw new Error('Template PDF has no pages');
     }
     
-    const templatePage = pages[0];
+    const firstPage = pages[0];
     const font = await pdfDoc.embedFont('Helvetica');
     const boldFont = await pdfDoc.embedFont('Helvetica-Bold');
     
-    // Helper to add a page based on template
-    const addPage = async (): Promise<PDFPage> => {
-      const [copiedPage] = await pdfDoc.copyPages(pdfDoc, [0]);
-      return pdfDoc.addPage(copiedPage);
-    };
-    
-    // Use the first page for the main content
-    let currentPage = templatePage;
-    let currentRowIndex = 0;
+    // Get the Excel mapping
+    const mapping = await parseExcelTemplateMapping();
     
     // Generate ticket ID
     const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
     
-    // Fill in header information
-    currentPage.drawText(ticketId, {
-      x: LAYOUT.ticketNumber.x,
-      y: LAYOUT.ticketNumber.y,
+    // Fill ticket number at M1
+    const ticketNumCoords = excelCellToPdfCoords('M1', PAGE_HEIGHT);
+    firstPage.drawText(ticketId, {
+      x: ticketNumCoords.x,
+      y: ticketNumCoords.y,
       size: 10,
       font: boldFont,
+      color: rgb(0, 0, 0),
     });
     
-    // Customer information
-    currentPage.drawText(ticket.customerInfo.name, {
-      x: LAYOUT.customerName.x,
-      y: LAYOUT.customerName.y,
-      size: 9,
-      font,
-    });
-    
-    if (ticket.customerInfo.address) {
-      currentPage.drawText(ticket.customerInfo.address, {
-        x: LAYOUT.billingAddress.x,
-        y: LAYOUT.billingAddress.y,
-        size: 8,
-        font,
-      });
+    // Fill in all mapped header fields
+    for (const [placeholder, cellAddresses] of Object.entries(mapping)) {
+      const value = getFieldValueForPlaceholder(placeholder, ticket);
+      
+      // Skip if no value
+      if (!value) continue;
+      
+      // Draw text at each cell location (usually just one per field)
+      for (const cellAddress of cellAddresses) {
+        const coords = excelCellToPdfCoords(cellAddress, PAGE_HEIGHT);
+        
+        // Determine font size based on row (header fields are smaller)
+        const row = getRowFromAddress(cellAddress);
+        const fontSize = row <= 11 ? 9 : 8;
+        
+        firstPage.drawText(value, {
+          x: coords.x,
+          y: coords.y,
+          size: fontSize,
+          font,
+          color: rgb(0, 0, 0),
+        });
+      }
     }
     
-    currentPage.drawText(ticket.userName, {
-      x: LAYOUT.contactName.x,
-      y: LAYOUT.contactName.y,
-      size: 8,
-      font,
-    });
+    // Fill in line items (starting at row 14)
+    const firstDataRow = 14;
+    const lastDataRow = 23; // 10 rows max per page
+    const descriptionCol = 'B';
+    const maxDescWidth = 350; // Maximum width for description text
     
-    if (ticket.customerInfo.phone) {
-      currentPage.drawText(ticket.customerInfo.phone, {
-        x: LAYOUT.contactPhone.x,
-        y: LAYOUT.contactPhone.y,
-        size: 8,
-        font,
-      });
-    }
-    
-    if (ticket.customerInfo.email) {
-      currentPage.drawText(ticket.customerInfo.email, {
-        x: LAYOUT.contactEmail.x,
-        y: LAYOUT.contactEmail.y,
-        size: 8,
-        font,
-      });
-    }
-    
-    if (ticket.customerInfo.address) {
-      currentPage.drawText(ticket.customerInfo.address, {
-        x: LAYOUT.serviceLocation.x,
-        y: LAYOUT.serviceLocation.y,
-        size: 8,
-        font,
-      });
-    }
-    
-    if (ticket.customerInfo.tax_id) {
-      currentPage.drawText(ticket.customerInfo.tax_id, {
-        x: LAYOUT.poAfeCc.x,
-        y: LAYOUT.poAfeCc.y,
-        size: 8,
-        font,
-      });
-    }
-    
-    // Service information
-    const jobId = ticket.entries[0]?.id.substring(0, 8) || 'N/A';
-    currentPage.drawText(jobId, {
-      x: LAYOUT.jobId.x,
-      y: LAYOUT.jobId.y,
-      size: 8,
-      font,
-    });
-    
-    currentPage.drawText('Auto', {
-      x: LAYOUT.jobType.x,
-      y: LAYOUT.jobType.y,
-      size: 8,
-      font,
-    });
-    
-    currentPage.drawText(ticket.userName, {
-      x: LAYOUT.tech.x,
-      y: LAYOUT.tech.y,
-      size: 8,
-      font,
-    });
-    
-    const formattedDate = new Date(ticket.date).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-    });
-    currentPage.drawText(formattedDate, {
-      x: LAYOUT.date.x,
-      y: LAYOUT.date.y,
-      size: 8,
-      font,
-    });
-    
-    // Draw time entries (with pagination support)
-    let currentY = LAYOUT.descriptionBox.startY;
+    let currentRow = firstDataRow;
+    let currentPage = firstPage;
     
     for (const entry of ticket.entries) {
       // Check if we need a new page
-      if (currentRowIndex >= LAYOUT.descriptionBox.maxRows) {
-        currentPage = await addPage();
-        currentRowIndex = 0;
-        currentY = LAYOUT.descriptionBox.startY;
+      if (currentRow > lastDataRow) {
+        // Create a new page by copying the template
+        const [copiedPage] = await pdfDoc.copyPages(pdfDoc, [0]);
+        currentPage = pdfDoc.addPage(copiedPage);
+        currentRow = firstDataRow;
       }
       
-      // Description (wrap to 3 lines max per entry)
+      // Description
+      const descAddr = createCellAddress(currentRow, descriptionCol);
+      const descCoords = excelCellToPdfCoords(descAddr, PAGE_HEIGHT);
+      
       const description = entry.description || 'No description';
-      const descWidth = LAYOUT.columns.rt - LAYOUT.columns.description - 10;
-      drawWrappedText(
-        currentPage,
-        description,
-        font,
-        8,
-        LAYOUT.columns.description,
-        currentY,
-        descWidth,
-        1 // Single line, truncate if longer
-      );
+      const wrappedLines = wrapTextToWidth(description, font, 8, maxDescWidth);
       
-      // Hours in appropriate column
-      const hours = entry.hours.toFixed(2);
-      const rateType = entry.rate_type || 'Shop Time';
-      
-      let columnX = LAYOUT.columns.rt;
-      if (rateType === 'Travel Time') {
-        columnX = LAYOUT.columns.tt;
-      } else if (rateType === 'Field Time') {
-        columnX = LAYOUT.columns.ft;
-      } else if (rateType === 'Shop Overtime' || rateType === 'Field Overtime') {
-        columnX = LAYOUT.columns.ot;
+      // Draw first line only (truncate if too long)
+      if (wrappedLines.length > 0) {
+        currentPage.drawText(wrappedLines[0], {
+          x: descCoords.x,
+          y: descCoords.y,
+          size: 8,
+          font,
+          color: rgb(0, 0, 0),
+        });
       }
       
-      currentPage.drawText(hours, {
-        x: columnX,
-        y: currentY,
+      // Hours in the appropriate column
+      const rateType = entry.rate_type || 'Shop Time';
+      let hoursCol = 'K'; // RT
+      
+      if (rateType === 'Travel Time') {
+        hoursCol = 'L'; // TT
+      } else if (rateType === 'Field Time') {
+        hoursCol = 'M'; // FT
+      } else if (rateType === 'Shop Overtime' || rateType === 'Field Overtime') {
+        hoursCol = 'N'; // OT
+      }
+      
+      const hoursAddr = createCellAddress(currentRow, hoursCol);
+      const hoursCoords = excelCellToPdfCoords(hoursAddr, PAGE_HEIGHT);
+      
+      currentPage.drawText(entry.hours.toFixed(2), {
+        x: hoursCoords.x,
+        y: hoursCoords.y,
         size: 8,
         font,
+        color: rgb(0, 0, 0),
       });
       
-      currentY -= LAYOUT.descriptionBox.rowHeight;
-      currentRowIndex++;
+      currentRow++;
     }
     
-    // Draw totals on the first page only
-    const firstPage = pages[0];
+    // Draw totals on the first page (row 24)
+    const totalsRow = 24;
+    
+    // RT total
+    const rtTotalAddr = createCellAddress(totalsRow, 'K');
+    const rtTotalCoords = excelCellToPdfCoords(rtTotalAddr, PAGE_HEIGHT);
     firstPage.drawText(ticket.hoursByRateType['Shop Time'].toFixed(2), {
-      x: LAYOUT.totals.rt,
-      y: LAYOUT.totals.y,
+      x: rtTotalCoords.x,
+      y: rtTotalCoords.y,
       size: 9,
       font: boldFont,
+      color: rgb(0, 0, 0),
     });
     
+    // TT total
+    const ttTotalAddr = createCellAddress(totalsRow, 'L');
+    const ttTotalCoords = excelCellToPdfCoords(ttTotalAddr, PAGE_HEIGHT);
     firstPage.drawText(ticket.hoursByRateType['Travel Time'].toFixed(2), {
-      x: LAYOUT.totals.tt,
-      y: LAYOUT.totals.y,
+      x: ttTotalCoords.x,
+      y: ttTotalCoords.y,
       size: 9,
       font: boldFont,
+      color: rgb(0, 0, 0),
     });
     
+    // FT total
+    const ftTotalAddr = createCellAddress(totalsRow, 'M');
+    const ftTotalCoords = excelCellToPdfCoords(ftTotalAddr, PAGE_HEIGHT);
     firstPage.drawText(ticket.hoursByRateType['Field Time'].toFixed(2), {
-      x: LAYOUT.totals.ft,
-      y: LAYOUT.totals.y,
+      x: ftTotalCoords.x,
+      y: ftTotalCoords.y,
       size: 9,
       font: boldFont,
+      color: rgb(0, 0, 0),
     });
     
+    // OT total (combined Shop OT + Field OT)
     const totalOT = ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime'];
+    const otTotalAddr = createCellAddress(totalsRow, 'N');
+    const otTotalCoords = excelCellToPdfCoords(otTotalAddr, PAGE_HEIGHT);
     firstPage.drawText(totalOT.toFixed(2), {
-      x: LAYOUT.totals.ot,
-      y: LAYOUT.totals.y,
+      x: otTotalCoords.x,
+      y: otTotalCoords.y,
       size: 9,
       font: boldFont,
+      color: rgb(0, 0, 0),
     });
     
-    // Summary calculations
+    // Summary calculations (rows 35-40, column M)
     const rtRate = 130.00;
     const ttRate = 140.00;
     const ftRate = 140.00;
@@ -386,46 +258,64 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     const otTotal = totalOT * otRate;
     const grandTotal = rtTotal + ttTotal + ftTotal + otTotal;
     
+    // Total RT (M35)
+    const summaryRtCoords = excelCellToPdfCoords('M35', PAGE_HEIGHT);
     firstPage.drawText(`$${rtTotal.toFixed(2)}`, {
-      x: LAYOUT.summary.x,
-      y: LAYOUT.summary.totalRT.y,
+      x: summaryRtCoords.x,
+      y: summaryRtCoords.y,
       size: 9,
       font,
+      color: rgb(0, 0, 0),
     });
     
+    // Total TT (M36)
+    const summaryTtCoords = excelCellToPdfCoords('M36', PAGE_HEIGHT);
     firstPage.drawText(`$${ttTotal.toFixed(2)}`, {
-      x: LAYOUT.summary.x,
-      y: LAYOUT.summary.totalTT.y,
+      x: summaryTtCoords.x,
+      y: summaryTtCoords.y,
       size: 9,
       font,
+      color: rgb(0, 0, 0),
     });
     
+    // Total FT (M37)
+    const summaryFtCoords = excelCellToPdfCoords('M37', PAGE_HEIGHT);
     firstPage.drawText(`$${ftTotal.toFixed(2)}`, {
-      x: LAYOUT.summary.x,
-      y: LAYOUT.summary.totalFT.y,
+      x: summaryFtCoords.x,
+      y: summaryFtCoords.y,
       size: 9,
       font,
+      color: rgb(0, 0, 0),
     });
     
+    // Total OT (M38)
+    const summaryOtCoords = excelCellToPdfCoords('M38', PAGE_HEIGHT);
     firstPage.drawText(`$${otTotal.toFixed(2)}`, {
-      x: LAYOUT.summary.x,
-      y: LAYOUT.summary.totalOT.y,
+      x: summaryOtCoords.x,
+      y: summaryOtCoords.y,
       size: 9,
       font,
+      color: rgb(0, 0, 0),
     });
     
+    // Total Expenses (M39) - currently $0.00
+    const summaryExpensesCoords = excelCellToPdfCoords('M39', PAGE_HEIGHT);
     firstPage.drawText('$0.00', {
-      x: LAYOUT.summary.x,
-      y: LAYOUT.summary.totalExpenses.y,
+      x: summaryExpensesCoords.x,
+      y: summaryExpensesCoords.y,
       size: 9,
       font,
+      color: rgb(0, 0, 0),
     });
     
+    // Grand Total (M40)
+    const grandTotalCoords = excelCellToPdfCoords('M40', PAGE_HEIGHT);
     firstPage.drawText(`$${grandTotal.toFixed(2)}`, {
-      x: LAYOUT.summary.grandTotal.x,
-      y: LAYOUT.summary.grandTotal.y,
+      x: grandTotalCoords.x,
+      y: grandTotalCoords.y,
       size: 11,
       font: boldFont,
+      color: rgb(0, 0, 0),
     });
     
     // Save the PDF
@@ -456,4 +346,3 @@ export async function downloadPdfServiceTicket(ticket: ServiceTicket): Promise<v
   
   URL.revokeObjectURL(url);
 }
-

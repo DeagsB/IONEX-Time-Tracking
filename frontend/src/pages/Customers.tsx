@@ -19,6 +19,10 @@ export default function Customers() {
     country: '',
     tax_id: '',
     notes: '',
+    po_number: '',
+    approver_name: '',
+    location_code: '',
+    service_location: '',
   });
 
   const { data: customers } = useQuery({
@@ -69,6 +73,10 @@ export default function Customers() {
       country: '',
       tax_id: '',
       notes: '',
+      po_number: '',
+      approver_name: '',
+      location_code: '',
+      service_location: '',
     });
   };
 
@@ -85,6 +93,10 @@ export default function Customers() {
       country: customer.country || '',
       tax_id: customer.tax_id || '',
       notes: customer.notes || '',
+      po_number: customer.po_number || '',
+      approver_name: customer.approver_name || '',
+      location_code: customer.location_code || '',
+      service_location: customer.service_location || '',
     });
     setShowForm(true);
   };
@@ -233,6 +245,59 @@ export default function Customers() {
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
+            </div>
+
+            <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid var(--border-color)' }} />
+            <h4 style={{ marginBottom: '15px', color: 'var(--text-secondary)', fontSize: '14px', textTransform: 'uppercase' }}>
+              Service Ticket Information
+            </h4>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">PO Number</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.po_number}
+                  onChange={(e) => setFormData({ ...formData, po_number: e.target.value })}
+                  placeholder="Purchase Order Number"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Location Code</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.location_code}
+                  onChange={(e) => setFormData({ ...formData, location_code: e.target.value })}
+                  placeholder="e.g., LOC-001"
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Approver Name</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.approver_name}
+                  onChange={(e) => setFormData({ ...formData, approver_name: e.target.value })}
+                  placeholder="Approval contact name"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Service Location</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.service_location}
+                  onChange={(e) => setFormData({ ...formData, service_location: e.target.value })}
+                  placeholder="If different from billing address"
+                />
+              </div>
             </div>
 
             <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
