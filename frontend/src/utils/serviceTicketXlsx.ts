@@ -94,7 +94,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     const cityState = customer.city && customer.state 
       ? `${customer.city}, ${customer.state}` 
       : customer.city || customer.state || '';
-    if (cityState) setCellValue('I5', cityState);
+    if (cityState) {
+      setCellValue('I5', cityState);
+      // Left-justify city/province
+      const cityCell = worksheet.getCell('I5');
+      cityCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    }
     if (customer.zip_code) setCellValue('I6', customer.zip_code);
     if (ticket.userName) setCellValue('I7', ticket.userName);
     if (customer.phone) setCellValue('I8', customer.phone);
