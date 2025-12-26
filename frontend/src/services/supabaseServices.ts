@@ -357,22 +357,7 @@ export const serviceTicketsService = {
         project:projects!time_entries_project_id_fkey(
           id,
           name,
-          customer:customers!projects_customer_id_fkey(
-            id,
-            name,
-            email,
-            phone,
-            address,
-            city,
-            state,
-            zip_code,
-            country,
-            tax_id,
-            po_number,
-            approver_name,
-            location_code,
-            service_location
-          )
+          customer:customers!projects_customer_id_fkey(*)
         )
       `)
       .eq('billable', true)
