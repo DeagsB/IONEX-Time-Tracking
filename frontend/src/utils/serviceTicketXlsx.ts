@@ -51,9 +51,13 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     
     const templateBytes = await templateResponse.arrayBuffer();
     
-    // Load workbook with ExcelJS
+    // Load workbook with ExcelJS with specific options for better compatibility
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(templateBytes);
+    
+    // Use options to handle potential issues with template features
+    await workbook.xlsx.load(templateBytes, {
+      ignoreNodes: [], // Don't ignore any nodes
+    });
     
     // Get the mapping from DB_25101 sheet
     const mapping = await parseExcelTemplateMapping();
@@ -127,14 +131,26 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     // The totals row (row 24) has formulas that will auto-calculate
     // ExcelJS preserves them automatically
     
-    // Remove the DB_25101 mapping sheet before exporting
-    const dbSheet = workbook.getWorksheet('DB_25101');
-    if (dbSheet) {
-      workbook.removeWorksheet(dbSheet.id);
+    // Remove the DB_25101 mapping sheet before exporting (if it exists)
+    try {
+      const dbSheet = workbook.getWorksheet('DB_25101');
+      if (dbSheet) {
+        workbook.removeWorksheet(dbSheet.id);
+      }
+    } catch (error) {
+      console.warn('Could not remove DB_25101 sheet:', error);
+      // Continue anyway - not critical
     }
     
+    // Ensure formula cells are preserved (don't overwrite them with values)
+    // ExcelJS should preserve formulas from the template automatically
+    
     // Generate the output file - ExcelJS preserves all formatting, borders, images
-    const buffer = await workbook.xlsx.writeBuffer();
+    // Use specific write options for better Excel compatibility
+    const buffer = await workbook.xlsx.writeBuffer({
+      useStyles: true,
+      useSharedStrings: true,
+    });
     return new Uint8Array(buffer);
     
   } catch (error) {
