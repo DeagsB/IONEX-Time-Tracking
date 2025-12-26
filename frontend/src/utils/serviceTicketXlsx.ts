@@ -55,6 +55,8 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(templateBytes);
     
+    console.log('📊 Template loaded - Images:', workbook.model?.media?.length || 0, 'images found');
+    
     // Get the mapping from DB_25101 sheet
     const mapping = await parseExcelTemplateMapping();
     
@@ -153,10 +155,15 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     });
     
     // Generate the output file - ExcelJS preserves all formatting, borders, images
+    console.log('📝 Before write - Images:', workbook.model?.media?.length || 0, 'images');
+    console.log('📝 Template sheet images:', worksheet.getImages ? worksheet.getImages().length : 'N/A');
+    
     const buffer = await workbook.xlsx.writeBuffer({
       useStyles: true,
       useSharedStrings: true,
     });
+    
+    console.log('✅ Write complete - Buffer size:', buffer.byteLength, 'bytes');
     return new Uint8Array(buffer);
     
   } catch (error) {
