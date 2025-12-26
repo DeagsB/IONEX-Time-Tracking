@@ -53,7 +53,10 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     const workbook = XLSX.read(templateBytes, { 
       type: 'array',
       cellStyles: true,
-      cellDates: true 
+      cellDates: true,
+      cellHTML: false,
+      cellFormula: true,
+      sheetStubs: false
     });
     
     // Get the mapping from DB_25101 sheet
@@ -76,19 +79,28 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       
       // Fill all cells that use this placeholder
       for (const cellAddress of cellAddresses) {
-        // Write to the Template sheet at the same address
+        // Write to the Template sheet at the same address, preserving existing cell properties
         if (!worksheet[cellAddress]) {
-          worksheet[cellAddress] = {};
+          worksheet[cellAddress] = { t: 's' };
         }
+        // Only update the value, preserve all other properties (style, format, etc.)
         worksheet[cellAddress].v = value;
-        worksheet[cellAddress].t = 's'; // string type
+        worksheet[cellAddress].w = value; // formatted text
+        // Keep the type as string
+        if (!worksheet[cellAddress].t || worksheet[cellAddress].t === 's') {
+          worksheet[cellAddress].t = 's';
+        }
       }
     }
     
     // Fill in the ticket number (M1 in Template sheet)
     const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
-    if (worksheet['M1']) {
-      worksheet['M1'].v = ticketId;
+    if (!worksheet['M1']) {
+      worksheet['M1'] = { t: 's' };
+    }
+    worksheet['M1'].v = ticketId;
+    worksheet['M1'].w = ticketId;
+    if (!worksheet['M1'].t || worksheet['M1'].t === 's') {
       worksheet['M1'].t = 's';
     }
     
@@ -108,11 +120,17 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         break;
       }
       
-      // Description
+      // Description - preserve cell formatting
       const descAddr = createCellAddress(currentRow, descriptionCol);
-      if (!worksheet[descAddr]) worksheet[descAddr] = {};
-      worksheet[descAddr].v = entry.description || 'No description';
-      worksheet[descAddr].t = 's';
+      if (!worksheet[descAddr]) {
+        worksheet[descAddr] = { t: 's' };
+      }
+      const description = entry.description || 'No description';
+      worksheet[descAddr].v = description;
+      worksheet[descAddr].w = description;
+      if (!worksheet[descAddr].t || worksheet[descAddr].t === 's') {
+        worksheet[descAddr].t = 's';
+      }
       
       // Hours in the appropriate column based on rate_type
       const rateType = entry.rate_type || 'Shop Time';
@@ -127,9 +145,14 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       }
       
       const hoursAddr = createCellAddress(currentRow, hoursCol);
-      if (!worksheet[hoursAddr]) worksheet[hoursAddr] = {};
+      if (!worksheet[hoursAddr]) {
+        worksheet[hoursAddr] = { t: 'n' };
+      }
       worksheet[hoursAddr].v = entry.hours;
-      worksheet[hoursAddr].t = 'n'; // number type
+      worksheet[hoursAddr].w = entry.hours.toFixed(2);
+      if (!worksheet[hoursAddr].t || worksheet[hoursAddr].t === 'n') {
+        worksheet[hoursAddr].t = 'n';
+      }
       
       currentRow++;
     }
@@ -137,11 +160,18 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     // The totals row (row 24) has formulas that will auto-calculate
     // Just make sure the formulas are preserved (they should be from the template)
     
-    // Generate the output file
+    // Remove the DB_25101 mapping sheet before exporting (keep only Template)
+    const dbSheetIndex = workbook.SheetNames.indexOf('DB_25101');
+    if (dbSheetIndex > -1) {
+      workbook.SheetNames.splice(dbSheetIndex, 1);
+      delete workbook.Sheets['DB_25101'];
+    }
+    
+    // Generate the output file with full preservation of styles, borders, images
     const outputBytes = XLSX.write(workbook, { 
       type: 'array', 
       bookType: 'xlsx',
-      cellStyles: true 
+      cellStyles: true
     });
     
     return new Uint8Array(outputBytes);
