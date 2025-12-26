@@ -56,6 +56,13 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     await workbook.xlsx.load(templateBytes);
     
     // Template loaded successfully with images preserved
+    console.log('🎫 Ticket data:', {
+      customer: ticket.customerName,
+      date: ticket.date,
+      user: ticket.userName,
+      entries: ticket.entries.length,
+      totalHours: ticket.totalHours
+    });
     
     // Get the mapping from DB_25101 sheet
     const mapping = await parseExcelTemplateMapping();
@@ -67,17 +74,25 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     }
     
     // Fill in header fields using the mapping
+    console.log('📋 Mapping entries found:', Object.keys(mapping).length);
+    
     for (const [placeholder, cellAddresses] of Object.entries(mapping)) {
       const value = getFieldValueForPlaceholder(placeholder, ticket);
       
+      console.log(`  ${placeholder} → "${value}" @ ${cellAddresses.join(', ')}`);
+      
       // Skip if no value
-      if (!value) continue;
+      if (!value) {
+        console.warn(`  ⚠️ Skipping ${placeholder} - no value`);
+        continue;
+      }
       
       // Fill all cells that use this placeholder
       for (const cellAddress of cellAddresses) {
         const cell = worksheet.getCell(cellAddress);
         // Only update the value - ExcelJS preserves all formatting automatically
         cell.value = value;
+        console.log(`    ✓ Set ${cellAddress} = "${value}"`);
       }
     }
     
