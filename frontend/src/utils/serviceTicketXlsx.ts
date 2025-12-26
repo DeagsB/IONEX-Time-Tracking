@@ -112,17 +112,25 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     const ftCol = 'M';
     const otCol = 'N';
     
+    console.log(`\n📝 Filling ${ticket.entries.length} time entries (rows ${firstDataRow}-${lastDataRow}):`);
+    
     let currentRow = firstDataRow;
     for (const entry of ticket.entries) {
       if (currentRow > lastDataRow) {
-        console.warn('Too many entries to fit in single sheet, truncating...');
+        console.warn('⚠️ Too many entries to fit in single sheet, truncating...');
         break;
       }
+      
+      console.log(`\n  Entry ${currentRow - firstDataRow + 1}:`);
+      console.log(`    Description: "${entry.description}"`);
+      console.log(`    Hours: ${entry.hours}`);
+      console.log(`    Rate Type: ${entry.rate_type || 'Shop Time'}`);
       
       // Description - ExcelJS preserves cell formatting automatically
       const descAddr = createCellAddress(currentRow, descriptionCol);
       const descCell = worksheet.getCell(descAddr);
       descCell.value = entry.description || 'No description';
+      console.log(`    ✓ Set ${descAddr} = "${entry.description}"`);
       
       // Hours in the appropriate column based on rate_type
       const rateType = entry.rate_type || 'Shop Time';
@@ -139,9 +147,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       const hoursAddr = createCellAddress(currentRow, hoursCol);
       const hoursCell = worksheet.getCell(hoursAddr);
       hoursCell.value = entry.hours;
+      console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs`);
       
       currentRow++;
     }
+    
+    console.log(`\n✅ Filled ${currentRow - firstDataRow} time entries total`);
     
     // The totals row (row 24) has formulas that will auto-calculate
     // ExcelJS preserves them automatically
