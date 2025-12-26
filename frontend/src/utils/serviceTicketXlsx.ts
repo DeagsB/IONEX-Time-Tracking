@@ -131,10 +131,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     // The totals row (row 24) has formulas that will auto-calculate
     // ExcelJS preserves them automatically
     
-    // Remove the DB_25101 mapping sheet before exporting
+    // DON'T remove DB_25101 - removing sheets can strip images from the workbook
+    // We'll hide it instead
     const dbSheet = workbook.getWorksheet('DB_25101');
     if (dbSheet) {
-      workbook.removeWorksheet(dbSheet.id);
+      dbSheet.state = 'hidden'; // Hide instead of remove
+      console.log('🔒 Hidden DB_25101 sheet instead of removing');
     }
     
     // Fix any problematic _xlfn formulas that cause Excel corruption
