@@ -263,11 +263,17 @@ function updateTotals(
     }
   };
 
-  // Row 24 totals
+  // Row 24 totals - explicitly format to show decimals
   setCellWithResult(`K${totalsRow}`, rtTotal);
   setCellWithResult(`L${totalsRow}`, ttTotal);
   setCellWithResult(`M${totalsRow}`, ftTotal);
   setCellWithResult(`N${totalsRow}`, otTotal);
+  
+  // Ensure totals display with 1 decimal place
+  ['K', 'L', 'M', 'N'].forEach(col => {
+    const cell = worksheet.getCell(`${col}${totalsRow}`);
+    cell.numFmt = '0.0';
+  });
 
   // Summary cells
   setCellWithResult('M35', rtAmount);
