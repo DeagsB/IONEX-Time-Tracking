@@ -211,8 +211,56 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     console.log('  B14 (First entry):', worksheet.getCell('B14').value);
     console.log('  K14 (First hours):', worksheet.getCell('K14').value);
     
-    // The totals row (row 24) has formulas that will auto-calculate
-    // ExcelJS preserves them automatically
+    // Pre-calculate totals for each rate type column
+    // This ensures values show in Protected View (before enabling editing)
+    console.log('\n💰 Pre-calculating totals for Protected View compatibility:');
+    
+    // Calculate totals from our entries
+    let rtTotal = 0, ttTotal = 0, ftTotal = 0, otTotal = 0;
+    for (const entry of ticket.entries) {
+      const rateType = entry.rate_type || 'Shop Time';
+      if (rateType === 'Travel Time') {
+        ttTotal += entry.hours;
+      } else if (rateType === 'Field Time') {
+        ftTotal += entry.hours;
+      } else if (rateType === 'Shop Overtime' || rateType === 'Field Overtime') {
+        otTotal += entry.hours;
+      } else {
+        rtTotal += entry.hours; // Shop Time (Regular)
+      }
+    }
+    
+    console.log('  RT Total:', rtTotal, 'TT Total:', ttTotal, 'FT Total:', ftTotal, 'OT Total:', otTotal);
+    
+    // Row 24 typically has the totals - set formula results
+    // Find and update formula cells with their calculated results
+    const totalsRow = 24;
+    const rateColumns = {
+      'K': rtTotal,  // RT column
+      'L': ttTotal,  // TT column
+      'M': ftTotal,  // FT column
+      'N': otTotal   // OT column
+    };
+    
+    for (const [col, total] of Object.entries(rateColumns)) {
+      const addr = `${col}${totalsRow}`;
+      const cell = worksheet.getCell(addr);
+      
+      // If cell has a formula, preserve it but add the cached result
+      if (cell.formula) {
+        const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
+        console.log(`  ${addr}: Has formula "${formulaStr}", setting result to ${total}`);
+        // Set formula with result for Protected View compatibility
+        cell.value = { formula: formulaStr, result: total };
+      } else if (total > 0) {
+        // No formula - just set the value
+        setCellValue(addr, total);
+      }
+    }
+    
+    // Also handle the grand total and any calculated fields
+    // Check rows 25-30 for additional formula cells (subtotals, amounts, etc.)
+    console.log('\n📊 Processing formula cells for Protected View:');
     
     // DON'T remove DB_25101 - removing sheets can strip images from the workbook
     // We'll hide it instead
@@ -222,23 +270,41 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     }
     
     // Fix any problematic _xlfn formulas that cause Excel corruption
-    // These are modern Excel functions that ExcelJS doesn't fully support
-    worksheet.eachRow((row) => {
-      row.eachCell((cell) => {
+    // And cache results for all formulas to work in Protected View
+    worksheet.eachRow((row, rowNumber) => {
+      row.eachCell((cell, colNumber) => {
         if (cell.formula) {
           const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
+          const currentResult = typeof cell.formula === 'object' ? (cell.formula as any).result : cell.result;
+          
           if (formulaStr && formulaStr.includes('_xlfn')) {
-            // Replace with result value to avoid corruption
-            const result = typeof cell.formula === 'object' ? (cell.formula as any).result : cell.result;
-            if (result !== undefined && result !== null) {
-              cell.value = result;
+            // Replace _xlfn formulas with result value to avoid corruption
+            if (currentResult !== undefined && currentResult !== null) {
+              console.log(`  ${cell.address}: Replacing _xlfn formula with result ${currentResult}`);
+              cell.value = currentResult;
+            }
+          } else if (formulaStr && currentResult === undefined) {
+            // For formulas without cached results, try to compute simple ones
+            // This handles SUM formulas which are most common
+            if (formulaStr.startsWith('SUM(')) {
+              const match = formulaStr.match(/SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/);
+              if (match) {
+                const [, startCol, startRow, endCol, endRow] = match;
+                let sum = 0;
+                for (let r = parseInt(startRow); r <= parseInt(endRow); r++) {
+                  const val = worksheet.getCell(`${startCol}${r}`).value;
+                  if (typeof val === 'number') sum += val;
+                }
+                console.log(`  ${cell.address}: Calculated SUM = ${sum}`);
+                cell.value = { formula: formulaStr, result: sum };
+              }
             }
           }
         }
       });
     });
     
-    // Ensure Excel recalculates formulas when opening
+    // Ensure Excel recalculates formulas when opening (for when editing is enabled)
     if (workbook.calcProperties) {
       workbook.calcProperties.fullCalcOnLoad = true;
     }

@@ -40,3 +40,5 @@ SELECT id, email, first_name, last_name, role FROM public.users WHERE id = '0000
 
 
 
+
+
