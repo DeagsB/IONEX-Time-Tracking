@@ -39,10 +39,12 @@ export default function ServiceTickets() {
     poNumber: string;
     approverName: string;
     techName: string;
-    techInitials: string;
     projectNumber: string;
     date: string;
   } | null>(null);
+  
+  // Generated ticket number for display
+  const [displayTicketNumber, setDisplayTicketNumber] = useState<string>('');
 
   // Handler for exporting ticket as PDF
   const handleExportPdf = async (ticket: ServiceTicket) => {
@@ -61,8 +63,8 @@ export default function ServiceTickets() {
   const handleExportExcel = async (ticket: ServiceTicket) => {
     setIsExportingExcel(true);
     try {
-      // Get the next ticket number for this employee
-      const ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+      // Use the ticket number that was already generated when opening the popup
+      const ticketNumber = ticket.ticketNumber || displayTicketNumber;
       
       // Create a copy of the ticket with the ticket number
       const ticketWithNumber = { ...ticket, ticketNumber };
@@ -95,8 +97,7 @@ export default function ServiceTickets() {
         totalAmount,
       });
     } catch (error) {
-      console.error('Excel export error:', error);
-      alert('Failed to export service ticket Excel. Check console for details.');
+      alert('Failed to export service ticket Excel.');
     } finally {
       setIsExportingExcel(false);
     }
@@ -386,10 +387,13 @@ export default function ServiceTickets() {
                           poNumber: ticket.customerInfo.po_number || '',
                           approverName: ticket.customerInfo.approver_name || '',
                           techName: ticket.userName || '',
-                          techInitials: ticket.userInitials || '',
                           projectNumber: ticket.projectNumber || '',
                           date: ticket.date || '',
                         });
+                        // Generate and display the ticket number
+                        serviceTicketsService.getNextTicketNumber(ticket.userInitials)
+                          .then(num => setDisplayTicketNumber(num))
+                          .catch(() => setDisplayTicketNumber(`${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`));
                       }}
                       style={{
                         padding: '6px 16px',
@@ -451,7 +455,7 @@ export default function ServiceTickets() {
                   SERVICE TICKET
                 </h2>
                 <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', margin: 0 }}>
-                  Ticket: {generateTicketDisplayId(selectedTicket)}
+                  Ticket: {displayTicketNumber || 'Loading...'}
                 </p>
               </div>
               <button
@@ -581,25 +585,13 @@ export default function ServiceTickets() {
                       <div style={sectionStyle}>
                         <h3 style={sectionTitleStyle}>Service Information</h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
-                            <div>
-                              <label style={labelStyle}>Technician</label>
-                              <input
-                                style={inputStyle}
-                                value={editableTicket.techName}
-                                onChange={(e) => setEditableTicket({ ...editableTicket, techName: e.target.value })}
-                              />
-                            </div>
-                            <div>
-                              <label style={labelStyle}>Initials (for Ticket #)</label>
-                              <input
-                                style={{ ...inputStyle, textTransform: 'uppercase' }}
-                                value={editableTicket.techInitials}
-                                onChange={(e) => setEditableTicket({ ...editableTicket, techInitials: e.target.value.toUpperCase().slice(0, 3) })}
-                                placeholder="e.g., DT"
-                                maxLength={3}
-                              />
-                            </div>
+                          <div>
+                            <label style={labelStyle}>Technician</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.techName}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, techName: e.target.value })}
+                            />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
@@ -743,9 +735,9 @@ export default function ServiceTickets() {
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,
                       userName: editableTicket.techName,
-                      userInitials: editableTicket.techInitials,
                       projectNumber: editableTicket.projectNumber,
                       date: editableTicket.date,
+                      ticketNumber: displayTicketNumber,
                       customerInfo: {
                         ...selectedTicket.customerInfo,
                         name: editableTicket.customerName,
@@ -779,9 +771,9 @@ export default function ServiceTickets() {
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,
                       userName: editableTicket.techName,
-                      userInitials: editableTicket.techInitials,
                       projectNumber: editableTicket.projectNumber,
                       date: editableTicket.date,
+                      ticketNumber: displayTicketNumber,
                       customerInfo: {
                         ...selectedTicket.customerInfo,
                         name: editableTicket.customerName,
