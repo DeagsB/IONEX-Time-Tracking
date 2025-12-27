@@ -1,9 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
 
 export default function Sidebar() {
   const location = useLocation();
   const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
 
   return (
@@ -43,9 +45,11 @@ export default function Sidebar() {
           }}>
             TRACK
           </div>
-          <SidebarLink to="/dashboard" active={isActive('/dashboard')}>
-            Overview
-          </SidebarLink>
+          {!isDemoMode && (
+            <SidebarLink to="/dashboard" active={isActive('/dashboard')}>
+              Overview
+            </SidebarLink>
+          )}
           <SidebarLink to="/calendar" active={isActive('/calendar')}>
             Timer
           </SidebarLink>
@@ -66,9 +70,11 @@ export default function Sidebar() {
           <SidebarLink to="/payroll" active={isActive('/payroll')}>
             Payroll
           </SidebarLink>
-          <SidebarLink to="/approvals" active={isActive('/approvals')}>
-            Approvals
-          </SidebarLink>
+          {!isDemoMode && (
+            <SidebarLink to="/approvals" active={isActive('/approvals')}>
+              Approvals
+            </SidebarLink>
+          )}
           {user?.role === 'ADMIN' && (
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
               Service Tickets
@@ -104,9 +110,11 @@ export default function Sidebar() {
           <SidebarLink to="/time-entries" active={isActive('/time-entries')}>
             Timesheet
           </SidebarLink>
-          <SidebarLink to="/forms" active={isActive('/forms')}>
-            Forms
-          </SidebarLink>
+          {!isDemoMode && (
+            <SidebarLink to="/forms" active={isActive('/forms')}>
+              Forms
+            </SidebarLink>
+          )}
         </div>
 
         {user?.role === 'ADMIN' && (
@@ -122,9 +130,11 @@ export default function Sidebar() {
             }}>
               ADMIN
             </div>
-            <SidebarLink to="/profile" active={isActive('/profile')}>
-              Profile
-            </SidebarLink>
+            {!isDemoMode && (
+              <SidebarLink to="/profile" active={isActive('/profile')}>
+                Profile
+              </SidebarLink>
+            )}
             <SidebarLink to="/settings" active={isActive('/settings')}>
               Settings
             </SidebarLink>

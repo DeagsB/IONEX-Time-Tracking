@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
@@ -10,6 +11,7 @@ import { supabase } from '../lib/supabaseClient';
 
 export default function ServiceTickets() {
   const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
   
   // Filters state
   const [startDate, setStartDate] = useState(() => {
@@ -503,17 +505,19 @@ export default function ServiceTickets() {
               ))}
             </select>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={approvedOnly}
-                onChange={(e) => setApprovedOnly(e.target.checked)}
-                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#c770f0' }}
-              />
-              <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Approved Only</span>
-            </label>
-          </div>
+          {!isDemoMode && (
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={approvedOnly}
+                  onChange={(e) => setApprovedOnly(e.target.checked)}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#c770f0' }}
+                />
+                <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Approved Only</span>
+              </label>
+            </div>
+          )}
         </div>
       </div>
 
