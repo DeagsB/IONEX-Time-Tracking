@@ -223,10 +223,16 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     // Pre-calculate summary cells (M35, M36, M37, M40) for Protected View
     // These cells typically contain dollar amounts based on hours * rates
     const summaryCells = ['M35', 'M36', 'M37', 'M40'];
+    console.log('\n💵 Pre-calculating summary cells for Protected View:');
     for (const addr of summaryCells) {
       const cell = worksheet.getCell(addr);
+      console.log(`\n  ${addr}:`);
+      console.log(`    Current value:`, cell.value);
+      console.log(`    Has formula:`, !!cell.formula);
+      
       if (cell.formula) {
         const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
+        console.log(`    Formula: "${formulaStr}"`);
         
         // Try to evaluate the formula by parsing it
         let result = 0;
@@ -236,25 +242,34 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         if (multiplyMatch) {
           const [, col, row, rate] = multiplyMatch;
           const cellValue = worksheet.getCell(`${col}${row}`).value;
+          console.log(`    Multiply match: ${col}${row} * ${rate}`);
+          console.log(`    Cell ${col}${row} value:`, cellValue);
           const cellNum = typeof cellValue === 'number' ? cellValue : 
                           (typeof cellValue === 'object' && (cellValue as any).result !== undefined) ? (cellValue as any).result : 0;
           result = cellNum * parseFloat(rate);
+          console.log(`    Calculated result: ${result}`);
         }
         
         // Common pattern: SUM of cells
         const sumMatch = formulaStr.match(/SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/);
         if (sumMatch) {
           const [, startCol, startRow, endCol, endRow] = sumMatch;
+          console.log(`    SUM match: ${startCol}${startRow}:${endCol}${endRow}`);
           for (let r = parseInt(startRow); r <= parseInt(endRow); r++) {
             const val = worksheet.getCell(`${startCol}${r}`).value;
             const num = typeof val === 'number' ? val : 
                        (typeof val === 'object' && (val as any).result !== undefined) ? (val as any).result : 0;
             result += num;
           }
+          console.log(`    Calculated result: ${result}`);
         }
         
-        // Set the formula with the cached result
-        cell.value = { formula: formulaStr, result: result };
+        if (multiplyMatch || sumMatch) {
+          console.log(`    Setting cached result: ${result}`);
+          cell.value = { formula: formulaStr, result: result };
+        } else {
+          console.log(`    ⚠️ Formula not matched by any pattern`);
+        }
       }
     }
     
