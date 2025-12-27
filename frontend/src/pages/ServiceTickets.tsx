@@ -538,6 +538,7 @@ export default function ServiceTickets() {
           </p>
         </div>
       ) : (
+        <>
         {/* Bulk Action Bar */}
         {selectedTicketIds.size > 0 && (
           <div style={{
@@ -772,6 +773,7 @@ export default function ServiceTickets() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Ticket Preview Modal */}
