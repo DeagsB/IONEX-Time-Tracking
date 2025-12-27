@@ -1,13 +1,26 @@
 import html2pdf from 'html2pdf.js';
 import { ServiceTicket } from './serviceTickets';
 
+// Map database rate types to column codes
+const RATE_TYPE_MAP: { [key: string]: 'RT' | 'TT' | 'FT' | 'OT' } = {
+  'Shop Time': 'RT',
+  'Travel Time': 'TT', 
+  'Field Time': 'FT',
+  'Shop Overtime': 'OT',
+  'Field Overtime': 'OT',
+};
+
+const getRateCode = (rateType?: string): 'RT' | 'TT' | 'FT' | 'OT' => {
+  return RATE_TYPE_MAP[rateType || ''] || 'RT';
+};
+
 // Generate PDF from HTML that matches the Excel template exactly
 export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> {
-  // Calculate totals
-  const rtHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'RT' ? e.hours : 0), 0);
-  const ttHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'TT' ? e.hours : 0), 0);
-  const ftHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'FT' ? e.hours : 0), 0);
-  const otHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'OT' ? e.hours : 0), 0);
+  // Calculate totals using mapped rate types
+  const rtHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? e.hours : 0), 0);
+  const ttHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? e.hours : 0), 0);
+  const ftHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? e.hours : 0), 0);
+  const otHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'OT' ? e.hours : 0), 0);
 
   const rtRate = 110;
   const ttRate = 85;
@@ -31,12 +44,13 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
   ticket.entries.forEach(entry => {
     const dateStr = formatDate(entry.date);
     const desc = `${dateStr} - ${entry.description || 'Work performed'}`;
+    const rateCode = getRateCode(entry.rate_type);
     descriptionLines.push({
       text: desc.substring(0, 60),
-      rt: entry.rate_type === 'RT' ? entry.hours : 0,
-      tt: entry.rate_type === 'TT' ? entry.hours : 0,
-      ft: entry.rate_type === 'FT' ? entry.hours : 0,
-      ot: entry.rate_type === 'OT' ? entry.hours : 0,
+      rt: rateCode === 'RT' ? entry.hours : 0,
+      tt: rateCode === 'TT' ? entry.hours : 0,
+      ft: rateCode === 'FT' ? entry.hours : 0,
+      ot: rateCode === 'OT' ? entry.hours : 0,
     });
   });
 
