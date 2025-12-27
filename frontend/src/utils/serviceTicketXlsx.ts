@@ -264,6 +264,10 @@ function updateTotals(
     }
   };
 
+  // Row 24 - Employee rates display
+  setCellWithResult('C24', rtRate);  // Regular Time rate
+  setCellWithResult('E24', ftRate);  // Field Time rate
+
   // Row 24 totals - explicitly format to show decimals
   setCellWithResult(`K${totalsRow}`, rtTotal);
   setCellWithResult(`L${totalsRow}`, ttTotal);
