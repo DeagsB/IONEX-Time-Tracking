@@ -220,6 +220,44 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       }
     }
     
+    // Pre-calculate summary cells (M35, M36, M37, M40) for Protected View
+    // These cells typically contain dollar amounts based on hours * rates
+    const summaryCells = ['M35', 'M36', 'M37', 'M40'];
+    for (const addr of summaryCells) {
+      const cell = worksheet.getCell(addr);
+      if (cell.formula) {
+        const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
+        
+        // Try to evaluate the formula by parsing it
+        let result = 0;
+        
+        // Common pattern: cell reference * rate (e.g., K24*130)
+        const multiplyMatch = formulaStr.match(/([A-Z]+)(\d+)\*(\d+(?:\.\d+)?)/);
+        if (multiplyMatch) {
+          const [, col, row, rate] = multiplyMatch;
+          const cellValue = worksheet.getCell(`${col}${row}`).value;
+          const cellNum = typeof cellValue === 'number' ? cellValue : 
+                          (typeof cellValue === 'object' && (cellValue as any).result !== undefined) ? (cellValue as any).result : 0;
+          result = cellNum * parseFloat(rate);
+        }
+        
+        // Common pattern: SUM of cells
+        const sumMatch = formulaStr.match(/SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/);
+        if (sumMatch) {
+          const [, startCol, startRow, endCol, endRow] = sumMatch;
+          for (let r = parseInt(startRow); r <= parseInt(endRow); r++) {
+            const val = worksheet.getCell(`${startCol}${r}`).value;
+            const num = typeof val === 'number' ? val : 
+                       (typeof val === 'object' && (val as any).result !== undefined) ? (val as any).result : 0;
+            result += num;
+          }
+        }
+        
+        // Set the formula with the cached result
+        cell.value = { formula: formulaStr, result: result };
+      }
+    }
+    
     // DON'T remove DB_25101 - removing sheets can strip images from the workbook
     // We'll hide it instead
     const dbSheet = workbook.getWorksheet('DB_25101');
