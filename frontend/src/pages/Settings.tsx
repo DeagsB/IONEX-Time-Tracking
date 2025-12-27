@@ -6,14 +6,112 @@ export default function Settings() {
   const { isDemoMode, setDemoMode } = useDemoMode();
   const [showResetModal, setShowResetModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isCreatingDemo, setIsCreatingDemo] = useState(false);
 
-  const handleToggleDemoMode = () => {
+  // Create demo data when turning on demo mode
+  const createDemoData = async () => {
+    setIsCreatingDemo(true);
+    try {
+      // Get the current user ID
+      const { data: userData } = await supabase.from('users').select('id').limit(1).single();
+      const userId = userData?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
+
+      // Get existing projects
+      const { data: projects } = await supabase.from('projects').select('id').limit(5);
+      const projectIds = projects?.map(p => p.id) || [];
+
+      if (projectIds.length === 0) {
+        alert('Please create at least one project before enabling demo mode.');
+        return false;
+      }
+
+      // Create demo time entries for the past 2 weeks
+      const today = new Date();
+      const demoEntries = [];
+      
+      const descriptions = [
+        'Travel to client site',
+        'On-site HVAC inspection and diagnostics',
+        'Replaced compressor components',
+        'System testing and calibration',
+        'Return travel from site',
+        'Prepared service documentation',
+        'Parts ordering and inventory check',
+        'Control system programming',
+        'Emergency repair service',
+        'Quarterly maintenance inspection',
+      ];
+      
+      const rateTypes = ['Shop Time', 'Travel Time', 'Field Time', 'Shop Overtime', 'Field Overtime'];
+      const rates = [95, 85, 125, 142.5, 187.5];
+
+      // Generate entries for the past 10 days
+      for (let dayOffset = 0; dayOffset < 10; dayOffset++) {
+        const entryDate = new Date(today);
+        entryDate.setDate(today.getDate() - dayOffset);
+        
+        // Skip weekends
+        if (entryDate.getDay() === 0 || entryDate.getDay() === 6) continue;
+        
+        const dateStr = entryDate.toISOString().split('T')[0];
+        const entriesPerDay = Math.floor(Math.random() * 3) + 2; // 2-4 entries per day
+        
+        let currentHour = 8;
+        for (let i = 0; i < entriesPerDay; i++) {
+          const projectId = projectIds[Math.floor(Math.random() * projectIds.length)];
+          const rateTypeIndex = Math.floor(Math.random() * 3); // Mostly regular types
+          const hours = [1.5, 2, 2.5, 3, 4, 5, 6][Math.floor(Math.random() * 7)];
+          
+          const startHour = currentHour;
+          const endHour = currentHour + hours;
+          currentHour = endHour + 0.5;
+          
+          const startDate = new Date(entryDate);
+          startDate.setHours(Math.floor(startHour), (startHour % 1) * 60);
+          
+          const endDate = new Date(entryDate);
+          endDate.setHours(Math.floor(endHour), (endHour % 1) * 60);
+          
+          demoEntries.push({
+            user_id: userId,
+            project_id: projectId,
+            date: dateStr,
+            start_time: startDate.toISOString(),
+            end_time: endDate.toISOString(),
+            hours: hours,
+            rate: rates[rateTypeIndex],
+            rate_type: rateTypes[rateTypeIndex],
+            description: descriptions[Math.floor(Math.random() * descriptions.length)],
+            billable: true,
+            approved: true,
+          });
+        }
+      }
+
+      // Insert demo entries
+      const { error } = await supabase.from('time_entries').insert(demoEntries);
+      if (error) throw error;
+
+      return true;
+    } catch (error) {
+      console.error('Error creating demo data:', error);
+      alert('Error creating demo data. Check console for details.');
+      return false;
+    } finally {
+      setIsCreatingDemo(false);
+    }
+  };
+
+  const handleToggleDemoMode = async () => {
     if (isDemoMode) {
       // Turning OFF demo mode - show confirmation modal
       setShowResetModal(true);
     } else {
-      // Turning ON demo mode
-      setDemoMode(true);
+      // Turning ON demo mode - create demo data first
+      const success = await createDemoData();
+      if (success) {
+        setDemoMode(true);
+      }
     }
   };
 
@@ -69,7 +167,9 @@ export default function Settings() {
               Demo Mode
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              When enabled, hides Overview, Approvals, Forms, and Profile pages for cleaner demos
+              {isCreatingDemo 
+                ? 'Creating demo time entries...' 
+                : 'When enabled, creates demo data and hides Overview, Approvals, Forms, and Profile pages'}
             </div>
           </div>
           <label style={{ 
@@ -83,6 +183,7 @@ export default function Settings() {
               type="checkbox"
               checked={isDemoMode}
               onChange={handleToggleDemoMode}
+              disabled={isCreatingDemo}
               style={{ opacity: 0, width: 0, height: 0 }}
             />
             <span style={{
