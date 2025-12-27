@@ -357,6 +357,7 @@ export const serviceTicketsService = {
         project:projects!time_entries_project_id_fkey(
           id,
           name,
+          project_number,
           customer:customers!projects_customer_id_fkey(*)
         )
       `)
@@ -377,6 +378,72 @@ export const serviceTicketsService = {
     }
 
     const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+    
+    return data;
+  },
+
+  /**
+   * Get the next available ticket number for an employee
+   * Format: {initials}_{YY}{sequence} e.g., "DB_25001"
+   */
+  async getNextTicketNumber(userInitials: string): Promise<string> {
+    const year = new Date().getFullYear() % 100; // Get last 2 digits of year
+    
+    // Find the highest sequence number for this employee this year
+    const { data, error } = await supabase
+      .from('service_tickets')
+      .select('sequence_number')
+      .eq('employee_initials', userInitials.toUpperCase())
+      .eq('year', year)
+      .order('sequence_number', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    const nextSequence = data && data.length > 0 ? data[0].sequence_number + 1 : 1;
+    const paddedSequence = String(nextSequence).padStart(3, '0');
+    
+    return `${userInitials.toUpperCase()}_${year}${paddedSequence}`;
+  },
+
+  /**
+   * Create a service ticket record in the database
+   */
+  async createTicketRecord(ticket: {
+    ticketNumber: string;
+    employeeInitials: string;
+    year: number;
+    sequenceNumber: number;
+    date: string;
+    customerId?: string;
+    userId: string;
+    projectId?: string;
+    totalHours: number;
+    totalAmount: number;
+  }) {
+    const { data, error } = await supabase
+      .from('service_tickets')
+      .insert({
+        ticket_number: ticket.ticketNumber,
+        employee_initials: ticket.employeeInitials,
+        year: ticket.year,
+        sequence_number: ticket.sequenceNumber,
+        date: ticket.date,
+        customer_id: ticket.customerId,
+        user_id: ticket.userId,
+        project_id: ticket.projectId,
+        total_hours: ticket.totalHours,
+        total_amount: ticket.totalAmount,
+        status: 'draft'
+      })
+      .select()
+      .single();
 
     if (error) {
       throw error;

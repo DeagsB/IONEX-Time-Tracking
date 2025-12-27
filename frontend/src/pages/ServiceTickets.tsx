@@ -42,7 +42,39 @@ export default function ServiceTickets() {
   const handleExportExcel = async (ticket: ServiceTicket) => {
     setIsExportingExcel(true);
     try {
-      await downloadExcelServiceTicket(ticket);
+      // Get the next ticket number for this employee
+      const ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+      
+      // Create a copy of the ticket with the ticket number
+      const ticketWithNumber = { ...ticket, ticketNumber };
+      
+      await downloadExcelServiceTicket(ticketWithNumber);
+      
+      // Calculate totals for recording
+      const rtRate = 130, ttRate = 130, ftRate = 140, otRate = 195;
+      const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+      const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+      const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+      const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+      const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+      
+      // Save the ticket record to the database
+      const year = new Date().getFullYear() % 100;
+      const sequenceMatch = ticketNumber.match(/\d{3}$/);
+      const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+      
+      await serviceTicketsService.createTicketRecord({
+        ticketNumber,
+        employeeInitials: ticket.userInitials,
+        year,
+        sequenceNumber,
+        date: ticket.date,
+        customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+        userId: ticket.userId,
+        projectId: ticket.projectId,
+        totalHours: ticket.totalHours,
+        totalAmount,
+      });
     } catch (error) {
       console.error('Excel export error:', error);
       alert('Failed to export service ticket Excel. Check console for details.');

@@ -10,6 +10,7 @@ export default function Projects() {
   const [editingProject, setEditingProject] = useState<any>(null);
   const [formData, setFormData] = useState({
     name: '',
+    project_number: '',
     description: '',
     customer_id: '',
     rate: '',
@@ -36,6 +37,7 @@ export default function Projects() {
     mutationFn: async (data: any) => {
       const projectData: any = {
         name: data.name,
+        project_number: data.project_number || null,
         description: data.description || null,
         customer_id: data.customer_id || null,
         rate: parseFloat(data.rate),
@@ -59,6 +61,7 @@ export default function Projects() {
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       const projectData: any = {};
       if (data.name !== undefined) projectData.name = data.name;
+      if (data.project_number !== undefined) projectData.project_number = data.project_number || null;
       if (data.description !== undefined) projectData.description = data.description || null;
       if (data.customer_id !== undefined) projectData.customer_id = data.customer_id || null;
       if (data.rate !== undefined) projectData.rate = parseFloat(data.rate);
@@ -81,6 +84,7 @@ export default function Projects() {
   const resetForm = () => {
     setFormData({
       name: '',
+      project_number: '',
       description: '',
       customer_id: '',
       rate: '',
@@ -97,6 +101,7 @@ export default function Projects() {
     setEditingProject(project);
     setFormData({
       name: project.name || '',
+      project_number: project.project_number || '',
       description: project.description || '',
       customer_id: project.customer_id || '',
       rate: project.rate?.toString() || '',
@@ -169,15 +174,28 @@ export default function Projects() {
         <div className="card" style={{ marginBottom: '20px' }}>
           <h3>{editingProject ? 'Edit Project' : 'New Project'}</h3>
           <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="label">Name</label>
-              <input
-                type="text"
-                className="input"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Name</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Project Number (Job ID)</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.project_number}
+                  onChange={(e) => setFormData({ ...formData, project_number: e.target.value })}
+                  placeholder="e.g., PRJ-001"
+                />
+              </div>
             </div>
 
             <div className="form-group">
@@ -317,6 +335,7 @@ export default function Projects() {
         <table className="table">
           <thead>
             <tr>
+              <th>Project #</th>
               <th>Name</th>
               <th>Customer</th>
               <th>Rate</th>
@@ -328,13 +347,14 @@ export default function Projects() {
           <tbody>
             {projects && projects.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '20px' }}>
                   No projects found. Create your first project above.
                 </td>
               </tr>
             )}
             {projects?.map((project: any) => (
               <tr key={project.id}>
+                <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{project.project_number || '-'}</td>
                 <td>{project.name}</td>
                 <td>{project.customer?.name || '-'}</td>
                 <td>${project.rate}/hr</td>

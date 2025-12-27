@@ -103,7 +103,8 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     }
     
     // Left side fields
-    const jobId = ticket.entries[0]?.id.substring(0, 8) || 'AUTO';
+    // C9: Job ID - use the project number assigned to the project
+    const jobId = ticket.projectNumber || ticket.projectName || 'N/A';
     setCellValue('C9', jobId);
     setCellValue('C10', ticket.userName);
     const dateStr = new Date(ticket.date).toLocaleDateString('en-US', {
@@ -114,16 +115,17 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     setCellValue('C11', dateStr);
     
     // Fill in the ticket number (M1 in Template sheet)
-    // Note: M1 has a complex _xlfn formula that causes corruption - replace with simple text
-    const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
+    // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
+    // The ticketNumber should be passed in, or we generate a placeholder
+    const ticketNumber = ticket.ticketNumber || `${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`;
     const ticketCell = worksheet.getCell('M1');
     // ExcelJS bug workaround: Force model update
     (ticketCell as any).model = {
       ...((ticketCell as any).model || {}),
-      value: ticketId,
+      value: ticketNumber,
       type: 6 // sharedString/text
     };
-    ticketCell.value = ticketId;
+    ticketCell.value = ticketNumber;
     
     // Fill in line items (starting at row 14, based on DB_25101 structure)
     const firstDataRow = 14;
@@ -320,7 +322,9 @@ export async function downloadExcelServiceTicket(ticket: ServiceTicket): Promise
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
   });
   
-  const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
+  // Use ticket number if available, otherwise generate a fallback ID
+  const ticketId = ticket.ticketNumber || 
+    `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
   const fileName = `ServiceTicket_${ticketId}_${ticket.customerName.replace(/\s+/g, '_')}.xlsx`;
   
   saveAs(blob, fileName);

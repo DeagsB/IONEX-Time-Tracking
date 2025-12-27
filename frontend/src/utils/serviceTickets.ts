@@ -22,7 +22,12 @@ export interface ServiceTicket {
   };
   userId: string;
   userName: string;
+  userInitials: string;
   userEmail?: string;
+  projectId?: string;
+  projectName?: string;
+  projectNumber?: string;
+  ticketNumber?: string; // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
   totalHours: number;
   entries: TimeEntryWithRelations[];
   hoursByRateType: {
@@ -51,6 +56,7 @@ export interface TimeEntryWithRelations {
   project?: {
     id: string;
     name: string;
+    project_number?: string;
     customer?: {
       id: string;
       name: string;
@@ -135,6 +141,11 @@ export function groupEntriesIntoTickets(
     // Get or create ticket
     let ticket = ticketMap.get(ticketKey);
     if (!ticket) {
+      // Generate user initials from first and last name
+      const firstName = entry.user?.first_name || '';
+      const lastName = entry.user?.last_name || '';
+      const initials = (firstName.charAt(0) + lastName.charAt(0)).toUpperCase() || 'XX';
+      
       ticket = {
         id: ticketKey,
         date,
@@ -143,9 +154,13 @@ export function groupEntriesIntoTickets(
         customerInfo,
         userId,
         userName: entry.user
-          ? `${entry.user.first_name || ''} ${entry.user.last_name || ''}`.trim() || entry.user.email
+          ? `${firstName} ${lastName}`.trim() || entry.user.email
           : 'Unknown',
+        userInitials: initials,
         userEmail: entry.user?.email,
+        projectId: entry.project?.id,
+        projectName: entry.project?.name,
+        projectNumber: entry.project?.project_number,
         totalHours: 0,
         entries: [],
         hoursByRateType: {
