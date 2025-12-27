@@ -3,43 +3,277 @@ import { saveAs } from 'file-saver';
 import { ServiceTicket } from './serviceTickets';
 import { createCellAddress } from './excelTemplateMapping';
 
+// Maximum characters per description row before wrapping to next row
+// This is based on the column width of the description area (B-J merged)
+const MAX_DESCRIPTION_CHARS = 75;
+
 /**
- * Maps ticket data fields to placeholder strings in the Excel template
+ * Splits a description into multiple lines based on max character limit
+ * Splits at word boundaries when possible
  */
-function getFieldValueForPlaceholder(placeholder: string, ticket: ServiceTicket): string | number {
+function splitDescription(description: string, maxChars: number): string[] {
+  if (!description || description.length <= maxChars) {
+    return [description || 'No description'];
+  }
+
+  const lines: string[] = [];
+  let remaining = description;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxChars) {
+      lines.push(remaining);
+      break;
+    }
+
+    // Find a good break point (space) near the max length
+    let breakPoint = maxChars;
+    const lastSpace = remaining.lastIndexOf(' ', maxChars);
+    
+    if (lastSpace > maxChars * 0.5) {
+      // Found a space in the latter half - use it
+      breakPoint = lastSpace;
+    }
+
+    lines.push(remaining.substring(0, breakPoint).trim());
+    remaining = remaining.substring(breakPoint).trim();
+  }
+
+  return lines;
+}
+
+/**
+ * Represents a row item to be written to the Excel sheet
+ */
+interface RowItem {
+  description: string;
+  hours: number | null; // null means continuation row (no hours)
+  rateType: string;
+  isFirstLineOfEntry: boolean;
+}
+
+/**
+ * Prepares row items from entries, splitting long descriptions across rows
+ */
+function prepareRowItems(entries: ServiceTicket['entries']): RowItem[] {
+  const rowItems: RowItem[] = [];
+
+  for (const entry of entries) {
+    const descriptionLines = splitDescription(entry.description || 'No description', MAX_DESCRIPTION_CHARS);
+    const rateType = entry.rate_type || 'Shop Time';
+
+    for (let i = 0; i < descriptionLines.length; i++) {
+      rowItems.push({
+        description: descriptionLines[i],
+        hours: i === 0 ? entry.hours : null, // Only first line gets hours
+        rateType: rateType,
+        isFirstLineOfEntry: i === 0,
+      });
+    }
+  }
+
+  return rowItems;
+}
+
+/**
+ * Fills a worksheet with header information (customer info, dates, etc.)
+ */
+function fillHeaderInfo(
+  worksheet: ExcelJS.Worksheet,
+  ticket: ServiceTicket,
+  pageNumber: number,
+  totalPages: number
+) {
   const customer = ticket.customerInfo;
-  
-  // Map placeholders to actual data
-  const mappings: { [key: string]: string | number } = {
-    '(Customer Here)': customer.name || '',
-    '(Street address)': customer.address || '',
-    '(City, Province)': customer.city && customer.state 
-      ? `${customer.city}, ${customer.state}` 
-      : customer.city || customer.state || '',
-    '(Postal Code)': customer.zip_code || '',
-    '(Name)': ticket.userName || '',
-    '(Phone number)': customer.phone || '',
-    '(Email)': customer.email || '',
-    '(Location)': customer.service_location || customer.address || '',
-    '(Location Code)': customer.location_code || '',
-    '(PO)': customer.po_number || '',
-    '(Approver)': customer.approver_name || '',
-    '(Job ID)': ticket.entries[0]?.id.substring(0, 8) || 'AUTO',
-    '(Employee Name)': ticket.userName || '',
-    '(Date from time entry)': new Date(ticket.date).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-    }),
-    '(Billable Rate)': 130,
-    '(Field Time Rate)': 140,
+
+  // Helper function to set cell value with ExcelJS bug workaround
+  const setCellValue = (address: string, value: string | number) => {
+    const cell = worksheet.getCell(address);
+    (cell as any).model = {
+      ...((cell as any).model || {}),
+      value: typeof value === 'number' ? value : String(value),
+      type: typeof value === 'number' ? 2 : 6,
+    };
+    cell.value = value;
   };
+
+  // Customer information (right side of template)
+  if (customer.name) setCellValue('I3', customer.name);
+  if (customer.address) setCellValue('I4', customer.address);
+  const cityState =
+    customer.city && customer.state
+      ? `${customer.city}, ${customer.state}`
+      : customer.city || customer.state || '';
+  if (cityState) {
+    setCellValue('I5', cityState);
+    const cityCell = worksheet.getCell('I5');
+    cityCell.alignment = { horizontal: 'left', vertical: 'middle' };
+  }
+  if (customer.zip_code) setCellValue('I6', customer.zip_code);
+  if (ticket.userName) setCellValue('I7', ticket.userName);
+  if (customer.phone) setCellValue('I8', customer.phone);
+  if (customer.email) setCellValue('I9', customer.email);
+  const location = customer.service_location || customer.address || '';
+  if (location) setCellValue('I10', location);
+  if (customer.location_code) setCellValue('L10', customer.location_code);
+  if (customer.po_number) {
+    setCellValue('I11', customer.po_number);
+    setCellValue('C37', customer.po_number);
+  }
+  if (customer.approver_name) {
+    setCellValue('L11', customer.approver_name);
+    setCellValue('C35', customer.approver_name);
+  }
+
+  // Left side fields
+  const jobId = ticket.projectNumber || ticket.projectName || 'N/A';
+  setCellValue('C9', jobId);
+  setCellValue('C10', ticket.userName);
+  const dateStr = new Date(ticket.date).toLocaleDateString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  });
+  setCellValue('C11', dateStr);
+  setCellValue('E9', 'AUTO');
+
+  // Ticket number with page indicator if multiple pages
+  const ticketNumber =
+    ticket.ticketNumber || `${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`;
+  const displayTicketNumber = totalPages > 1 ? `${ticketNumber} (${pageNumber}/${totalPages})` : ticketNumber;
   
-  return mappings[placeholder] || '';
+  const ticketCell = worksheet.getCell('M1');
+  (ticketCell as any).model = {
+    ...((ticketCell as any).model || {}),
+    value: displayTicketNumber,
+    type: 6,
+  };
+  ticketCell.value = displayTicketNumber;
+}
+
+/**
+ * Fills row items into the description area of a worksheet
+ * Returns the hours totals for this page
+ */
+function fillRowItems(
+  worksheet: ExcelJS.Worksheet,
+  rowItems: RowItem[],
+  startIndex: number,
+  maxRows: number
+): { endIndex: number; rtTotal: number; ttTotal: number; ftTotal: number; otTotal: number } {
+  const firstDataRow = 14;
+  const descriptionCol = 'B';
+  const rtCol = 'K';
+  const ttCol = 'L';
+  const ftCol = 'M';
+  const otCol = 'N';
+
+  let rtTotal = 0,
+    ttTotal = 0,
+    ftTotal = 0,
+    otTotal = 0;
+  let currentRow = firstDataRow;
+  let itemIndex = startIndex;
+
+  // Helper function to set cell value
+  const setCellValue = (address: string, value: string | number) => {
+    const cell = worksheet.getCell(address);
+    (cell as any).model = {
+      ...((cell as any).model || {}),
+      value: typeof value === 'number' ? value : String(value),
+      type: typeof value === 'number' ? 2 : 6,
+    };
+    cell.value = value;
+  };
+
+  while (itemIndex < rowItems.length && currentRow <= firstDataRow + maxRows - 1) {
+    const item = rowItems[itemIndex];
+
+    // Set description
+    const descAddr = createCellAddress(currentRow, descriptionCol);
+    setCellValue(descAddr, item.description);
+
+    // Set hours if this is the first line of an entry
+    if (item.hours !== null) {
+      let hoursCol = rtCol;
+      if (item.rateType === 'Travel Time') {
+        hoursCol = ttCol;
+        ttTotal += item.hours;
+      } else if (item.rateType === 'Field Time') {
+        hoursCol = ftCol;
+        ftTotal += item.hours;
+      } else if (item.rateType === 'Shop Overtime' || item.rateType === 'Field Overtime') {
+        hoursCol = otCol;
+        otTotal += item.hours;
+      } else {
+        rtTotal += item.hours;
+      }
+
+      const hoursAddr = createCellAddress(currentRow, hoursCol);
+      setCellValue(hoursAddr, item.hours);
+    }
+
+    currentRow++;
+    itemIndex++;
+  }
+
+  return { endIndex: itemIndex, rtTotal, ttTotal, ftTotal, otTotal };
+}
+
+/**
+ * Updates formula cells with calculated totals for Protected View compatibility
+ */
+function updateTotals(
+  worksheet: ExcelJS.Worksheet,
+  rtTotal: number,
+  ttTotal: number,
+  ftTotal: number,
+  otTotal: number
+) {
+  const totalsRow = 24;
+  const rtRate = 130,
+    ttRate = 130,
+    ftRate = 140,
+    otRate = 195;
+
+  const rtAmount = rtTotal * rtRate;
+  const ttAmount = ttTotal * ttRate;
+  const ftAmount = ftTotal * ftRate;
+  const otAmount = otTotal * otRate;
+  const grandTotal = rtAmount + ttAmount + ftAmount + otAmount;
+
+  // Helper to set cell with formula result caching
+  const setCellWithResult = (address: string, value: number) => {
+    const cell = worksheet.getCell(address);
+    if (cell.formula) {
+      const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
+      cell.value = { formula: formulaStr, result: value };
+    } else {
+      (cell as any).model = {
+        ...((cell as any).model || {}),
+        value: value,
+        type: 2,
+      };
+      cell.value = value;
+    }
+  };
+
+  // Row 24 totals
+  setCellWithResult(`K${totalsRow}`, rtTotal);
+  setCellWithResult(`L${totalsRow}`, ttTotal);
+  setCellWithResult(`M${totalsRow}`, ftTotal);
+  setCellWithResult(`N${totalsRow}`, otTotal);
+
+  // Summary cells
+  setCellWithResult('M35', rtAmount);
+  setCellWithResult('M36', ttAmount);
+  setCellWithResult('M37', ftAmount);
+  setCellWithResult('M38', otAmount);
+  setCellWithResult('M40', grandTotal);
 }
 
 /**
  * Generates a filled Excel file from the template and ticket data using ExcelJS
+ * Handles multi-page output when descriptions overflow
  */
 export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise<Uint8Array> {
   try {
@@ -48,268 +282,176 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     if (!templateResponse.ok) {
       throw new Error('Failed to fetch Excel template');
     }
-    
+
     const templateBytes = await templateResponse.arrayBuffer();
-    
+
     // Load workbook with ExcelJS
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(templateBytes);
-    
-    // Get the Template sheet (the one we'll fill and export)
-    const worksheet = workbook.getWorksheet('Template');
-    if (!worksheet) {
+
+    // Get the Template sheet
+    const templateSheet = workbook.getWorksheet('Template');
+    if (!templateSheet) {
       throw new Error('Template sheet not found in workbook');
     }
-    
-    const customer = ticket.customerInfo;
-    
-    // Helper function to set cell value with ExcelJS bug workaround
-    const setCellValue = (address: string, value: string | number) => {
-      const cell = worksheet.getCell(address);
-      (cell as any).model = {
-        ...((cell as any).model || {}),
-        value: typeof value === 'number' ? value : String(value),
-        type: typeof value === 'number' ? 2 : 6
-      };
-      cell.value = value;
-    };
-    
-    // Customer information (right side of template)
-    if (customer.name) setCellValue('I3', customer.name);
-    if (customer.address) setCellValue('I4', customer.address);
-    const cityState = customer.city && customer.state 
-      ? `${customer.city}, ${customer.state}` 
-      : customer.city || customer.state || '';
-    if (cityState) {
-      setCellValue('I5', cityState);
-      // Left-justify city/province
-      const cityCell = worksheet.getCell('I5');
-      cityCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    }
-    if (customer.zip_code) setCellValue('I6', customer.zip_code);
-    if (ticket.userName) setCellValue('I7', ticket.userName);
-    if (customer.phone) setCellValue('I8', customer.phone);
-    if (customer.email) setCellValue('I9', customer.email);
-    const location = customer.service_location || customer.address || '';
-    if (location) setCellValue('I10', location);
-    if (customer.location_code) setCellValue('L10', customer.location_code);
-    if (customer.po_number) {
-      setCellValue('I11', customer.po_number);
-      setCellValue('C37', customer.po_number);
-    }
-    if (customer.approver_name) {
-      setCellValue('L11', customer.approver_name);
-      setCellValue('C35', customer.approver_name);
-    }
-    
-    // Left side fields
-    // C9: Job ID - use the project number assigned to the project
-    const jobId = ticket.projectNumber || ticket.projectName || 'N/A';
-    setCellValue('C9', jobId);
-    setCellValue('C10', ticket.userName);
-    const dateStr = new Date(ticket.date).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-    });
-    setCellValue('C11', dateStr);
-    
-    // E9: Always set to "AUTO"
-    setCellValue('E9', 'AUTO');
-    
-    // Fill in the ticket number (M1 in Template sheet)
-    // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
-    // The ticketNumber should be passed in, or we generate a placeholder
-    const ticketNumber = ticket.ticketNumber || `${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`;
-    const ticketCell = worksheet.getCell('M1');
-    // ExcelJS bug workaround: Force model update
-    (ticketCell as any).model = {
-      ...((ticketCell as any).model || {}),
-      value: ticketNumber,
-      type: 6 // sharedString/text
-    };
-    ticketCell.value = ticketNumber;
-    
-    // Fill in line items (starting at row 14, based on DB_25101 structure)
-    const firstDataRow = 14;
-    const lastDataRow = 23; // 10 rows available
-    const descriptionCol = 'B';
-    const rtCol = 'K';
-    const ttCol = 'L';
-    const ftCol = 'M';
-    const otCol = 'N';
-    
-    let currentRow = firstDataRow;
-    for (const entry of ticket.entries) {
-      if (currentRow > lastDataRow) {
-        break; // Too many entries to fit in single sheet
-      }
-      
-      // Description - ExcelJS preserves cell formatting automatically
-      const descAddr = createCellAddress(currentRow, descriptionCol);
-      const descCell = worksheet.getCell(descAddr);
-      const descValue = entry.description || 'No description';
-      // ExcelJS bug workaround: Force model update
-      (descCell as any).model = {
-        ...((descCell as any).model || {}),
-        value: String(descValue),
-        type: 6 // sharedString/text
-      };
-      descCell.value = descValue;
-      
-      // Hours in the appropriate column based on rate_type
-      const rateType = entry.rate_type || 'Shop Time';
-      let hoursCol = rtCol;
-      
-      if (rateType === 'Travel Time') {
-        hoursCol = ttCol;
-      } else if (rateType === 'Field Time') {
-        hoursCol = ftCol;
-      } else if (rateType === 'Shop Overtime' || rateType === 'Field Overtime') {
-        hoursCol = otCol;
-      }
-      
-      const hoursAddr = createCellAddress(currentRow, hoursCol);
-      const hoursCell = worksheet.getCell(hoursAddr);
-      // ExcelJS bug workaround: Force model update
-      (hoursCell as any).model = {
-        ...((hoursCell as any).model || {}),
-        value: entry.hours,
-        type: 2 // number
-      };
-      hoursCell.value = entry.hours;
-      
-      currentRow++;
-    }
-    
-    // Pre-calculate totals for each rate type column
-    // This ensures values show in Protected View (before enabling editing)
-    
-    // Calculate totals from our entries
-    let rtTotal = 0, ttTotal = 0, ftTotal = 0, otTotal = 0;
-    for (const entry of ticket.entries) {
-      const rateType = entry.rate_type || 'Shop Time';
-      if (rateType === 'Travel Time') {
-        ttTotal += entry.hours;
-      } else if (rateType === 'Field Time') {
-        ftTotal += entry.hours;
-      } else if (rateType === 'Shop Overtime' || rateType === 'Field Overtime') {
-        otTotal += entry.hours;
-      } else {
-        rtTotal += entry.hours; // Shop Time (Regular)
+
+    // Prepare row items with split descriptions
+    const rowItems = prepareRowItems(ticket.entries);
+    const maxRowsPerPage = 10; // Rows 14-23
+
+    // Calculate how many pages we need
+    const totalPages = Math.ceil(rowItems.length / maxRowsPerPage);
+
+    if (totalPages === 1) {
+      // Single page - simple case
+      fillHeaderInfo(templateSheet, ticket, 1, 1);
+      const { rtTotal, ttTotal, ftTotal, otTotal } = fillRowItems(
+        templateSheet,
+        rowItems,
+        0,
+        maxRowsPerPage
+      );
+      updateTotals(templateSheet, rtTotal, ttTotal, ftTotal, otTotal);
+    } else {
+      // Multi-page - need to duplicate sheets
+      let currentItemIndex = 0;
+      let cumulativeRtTotal = 0,
+        cumulativeTtTotal = 0,
+        cumulativeFtTotal = 0,
+        cumulativeOtTotal = 0;
+
+      for (let page = 1; page <= totalPages; page++) {
+        let worksheet: ExcelJS.Worksheet;
+
+        if (page === 1) {
+          // Use the original template sheet for first page
+          worksheet = templateSheet;
+        } else {
+          // Duplicate the template sheet for additional pages
+          // ExcelJS doesn't have a direct copy method, so we need to manually copy
+          const newSheetName = `Page ${page}`;
+          
+          // We'll load a fresh copy of the template for each additional page
+          const freshWorkbook = new ExcelJS.Workbook();
+          await freshWorkbook.xlsx.load(templateBytes);
+          const freshTemplate = freshWorkbook.getWorksheet('Template');
+          
+          if (!freshTemplate) {
+            throw new Error('Template sheet not found for page duplication');
+          }
+
+          // Add the sheet to our main workbook
+          worksheet = workbook.addWorksheet(newSheetName);
+          
+          // Copy row heights and column widths
+          freshTemplate.columns.forEach((col, index) => {
+            if (worksheet.columns[index]) {
+              worksheet.columns[index].width = col.width;
+            }
+          });
+          
+          // Copy cells
+          freshTemplate.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+            const newRow = worksheet.getRow(rowNumber);
+            newRow.height = row.height;
+            
+            row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+              const newCell = newRow.getCell(colNumber);
+              
+              // Copy value
+              newCell.value = cell.value;
+              
+              // Copy style
+              newCell.style = JSON.parse(JSON.stringify(cell.style || {}));
+              
+              // Copy merge info will be handled separately
+            });
+          });
+
+          // Copy merged cells
+          freshTemplate.model.merges?.forEach((merge: string) => {
+            try {
+              worksheet.mergeCells(merge);
+            } catch (e) {
+              // Ignore merge errors for already merged cells
+            }
+          });
+        }
+
+        // Fill header info for this page
+        fillHeaderInfo(worksheet, ticket, page, totalPages);
+
+        // Fill row items for this page
+        const result = fillRowItems(worksheet, rowItems, currentItemIndex, maxRowsPerPage);
+        currentItemIndex = result.endIndex;
+
+        // Accumulate totals
+        cumulativeRtTotal += result.rtTotal;
+        cumulativeTtTotal += result.ttTotal;
+        cumulativeFtTotal += result.ftTotal;
+        cumulativeOtTotal += result.otTotal;
+
+        // For intermediate pages, show page totals
+        // For last page, show cumulative totals
+        if (page === totalPages) {
+          updateTotals(worksheet, cumulativeRtTotal, cumulativeTtTotal, cumulativeFtTotal, cumulativeOtTotal);
+        } else {
+          // Show this page's totals
+          updateTotals(worksheet, result.rtTotal, result.ttTotal, result.ftTotal, result.otTotal);
+        }
       }
     }
-    
-    // Row 24 typically has the totals - set formula results
-    // Find and update formula cells with their calculated results
-    const totalsRow = 24;
-    const rateColumns = {
-      'K': rtTotal,  // RT column
-      'L': ttTotal,  // TT column
-      'M': ftTotal,  // FT column
-      'N': otTotal   // OT column
-    };
-    
-    for (const [col, total] of Object.entries(rateColumns)) {
-      const addr = `${col}${totalsRow}`;
-      const cell = worksheet.getCell(addr);
-      
-      // If cell has a formula, preserve it but add the cached result
-      if (cell.formula) {
-        const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
-        // Set formula with result for Protected View compatibility
-        cell.value = { formula: formulaStr, result: total };
-      } else if (total > 0) {
-        // No formula - just set the value
-        setCellValue(addr, total);
-      }
-    }
-    
-    // Pre-calculate summary cells for Protected View
-    // Calculate dollar amounts directly from hours * rates
-    // Standard rates: RT=$130/hr, TT=$130/hr, FT=$140/hr, OT=$195/hr (1.5x RT)
-    const rtRate = 130;
-    const ttRate = 130;
-    const ftRate = 140;
-    const otRate = 195;
-    
-    const rtAmount = rtTotal * rtRate;
-    const ttAmount = ttTotal * ttRate;
-    const ftAmount = ftTotal * ftRate;
-    const otAmount = otTotal * otRate;
-    const grandTotal = rtAmount + ttAmount + ftAmount + otAmount;
-    
-    // M35 = RT Amount, M36 = TT Amount, M37 = FT Amount, M40 = Grand Total
-    const summaryValues: { [addr: string]: number } = {
-      'M35': rtAmount,
-      'M36': ttAmount, 
-      'M37': ftAmount,
-      'M38': otAmount,
-      'M40': grandTotal
-    };
-    
-    for (const [addr, amount] of Object.entries(summaryValues)) {
-      const cell = worksheet.getCell(addr);
-      if (cell.formula) {
-        const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
-        // Preserve formula but add cached result for Protected View
-        cell.value = { formula: formulaStr, result: amount };
-      } else {
-        // No formula - just set the value directly
-        setCellValue(addr, amount);
-      }
-    }
-    
-    // DON'T remove DB_25101 - removing sheets can strip images from the workbook
-    // We'll hide it instead
+
+    // Hide the DB_25101 sheet (don't remove - keeps images)
     const dbSheet = workbook.getWorksheet('DB_25101');
     if (dbSheet) {
-      dbSheet.state = 'hidden'; // Hide instead of remove
+      dbSheet.state = 'hidden';
     }
-    
-    // Fix any problematic _xlfn formulas that cause Excel corruption
-    // And cache results for all formulas to work in Protected View
-    worksheet.eachRow((row, rowNumber) => {
-      row.eachCell((cell, colNumber) => {
-        if (cell.formula) {
-          const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
-          const currentResult = typeof cell.formula === 'object' ? (cell.formula as any).result : cell.result;
-          
-          if (formulaStr && formulaStr.includes('_xlfn')) {
-            // Replace _xlfn formulas with result value to avoid corruption
-            if (currentResult !== undefined && currentResult !== null) {
-              cell.value = currentResult;
-            }
-          } else if (formulaStr && currentResult === undefined) {
-            // For formulas without cached results, try to compute simple ones
-            // This handles SUM formulas which are most common
-            if (formulaStr.startsWith('SUM(')) {
-              const match = formulaStr.match(/SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/);
-              if (match) {
-                const [, startCol, startRow, endCol, endRow] = match;
-                let sum = 0;
-                for (let r = parseInt(startRow); r <= parseInt(endRow); r++) {
-                  const val = worksheet.getCell(`${startCol}${r}`).value;
-                  if (typeof val === 'number') sum += val;
+
+    // Fix _xlfn formulas and cache results for Protected View
+    workbook.worksheets.forEach((ws) => {
+      if (ws.state === 'hidden') return;
+      
+      ws.eachRow((row, rowNumber) => {
+        row.eachCell((cell, colNumber) => {
+          if (cell.formula) {
+            const formulaStr =
+              typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
+            const currentResult =
+              typeof cell.formula === 'object' ? (cell.formula as any).result : cell.result;
+
+            if (formulaStr && formulaStr.includes('_xlfn')) {
+              if (currentResult !== undefined && currentResult !== null) {
+                cell.value = currentResult;
+              }
+            } else if (formulaStr && currentResult === undefined) {
+              if (formulaStr.startsWith('SUM(')) {
+                const match = formulaStr.match(/SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/);
+                if (match) {
+                  const [, startCol, startRow, endCol, endRow] = match;
+                  let sum = 0;
+                  for (let r = parseInt(startRow); r <= parseInt(endRow); r++) {
+                    const val = ws.getCell(`${startCol}${r}`).value;
+                    if (typeof val === 'number') sum += val;
+                  }
+                  cell.value = { formula: formulaStr, result: sum };
                 }
-                cell.value = { formula: formulaStr, result: sum };
               }
             }
           }
-        }
+        });
       });
     });
-    
-    // Ensure Excel recalculates formulas when opening (for when editing is enabled)
+
+    // Ensure Excel recalculates formulas when opening
     if (workbook.calcProperties) {
       workbook.calcProperties.fullCalcOnLoad = true;
     }
-    
-    // Generate the output file - ExcelJS preserves all formatting, borders, images
+
+    // Generate the output file
     const buffer = await workbook.xlsx.writeBuffer();
-    
+
     return new Uint8Array(buffer);
-    
   } catch (error) {
     throw error;
   }
@@ -320,15 +462,16 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
  */
 export async function downloadExcelServiceTicket(ticket: ServiceTicket): Promise<void> {
   const excelBytes = await generateExcelServiceTicket(ticket);
-  
-  const blob = new Blob([excelBytes as any], { 
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+
+  const blob = new Blob([excelBytes as any], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
-  
+
   // Use ticket number if available, otherwise generate a fallback ID
-  const ticketId = ticket.ticketNumber || 
+  const ticketId =
+    ticket.ticketNumber ||
     `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
   const fileName = `ServiceTicket_${ticketId}_${ticket.customerName.replace(/\s+/g, '_')}.xlsx`;
-  
+
   saveAs(blob, fileName);
 }
