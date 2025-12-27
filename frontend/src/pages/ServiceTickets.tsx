@@ -5,6 +5,7 @@ import { serviceTicketsService, customersService, employeesService } from '../se
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfServiceTicket } from '../utils/pdfServiceTicket';
+import { downloadCalibrationPdf } from '../utils/pdfCalibrate';
 import { supabase } from '../lib/supabaseClient';
 
 export default function ServiceTickets() {
@@ -203,6 +204,13 @@ export default function ServiceTickets() {
         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
           Service Tickets
         </h2>
+        <button
+          className="button button-secondary"
+          onClick={() => downloadCalibrationPdf()}
+          style={{ padding: '8px 16px', fontSize: '12px' }}
+        >
+          📐 PDF Calibration
+        </button>
       </div>
 
       {/* Filters */}

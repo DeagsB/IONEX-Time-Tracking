@@ -10,63 +10,63 @@ const MAX_DESCRIPTION_CHARS = 65;
 
 // Layout coordinates based on the actual template
 // Y coordinates are from bottom of page (PDF coordinate system)
-// These are calibrated from the actual template PDF
+// Recalibrated based on visual template analysis
 const LAYOUT = {
   // Ticket number (after "Ticket:" label, top right)
-  ticketNumber: { x: 520, y: 758 },
+  ticketNumber: { x: 545, y: 755 },
   
-  // Customer section - data goes AFTER the labels (in the white input boxes)
-  // Labels end around x=450, data starts at ~455
-  customerName: { x: 455, y: 693 },      // After "Customer Name"
-  billingAddress: { x: 455, y: 677 },    // After "Billing Address"
-  contactName: { x: 455, y: 645 },       // After "Contact Name"
-  contactPhone: { x: 455, y: 629 },      // After "Contact Phone"
-  contactEmail: { x: 455, y: 613 },      // After "Contact Email"
-  serviceLocation: { x: 455, y: 597 },   // After "Service Location"
-  poCcAfe: { x: 455, y: 581 },           // After "PO/CC/AFE"
+  // Customer section - data goes IN the white input boxes (right of labels)
+  // Labels end around x=470, input boxes start at ~475
+  customerName: { x: 478, y: 688 },      // In "Customer Name" input box
+  billingAddress: { x: 478, y: 672 },    // In "Billing Address" input box
+  contactName: { x: 478, y: 640 },       // In "Contact Name" input box
+  contactPhone: { x: 478, y: 624 },      // In "Contact Phone" input box
+  contactEmail: { x: 478, y: 608 },      // In "Contact Email" input box
+  serviceLocation: { x: 478, y: 592 },   // In "Service Location" input box
+  poCcAfe: { x: 478, y: 576 },           // In "PO/CC/AFE" input box
   
   // Service Info section (left side) - data goes in the input boxes
-  jobId: { x: 105, y: 627 },             // After "Job ID"
-  jobType: { x: 230, y: 627 },           // After "Job Type"
-  techName: { x: 105, y: 609 },          // After "Tech"
-  date: { x: 105, y: 591 },              // After "Date"
+  jobId: { x: 108, y: 622 },             // In "Job ID" input box
+  jobType: { x: 235, y: 622 },           // In "Job Type" input box
+  techName: { x: 108, y: 604 },          // In "Tech" input box
+  date: { x: 108, y: 586 },              // In "Date" input box
   
-  // Service Description area - description text starts inside the box
-  descriptionStartY: 540,
-  descriptionRowHeight: 14,
-  descriptionX: 72,                      // Left edge of description box
-  descriptionMaxX: 410,                  // Right edge before hours columns
+  // Service Description area - text inside the description box
+  descriptionStartY: 532,
+  descriptionRowHeight: 13,
+  descriptionX: 75,                      // Left edge of description box
+  descriptionMaxX: 400,                  // Right edge before hours columns
   maxDescriptionRows: 10,
   
-  // Hours columns (RT, TT, FT, OT) - centered in each column
+  // Hours columns (RT, TT, FT, OT) - centered in each column header
   hoursColumns: {
-    rt: { x: 427 },   // RT column center
-    tt: { x: 459 },   // TT column center
-    ft: { x: 491 },   // FT column center
-    ot: { x: 523 },   // OT column center
+    rt: { x: 430 },   // RT column center
+    tt: { x: 462 },   // TT column center
+    ft: { x: 494 },   // FT column center
+    ot: { x: 526 },   // OT column center
   },
   
   // Total Time row
-  totalsY: 398,
+  totalsY: 395,
   totalTimeLabel: { x: 375 },
   
-  // RT Rate and FT Rate (below description box)
-  rtRateValue: { x: 140, y: 380 },       // After "RT Rate:"
-  ftRateValue: { x: 280, y: 380 },       // After "FT Rate:"
+  // RT Rate and FT Rate (below description box, above Travel section)
+  rtRateValue: { x: 145, y: 375 },       // After "RT Rate:"
+  ftRateValue: { x: 290, y: 375 },       // After "FT Rate:"
   
   // Service Ticket Summary section (bottom right)
   summary: {
-    totalRt: { x: 535, y: 252 },         // Right-aligned in Total RT row
-    totalTt: { x: 535, y: 237 },         // Right-aligned in Total TT row
-    totalFt: { x: 535, y: 222 },         // Right-aligned in Total FT row
-    totalOt: { x: 535, y: 207 },         // Right-aligned in Total OT row
-    totalExpenses: { x: 535, y: 192 },   // Right-aligned in Total Expenses row
-    grandTotal: { x: 535, y: 172 },      // Right-aligned in TOTAL SERVICE TICKET row
+    totalRt: { x: 558, y: 248 },         // Right-aligned in Total RT row
+    totalTt: { x: 558, y: 233 },         // Right-aligned in Total TT row
+    totalFt: { x: 558, y: 218 },         // Right-aligned in Total FT row
+    totalOt: { x: 558, y: 203 },         // Right-aligned in Total OT row
+    totalExpenses: { x: 558, y: 188 },   // Right-aligned in Total Expenses row
+    grandTotal: { x: 558, y: 168 },      // Right-aligned in TOTAL SERVICE TICKET row
   },
   
   // Customer Approval / Coding (bottom left)
-  afeValue: { x: 100, y: 223 },          // After "AFE:"
-  ccValue: { x: 100, y: 203 },           // After "CC:"
+  afeValue: { x: 105, y: 218 },          // After "AFE:"
+  ccValue: { x: 105, y: 198 },           // After "CC:"
 };
 
 /**
