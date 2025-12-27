@@ -379,11 +379,9 @@ export const serviceTicketsService = {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching billable entries:', error);
       throw error;
     }
     
-    console.log('Fetched billable entries:', data);
     return data;
   },
 };

@@ -56,7 +56,6 @@ export async function parseExcelTemplateMapping(
     // Look for the mapping sheet (DB_25101)
     const mappingSheetName = 'DB_25101';
     if (!workbook.SheetNames.includes(mappingSheetName)) {
-      console.warn(`Mapping sheet "${mappingSheetName}" not found in template`);
       return {};
     }
     
@@ -86,11 +85,9 @@ export async function parseExcelTemplateMapping(
       }
     }
     
-    console.log('📋 Excel Template Mapping:', mapping);
     return mapping;
     
   } catch (error) {
-    console.error('Error parsing Excel template mapping:', error);
     throw error;
   }
 }

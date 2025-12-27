@@ -55,24 +55,11 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(templateBytes);
     
-    // Template loaded successfully with images preserved
-    console.log('🎫 Ticket data:', {
-      customer: ticket.customerName,
-      date: ticket.date,
-      user: ticket.userName,
-      entries: ticket.entries.length,
-      totalHours: ticket.totalHours
-    });
-    
     // Get the Template sheet (the one we'll fill and export)
     const worksheet = workbook.getWorksheet('Template');
     if (!worksheet) {
       throw new Error('Template sheet not found in workbook');
     }
-    
-    // Fill in header fields using hardcoded positions
-    // (The DB_25101 mapping sheet may not exist after logo update)
-    console.log('📋 Filling header fields with hardcoded positions');
     
     const customer = ticket.customerInfo;
     
@@ -85,7 +72,6 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         type: typeof value === 'number' ? 2 : 6
       };
       cell.value = value;
-      console.log(`  ✓ Set ${address} = "${value}"`);
     };
     
     // Customer information (right side of template)
@@ -148,19 +134,11 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     const ftCol = 'M';
     const otCol = 'N';
     
-    console.log(`\n📝 Filling ${ticket.entries.length} time entries (rows ${firstDataRow}-${lastDataRow}):`);
-    
     let currentRow = firstDataRow;
     for (const entry of ticket.entries) {
       if (currentRow > lastDataRow) {
-        console.warn('⚠️ Too many entries to fit in single sheet, truncating...');
-        break;
+        break; // Too many entries to fit in single sheet
       }
-      
-      console.log(`\n  Entry ${currentRow - firstDataRow + 1}:`);
-      console.log(`    Description: "${entry.description}"`);
-      console.log(`    Hours: ${entry.hours}`);
-      console.log(`    Rate Type: ${entry.rate_type || 'Shop Time'}`);
       
       // Description - ExcelJS preserves cell formatting automatically
       const descAddr = createCellAddress(currentRow, descriptionCol);
@@ -173,7 +151,6 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         type: 6 // sharedString/text
       };
       descCell.value = descValue;
-      console.log(`    ✓ Set ${descAddr} = "${descValue}" (type: ${descCell.type}, text: ${descCell.text})`);
       
       // Hours in the appropriate column based on rate_type
       const rateType = entry.rate_type || 'Shop Time';
@@ -196,24 +173,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         type: 2 // number
       };
       hoursCell.value = entry.hours;
-      console.log(`    ✓ Set ${hoursAddr} (${rateType}) = ${entry.hours} hrs (type: ${hoursCell.type}, text: ${hoursCell.text})`);
       
       currentRow++;
     }
     
-    console.log(`\n✅ Filled ${currentRow - firstDataRow} time entries total`);
-    
-    // Verify values are in the worksheet before writing
-    console.log('\n🔍 Verification - Reading back values:');
-    console.log('  I3 (Customer):', worksheet.getCell('I3').value);
-    console.log('  C9 (Job ID):', worksheet.getCell('C9').value);
-    console.log('  C10 (Tech):', worksheet.getCell('C10').value);
-    console.log('  B14 (First entry):', worksheet.getCell('B14').value);
-    console.log('  K14 (First hours):', worksheet.getCell('K14').value);
-    
     // Pre-calculate totals for each rate type column
     // This ensures values show in Protected View (before enabling editing)
-    console.log('\n💰 Pre-calculating totals for Protected View compatibility:');
     
     // Calculate totals from our entries
     let rtTotal = 0, ttTotal = 0, ftTotal = 0, otTotal = 0;
@@ -229,8 +194,6 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         rtTotal += entry.hours; // Shop Time (Regular)
       }
     }
-    
-    console.log('  RT Total:', rtTotal, 'TT Total:', ttTotal, 'FT Total:', ftTotal, 'OT Total:', otTotal);
     
     // Row 24 typically has the totals - set formula results
     // Find and update formula cells with their calculated results
@@ -249,7 +212,6 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       // If cell has a formula, preserve it but add the cached result
       if (cell.formula) {
         const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
-        console.log(`  ${addr}: Has formula "${formulaStr}", setting result to ${total}`);
         // Set formula with result for Protected View compatibility
         cell.value = { formula: formulaStr, result: total };
       } else if (total > 0) {
@@ -257,10 +219,6 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         setCellValue(addr, total);
       }
     }
-    
-    // Also handle the grand total and any calculated fields
-    // Check rows 25-30 for additional formula cells (subtotals, amounts, etc.)
-    console.log('\n📊 Processing formula cells for Protected View:');
     
     // DON'T remove DB_25101 - removing sheets can strip images from the workbook
     // We'll hide it instead
@@ -280,7 +238,6 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
           if (formulaStr && formulaStr.includes('_xlfn')) {
             // Replace _xlfn formulas with result value to avoid corruption
             if (currentResult !== undefined && currentResult !== null) {
-              console.log(`  ${cell.address}: Replacing _xlfn formula with result ${currentResult}`);
               cell.value = currentResult;
             }
           } else if (formulaStr && currentResult === undefined) {
@@ -295,7 +252,6 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
                   const val = worksheet.getCell(`${startCol}${r}`).value;
                   if (typeof val === 'number') sum += val;
                 }
-                console.log(`  ${cell.address}: Calculated SUM = ${sum}`);
                 cell.value = { formula: formulaStr, result: sum };
               }
             }
@@ -309,19 +265,12 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       workbook.calcProperties.fullCalcOnLoad = true;
     }
     
-    // Log workbook state before writing
-    console.log('📦 About to write workbook with sheets:', workbook.worksheets.map(ws => `${ws.name} (${ws.state})`));
-    console.log('📝 Template sheet has', worksheet.rowCount, 'rows');
-    
     // Generate the output file - ExcelJS preserves all formatting, borders, images
-    // Remove useStyles/useSharedStrings options which can cause data loss
     const buffer = await workbook.xlsx.writeBuffer();
-    console.log('✅ Buffer generated, size:', buffer.byteLength, 'bytes');
     
     return new Uint8Array(buffer);
     
   } catch (error) {
-    console.error('Error generating Excel service ticket:', error);
     throw error;
   }
 }
@@ -330,24 +279,14 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
  * Downloads the generated Excel file
  */
 export async function downloadExcelServiceTicket(ticket: ServiceTicket): Promise<void> {
-  try {
-    console.log('🔽 Starting download...');
-    const excelBytes = await generateExcelServiceTicket(ticket);
-    console.log('📊 Generated Excel bytes:', excelBytes.byteLength);
-    
-    const blob = new Blob([excelBytes as any], { 
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-    });
-    console.log('📦 Blob created, size:', blob.size);
-    
-    const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
-    const fileName = `ServiceTicket_${ticketId}_${ticket.customerName.replace(/\s+/g, '_')}.xlsx`;
-    
-    console.log('💾 Saving file as:', fileName);
-    saveAs(blob, fileName);
-    console.log('✅ File download initiated');
-  } catch (error) {
-    console.error('Error downloading Excel service ticket:', error);
-    throw error;
-  }
+  const excelBytes = await generateExcelServiceTicket(ticket);
+  
+  const blob = new Blob([excelBytes as any], { 
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+  });
+  
+  const ticketId = `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
+  const fileName = `ServiceTicket_${ticketId}_${ticket.customerName.replace(/\s+/g, '_')}.xlsx`;
+  
+  saveAs(blob, fileName);
 }
