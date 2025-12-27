@@ -6,64 +6,67 @@ const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
 
 // Maximum characters per description line
-const MAX_DESCRIPTION_CHARS = 70;
+const MAX_DESCRIPTION_CHARS = 65;
 
 // Layout coordinates based on the actual template
-// Y coordinates are from bottom of page
+// Y coordinates are from bottom of page (PDF coordinate system)
+// These are calibrated from the actual template PDF
 const LAYOUT = {
-  // Ticket number (top right, next to "Ticket:")
-  ticketNumber: { x: 530, y: 740 },
+  // Ticket number (after "Ticket:" label, top right)
+  ticketNumber: { x: 520, y: 758 },
   
-  // Customer section (right side)
-  customerName: { x: 385, y: 693 },
-  billingAddress: { x: 385, y: 678 },
-  contactName: { x: 385, y: 648 },
-  contactPhone: { x: 385, y: 633 },
-  contactEmail: { x: 385, y: 618 },
-  serviceLocation: { x: 385, y: 603 },
-  poCcAfe: { x: 385, y: 588 },
+  // Customer section - data goes AFTER the labels (in the white input boxes)
+  // Labels end around x=450, data starts at ~455
+  customerName: { x: 455, y: 693 },      // After "Customer Name"
+  billingAddress: { x: 455, y: 677 },    // After "Billing Address"
+  contactName: { x: 455, y: 645 },       // After "Contact Name"
+  contactPhone: { x: 455, y: 629 },      // After "Contact Phone"
+  contactEmail: { x: 455, y: 613 },      // After "Contact Email"
+  serviceLocation: { x: 455, y: 597 },   // After "Service Location"
+  poCcAfe: { x: 455, y: 581 },           // After "PO/CC/AFE"
   
-  // Service Info section (left side)
-  jobId: { x: 95, y: 608 },
-  jobType: { x: 175, y: 608 },
-  techName: { x: 95, y: 588 },
-  date: { x: 95, y: 570 },
+  // Service Info section (left side) - data goes in the input boxes
+  jobId: { x: 105, y: 627 },             // After "Job ID"
+  jobType: { x: 230, y: 627 },           // After "Job Type"
+  techName: { x: 105, y: 609 },          // After "Tech"
+  date: { x: 105, y: 591 },              // After "Date"
   
-  // Service Description area
-  descriptionStartY: 528,
-  descriptionRowHeight: 13,
-  descriptionX: 52,
+  // Service Description area - description text starts inside the box
+  descriptionStartY: 540,
+  descriptionRowHeight: 14,
+  descriptionX: 72,                      // Left edge of description box
+  descriptionMaxX: 410,                  // Right edge before hours columns
   maxDescriptionRows: 10,
   
-  // Hours columns (based on template)
+  // Hours columns (RT, TT, FT, OT) - centered in each column
   hoursColumns: {
-    rt: { x: 448 },  // RT column
-    tt: { x: 480 },  // TT column
-    ft: { x: 512 },  // FT column
-    ot: { x: 545 },  // OT column
+    rt: { x: 427 },   // RT column center
+    tt: { x: 459 },   // TT column center
+    ft: { x: 491 },   // FT column center
+    ot: { x: 523 },   // OT column center
   },
   
-  // Totals row (Total Time row)
-  totalsY: 378,
+  // Total Time row
+  totalsY: 398,
+  totalTimeLabel: { x: 375 },
   
-  // RT Rate and FT Rate labels
-  rtRateY: 363,
-  rtRateX: 95,
-  ftRateX: 195,
+  // RT Rate and FT Rate (below description box)
+  rtRateValue: { x: 140, y: 380 },       // After "RT Rate:"
+  ftRateValue: { x: 280, y: 380 },       // After "FT Rate:"
   
-  // Service Ticket Summary section
+  // Service Ticket Summary section (bottom right)
   summary: {
-    totalRt: { x: 545, y: 258 },
-    totalTt: { x: 545, y: 243 },
-    totalFt: { x: 545, y: 228 },
-    totalOt: { x: 545, y: 213 },
-    totalExpenses: { x: 545, y: 198 },
-    grandTotal: { x: 545, y: 178 },
+    totalRt: { x: 535, y: 252 },         // Right-aligned in Total RT row
+    totalTt: { x: 535, y: 237 },         // Right-aligned in Total TT row
+    totalFt: { x: 535, y: 222 },         // Right-aligned in Total FT row
+    totalOt: { x: 535, y: 207 },         // Right-aligned in Total OT row
+    totalExpenses: { x: 535, y: 192 },   // Right-aligned in Total Expenses row
+    grandTotal: { x: 535, y: 172 },      // Right-aligned in TOTAL SERVICE TICKET row
   },
   
-  // Customer Approval / Coding
-  afeValue: { x: 95, y: 233 },
-  ccValue: { x: 95, y: 213 },
+  // Customer Approval / Coding (bottom left)
+  afeValue: { x: 100, y: 223 },          // After "AFE:"
+  ccValue: { x: 100, y: 203 },           // After "CC:"
 };
 
 /**
@@ -184,127 +187,109 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     
     if (templateLoaded) {
       if (pageNum === 1) {
-        // Use the first page of the template
         page = pdfDoc.getPages()[0];
       } else {
-        // Copy the template page for additional pages
         const [copiedPage] = await pdfDoc.copyPages(pdfDoc, [0]);
         page = pdfDoc.addPage(copiedPage);
       }
     } else {
-      // Create a blank page if no template
       page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
     }
     
-    // === TICKET NUMBER ===
+    // === TICKET NUMBER (top right, after "Ticket:" label) ===
     const displayTicketNumber = totalPages > 1 ? `${ticketNumber} (${pageNum}/${totalPages})` : ticketNumber;
     page.drawText(displayTicketNumber, {
       x: LAYOUT.ticketNumber.x,
       y: LAYOUT.ticketNumber.y,
-      size: 10,
+      size: 9,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
     
-    // === CUSTOMER SECTION (right side) ===
-    // Customer Name
+    // === CUSTOMER SECTION (right side - data in input boxes) ===
     page.drawText(customer.name || '', {
       x: LAYOUT.customerName.x,
       y: LAYOUT.customerName.y,
-      size: 9,
-      font,
-      color: rgb(0, 0, 0),
-    });
-    
-    // Billing Address (combine address, city, state, zip)
-    const billingAddress = [
-      customer.address,
-      customer.city && customer.state ? `${customer.city}, ${customer.state}` : customer.city || customer.state,
-      customer.zip_code
-    ].filter(Boolean).join(' ');
-    
-    page.drawText(billingAddress || '', {
-      x: LAYOUT.billingAddress.x,
-      y: LAYOUT.billingAddress.y,
       size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // Contact Name
+    // Billing Address - just the street address on first line
+    page.drawText(customer.address || '', {
+      x: LAYOUT.billingAddress.x,
+      y: LAYOUT.billingAddress.y,
+      size: 7,
+      font,
+      color: rgb(0, 0, 0),
+    });
+    
+    // Contact Name (employee who did the work)
     page.drawText(ticket.userName || '', {
       x: LAYOUT.contactName.x,
       y: LAYOUT.contactName.y,
-      size: 9,
+      size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // Contact Phone
     page.drawText(customer.phone || '', {
       x: LAYOUT.contactPhone.x,
       y: LAYOUT.contactPhone.y,
-      size: 9,
+      size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // Contact Email
     page.drawText(customer.email || '', {
       x: LAYOUT.contactEmail.x,
       y: LAYOUT.contactEmail.y,
-      size: 8,
+      size: 7,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // Service Location
     page.drawText(customer.service_location || customer.address || '', {
       x: LAYOUT.serviceLocation.x,
       y: LAYOUT.serviceLocation.y,
-      size: 8,
+      size: 7,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // PO/CC/AFE
     page.drawText(customer.po_number || '', {
       x: LAYOUT.poCcAfe.x,
       y: LAYOUT.poCcAfe.y,
-      size: 9,
+      size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
     // === SERVICE INFO SECTION (left side) ===
-    // Job ID
     page.drawText(ticket.projectNumber || 'N/A', {
       x: LAYOUT.jobId.x,
       y: LAYOUT.jobId.y,
-      size: 9,
+      size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // Job Type (Equipment - always AUTO)
     page.drawText('AUTO', {
       x: LAYOUT.jobType.x,
       y: LAYOUT.jobType.y,
-      size: 9,
+      size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // Tech Name
     page.drawText(ticket.userName || '', {
       x: LAYOUT.techName.x,
       y: LAYOUT.techName.y,
-      size: 9,
+      size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // Date
     const dateStr = new Date(ticket.date).toLocaleDateString('en-US', { 
       month: '2-digit', 
       day: '2-digit', 
@@ -313,7 +298,7 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     page.drawText(dateStr, {
       x: LAYOUT.date.x,
       y: LAYOUT.date.y,
-      size: 9,
+      size: 8,
       font,
       color: rgb(0, 0, 0),
     });
@@ -329,7 +314,7 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
       page.drawText(item.description, {
         x: LAYOUT.descriptionX,
         y: rowY,
-        size: 8,
+        size: 7,
         font,
         color: rgb(0, 0, 0),
       });
@@ -363,7 +348,7 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     page.drawText(rtTotal.toFixed(2), {
       x: LAYOUT.hoursColumns.rt.x,
       y: LAYOUT.totalsY,
-      size: 9,
+      size: 8,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
@@ -371,7 +356,7 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     page.drawText(ttTotal.toFixed(2), {
       x: LAYOUT.hoursColumns.tt.x,
       y: LAYOUT.totalsY,
-      size: 9,
+      size: 8,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
@@ -379,7 +364,7 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     page.drawText(ftTotal.toFixed(2), {
       x: LAYOUT.hoursColumns.ft.x,
       y: LAYOUT.totalsY,
-      size: 9,
+      size: 8,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
@@ -387,112 +372,104 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     page.drawText(otTotal.toFixed(2), {
       x: LAYOUT.hoursColumns.ot.x,
       y: LAYOUT.totalsY,
-      size: 9,
+      size: 8,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
     
-    // Total hours sum
+    // Total hours sum (far right)
     const totalHours = rtTotal + ttTotal + ftTotal + otTotal;
     page.drawText(totalHours.toFixed(2), {
-      x: 545,
+      x: 555,
       y: LAYOUT.totalsY,
-      size: 9,
+      size: 8,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
     
     // === RT Rate and FT Rate values ===
     page.drawText(`$${rtRate.toFixed(2)}`, {
-      x: LAYOUT.rtRateX,
-      y: LAYOUT.rtRateY,
+      x: LAYOUT.rtRateValue.x,
+      y: LAYOUT.rtRateValue.y,
       size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
     page.drawText(`$${ftRate.toFixed(2)}`, {
-      x: LAYOUT.ftRateX,
-      y: LAYOUT.rtRateY,
+      x: LAYOUT.ftRateValue.x,
+      y: LAYOUT.ftRateValue.y,
       size: 8,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // === SERVICE TICKET SUMMARY (only meaningful values on last page) ===
+    // === SERVICE TICKET SUMMARY (bottom right) ===
     if (pageNum === totalPages) {
-      // Total RT
       page.drawText(`$${rtAmount.toFixed(2)}`, {
         x: LAYOUT.summary.totalRt.x,
         y: LAYOUT.summary.totalRt.y,
-        size: 9,
+        size: 8,
         font,
         color: rgb(0, 0, 0),
       });
       
-      // Total TT
       page.drawText(`$${ttAmount.toFixed(2)}`, {
         x: LAYOUT.summary.totalTt.x,
         y: LAYOUT.summary.totalTt.y,
-        size: 9,
+        size: 8,
         font,
         color: rgb(0, 0, 0),
       });
       
-      // Total FT
       page.drawText(`$${ftAmount.toFixed(2)}`, {
         x: LAYOUT.summary.totalFt.x,
         y: LAYOUT.summary.totalFt.y,
-        size: 9,
+        size: 8,
         font,
         color: rgb(0, 0, 0),
       });
       
-      // Total OT
       page.drawText(`$${otAmount.toFixed(2)}`, {
         x: LAYOUT.summary.totalOt.x,
         y: LAYOUT.summary.totalOt.y,
-        size: 9,
+        size: 8,
         font,
         color: rgb(0, 0, 0),
       });
       
-      // Total Expenses
       page.drawText('$0.00', {
         x: LAYOUT.summary.totalExpenses.x,
         y: LAYOUT.summary.totalExpenses.y,
-        size: 9,
+        size: 8,
         font,
         color: rgb(0, 0, 0),
       });
       
-      // Grand Total
       page.drawText(`$${grandTotal.toFixed(2)}`, {
         x: LAYOUT.summary.grandTotal.x,
         y: LAYOUT.summary.grandTotal.y,
-        size: 10,
+        size: 9,
         font: boldFont,
         color: rgb(0, 0, 0),
       });
       
       // Customer Approval / Coding
-      // AFE value (use PO number)
       if (customer.po_number) {
         page.drawText(customer.po_number, {
           x: LAYOUT.afeValue.x,
           y: LAYOUT.afeValue.y,
-          size: 9,
+          size: 8,
           font,
           color: rgb(0, 0, 0),
         });
       }
       
-      // CC value (use location code or leave blank)
       if (customer.location_code) {
         page.drawText(customer.location_code, {
           x: LAYOUT.ccValue.x,
           y: LAYOUT.ccValue.y,
-          size: 9,
+          size: 8,
           font,
           color: rgb(0, 0, 0),
         });
