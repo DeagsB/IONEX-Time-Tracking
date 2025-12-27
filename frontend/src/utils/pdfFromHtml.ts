@@ -84,17 +84,21 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
       box-sizing: border-box;
     ">
       <!-- Header -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-        <div style="width: 200px;">
-          <img src="/ionex-logo.png" alt="IONEX" style="width: 180px; height: auto;" onerror="this.style.display='none'" />
-          <div style="font-size: 18pt; font-weight: bold; color: #c00; margin-top: 5px;">IONEX</div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="width: 180px;">
+          <img 
+            src="/ionex-logo.png" 
+            alt="IONEX Systems" 
+            style="max-width: 180px; max-height: 60px; height: auto;" 
+            onerror="this.onerror=null; this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%2250%22><text x=%220%22 y=%2235%22 font-family=%22Arial%22 font-size=%2224%22 font-weight=%22bold%22 fill=%22%23cc0000%22>IONEX</text></svg>';"
+          />
         </div>
-        <div style="text-align: center; flex: 1;">
-          <div style="font-size: 14pt; font-weight: bold;">SERVICE TICKET</div>
+        <div style="flex: 1; text-align: center;">
+          <div style="font-size: 16pt; font-weight: bold; letter-spacing: 2px;">SERVICE TICKET</div>
         </div>
-        <div style="text-align: right; width: 120px;">
+        <div style="width: 140px; text-align: right;">
           <div style="font-size: 8pt; color: #666;">Ticket:</div>
-          <div style="font-size: 11pt; font-weight: bold; border: 1px solid #000; padding: 2px 6px; display: inline-block;">
+          <div style="font-size: 11pt; font-weight: bold; border: 1px solid #000; padding: 4px 8px; display: inline-block; background: #f5f5f5;">
             ${ticket.ticketNumber || ticket.id.substring(0, 8).toUpperCase()}
           </div>
         </div>
