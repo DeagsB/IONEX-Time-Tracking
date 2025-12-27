@@ -334,7 +334,7 @@ export default function ServiceTickets() {
                   }}
                 >
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
-                    {generateTicketDisplayId(ticket)}
+                    {ticket.userInitials}_{new Date(ticket.date).getFullYear() % 100}-{ticket.customerName.substring(0, 3).toUpperCase()}
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-primary)' }}>
                     {new Date(ticket.date).toLocaleDateString('en-US', {
