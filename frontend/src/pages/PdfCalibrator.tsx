@@ -1,183 +1,191 @@
 import { useState, useRef, useEffect } from 'react';
 
-// Initial positions (current layout)
-const INITIAL_POSITIONS: { [key: string]: { x: number; y: number; label: string; color: string } } = {
-  ticketNumber: { x: 545, y: 755, label: 'Ticket #', color: '#ff6b6b' },
-  customerName: { x: 478, y: 688, label: 'Customer Name', color: '#4ecdc4' },
-  billingAddress: { x: 478, y: 672, label: 'Billing Address', color: '#4ecdc4' },
-  contactName: { x: 478, y: 640, label: 'Contact Name', color: '#4ecdc4' },
-  contactPhone: { x: 478, y: 624, label: 'Contact Phone', color: '#4ecdc4' },
-  contactEmail: { x: 478, y: 608, label: 'Contact Email', color: '#4ecdc4' },
-  serviceLocation: { x: 478, y: 592, label: 'Service Location', color: '#4ecdc4' },
-  poCcAfe: { x: 478, y: 576, label: 'PO/CC/AFE', color: '#4ecdc4' },
-  jobId: { x: 108, y: 622, label: 'Job ID', color: '#ffe66d' },
-  jobType: { x: 235, y: 622, label: 'Job Type', color: '#ffe66d' },
-  techName: { x: 108, y: 604, label: 'Tech', color: '#ffe66d' },
-  date: { x: 108, y: 586, label: 'Date', color: '#ffe66d' },
-  descriptionStart: { x: 75, y: 532, label: 'Desc Start', color: '#a29bfe' },
-  rtColumn: { x: 430, y: 532, label: 'RT Col', color: '#74b9ff' },
-  ttColumn: { x: 462, y: 532, label: 'TT Col', color: '#74b9ff' },
-  ftColumn: { x: 494, y: 532, label: 'FT Col', color: '#74b9ff' },
-  otColumn: { x: 526, y: 532, label: 'OT Col', color: '#74b9ff' },
-  totalsRow: { x: 430, y: 395, label: 'Totals Row', color: '#fd79a8' },
-  rtRate: { x: 145, y: 375, label: 'RT Rate', color: '#00cec9' },
-  ftRate: { x: 290, y: 375, label: 'FT Rate', color: '#00cec9' },
-  sumRt: { x: 528, y: 238, label: 'Sum RT', color: '#e17055' },
-  sumTt: { x: 528, y: 223, label: 'Sum TT', color: '#e17055' },
-  sumFt: { x: 528, y: 208, label: 'Sum FT', color: '#e17055' },
-  sumOt: { x: 528, y: 193, label: 'Sum OT', color: '#e17055' },
-  sumExpenses: { x: 528, y: 178, label: 'Sum Expenses', color: '#e17055' },
-  grandTotal: { x: 528, y: 158, label: 'Grand Total', color: '#e17055' },
-  afeValue: { x: 105, y: 218, label: 'AFE', color: '#81ecec' },
-  ccValue: { x: 105, y: 198, label: 'CC', color: '#81ecec' },
+// Field definitions with bounding boxes (x, y is bottom-left corner in PDF coordinates)
+const INITIAL_FIELDS: { [key: string]: { x: number; y: number; width: number; height: number; label: string; color: string } } = {
+  ticketNumber: { x: 500, y: 748, width: 90, height: 14, label: 'Ticket #', color: '#ff6b6b' },
+  customerName: { x: 415, y: 688, width: 175, height: 12, label: 'Customer Name', color: '#4ecdc4' },
+  billingAddress: { x: 415, y: 672, width: 175, height: 12, label: 'Billing Address', color: '#4ecdc4' },
+  cityProvince: { x: 415, y: 656, width: 175, height: 12, label: 'City/Province', color: '#4ecdc4' },
+  postalCode: { x: 415, y: 640, width: 175, height: 12, label: 'Postal Code', color: '#4ecdc4' },
+  contactName: { x: 415, y: 624, width: 175, height: 12, label: 'Contact Name', color: '#4ecdc4' },
+  contactPhone: { x: 415, y: 608, width: 175, height: 12, label: 'Contact Phone', color: '#4ecdc4' },
+  contactEmail: { x: 415, y: 592, width: 175, height: 12, label: 'Contact Email', color: '#4ecdc4' },
+  serviceLocation: { x: 415, y: 576, width: 175, height: 12, label: 'Service Location', color: '#4ecdc4' },
+  poCcAfe: { x: 415, y: 560, width: 175, height: 12, label: 'PO/CC/AFE', color: '#4ecdc4' },
+  jobId: { x: 80, y: 622, width: 80, height: 12, label: 'Job ID', color: '#ffe66d' },
+  jobType: { x: 200, y: 622, width: 80, height: 12, label: 'Job Type', color: '#ffe66d' },
+  techName: { x: 80, y: 604, width: 160, height: 12, label: 'Tech', color: '#ffe66d' },
+  date: { x: 80, y: 586, width: 80, height: 12, label: 'Date', color: '#ffe66d' },
+  descRow1: { x: 55, y: 532, width: 350, height: 12, label: 'Desc Row 1', color: '#a29bfe' },
+  descRow2: { x: 55, y: 518, width: 350, height: 12, label: 'Desc Row 2', color: '#a29bfe' },
+  rtColumn: { x: 420, y: 532, width: 30, height: 12, label: 'RT', color: '#74b9ff' },
+  ttColumn: { x: 455, y: 532, width: 30, height: 12, label: 'TT', color: '#74b9ff' },
+  ftColumn: { x: 490, y: 532, width: 30, height: 12, label: 'FT', color: '#74b9ff' },
+  otColumn: { x: 525, y: 532, width: 30, height: 12, label: 'OT', color: '#74b9ff' },
+  totalRtHours: { x: 420, y: 395, width: 30, height: 12, label: 'Tot RT Hrs', color: '#fd79a8' },
+  totalTtHours: { x: 455, y: 395, width: 30, height: 12, label: 'Tot TT Hrs', color: '#fd79a8' },
+  totalFtHours: { x: 490, y: 395, width: 30, height: 12, label: 'Tot FT Hrs', color: '#fd79a8' },
+  totalOtHours: { x: 525, y: 395, width: 30, height: 12, label: 'Tot OT Hrs', color: '#fd79a8' },
+  rtRate: { x: 120, y: 375, width: 50, height: 12, label: 'RT Rate', color: '#00cec9' },
+  ftRate: { x: 265, y: 375, width: 50, height: 12, label: 'FT Rate', color: '#00cec9' },
+  sumRt: { x: 500, y: 238, width: 80, height: 12, label: 'Sum RT $', color: '#e17055' },
+  sumTt: { x: 500, y: 223, width: 80, height: 12, label: 'Sum TT $', color: '#e17055' },
+  sumFt: { x: 500, y: 208, width: 80, height: 12, label: 'Sum FT $', color: '#e17055' },
+  sumOt: { x: 500, y: 193, width: 80, height: 12, label: 'Sum OT $', color: '#e17055' },
+  sumExpenses: { x: 500, y: 178, width: 80, height: 12, label: 'Sum Expenses', color: '#e17055' },
+  grandTotal: { x: 500, y: 158, width: 80, height: 14, label: 'Grand Total', color: '#e17055' },
+  afeValue: { x: 80, y: 218, width: 100, height: 12, label: 'AFE', color: '#81ecec' },
+  ccValue: { x: 80, y: 198, width: 100, height: 12, label: 'CC', color: '#81ecec' },
 };
 
 // PDF dimensions
 const PDF_WIDTH = 612;
 const PDF_HEIGHT = 792;
 
-// Grid snap size
 const GRID_SIZE = 5;
 
-// Snap value to grid
 const snapToGrid = (value: number): number => {
   return Math.round(value / GRID_SIZE) * GRID_SIZE;
 };
 
+type DragMode = 'move' | 'resize-right' | 'resize-bottom' | 'resize-corner' | null;
+
 export default function PdfCalibrator() {
-  const [positions, setPositions] = useState(INITIAL_POSITIONS);
+  const [fields, setFields] = useState(INITIAL_FIELDS);
   const [selectedField, setSelectedField] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
-  const [showGrid, setShowGrid] = useState(true);
-  const [gridSize, setGridSize] = useState(GRID_SIZE);
+  const [showGrid, setShowGrid] = useState(false);
+  const [opacity, setOpacity] = useState(0.4);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfContainerRef = useRef<HTMLDivElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [dragMode, setDragMode] = useState<DragMode>(null);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [fieldStart, setFieldStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
 
-  // Convert PDF coordinates to screen coordinates
-  const pdfToScreen = (x: number, y: number) => ({
+  // Convert PDF coordinates to screen coordinates (PDF y=0 is bottom)
+  const pdfToScreen = (x: number, y: number, height: number) => ({
     x: x * scale,
-    y: (PDF_HEIGHT - y) * scale, // Flip Y axis (PDF is bottom-up)
+    y: (PDF_HEIGHT - y - height) * scale,
   });
 
-  // Convert screen coordinates to PDF coordinates with grid snap
-  const screenToPdf = (screenX: number, screenY: number) => {
-    const rawX = screenX / scale;
-    const rawY = PDF_HEIGHT - screenY / scale;
-    return {
-      x: snapToGrid(rawX),
-      y: snapToGrid(rawY),
-    };
-  };
+  const screenToPdfDelta = (dx: number, dy: number) => ({
+    dx: snapToGrid(dx / scale),
+    dy: snapToGrid(-dy / scale), // Flip Y
+  });
 
-  const handleMouseDown = (e: React.MouseEvent, fieldKey: string) => {
+  const handleMouseDown = (e: React.MouseEvent, fieldKey: string, mode: DragMode) => {
     e.preventDefault();
     e.stopPropagation();
     setSelectedField(fieldKey);
-    setDragging(true);
-    
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    setDragOffset({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+    setDragMode(mode);
+    setDragStart({ x: e.clientX, y: e.clientY });
+    setFieldStart({
+      x: fields[fieldKey].x,
+      y: fields[fieldKey].y,
+      width: fields[fieldKey].width,
+      height: fields[fieldKey].height,
     });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragging || !selectedField || !pdfContainerRef.current) return;
+    if (!dragMode || !selectedField) return;
 
-    const containerRect = pdfContainerRef.current.getBoundingClientRect();
-    const screenX = e.clientX - containerRect.left - dragOffset.x + 8;
-    const screenY = e.clientY - containerRect.top - dragOffset.y + 8;
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    const { dx: pdfDx, dy: pdfDy } = screenToPdfDelta(dx, dy);
 
-    const pdfCoords = screenToPdf(screenX, screenY);
+    setFields((prev) => {
+      const field = { ...prev[selectedField] };
+      
+      if (dragMode === 'move') {
+        field.x = Math.max(0, Math.min(PDF_WIDTH - field.width, fieldStart.x + pdfDx));
+        field.y = Math.max(0, Math.min(PDF_HEIGHT - field.height, fieldStart.y + pdfDy));
+      } else if (dragMode === 'resize-right') {
+        field.width = Math.max(20, snapToGrid(fieldStart.width + pdfDx));
+      } else if (dragMode === 'resize-bottom') {
+        field.height = Math.max(8, snapToGrid(fieldStart.height - pdfDy));
+        field.y = fieldStart.y + pdfDy;
+      } else if (dragMode === 'resize-corner') {
+        field.width = Math.max(20, snapToGrid(fieldStart.width + pdfDx));
+        field.height = Math.max(8, snapToGrid(fieldStart.height - pdfDy));
+        field.y = fieldStart.y + pdfDy;
+      }
 
-    setPositions((prev) => ({
-      ...prev,
-      [selectedField]: {
-        ...prev[selectedField],
-        x: Math.max(0, Math.min(PDF_WIDTH, pdfCoords.x)),
-        y: Math.max(0, Math.min(PDF_HEIGHT, pdfCoords.y)),
-      },
-    }));
+      return { ...prev, [selectedField]: field };
+    });
   };
 
   const handleMouseUp = () => {
-    setDragging(false);
+    setDragMode(null);
   };
 
   // Generate code output
   const generateCode = () => {
-    const code = `// Updated PDF Layout Coordinates
+    const code = `// PDF Field Layout Coordinates (x, y = bottom-left corner)
 const LAYOUT = {
-  ticketNumber: { x: ${positions.ticketNumber.x}, y: ${positions.ticketNumber.y} },
+  ticketNumber: { x: ${fields.ticketNumber.x}, y: ${fields.ticketNumber.y}, w: ${fields.ticketNumber.width}, h: ${fields.ticketNumber.height} },
   
   // Customer section
-  customerName: { x: ${positions.customerName.x}, y: ${positions.customerName.y} },
-  billingAddress: { x: ${positions.billingAddress.x}, y: ${positions.billingAddress.y} },
-  contactName: { x: ${positions.contactName.x}, y: ${positions.contactName.y} },
-  contactPhone: { x: ${positions.contactPhone.x}, y: ${positions.contactPhone.y} },
-  contactEmail: { x: ${positions.contactEmail.x}, y: ${positions.contactEmail.y} },
-  serviceLocation: { x: ${positions.serviceLocation.x}, y: ${positions.serviceLocation.y} },
-  poCcAfe: { x: ${positions.poCcAfe.x}, y: ${positions.poCcAfe.y} },
+  customerName: { x: ${fields.customerName.x}, y: ${fields.customerName.y}, w: ${fields.customerName.width} },
+  billingAddress: { x: ${fields.billingAddress.x}, y: ${fields.billingAddress.y}, w: ${fields.billingAddress.width} },
+  cityProvince: { x: ${fields.cityProvince.x}, y: ${fields.cityProvince.y}, w: ${fields.cityProvince.width} },
+  postalCode: { x: ${fields.postalCode.x}, y: ${fields.postalCode.y}, w: ${fields.postalCode.width} },
+  contactName: { x: ${fields.contactName.x}, y: ${fields.contactName.y}, w: ${fields.contactName.width} },
+  contactPhone: { x: ${fields.contactPhone.x}, y: ${fields.contactPhone.y}, w: ${fields.contactPhone.width} },
+  contactEmail: { x: ${fields.contactEmail.x}, y: ${fields.contactEmail.y}, w: ${fields.contactEmail.width} },
+  serviceLocation: { x: ${fields.serviceLocation.x}, y: ${fields.serviceLocation.y}, w: ${fields.serviceLocation.width} },
+  poCcAfe: { x: ${fields.poCcAfe.x}, y: ${fields.poCcAfe.y}, w: ${fields.poCcAfe.width} },
   
   // Service Info
-  jobId: { x: ${positions.jobId.x}, y: ${positions.jobId.y} },
-  jobType: { x: ${positions.jobType.x}, y: ${positions.jobType.y} },
-  techName: { x: ${positions.techName.x}, y: ${positions.techName.y} },
-  date: { x: ${positions.date.x}, y: ${positions.date.y} },
+  jobId: { x: ${fields.jobId.x}, y: ${fields.jobId.y}, w: ${fields.jobId.width} },
+  jobType: { x: ${fields.jobType.x}, y: ${fields.jobType.y}, w: ${fields.jobType.width} },
+  techName: { x: ${fields.techName.x}, y: ${fields.techName.y}, w: ${fields.techName.width} },
+  date: { x: ${fields.date.x}, y: ${fields.date.y}, w: ${fields.date.width} },
   
-  // Description area
-  descriptionStartY: ${positions.descriptionStart.y},
-  descriptionX: ${positions.descriptionStart.x},
+  // Description rows
+  descRow1: { x: ${fields.descRow1.x}, y: ${fields.descRow1.y}, w: ${fields.descRow1.width} },
+  descRow2: { x: ${fields.descRow2.x}, y: ${fields.descRow2.y}, w: ${fields.descRow2.width} },
   
   // Hours columns
-  hoursColumns: {
-    rt: { x: ${positions.rtColumn.x} },
-    tt: { x: ${positions.ttColumn.x} },
-    ft: { x: ${positions.ftColumn.x} },
-    ot: { x: ${positions.otColumn.x} },
-  },
+  rtColumn: { x: ${fields.rtColumn.x}, y: ${fields.rtColumn.y}, w: ${fields.rtColumn.width} },
+  ttColumn: { x: ${fields.ttColumn.x}, y: ${fields.ttColumn.y}, w: ${fields.ttColumn.width} },
+  ftColumn: { x: ${fields.ftColumn.x}, y: ${fields.ftColumn.y}, w: ${fields.ftColumn.width} },
+  otColumn: { x: ${fields.otColumn.x}, y: ${fields.otColumn.y}, w: ${fields.otColumn.width} },
   
-  // Totals
-  totalsY: ${positions.totalsRow.y},
-  rtRateValue: { x: ${positions.rtRate.x}, y: ${positions.rtRate.y} },
-  ftRateValue: { x: ${positions.ftRate.x}, y: ${positions.ftRate.y} },
+  // Hour totals
+  totalRtHours: { x: ${fields.totalRtHours.x}, y: ${fields.totalRtHours.y} },
+  totalTtHours: { x: ${fields.totalTtHours.x}, y: ${fields.totalTtHours.y} },
+  totalFtHours: { x: ${fields.totalFtHours.x}, y: ${fields.totalFtHours.y} },
+  totalOtHours: { x: ${fields.totalOtHours.x}, y: ${fields.totalOtHours.y} },
   
-  // Summary
-  summary: {
-    totalRt: { x: ${positions.sumRt.x}, y: ${positions.sumRt.y} },
-    totalTt: { x: ${positions.sumTt.x}, y: ${positions.sumTt.y} },
-    totalFt: { x: ${positions.sumFt.x}, y: ${positions.sumFt.y} },
-    totalOt: { x: ${positions.sumOt.x}, y: ${positions.sumOt.y} },
-    totalExpenses: { x: ${positions.sumExpenses.x}, y: ${positions.sumExpenses.y} },
-    grandTotal: { x: ${positions.grandTotal.x}, y: ${positions.grandTotal.y} },
-  },
+  // Rates
+  rtRate: { x: ${fields.rtRate.x}, y: ${fields.rtRate.y} },
+  ftRate: { x: ${fields.ftRate.x}, y: ${fields.ftRate.y} },
+  
+  // Summary amounts
+  sumRt: { x: ${fields.sumRt.x}, y: ${fields.sumRt.y} },
+  sumTt: { x: ${fields.sumTt.x}, y: ${fields.sumTt.y} },
+  sumFt: { x: ${fields.sumFt.x}, y: ${fields.sumFt.y} },
+  sumOt: { x: ${fields.sumOt.x}, y: ${fields.sumOt.y} },
+  sumExpenses: { x: ${fields.sumExpenses.x}, y: ${fields.sumExpenses.y} },
+  grandTotal: { x: ${fields.grandTotal.x}, y: ${fields.grandTotal.y} },
   
   // Customer Approval
-  afeValue: { x: ${positions.afeValue.x}, y: ${positions.afeValue.y} },
-  ccValue: { x: ${positions.ccValue.x}, y: ${positions.ccValue.y} },
+  afeValue: { x: ${fields.afeValue.x}, y: ${fields.afeValue.y} },
+  ccValue: { x: ${fields.ccValue.x}, y: ${fields.ccValue.y} },
 };`;
     
     navigator.clipboard.writeText(code);
-    alert('Coordinates copied to clipboard! Share this with me to apply the changes.');
+    alert('Coordinates copied to clipboard!');
   };
 
-  // Calculate scale to fill available space
+  // Calculate scale based on window height
   useEffect(() => {
     const updateScale = () => {
-      if (containerRef.current) {
-        const containerHeight = window.innerHeight - 180;
-        const containerWidth = containerRef.current.offsetWidth - 320; // Account for sidebar
-        
-        const scaleByHeight = containerHeight / PDF_HEIGHT;
-        const scaleByWidth = containerWidth / PDF_WIDTH;
-        
-        // Use the larger scale that fits, but cap at 1.5
-        const newScale = Math.min(Math.max(scaleByHeight, scaleByWidth), 1.5);
-        setScale(newScale);
-      }
+      const availableHeight = window.innerHeight - 140;
+      const newScale = Math.min(availableHeight / PDF_HEIGHT, 1.3);
+      setScale(Math.max(0.8, newScale));
     };
     
     updateScale();
@@ -185,108 +193,63 @@ const LAYOUT = {
     return () => window.removeEventListener('resize', updateScale);
   }, []);
 
-  // Generate grid lines
-  const gridLines = [];
-  if (showGrid) {
-    // Vertical lines
-    for (let x = 0; x <= PDF_WIDTH; x += gridSize * 2) {
-      const screenX = x * scale;
-      gridLines.push(
-        <line
-          key={`v-${x}`}
-          x1={screenX}
-          y1={0}
-          x2={screenX}
-          y2={PDF_HEIGHT * scale}
-          stroke={x % 50 === 0 ? 'rgba(100, 100, 255, 0.3)' : 'rgba(100, 100, 255, 0.1)'}
-          strokeWidth={x % 50 === 0 ? 1 : 0.5}
-        />
-      );
+  // Scroll to top on mount
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
     }
-    // Horizontal lines
-    for (let y = 0; y <= PDF_HEIGHT; y += gridSize * 2) {
-      const screenY = y * scale;
-      gridLines.push(
-        <line
-          key={`h-${y}`}
-          x1={0}
-          y1={screenY}
-          x2={PDF_WIDTH * scale}
-          y2={screenY}
-          stroke={y % 50 === 0 ? 'rgba(255, 100, 100, 0.3)' : 'rgba(255, 100, 100, 0.1)'}
-          strokeWidth={y % 50 === 0 ? 1 : 0.5}
-        />
-      );
-    }
-  }
+  }, []);
 
   return (
-    <div style={{ padding: '20px', height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0, color: 'var(--text-primary)' }}>PDF Position Calibrator</h2>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+    <div style={{ padding: '16px', height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+        <h2 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '18px' }}>PDF Field Calibrator</h2>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
             <input
               type="checkbox"
               checked={showGrid}
               onChange={(e) => setShowGrid(e.target.checked)}
-              style={{ width: '16px', height: '16px' }}
             />
-            Show Grid
+            Grid
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Snap:
-            <select
-              value={gridSize}
-              onChange={(e) => setGridSize(Number(e.target.value))}
-              style={{
-                padding: '4px 8px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-primary)',
-              }}
-            >
-              <option value="1">1px</option>
-              <option value="5">5px</option>
-              <option value="10">10px</option>
-              <option value="25">25px</option>
-            </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+            Opacity:
+            <input
+              type="range"
+              min="0.1"
+              max="0.8"
+              step="0.1"
+              value={opacity}
+              onChange={(e) => setOpacity(Number(e.target.value))}
+              style={{ width: '60px' }}
+            />
           </label>
-          <button
-            className="button button-secondary"
-            onClick={() => setPositions(INITIAL_POSITIONS)}
-          >
+          <button className="button button-secondary" onClick={() => setFields(INITIAL_FIELDS)} style={{ padding: '6px 12px', fontSize: '12px' }}>
             Reset
           </button>
-          <button
-            className="button button-primary"
-            onClick={generateCode}
-            style={{ backgroundColor: '#4caf50', borderColor: '#4caf50' }}
-          >
+          <button className="button button-primary" onClick={generateCode} style={{ backgroundColor: '#4caf50', borderColor: '#4caf50', padding: '6px 12px', fontSize: '12px' }}>
             📋 Copy Coordinates
           </button>
         </div>
       </div>
 
-      <div ref={containerRef} style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
+      <div ref={containerRef} style={{ display: 'flex', gap: '16px', flex: 1, overflow: 'hidden' }}>
         {/* PDF Canvas */}
         <div
+          ref={scrollContainerRef}
           style={{
             flex: 1,
-            position: 'relative',
-            backgroundColor: '#1a1a2e',
+            backgroundColor: '#16213e',
             borderRadius: '8px',
             overflow: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            padding: '16px',
           }}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
-          {/* PDF Container */}
           <div
             ref={pdfContainerRef}
             style={{
@@ -294,13 +257,13 @@ const LAYOUT = {
               height: PDF_HEIGHT * scale,
               position: 'relative',
               backgroundColor: '#fff',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-              flexShrink: 0,
+              boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+              margin: '0 auto',
             }}
           >
             {/* PDF Background */}
             <iframe
-              src="/templates/Service-Ticket-Example.pdf#toolbar=0&navpanes=0"
+              src="/templates/Service-Ticket-Example.pdf#toolbar=0&navpanes=0&scrollbar=0"
               style={{
                 width: '100%',
                 height: '100%',
@@ -321,58 +284,121 @@ const LAYOUT = {
                   pointerEvents: 'none',
                 }}
               >
-                {gridLines}
+                {Array.from({ length: Math.ceil(PDF_WIDTH / 50) + 1 }, (_, i) => (
+                  <line
+                    key={`v-${i}`}
+                    x1={i * 50 * scale}
+                    y1={0}
+                    x2={i * 50 * scale}
+                    y2={PDF_HEIGHT * scale}
+                    stroke="rgba(0,100,255,0.3)"
+                    strokeWidth={1}
+                  />
+                ))}
+                {Array.from({ length: Math.ceil(PDF_HEIGHT / 50) + 1 }, (_, i) => (
+                  <line
+                    key={`h-${i}`}
+                    x1={0}
+                    y1={i * 50 * scale}
+                    x2={PDF_WIDTH * scale}
+                    y2={i * 50 * scale}
+                    stroke="rgba(255,0,100,0.3)"
+                    strokeWidth={1}
+                  />
+                ))}
               </svg>
             )}
 
-            {/* Draggable markers */}
-            {Object.entries(positions).map(([key, pos]) => {
-              const screenPos = pdfToScreen(pos.x, pos.y);
+            {/* Field rectangles */}
+            {Object.entries(fields).map(([key, field]) => {
+              const screenPos = pdfToScreen(field.x, field.y, field.height);
               const isSelected = selectedField === key;
+              const screenWidth = field.width * scale;
+              const screenHeight = field.height * scale;
+
               return (
                 <div
                   key={key}
-                  onMouseDown={(e) => handleMouseDown(e, key)}
                   style={{
                     position: 'absolute',
-                    left: screenPos.x - 8,
-                    top: screenPos.y - 8,
-                    width: 16,
-                    height: 16,
-                    backgroundColor: pos.color,
-                    borderRadius: '50%',
-                    cursor: dragging && isSelected ? 'grabbing' : 'grab',
-                    border: isSelected ? '3px solid #fff' : '2px solid rgba(0,0,0,0.4)',
-                    boxShadow: isSelected 
-                      ? '0 0 12px rgba(255,255,255,0.8), 0 4px 8px rgba(0,0,0,0.4)' 
-                      : '0 2px 6px rgba(0,0,0,0.3)',
+                    left: screenPos.x,
+                    top: screenPos.y,
+                    width: screenWidth,
+                    height: screenHeight,
+                    backgroundColor: `${field.color}${Math.round(opacity * 255).toString(16).padStart(2, '0')}`,
+                    border: `2px solid ${field.color}`,
+                    borderRadius: '2px',
+                    cursor: dragMode === 'move' ? 'grabbing' : 'grab',
+                    boxShadow: isSelected ? `0 0 0 2px #fff, 0 0 8px ${field.color}` : 'none',
                     zIndex: isSelected ? 100 : 10,
-                    transition: isSelected ? 'none' : 'box-shadow 0.2s',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    overflow: 'hidden',
                   }}
-                  title={`${pos.label} (${pos.x}, ${pos.y})`}
+                  onMouseDown={(e) => handleMouseDown(e, key, 'move')}
+                  onClick={() => setSelectedField(key)}
                 >
+                  {/* Field label */}
+                  <span
+                    style={{
+                      fontSize: Math.max(8, Math.min(10, screenHeight - 2)),
+                      fontWeight: 'bold',
+                      color: '#000',
+                      textShadow: '0 0 2px #fff, 0 0 2px #fff',
+                      whiteSpace: 'nowrap',
+                      pointerEvents: 'none',
+                      userSelect: 'none',
+                    }}
+                  >
+                    {field.label}
+                  </span>
+
+                  {/* Resize handles (only show when selected) */}
                   {isSelected && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: -28,
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        backgroundColor: 'rgba(0,0,0,0.9)',
-                        color: '#fff',
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        whiteSpace: 'nowrap',
-                        fontFamily: 'monospace',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      {pos.x}, {pos.y}
-                    </div>
+                    <>
+                      {/* Right edge resize */}
+                      <div
+                        onMouseDown={(e) => handleMouseDown(e, key, 'resize-right')}
+                        style={{
+                          position: 'absolute',
+                          right: -4,
+                          top: 0,
+                          width: 8,
+                          height: '100%',
+                          cursor: 'ew-resize',
+                          backgroundColor: 'transparent',
+                        }}
+                      />
+                      {/* Bottom edge resize */}
+                      <div
+                        onMouseDown={(e) => handleMouseDown(e, key, 'resize-bottom')}
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          bottom: -4,
+                          width: '100%',
+                          height: 8,
+                          cursor: 'ns-resize',
+                          backgroundColor: 'transparent',
+                        }}
+                      />
+                      {/* Corner resize */}
+                      <div
+                        onMouseDown={(e) => handleMouseDown(e, key, 'resize-corner')}
+                        style={{
+                          position: 'absolute',
+                          right: -4,
+                          bottom: -4,
+                          width: 10,
+                          height: 10,
+                          cursor: 'nwse-resize',
+                          backgroundColor: '#fff',
+                          border: `2px solid ${field.color}`,
+                          borderRadius: '2px',
+                        }}
+                      />
+                    </>
                   )}
                 </div>
               );
@@ -380,171 +406,62 @@ const LAYOUT = {
           </div>
         </div>
 
-        {/* Field List */}
+        {/* Field List Sidebar */}
         <div
           style={{
-            width: '300px',
+            width: '260px',
             backgroundColor: 'var(--bg-secondary)',
             borderRadius: '8px',
-            padding: '16px',
+            padding: '12px',
             overflowY: 'auto',
             flexShrink: 0,
           }}
         >
-          <h3 style={{ margin: '0 0 16px 0', color: 'var(--text-primary)', fontSize: '14px' }}>
-            Field Positions
-          </h3>
+          <h3 style={{ margin: '0 0 12px 0', color: 'var(--text-primary)', fontSize: '13px' }}>Fields</h3>
           
-          {Object.entries(positions).map(([key, pos]) => (
+          {Object.entries(fields).map(([key, field]) => (
             <div
               key={key}
               onClick={() => setSelectedField(key)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                padding: '10px',
-                marginBottom: '4px',
-                borderRadius: '6px',
+                padding: '8px',
+                marginBottom: '2px',
+                borderRadius: '4px',
                 backgroundColor: selectedField === key ? 'var(--primary-light)' : 'transparent',
                 cursor: 'pointer',
-                transition: 'background-color 0.2s',
-                border: selectedField === key ? `2px solid ${pos.color}` : '2px solid transparent',
+                border: selectedField === key ? `2px solid ${field.color}` : '2px solid transparent',
               }}
             >
               <div
                 style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: '50%',
-                  backgroundColor: pos.color,
-                  marginRight: '10px',
+                  width: 12,
+                  height: 12,
+                  borderRadius: '2px',
+                  backgroundColor: field.color,
+                  marginRight: '8px',
                   flexShrink: 0,
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                 }}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                  {pos.label}
+                <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                  {field.label}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-                  x: {pos.x}, y: {pos.y}
+                <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                  {field.x}, {field.y} | {field.width}×{field.height}
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: '3px' }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPositions((prev) => ({
-                      ...prev,
-                      [key]: { ...prev[key], x: snapToGrid(prev[key].x - gridSize) },
-                    }));
-                  }}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  title="Move left"
-                >
-                  ←
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPositions((prev) => ({
-                      ...prev,
-                      [key]: { ...prev[key], x: snapToGrid(prev[key].x + gridSize) },
-                    }));
-                  }}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  title="Move right"
-                >
-                  →
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPositions((prev) => ({
-                      ...prev,
-                      [key]: { ...prev[key], y: snapToGrid(prev[key].y + gridSize) },
-                    }));
-                  }}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  title="Move up"
-                >
-                  ↑
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPositions((prev) => ({
-                      ...prev,
-                      [key]: { ...prev[key], y: snapToGrid(prev[key].y - gridSize) },
-                    }));
-                  }}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  title="Move down"
-                >
-                  ↓
-                </button>
               </div>
             </div>
           ))}
           
-          <div style={{ marginTop: '20px', padding: '12px', backgroundColor: 'var(--bg-primary)', borderRadius: '6px' }}>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-              💡 <strong>Tips:</strong>
-            </div>
-            <ul style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0, paddingLeft: '16px', lineHeight: '1.6' }}>
-              <li>Drag dots to position fields</li>
-              <li>Positions snap to grid ({gridSize}px)</li>
-              <li>Use arrow buttons for fine-tuning</li>
-              <li>Toggle grid visibility above</li>
-              <li>Click "Copy Coordinates" when done</li>
+          <div style={{ marginTop: '16px', padding: '10px', backgroundColor: 'var(--bg-primary)', borderRadius: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
+            <strong>How to use:</strong>
+            <ul style={{ margin: '6px 0 0 0', paddingLeft: '14px', lineHeight: '1.5' }}>
+              <li>Drag boxes to move them</li>
+              <li>Drag edges/corner to resize</li>
+              <li>Adjust opacity slider to see PDF</li>
+              <li>Copy coordinates when done</li>
             </ul>
           </div>
         </div>
