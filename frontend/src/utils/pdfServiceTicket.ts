@@ -56,12 +56,12 @@ const LAYOUT = {
   
   // Service Ticket Summary section (bottom right)
   summary: {
-    totalRt: { x: 558, y: 248 },         // Right-aligned in Total RT row
-    totalTt: { x: 558, y: 233 },         // Right-aligned in Total TT row
-    totalFt: { x: 558, y: 218 },         // Right-aligned in Total FT row
-    totalOt: { x: 558, y: 203 },         // Right-aligned in Total OT row
-    totalExpenses: { x: 558, y: 188 },   // Right-aligned in Total Expenses row
-    grandTotal: { x: 558, y: 168 },      // Right-aligned in TOTAL SERVICE TICKET row
+    totalRt: { x: 528, y: 238 },         // Right-aligned in Total RT row
+    totalTt: { x: 528, y: 223 },         // Right-aligned in Total TT row
+    totalFt: { x: 528, y: 208 },         // Right-aligned in Total FT row
+    totalOt: { x: 528, y: 193 },         // Right-aligned in Total OT row
+    totalExpenses: { x: 528, y: 178 },   // Right-aligned in Total Expenses row
+    grandTotal: { x: 528, y: 158 },      // Right-aligned in TOTAL SERVICE TICKET row
   },
   
   // Customer Approval / Coding (bottom left)
