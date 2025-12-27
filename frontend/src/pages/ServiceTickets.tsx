@@ -47,6 +47,10 @@ export default function ServiceTickets() {
   
   // Generated ticket number for display
   const [displayTicketNumber, setDisplayTicketNumber] = useState<string>('');
+  
+  // Bulk selection state
+  const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
+  const [isBulkExporting, setIsBulkExporting] = useState(false);
 
   // Round to nearest 0.5 hour (always round up)
   const roundToHalfHour = (hours: number): number => {
@@ -167,6 +171,165 @@ export default function ServiceTickets() {
       alert('Failed to export service ticket Excel.');
     } finally {
       setIsExportingExcel(false);
+    }
+  };
+
+  // Toggle selection for a ticket
+  const toggleTicketSelection = (ticketId: string) => {
+    setSelectedTicketIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(ticketId)) {
+        newSet.delete(ticketId);
+      } else {
+        newSet.add(ticketId);
+      }
+      return newSet;
+    });
+  };
+
+  // Select/deselect all tickets
+  const toggleSelectAll = () => {
+    if (selectedTicketIds.size === filteredTickets.length) {
+      setSelectedTicketIds(new Set());
+    } else {
+      setSelectedTicketIds(new Set(filteredTickets.map(t => t.id)));
+    }
+  };
+
+  // Get ticket by ID from filtered tickets
+  const getTicketById = (id: string) => filteredTickets.find(t => t.id === id);
+
+  // Bulk export to Excel
+  const handleBulkExportExcel = async () => {
+    setIsBulkExporting(true);
+    try {
+      const ticketsToExport = Array.from(selectedTicketIds).map(id => getTicketById(id)).filter(Boolean) as (ServiceTicket & { displayTicketNumber: string })[];
+      
+      for (const ticket of ticketsToExport) {
+        // Check if a ticket number already exists
+        const existingRecord = existingTickets?.find(
+          et => et.date === ticket.date && 
+                et.user_id === ticket.userId && 
+                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+        );
+        
+        let ticketNumber: string;
+        
+        if (existingRecord?.ticket_number) {
+          ticketNumber = existingRecord.ticket_number;
+        } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
+          ticketNumber = ticket.displayTicketNumber;
+        } else {
+          // Generate a new ticket number
+          ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+          
+          // Save the ticket record
+          const year = new Date().getFullYear() % 100;
+          const sequenceMatch = ticketNumber.match(/\d{3}$/);
+          const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+          
+          const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+          const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+          const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+          const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+          const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+          const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+          
+          await serviceTicketsService.createTicketRecord({
+            ticketNumber,
+            employeeInitials: ticket.userInitials,
+            year,
+            sequenceNumber,
+            date: ticket.date,
+            customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+            userId: ticket.userId,
+            projectId: ticket.projectId,
+            totalHours: ticket.totalHours,
+            totalAmount,
+          });
+        }
+        
+        const ticketWithNumber = { ...ticket, ticketNumber };
+        await downloadExcelServiceTicket(ticketWithNumber);
+        
+        // Small delay between exports to avoid overwhelming the browser
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      setSelectedTicketIds(new Set());
+      alert(`Successfully exported ${ticketsToExport.length} Excel files!`);
+    } catch (error) {
+      console.error('Bulk Excel export error:', error);
+      alert('Error during bulk export. Some files may have been exported.');
+    } finally {
+      setIsBulkExporting(false);
+    }
+  };
+
+  // Bulk export to PDF
+  const handleBulkExportPdf = async () => {
+    setIsBulkExporting(true);
+    try {
+      const ticketsToExport = Array.from(selectedTicketIds).map(id => getTicketById(id)).filter(Boolean) as (ServiceTicket & { displayTicketNumber: string })[];
+      
+      for (const ticket of ticketsToExport) {
+        // Check if a ticket number already exists
+        const existingRecord = existingTickets?.find(
+          et => et.date === ticket.date && 
+                et.user_id === ticket.userId && 
+                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+        );
+        
+        let ticketNumber: string;
+        
+        if (existingRecord?.ticket_number) {
+          ticketNumber = existingRecord.ticket_number;
+        } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
+          ticketNumber = ticket.displayTicketNumber;
+        } else {
+          // Generate a new ticket number
+          ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+          
+          // Save the ticket record
+          const year = new Date().getFullYear() % 100;
+          const sequenceMatch = ticketNumber.match(/\d{3}$/);
+          const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+          
+          const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+          const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+          const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+          const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+          const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+          const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+          
+          await serviceTicketsService.createTicketRecord({
+            ticketNumber,
+            employeeInitials: ticket.userInitials,
+            year,
+            sequenceNumber,
+            date: ticket.date,
+            customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+            userId: ticket.userId,
+            projectId: ticket.projectId,
+            totalHours: ticket.totalHours,
+            totalAmount,
+          });
+        }
+        
+        const ticketWithNumber = { ...ticket, ticketNumber };
+        await downloadPdfFromHtml(ticketWithNumber);
+        
+        // Small delay between exports to avoid overwhelming the browser
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      setSelectedTicketIds(new Set());
+      alert(`Successfully exported ${ticketsToExport.length} PDF files!`);
+    } catch (error) {
+      console.error('Bulk PDF export error:', error);
+      alert('Error during bulk export. Some files may have been exported.');
+    } finally {
+      setIsBulkExporting(false);
     }
   };
 
@@ -375,10 +538,87 @@ export default function ServiceTickets() {
           </p>
         </div>
       ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
+        {/* Bulk Action Bar */}
+        {selectedTicketIds.size > 0 && (
+          <div style={{
+            backgroundColor: '#2563eb',
+            padding: '12px 20px',
+            borderRadius: '8px 8px 0 0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+          }}>
+            <span style={{ color: 'white', fontWeight: '500' }}>
+              {selectedTicketIds.size} ticket{selectedTicketIds.size > 1 ? 's' : ''} selected
+            </span>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={handleBulkExportExcel}
+                disabled={isBulkExporting}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#16a34a',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                  opacity: isBulkExporting ? 0.6 : 1,
+                }}
+              >
+                {isBulkExporting ? 'Exporting...' : '📊 Export All to Excel'}
+              </button>
+              <button
+                onClick={handleBulkExportPdf}
+                disabled={isBulkExporting}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                  opacity: isBulkExporting ? 0.6 : 1,
+                }}
+              >
+                {isBulkExporting ? 'Exporting...' : '📄 Export All to PDF'}
+              </button>
+              <button
+                onClick={() => setSelectedTicketIds(new Set())}
+                disabled={isBulkExporting}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Clear Selection
+              </button>
+            </div>
+          </div>
+        )}
+        
+        <div className="card" style={{ overflow: 'hidden', borderRadius: selectedTicketIds.size > 0 ? '0 0 8px 8px' : '8px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
+                <th style={{ padding: '16px', textAlign: 'center', width: '50px' }}>
+                  <input
+                    type="checkbox"
+                    checked={filteredTickets.length > 0 && selectedTicketIds.size === filteredTickets.length}
+                    onChange={toggleSelectAll}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#c770f0' }}
+                    title="Select all"
+                  />
+                </th>
                 <th style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Ticket ID
                 </th>
@@ -456,15 +696,24 @@ export default function ServiceTickets() {
                     borderBottom: '1px solid var(--border-color)',
                     transition: 'background-color 0.2s',
                     cursor: 'pointer',
+                    backgroundColor: selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : 'var(--hover-bg)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : 'transparent';
                   }}
                   onClick={handleRowClick}
                 >
+                  <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTicketIds.has(ticket.id)}
+                      onChange={() => toggleTicketSelection(ticket.id)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#c770f0' }}
+                    />
+                  </td>
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
                     {ticket.displayTicketNumber}
                   </td>
