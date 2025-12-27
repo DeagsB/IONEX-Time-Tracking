@@ -5,7 +5,7 @@ import { serviceTicketsService, customersService, employeesService } from '../se
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
-import { downloadPdfServiceTicket } from '../utils/pdfServiceTicket';
+import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
 import { supabase } from '../lib/supabaseClient';
 
 export default function ServiceTickets() {
@@ -56,7 +56,7 @@ export default function ServiceTickets() {
       const ticketNumber = ticket.ticketNumber || displayTicketNumber;
       const ticketWithNumber = { ...ticket, ticketNumber };
       
-      await downloadPdfServiceTicket(ticketWithNumber);
+      await downloadPdfFromHtml(ticketWithNumber);
     } catch (error) {
       console.error('PDF export error:', error);
       alert('Failed to export service ticket PDF. Check console for details.');
