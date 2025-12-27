@@ -23,7 +23,6 @@ export default function ServiceTickets() {
   
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   
   // Editable ticket fields state
@@ -783,7 +782,7 @@ export default function ServiceTickets() {
                   className="button button-secondary"
                   onClick={() => { setSelectedTicket(null); setEditableTicket(null); }}
                   style={{ padding: '10px 24px' }}
-                  disabled={isExportingPdf || isExportingExcel}
+                  disabled={isExportingExcel}
                 >
                   Close
                 </button>
@@ -819,41 +818,9 @@ export default function ServiceTickets() {
                     backgroundColor: '#4caf50',
                     borderColor: '#4caf50',
                   }}
-                  disabled={isExportingExcel || isExportingPdf}
+                  disabled={isExportingExcel}
                 >
                   {isExportingExcel ? 'Generating Excel...' : 'Export Excel'}
-                </button>
-                <button
-                  className="button button-primary"
-                  onClick={() => {
-                    // Create a modified ticket with the editable values
-                    const modifiedTicket: ServiceTicket = {
-                      ...selectedTicket,
-                      userName: editableTicket.techName,
-                      projectNumber: editableTicket.projectNumber,
-                      date: editableTicket.date,
-                      ticketNumber: displayTicketNumber,
-                      customerInfo: {
-                        ...selectedTicket.customerInfo,
-                        name: editableTicket.customerName,
-                        address: editableTicket.address,
-                        city: editableTicket.cityState.split(',')[0]?.trim() || '',
-                        state: editableTicket.cityState.split(',')[1]?.trim() || '',
-                        zip_code: editableTicket.zipCode,
-                        phone: editableTicket.phone,
-                        email: editableTicket.email,
-                        service_location: editableTicket.serviceLocation,
-                        location_code: editableTicket.locationCode,
-                        po_number: editableTicket.poNumber,
-                        approver_name: editableTicket.approverName,
-                      },
-                    };
-                    handleExportPdf(modifiedTicket);
-                  }}
-                  style={{ padding: '10px 24px' }}
-                  disabled={isExportingPdf || isExportingExcel}
-                >
-                  {isExportingPdf ? 'Generating PDF...' : 'Export PDF'}
                 </button>
               </div>
             </div>
