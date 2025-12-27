@@ -48,6 +48,11 @@ export default function ServiceTickets() {
   // Generated ticket number for display
   const [displayTicketNumber, setDisplayTicketNumber] = useState<string>('');
 
+  // Round to nearest 0.5 hour (always round up)
+  const roundToHalfHour = (hours: number): number => {
+    return Math.ceil(hours * 2) / 2;
+  };
+
   // Handler for exporting ticket as PDF
   const handleExportPdf = async (ticket: ServiceTicket) => {
     setIsExportingPdf(true);
@@ -730,10 +735,11 @@ export default function ServiceTickets() {
                           const entriesForType = selectedTicket.entries.filter(
                             (e) => (e.rate_type || 'Shop Time') === rateType
                           );
+                          const roundedTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
                           return (
                             <div key={rateType} style={{ marginBottom: '16px' }}>
                               <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', marginBottom: '8px' }}>
-                                {rateType} ({hours.toFixed(2)} hrs)
+                                {rateType} ({roundedTotal.toFixed(2)} hrs)
                               </h4>
                               <ul style={{ margin: 0, paddingLeft: '20px', color: 'rgba(255,255,255,0.8)' }}>
                                 {entriesForType.map((entry) => (
@@ -746,7 +752,7 @@ export default function ServiceTickets() {
                                       </span>
                                     )}
                                     <span style={{ fontWeight: '600', marginLeft: '8px', color: '#fff' }}>
-                                      {entry.hours.toFixed(2)} hrs
+                                      {roundToHalfHour(entry.hours).toFixed(2)} hrs
                                     </span>
                                   </li>
                                 ))}
@@ -761,12 +767,18 @@ export default function ServiceTickets() {
                     <div style={sectionStyle}>
                       <h3 style={sectionTitleStyle}>Hours Summary</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                        {Object.entries(selectedTicket.hoursByRateType).map(([rateType, hours]) => (
-                          <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>{rateType}:</span>
-                            <span style={{ fontSize: '14px', color: '#fff', fontWeight: '700' }}>{hours.toFixed(2)}</span>
-                          </div>
-                        ))}
+                        {Object.entries(selectedTicket.hoursByRateType).map(([rateType, hours]) => {
+                          const entriesForType = selectedTicket.entries.filter(
+                            (e) => (e.rate_type || 'Shop Time') === rateType
+                          );
+                          const roundedTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
+                          return (
+                            <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>{rateType}:</span>
+                              <span style={{ fontSize: '14px', color: '#fff', fontWeight: '700' }}>{roundedTotal.toFixed(2)}</span>
+                            </div>
+                          );
+                        })}
                         <div
                           style={{
                             display: 'flex',
@@ -780,7 +792,7 @@ export default function ServiceTickets() {
                         >
                           <span style={{ fontSize: '15px', color: '#fff', fontWeight: '700' }}>TOTAL HOURS:</span>
                           <span style={{ fontSize: '18px', color: '#c770f0', fontWeight: '700' }}>
-                            {selectedTicket.totalHours.toFixed(2)}
+                            {selectedTicket.entries.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0).toFixed(2)}
                           </span>
                         </div>
                       </div>
