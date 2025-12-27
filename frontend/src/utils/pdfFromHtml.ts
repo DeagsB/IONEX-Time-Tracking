@@ -53,7 +53,7 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
     const rateCode = getRateCode(entry.rate_type);
     const roundedHours = roundToHalfHour(entry.hours);
     descriptionLines.push({
-      text: desc.substring(0, 60),
+      text: desc, // Show full description without truncating
       rt: rateCode === 'RT' ? roundedHours : 0,
       tt: rateCode === 'TT' ? roundedHours : 0,
       ft: rateCode === 'FT' ? roundedHours : 0,
