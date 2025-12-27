@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { serviceTicketsService, customersService, employeesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
-import { downloadPdfServiceTicket } from '../utils/pdfServiceTicket';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { supabase } from '../lib/supabaseClient';
 
@@ -45,19 +44,6 @@ export default function ServiceTickets() {
   
   // Generated ticket number for display
   const [displayTicketNumber, setDisplayTicketNumber] = useState<string>('');
-
-  // Handler for exporting ticket as PDF
-  const handleExportPdf = async (ticket: ServiceTicket) => {
-    setIsExportingPdf(true);
-    try {
-      await downloadPdfServiceTicket(ticket);
-    } catch (error) {
-      console.error('PDF export error:', error);
-      alert('Failed to export service ticket PDF. Check console for details.');
-    } finally {
-      setIsExportingPdf(false);
-    }
-  };
 
   // Handler for exporting ticket as Excel
   const handleExportExcel = async (ticket: ServiceTicket) => {
