@@ -75,6 +75,15 @@ export default function Projects() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await projectsService.delete(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       name: '',
@@ -111,6 +120,12 @@ export default function Projects() {
       updateMutation.mutate({ id: editingProject.id, data: formData });
     } else {
       createMutation.mutate(formData);
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this project?')) {
+      deleteMutation.mutate(id);
     }
   };
 
@@ -320,10 +335,17 @@ export default function Projects() {
                 <td>
                   <button
                     className="button button-secondary"
-                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                    style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
                     onClick={() => handleEdit(project)}
                   >
                     Edit
+                  </button>
+                  <button
+                    className="button button-danger"
+                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                    onClick={() => handleDelete(project.id)}
+                  >
+                    Delete
                   </button>
                 </td>
               </tr>
