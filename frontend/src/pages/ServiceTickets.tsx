@@ -24,6 +24,24 @@ export default function ServiceTickets() {
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  
+  // Editable ticket fields state
+  const [editableTicket, setEditableTicket] = useState<{
+    customerName: string;
+    address: string;
+    cityState: string;
+    zipCode: string;
+    phone: string;
+    email: string;
+    contactName: string;
+    serviceLocation: string;
+    locationCode: string;
+    poNumber: string;
+    approverName: string;
+    techName: string;
+    projectNumber: string;
+    date: string;
+  } | null>(null);
 
   // Handler for exporting ticket as PDF
   const handleExportPdf = async (ticket: ServiceTicket) => {
@@ -350,7 +368,27 @@ export default function ServiceTickets() {
                   <td style={{ padding: '16px', textAlign: 'center' }}>
                     <button
                       className="button button-secondary"
-                      onClick={() => setSelectedTicket(ticket)}
+                      onClick={() => {
+                        setSelectedTicket(ticket);
+                        setEditableTicket({
+                          customerName: ticket.customerInfo.name || '',
+                          address: ticket.customerInfo.address || '',
+                          cityState: ticket.customerInfo.city && ticket.customerInfo.state 
+                            ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
+                            : ticket.customerInfo.city || ticket.customerInfo.state || '',
+                          zipCode: ticket.customerInfo.zip_code || '',
+                          phone: ticket.customerInfo.phone || '',
+                          email: ticket.customerInfo.email || '',
+                          contactName: ticket.userName || '',
+                          serviceLocation: ticket.customerInfo.service_location || ticket.customerInfo.address || '',
+                          locationCode: ticket.customerInfo.location_code || '',
+                          poNumber: ticket.customerInfo.po_number || '',
+                          approverName: ticket.customerInfo.approver_name || '',
+                          techName: ticket.userName || '',
+                          projectNumber: ticket.projectNumber || '',
+                          date: ticket.date || '',
+                        });
+                      }}
                       style={{
                         padding: '6px 16px',
                         fontSize: '13px',
@@ -367,7 +405,7 @@ export default function ServiceTickets() {
       )}
 
       {/* Ticket Preview Modal */}
-      {selectedTicket && (
+      {selectedTicket && editableTicket && (
         <div
           style={{
             position: 'fixed',
@@ -382,17 +420,17 @@ export default function ServiceTickets() {
             zIndex: 1000,
             padding: '20px',
           }}
-          onClick={() => setSelectedTicket(null)}
+          onClick={() => { setSelectedTicket(null); setEditableTicket(null); }}
         >
           <div
             style={{
-              backgroundColor: 'var(--bg-primary)',
+              backgroundColor: '#1a1a2e',
               borderRadius: '12px',
               maxWidth: '900px',
               width: '100%',
               maxHeight: '90vh',
               overflow: 'auto',
-              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -400,28 +438,27 @@ export default function ServiceTickets() {
             <div
               style={{
                 padding: '24px',
-                borderBottom: '2px solid var(--border-color)',
+                borderBottom: '1px solid rgba(255,255,255,0.1)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                backgroundColor: 'var(--bg-secondary)',
               }}
             >
               <div>
-                <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 8px 0' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#fff', margin: '0 0 8px 0' }}>
                   SERVICE TICKET
                 </h2>
-                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
+                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', margin: 0 }}>
                   Ticket: {generateTicketDisplayId(selectedTicket)}
                 </p>
               </div>
               <button
-                onClick={() => setSelectedTicket(null)}
+                onClick={() => { setSelectedTicket(null); setEditableTicket(null); }}
                 style={{
                   background: 'transparent',
                   border: 'none',
                   fontSize: '24px',
-                  color: 'var(--text-secondary)',
+                  color: 'rgba(255,255,255,0.6)',
                   cursor: 'pointer',
                   padding: '4px 8px',
                 }}
@@ -431,162 +468,255 @@ export default function ServiceTickets() {
             </div>
 
             <div style={{ padding: '24px' }}>
-              {/* Customer & Service Info Section */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
-                {/* Customer Info */}
-                <div
-                  style={{
-                    backgroundColor: '#FFF9E6',
-                    border: '2px solid #FFE066',
-                    borderRadius: '8px',
-                    padding: '16px',
-                  }}
-                >
-                  <h3 style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: '#333', marginBottom: '12px' }}>
-                    Customer Information
-                  </h3>
-                  <div style={{ color: '#333', fontSize: '14px', lineHeight: '1.6' }}>
-                    <p style={{ margin: '0 0 4px 0', fontWeight: '600' }}>
-                      {selectedTicket.customerInfo.name}
-                    </p>
-                    {selectedTicket.customerInfo.address && (
-                      <p style={{ margin: '0 0 4px 0' }}>{selectedTicket.customerInfo.address}</p>
-                    )}
-                    {selectedTicket.customerInfo.city && (
-                      <p style={{ margin: '0 0 4px 0' }}>
-                        {selectedTicket.customerInfo.city}
-                        {selectedTicket.customerInfo.state && `, ${selectedTicket.customerInfo.state}`}
-                        {selectedTicket.customerInfo.zip_code && ` ${selectedTicket.customerInfo.zip_code}`}
-                      </p>
-                    )}
-                    {selectedTicket.customerInfo.phone && (
-                      <p style={{ margin: '4px 0 0 0' }}>
-                        <strong>Phone:</strong> {selectedTicket.customerInfo.phone}
-                      </p>
-                    )}
-                    {selectedTicket.customerInfo.email && (
-                      <p style={{ margin: '4px 0 0 0' }}>
-                        <strong>Email:</strong> {selectedTicket.customerInfo.email}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Service Info */}
-                <div
-                  style={{
-                    backgroundColor: '#FFE8CC',
-                    border: '2px solid #FFB366',
-                    borderRadius: '8px',
-                    padding: '16px',
-                  }}
-                >
-                  <h3 style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: '#333', marginBottom: '12px' }}>
-                    Service Information
-                  </h3>
-                  <div style={{ color: '#333', fontSize: '14px', lineHeight: '1.6' }}>
-                    <p style={{ margin: '0 0 8px 0' }}>
-                      <strong>Tech:</strong> {selectedTicket.userName}
-                    </p>
-                    <p style={{ margin: '0 0 8px 0' }}>
-                      <strong>Date:</strong> {formatTicketDate(selectedTicket.date)}
-                    </p>
-                    <p style={{ margin: '0 0 0 0' }}>
-                      <strong>Total Hours:</strong> {selectedTicket.totalHours.toFixed(2)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Service Description Section */}
-              <div
-                style={{
-                  backgroundColor: '#E8F5E9',
-                  border: '2px solid #81C784',
+              {/* Editable input style */}
+              {(() => {
+                const inputStyle: React.CSSProperties = {
+                  width: '100%',
+                  padding: '8px 12px',
+                  backgroundColor: 'rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  fontSize: '14px',
+                  outline: 'none',
+                };
+                const labelStyle: React.CSSProperties = {
+                  display: 'block',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  color: 'rgba(255,255,255,0.5)',
+                  marginBottom: '4px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                };
+                const sectionStyle: React.CSSProperties = {
+                  backgroundColor: 'rgba(255,255,255,0.05)',
                   borderRadius: '8px',
                   padding: '16px',
-                  marginBottom: '24px',
-                }}
-              >
-                <h3 style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: '#333', marginBottom: '12px' }}>
-                  Service Description
-                </h3>
-                <div style={{ color: '#333', fontSize: '14px' }}>
-                  {Object.entries(selectedTicket.hoursByRateType).map(([rateType, hours]) => {
-                    if (hours === 0) return null;
-                    const entriesForType = selectedTicket.entries.filter(
-                      (e) => (e.rate_type || 'Shop Time') === rateType
-                    );
-                    return (
-                      <div key={rateType} style={{ marginBottom: '16px' }}>
-                        <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#2E7D32', marginBottom: '8px' }}>
-                          {rateType} ({hours.toFixed(2)} hrs)
-                        </h4>
-                        <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                          {entriesForType.map((entry) => (
-                            <li key={entry.id} style={{ marginBottom: '4px', lineHeight: '1.5' }}>
-                              {entry.description || 'No description'}
-                              {entry.start_time && entry.end_time && (
-                                <span style={{ color: '#666', fontSize: '12px', marginLeft: '8px' }}>
-                                  ({new Date(entry.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
-                                  {new Date(entry.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })})
-                                </span>
-                              )}
-                              <span style={{ fontWeight: '600', marginLeft: '8px' }}>
-                                {entry.hours.toFixed(2)} hrs
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
+                  marginBottom: '16px',
+                };
+                const sectionTitleStyle: React.CSSProperties = {
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  textTransform: 'uppercase',
+                  color: '#c770f0',
+                  marginBottom: '16px',
+                  letterSpacing: '1px',
+                };
+
+                return (
+                  <>
+                    {/* Customer & Service Info Section */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                      {/* Customer Info */}
+                      <div style={sectionStyle}>
+                        <h3 style={sectionTitleStyle}>Customer Information</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <div>
+                            <label style={labelStyle}>Customer Name</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.customerName}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, customerName: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Address</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.address}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, address: e.target.value })}
+                            />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={labelStyle}>City, Province</label>
+                              <input
+                                style={inputStyle}
+                                value={editableTicket.cityState}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, cityState: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Postal Code</label>
+                              <input
+                                style={inputStyle}
+                                value={editableTicket.zipCode}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, zipCode: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={labelStyle}>Phone</label>
+                              <input
+                                style={inputStyle}
+                                value={editableTicket.phone}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, phone: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Email</label>
+                              <input
+                                style={inputStyle}
+                                value={editableTicket.email}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, email: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Contact Name</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.contactName}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, contactName: e.target.value })}
+                            />
+                          </div>
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
 
-              {/* Totals Section */}
-              <div
-                style={{
-                  backgroundColor: '#FFEBEE',
-                  border: '2px solid #EF5350',
-                  borderRadius: '8px',
-                  padding: '16px',
-                }}
-              >
-                <h3 style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: '#333', marginBottom: '12px' }}>
-                  Hours Summary
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                  {Object.entries(selectedTicket.hoursByRateType).map(([rateType, hours]) => (
-                    <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '13px', color: '#333', fontWeight: '500' }}>{rateType}:</span>
-                      <span style={{ fontSize: '14px', color: '#333', fontWeight: '700' }}>{hours.toFixed(2)}</span>
+                      {/* Service Info */}
+                      <div style={sectionStyle}>
+                        <h3 style={sectionTitleStyle}>Service Information</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <div>
+                            <label style={labelStyle}>Technician</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.techName}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, techName: e.target.value })}
+                            />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={labelStyle}>Project Number</label>
+                              <input
+                                style={inputStyle}
+                                value={editableTicket.projectNumber}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, projectNumber: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Date</label>
+                              <input
+                                type="date"
+                                style={inputStyle}
+                                value={editableTicket.date}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, date: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Service Location</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.serviceLocation}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, serviceLocation: e.target.value })}
+                            />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={labelStyle}>Location Code</label>
+                              <input
+                                style={inputStyle}
+                                value={editableTicket.locationCode}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, locationCode: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>PO Number</label>
+                              <input
+                                style={inputStyle}
+                                value={editableTicket.poNumber}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, poNumber: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Approver</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.approverName}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, approverName: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gridColumn: 'span 3',
-                      paddingTop: '12px',
-                      borderTop: '2px solid #EF5350',
-                      marginTop: '8px',
-                    }}
-                  >
-                    <span style={{ fontSize: '15px', color: '#333', fontWeight: '700' }}>TOTAL HOURS:</span>
-                    <span style={{ fontSize: '18px', color: '#C62828', fontWeight: '700' }}>
-                      {selectedTicket.totalHours.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+
+                    {/* Service Description Section */}
+                    <div style={sectionStyle}>
+                      <h3 style={sectionTitleStyle}>Service Description</h3>
+                      <div style={{ color: '#fff', fontSize: '14px' }}>
+                        {Object.entries(selectedTicket.hoursByRateType).map(([rateType, hours]) => {
+                          if (hours === 0) return null;
+                          const entriesForType = selectedTicket.entries.filter(
+                            (e) => (e.rate_type || 'Shop Time') === rateType
+                          );
+                          return (
+                            <div key={rateType} style={{ marginBottom: '16px' }}>
+                              <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', marginBottom: '8px' }}>
+                                {rateType} ({hours.toFixed(2)} hrs)
+                              </h4>
+                              <ul style={{ margin: 0, paddingLeft: '20px', color: 'rgba(255,255,255,0.8)' }}>
+                                {entriesForType.map((entry) => (
+                                  <li key={entry.id} style={{ marginBottom: '4px', lineHeight: '1.5' }}>
+                                    {entry.description || 'No description'}
+                                    {entry.start_time && entry.end_time && (
+                                      <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginLeft: '8px' }}>
+                                        ({new Date(entry.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
+                                        {new Date(entry.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })})
+                                      </span>
+                                    )}
+                                    <span style={{ fontWeight: '600', marginLeft: '8px', color: '#fff' }}>
+                                      {entry.hours.toFixed(2)} hrs
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Hours Summary Section */}
+                    <div style={sectionStyle}>
+                      <h3 style={sectionTitleStyle}>Hours Summary</h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                        {Object.entries(selectedTicket.hoursByRateType).map(([rateType, hours]) => (
+                          <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>{rateType}:</span>
+                            <span style={{ fontSize: '14px', color: '#fff', fontWeight: '700' }}>{hours.toFixed(2)}</span>
+                          </div>
+                        ))}
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gridColumn: 'span 3',
+                            paddingTop: '12px',
+                            borderTop: '1px solid rgba(255,255,255,0.2)',
+                            marginTop: '8px',
+                          }}
+                        >
+                          <span style={{ fontSize: '15px', color: '#fff', fontWeight: '700' }}>TOTAL HOURS:</span>
+                          <span style={{ fontSize: '18px', color: '#c770f0', fontWeight: '700' }}>
+                            {selectedTicket.totalHours.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* Action Buttons */}
               <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                 <button
                   className="button button-secondary"
-                  onClick={() => setSelectedTicket(null)}
+                  onClick={() => { setSelectedTicket(null); setEditableTicket(null); }}
                   style={{ padding: '10px 24px' }}
                   disabled={isExportingPdf || isExportingExcel}
                 >
@@ -594,7 +724,30 @@ export default function ServiceTickets() {
                 </button>
                 <button
                   className="button button-primary"
-                  onClick={() => handleExportExcel(selectedTicket)}
+                  onClick={() => {
+                    // Create a modified ticket with the editable values
+                    const modifiedTicket: ServiceTicket = {
+                      ...selectedTicket,
+                      userName: editableTicket.techName,
+                      projectNumber: editableTicket.projectNumber,
+                      date: editableTicket.date,
+                      customerInfo: {
+                        ...selectedTicket.customerInfo,
+                        name: editableTicket.customerName,
+                        address: editableTicket.address,
+                        city: editableTicket.cityState.split(',')[0]?.trim() || '',
+                        state: editableTicket.cityState.split(',')[1]?.trim() || '',
+                        zip_code: editableTicket.zipCode,
+                        phone: editableTicket.phone,
+                        email: editableTicket.email,
+                        service_location: editableTicket.serviceLocation,
+                        location_code: editableTicket.locationCode,
+                        po_number: editableTicket.poNumber,
+                        approver_name: editableTicket.approverName,
+                      },
+                    };
+                    handleExportExcel(modifiedTicket);
+                  }}
                   style={{ 
                     padding: '10px 24px',
                     backgroundColor: '#4caf50',
@@ -606,7 +759,30 @@ export default function ServiceTickets() {
                 </button>
                 <button
                   className="button button-primary"
-                  onClick={() => handleExportPdf(selectedTicket)}
+                  onClick={() => {
+                    // Create a modified ticket with the editable values
+                    const modifiedTicket: ServiceTicket = {
+                      ...selectedTicket,
+                      userName: editableTicket.techName,
+                      projectNumber: editableTicket.projectNumber,
+                      date: editableTicket.date,
+                      customerInfo: {
+                        ...selectedTicket.customerInfo,
+                        name: editableTicket.customerName,
+                        address: editableTicket.address,
+                        city: editableTicket.cityState.split(',')[0]?.trim() || '',
+                        state: editableTicket.cityState.split(',')[1]?.trim() || '',
+                        zip_code: editableTicket.zipCode,
+                        phone: editableTicket.phone,
+                        email: editableTicket.email,
+                        service_location: editableTicket.serviceLocation,
+                        location_code: editableTicket.locationCode,
+                        po_number: editableTicket.poNumber,
+                        approver_name: editableTicket.approverName,
+                      },
+                    };
+                    handleExportPdf(modifiedTicket);
+                  }}
                   style={{ padding: '10px 24px' }}
                   disabled={isExportingPdf || isExportingExcel}
                 >
