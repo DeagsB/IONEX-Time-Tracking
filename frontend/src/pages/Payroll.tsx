@@ -33,7 +33,7 @@ interface EmployeeHours {
   entries: TimeEntry[];
 }
 
-export default function Reports() {
+export default function Payroll() {
   const { user } = useAuth();
   
   // Default to current pay period (bi-weekly or monthly)

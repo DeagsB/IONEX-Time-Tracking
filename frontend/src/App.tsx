@@ -13,7 +13,7 @@ import Projects from './pages/Projects';
 import Customers from './pages/Customers';
 import Employees from './pages/Employees';
 import Forms from './pages/Forms';
-import Reports from './pages/Reports';
+import Payroll from './pages/Payroll';
 import Approvals from './pages/Approvals';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
@@ -96,7 +96,7 @@ function AppRoutes() {
         <Route path="calendar/:date" element={<DayDetail />} />
         <Route path="time-entries" element={<TimeEntries />} />
         <Route path="projects" element={<Projects />} />
-        <Route path="reports" element={<Reports />} />
+        <Route path="payroll" element={<Payroll />} />
         <Route path="approvals" element={<Approvals />} />
         <Route path="profile" element={<Profile />} />
         <Route path="settings" element={<Settings />} />

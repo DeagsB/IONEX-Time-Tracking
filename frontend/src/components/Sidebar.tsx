@@ -63,8 +63,8 @@ export default function Sidebar() {
           }}>
             ANALYZE
           </div>
-          <SidebarLink to="/reports" active={isActive('/reports')}>
-            Reports
+          <SidebarLink to="/payroll" active={isActive('/payroll')}>
+            Payroll
           </SidebarLink>
           <SidebarLink to="/approvals" active={isActive('/approvals')}>
             Approvals
