@@ -285,7 +285,7 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
       jsPDF: { 
         unit: 'in', 
         format: 'letter', 
-        orientation: 'portrait' 
+        orientation: 'portrait' as const
       }
     };
 
