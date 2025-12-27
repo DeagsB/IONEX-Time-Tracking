@@ -37,6 +37,13 @@ export interface ServiceTicket {
     'Field Time': number;
     'Field Overtime': number;
   };
+  // Employee-specific billable rates
+  rates: {
+    rt: number; // Regular Time / Shop Time rate
+    tt: number; // Travel Time rate
+    ft: number; // Field Time rate
+    ot: number; // Overtime rate
+  };
 }
 
 export interface TimeEntryWithRelations {
@@ -78,14 +85,48 @@ export interface TimeEntryWithRelations {
   project_id?: string;
 }
 
+// Employee type for rate lookup
+export interface EmployeeWithRates {
+  id: string;
+  user_id: string;
+  rt_rate?: number;
+  tt_rate?: number;
+  ft_rate?: number;
+  ot_rate?: number;
+}
+
+// Default rates if employee doesn't have custom rates
+const DEFAULT_RATES = {
+  rt: 110,
+  tt: 85,
+  ft: 140,
+  ot: 165,
+};
+
 /**
  * Groups billable time entries into service tickets
  * One ticket per (date, customer, employee) combination
+ * @param entries - Time entries to group
+ * @param employees - Optional employee data for rate lookup
  */
 export function groupEntriesIntoTickets(
-  entries: TimeEntryWithRelations[]
+  entries: TimeEntryWithRelations[],
+  employees?: EmployeeWithRates[]
 ): ServiceTicket[] {
   const ticketMap = new Map<string, ServiceTicket>();
+  
+  // Create a map of user_id to employee rates for quick lookup
+  const employeeRatesMap = new Map<string, { rt: number; tt: number; ft: number; ot: number }>();
+  if (employees) {
+    for (const emp of employees) {
+      employeeRatesMap.set(emp.user_id, {
+        rt: emp.rt_rate ?? DEFAULT_RATES.rt,
+        tt: emp.tt_rate ?? DEFAULT_RATES.tt,
+        ft: emp.ft_rate ?? DEFAULT_RATES.ft,
+        ot: emp.ot_rate ?? DEFAULT_RATES.ot,
+      });
+    }
+  }
 
   for (const entry of entries) {
     // Handle entries without project/customer as "Unassigned Client"
@@ -146,6 +187,9 @@ export function groupEntriesIntoTickets(
       const lastName = entry.user?.last_name || '';
       const initials = (firstName.charAt(0) + lastName.charAt(0)).toUpperCase() || 'XX';
       
+      // Get employee-specific rates or use defaults
+      const employeeRates = employeeRatesMap.get(userId) || DEFAULT_RATES;
+      
       ticket = {
         id: ticketKey,
         date,
@@ -170,6 +214,7 @@ export function groupEntriesIntoTickets(
           'Field Time': 0,
           'Field Overtime': 0,
         },
+        rates: employeeRates,
       };
       ticketMap.set(ticketKey, ticket);
     }

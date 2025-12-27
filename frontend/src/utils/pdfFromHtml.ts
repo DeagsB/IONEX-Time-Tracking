@@ -27,10 +27,11 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
   const ftHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? roundToHalfHour(e.hours) : 0), 0);
   const otHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'OT' ? roundToHalfHour(e.hours) : 0), 0);
 
-  const rtRate = 110;
-  const ttRate = 85;
-  const ftRate = 140;
-  const otRate = 165;
+  // Use employee-specific rates from ticket
+  const rtRate = ticket.rates.rt;
+  const ttRate = ticket.rates.tt;
+  const ftRate = ticket.rates.ft;
+  const otRate = ticket.rates.ot;
 
   const rtAmount = rtHours * rtRate;
   const ttAmount = ttHours * ttRate;

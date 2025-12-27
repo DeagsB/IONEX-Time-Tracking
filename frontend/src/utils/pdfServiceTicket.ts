@@ -169,8 +169,11 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
     }
   }
   
-  // Rates
-  const rtRate = 130, ttRate = 130, ftRate = 140, otRate = 195;
+  // Use employee-specific rates from ticket
+  const rtRate = ticket.rates.rt;
+  const ttRate = ticket.rates.tt;
+  const ftRate = ticket.rates.ft;
+  const otRate = ticket.rates.ot;
   const rtAmount = rtTotal * rtRate;
   const ttAmount = ttTotal * ttRate;
   const ftAmount = ftTotal * ftRate;

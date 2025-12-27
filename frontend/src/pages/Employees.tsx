@@ -16,6 +16,11 @@ export default function Employees() {
     department: '',
     position: '',
     status: 'active',
+    // Billable rates for service tickets
+    rt_rate: '110.00',
+    tt_rate: '85.00',
+    ft_rate: '140.00',
+    ot_rate: '165.00',
   });
 
   const { data: employees } = useQuery({
@@ -31,6 +36,10 @@ export default function Employees() {
         wage_rate: parseFloat(data.wage_rate),
         hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
         salary: data.salary ? parseFloat(data.salary) : null,
+        rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
+        tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
+        ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
+        ot_rate: data.ot_rate ? parseFloat(data.ot_rate) : 165.00,
       };
       return await employeesService.create(employeeData);
     },
@@ -48,6 +57,10 @@ export default function Employees() {
         wage_rate: parseFloat(data.wage_rate),
         hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
         salary: data.salary ? parseFloat(data.salary) : null,
+        rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
+        tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
+        ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
+        ot_rate: data.ot_rate ? parseFloat(data.ot_rate) : 165.00,
       };
       return await employeesService.update(id, employeeData);
     },
@@ -78,6 +91,10 @@ export default function Employees() {
       department: '',
       position: '',
       status: 'active',
+      rt_rate: '110.00',
+      tt_rate: '85.00',
+      ft_rate: '140.00',
+      ot_rate: '165.00',
     });
   };
 
@@ -93,6 +110,10 @@ export default function Employees() {
       department: employee.department || '',
       position: employee.position || '',
       status: employee.status || 'active',
+      rt_rate: employee.rt_rate?.toString() || '110.00',
+      tt_rate: employee.tt_rate?.toString() || '85.00',
+      ft_rate: employee.ft_rate?.toString() || '140.00',
+      ot_rate: employee.ot_rate?.toString() || '165.00',
     });
     setShowForm(true);
   };
@@ -223,6 +244,72 @@ export default function Employees() {
                 onChange={(e) => setFormData({ ...formData, hire_date: e.target.value })}
                 required
               />
+            </div>
+
+            <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+              Billable Rates (Service Tickets)
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Regular Time (RT)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rt_rate}
+                    onChange={(e) => setFormData({ ...formData, rt_rate: e.target.value })}
+                    placeholder="110.00"
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="label">Travel Time (TT)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.tt_rate}
+                    onChange={(e) => setFormData({ ...formData, tt_rate: e.target.value })}
+                    placeholder="85.00"
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="label">Field Time (FT)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.ft_rate}
+                    onChange={(e) => setFormData({ ...formData, ft_rate: e.target.value })}
+                    placeholder="140.00"
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="label">Overtime (OT)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.ot_rate}
+                    onChange={(e) => setFormData({ ...formData, ot_rate: e.target.value })}
+                    placeholder="165.00"
+                  />
+                </div>
+              </div>
             </div>
 
             <button type="submit" className="button button-primary">

@@ -143,11 +143,11 @@ export default function ServiceTickets() {
     queryFn: () => employeesService.getAll(),
   });
 
-  // Group entries into tickets
+  // Group entries into tickets (with employee rates)
   const tickets = useMemo(() => {
     if (!billableEntries) return [];
-    return groupEntriesIntoTickets(billableEntries);
-  }, [billableEntries]);
+    return groupEntriesIntoTickets(billableEntries, employees);
+  }, [billableEntries, employees]);
 
   // Fetch existing ticket numbers for display
   const { data: existingTickets } = useQuery({

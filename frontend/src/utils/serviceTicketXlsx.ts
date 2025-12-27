@@ -233,13 +233,14 @@ function updateTotals(
   rtTotal: number,
   ttTotal: number,
   ftTotal: number,
-  otTotal: number
+  otTotal: number,
+  rates: { rt: number; tt: number; ft: number; ot: number }
 ) {
   const totalsRow = 24;
-  const rtRate = 130,
-    ttRate = 130,
-    ftRate = 140,
-    otRate = 195;
+  const rtRate = rates.rt;
+  const ttRate = rates.tt;
+  const ftRate = rates.ft;
+  const otRate = rates.ot;
 
   const rtAmount = rtTotal * rtRate;
   const ttAmount = ttTotal * ttRate;
@@ -323,7 +324,7 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         0,
         maxRowsPerPage
       );
-      updateTotals(templateSheet, rtTotal, ttTotal, ftTotal, otTotal);
+      updateTotals(templateSheet, rtTotal, ttTotal, ftTotal, otTotal, ticket.rates);
     } else {
       // Multi-page - need to duplicate sheets
       let currentItemIndex = 0;
@@ -406,10 +407,10 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         // For intermediate pages, show page totals
         // For last page, show cumulative totals
         if (page === totalPages) {
-          updateTotals(worksheet, cumulativeRtTotal, cumulativeTtTotal, cumulativeFtTotal, cumulativeOtTotal);
+          updateTotals(worksheet, cumulativeRtTotal, cumulativeTtTotal, cumulativeFtTotal, cumulativeOtTotal, ticket.rates);
         } else {
           // Show this page's totals
-          updateTotals(worksheet, result.rtTotal, result.ttTotal, result.ftTotal, result.otTotal);
+          updateTotals(worksheet, result.rtTotal, result.ttTotal, result.ftTotal, result.otTotal, ticket.rates);
         }
       }
     }
