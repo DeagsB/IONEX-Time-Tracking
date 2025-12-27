@@ -197,24 +197,25 @@ function fillRowItems(
     const descAddr = createCellAddress(currentRow, descriptionCol);
     setCellValue(descAddr, item.description);
 
-    // Set hours if this is the first line of an entry
+    // Set hours if this is the first line of an entry (already rounded to 0.5)
     if (item.hours !== null) {
+      const roundedHours = roundToHalfHour(item.hours); // Ensure rounding is applied
       let hoursCol = rtCol;
       if (item.rateType === 'Travel Time') {
         hoursCol = ttCol;
-        ttTotal += item.hours;
+        ttTotal += roundedHours;
       } else if (item.rateType === 'Field Time') {
         hoursCol = ftCol;
-        ftTotal += item.hours;
+        ftTotal += roundedHours;
       } else if (item.rateType === 'Shop Overtime' || item.rateType === 'Field Overtime') {
         hoursCol = otCol;
-        otTotal += item.hours;
+        otTotal += roundedHours;
       } else {
-        rtTotal += item.hours;
+        rtTotal += roundedHours;
       }
 
       const hoursAddr = createCellAddress(currentRow, hoursCol);
-      setCellValue(hoursAddr, item.hours);
+      setCellValue(hoursAddr, roundedHours);
     }
 
     currentRow++;
