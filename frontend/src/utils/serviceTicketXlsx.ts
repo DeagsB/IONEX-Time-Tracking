@@ -114,6 +114,9 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
     });
     setCellValue('C11', dateStr);
     
+    // E9: Always set to "AUTO"
+    setCellValue('E9', 'AUTO');
+    
     // Fill in the ticket number (M1 in Template sheet)
     // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
     // The ticketNumber should be passed in, or we generate a placeholder
