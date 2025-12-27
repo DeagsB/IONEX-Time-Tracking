@@ -57,10 +57,56 @@ export default function ServiceTickets() {
   const handleExportPdf = async (ticket: ServiceTicket) => {
     setIsExportingPdf(true);
     try {
-      // Use the ticket number that was already set (either from DB or newly generated)
-      const ticketNumber = ticket.ticketNumber || displayTicketNumber;
-      const ticketWithNumber = { ...ticket, ticketNumber };
+      // Check if a ticket number already exists in the database
+      const existingRecord = existingTickets?.find(
+        et => et.date === ticket.date && 
+              et.user_id === ticket.userId && 
+              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+      );
       
+      let ticketNumber: string;
+      
+      if (existingRecord?.ticket_number) {
+        // Use existing ticket number
+        ticketNumber = existingRecord.ticket_number;
+      } else if (ticket.ticketNumber && !ticket.ticketNumber.includes('XXX')) {
+        // Use the already assigned ticket number
+        ticketNumber = ticket.ticketNumber;
+      } else if (displayTicketNumber && !displayTicketNumber.includes('XXX')) {
+        // Use the display ticket number if it's not a placeholder
+        ticketNumber = displayTicketNumber;
+      } else {
+        // Generate a new ticket number
+        ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+        
+        // Calculate totals for recording
+        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+        const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+        const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+        const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+        const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+        const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+        
+        // Save the ticket record to the database
+        const year = new Date().getFullYear() % 100;
+        const sequenceMatch = ticketNumber.match(/\d{3}$/);
+        const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+        
+        await serviceTicketsService.createTicketRecord({
+          ticketNumber,
+          employeeInitials: ticket.userInitials,
+          year,
+          sequenceNumber,
+          date: ticket.date,
+          customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+          userId: ticket.userId,
+          projectId: ticket.projectId,
+          totalHours: ticket.totalHours,
+          totalAmount,
+        });
+      }
+      
+      const ticketWithNumber = { ...ticket, ticketNumber };
       await downloadPdfFromHtml(ticketWithNumber);
     } catch (error) {
       console.error('PDF export error:', error);
