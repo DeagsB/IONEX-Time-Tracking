@@ -29,8 +29,8 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
   // Group entries by description (date + notes)
   const descriptionLines: { text: string; rt: number; tt: number; ft: number; ot: number }[] = [];
   ticket.entries.forEach(entry => {
-    const dateStr = formatDate(entry.work_date);
-    const desc = `${dateStr} - ${entry.notes || 'Work performed'}`;
+    const dateStr = formatDate(entry.date);
+    const desc = `${dateStr} - ${entry.description || 'Work performed'}`;
     descriptionLines.push({
       text: desc.substring(0, 60),
       rt: entry.rate_type === 'RT' ? entry.hours : 0,
@@ -46,11 +46,11 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
   }
 
   // Get employee name from first entry
-  const employeeName = ticket.entries[0]?.users?.first_name && ticket.entries[0]?.users?.last_name
-    ? `${ticket.entries[0].users.first_name} ${ticket.entries[0].users.last_name}`
-    : 'Unknown';
+  const employeeName = ticket.entries[0]?.user?.first_name && ticket.entries[0]?.user?.last_name
+    ? `${ticket.entries[0].user.first_name} ${ticket.entries[0].user.last_name}`
+    : ticket.userName || 'Unknown';
 
-  const ticketDate = ticket.entries[0]?.work_date ? formatDate(ticket.entries[0].work_date) : formatDate(new Date().toISOString());
+  const ticketDate = ticket.entries[0]?.date ? formatDate(ticket.entries[0].date) : formatDate(new Date().toISOString());
 
   const html = `
     <div id="service-ticket" style="
@@ -115,23 +115,23 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">City/Province</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.city || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.city || ''}${ticket.customerInfo.state ? ', ' + ticket.customerInfo.state : ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Postal Code</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.postal_code || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.zip_code || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Name</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.approver_name || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_phone || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Email</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_email || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
@@ -294,4 +294,3 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
     document.body.removeChild(container);
   }
 }
-
