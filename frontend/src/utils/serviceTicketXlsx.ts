@@ -220,56 +220,38 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
       }
     }
     
-    // Pre-calculate summary cells (M35, M36, M37, M40) for Protected View
-    // These cells typically contain dollar amounts based on hours * rates
-    const summaryCells = ['M35', 'M36', 'M37', 'M40'];
-    console.log('\n💵 Pre-calculating summary cells for Protected View:');
-    for (const addr of summaryCells) {
+    // Pre-calculate summary cells for Protected View
+    // Calculate dollar amounts directly from hours * rates
+    // Standard rates: RT=$130/hr, TT=$130/hr, FT=$140/hr, OT=$195/hr (1.5x RT)
+    const rtRate = 130;
+    const ttRate = 130;
+    const ftRate = 140;
+    const otRate = 195;
+    
+    const rtAmount = rtTotal * rtRate;
+    const ttAmount = ttTotal * ttRate;
+    const ftAmount = ftTotal * ftRate;
+    const otAmount = otTotal * otRate;
+    const grandTotal = rtAmount + ttAmount + ftAmount + otAmount;
+    
+    // M35 = RT Amount, M36 = TT Amount, M37 = FT Amount, M40 = Grand Total
+    const summaryValues: { [addr: string]: number } = {
+      'M35': rtAmount,
+      'M36': ttAmount, 
+      'M37': ftAmount,
+      'M38': otAmount,
+      'M40': grandTotal
+    };
+    
+    for (const [addr, amount] of Object.entries(summaryValues)) {
       const cell = worksheet.getCell(addr);
-      console.log(`\n  ${addr}:`);
-      console.log(`    Current value:`, cell.value);
-      console.log(`    Has formula:`, !!cell.formula);
-      
       if (cell.formula) {
         const formulaStr = typeof cell.formula === 'string' ? cell.formula : (cell.formula as any).formula;
-        console.log(`    Formula: "${formulaStr}"`);
-        
-        // Try to evaluate the formula by parsing it
-        let result = 0;
-        
-        // Common pattern: cell reference * rate (e.g., K24*130)
-        const multiplyMatch = formulaStr.match(/([A-Z]+)(\d+)\*(\d+(?:\.\d+)?)/);
-        if (multiplyMatch) {
-          const [, col, row, rate] = multiplyMatch;
-          const cellValue = worksheet.getCell(`${col}${row}`).value;
-          console.log(`    Multiply match: ${col}${row} * ${rate}`);
-          console.log(`    Cell ${col}${row} value:`, cellValue);
-          const cellNum = typeof cellValue === 'number' ? cellValue : 
-                          (typeof cellValue === 'object' && (cellValue as any).result !== undefined) ? (cellValue as any).result : 0;
-          result = cellNum * parseFloat(rate);
-          console.log(`    Calculated result: ${result}`);
-        }
-        
-        // Common pattern: SUM of cells
-        const sumMatch = formulaStr.match(/SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)/);
-        if (sumMatch) {
-          const [, startCol, startRow, endCol, endRow] = sumMatch;
-          console.log(`    SUM match: ${startCol}${startRow}:${endCol}${endRow}`);
-          for (let r = parseInt(startRow); r <= parseInt(endRow); r++) {
-            const val = worksheet.getCell(`${startCol}${r}`).value;
-            const num = typeof val === 'number' ? val : 
-                       (typeof val === 'object' && (val as any).result !== undefined) ? (val as any).result : 0;
-            result += num;
-          }
-          console.log(`    Calculated result: ${result}`);
-        }
-        
-        if (multiplyMatch || sumMatch) {
-          console.log(`    Setting cached result: ${result}`);
-          cell.value = { formula: formulaStr, result: result };
-        } else {
-          console.log(`    ⚠️ Formula not matched by any pattern`);
-        }
+        // Preserve formula but add cached result for Protected View
+        cell.value = { formula: formulaStr, result: amount };
+      } else {
+        // No formula - just set the value directly
+        setCellValue(addr, amount);
       }
     }
     
