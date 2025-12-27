@@ -5,6 +5,7 @@ import { serviceTicketsService, customersService, employeesService } from '../se
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
 import { downloadPdfServiceTicket } from '../utils/pdfServiceTicket';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
+import { supabase } from '../lib/supabaseClient';
 
 export default function ServiceTickets() {
   const { user } = useAuth();
@@ -133,14 +134,43 @@ export default function ServiceTickets() {
     return groupEntriesIntoTickets(billableEntries);
   }, [billableEntries]);
 
+  // Fetch existing ticket numbers for display
+  const { data: existingTickets } = useQuery({
+    queryKey: ['existingServiceTickets'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('service_tickets')
+        .select('id, ticket_number, date, user_id, customer_id');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Match tickets with existing ticket numbers or generate preview
+  const ticketsWithNumbers = useMemo(() => {
+    return tickets.map(ticket => {
+      // Try to find an existing ticket number for this specific ticket
+      const existing = existingTickets?.find(
+        et => et.date === ticket.date && 
+              et.user_id === ticket.userId && 
+              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+      );
+      
+      return {
+        ...ticket,
+        displayTicketNumber: existing?.ticket_number || `${ticket.userInitials}_${new Date(ticket.date).getFullYear() % 100}XXX`
+      };
+    });
+  }, [tickets, existingTickets]);
+
   // Filter by customer on frontend (optional, for additional client-side filtering)
   const filteredTickets = useMemo(() => {
-    let result = tickets;
+    let result = ticketsWithNumbers;
     if (selectedCustomerId) {
       result = result.filter(t => t.customerId === selectedCustomerId);
     }
     return result;
-  }, [tickets, selectedCustomerId]);
+  }, [ticketsWithNumbers, selectedCustomerId]);
 
   if (user?.role !== 'ADMIN') {
     return (
@@ -334,7 +364,7 @@ export default function ServiceTickets() {
                   }}
                 >
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
-                    {ticket.userInitials}_{new Date(ticket.date).getFullYear() % 100}-{ticket.customerName.substring(0, 3).toUpperCase()}
+                    {ticket.displayTicketNumber}
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-primary)' }}>
                     {new Date(ticket.date).toLocaleDateString('en-US', {
