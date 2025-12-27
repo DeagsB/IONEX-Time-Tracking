@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { serviceTicketsService, customersService, employeesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
+import { downloadPdfServiceTicket } from '../utils/pdfServiceTicket';
 import { supabase } from '../lib/supabaseClient';
 
 export default function ServiceTickets() {
@@ -23,6 +24,7 @@ export default function ServiceTickets() {
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   
   // Editable ticket fields state
   const [editableTicket, setEditableTicket] = useState<{
@@ -44,6 +46,23 @@ export default function ServiceTickets() {
   
   // Generated ticket number for display
   const [displayTicketNumber, setDisplayTicketNumber] = useState<string>('');
+
+  // Handler for exporting ticket as PDF
+  const handleExportPdf = async (ticket: ServiceTicket) => {
+    setIsExportingPdf(true);
+    try {
+      // Use the ticket number that was already set (either from DB or newly generated)
+      const ticketNumber = ticket.ticketNumber || displayTicketNumber;
+      const ticketWithNumber = { ...ticket, ticketNumber };
+      
+      await downloadPdfServiceTicket(ticketWithNumber);
+    } catch (error) {
+      console.error('PDF export error:', error);
+      alert('Failed to export service ticket PDF. Check console for details.');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   // Handler for exporting ticket as Excel
   const handleExportExcel = async (ticket: ServiceTicket) => {
@@ -768,7 +787,7 @@ export default function ServiceTickets() {
                   className="button button-secondary"
                   onClick={() => { setSelectedTicket(null); setEditableTicket(null); }}
                   style={{ padding: '10px 24px' }}
-                  disabled={isExportingExcel}
+                  disabled={isExportingExcel || isExportingPdf}
                 >
                   Close
                 </button>
@@ -804,9 +823,41 @@ export default function ServiceTickets() {
                     backgroundColor: '#4caf50',
                     borderColor: '#4caf50',
                   }}
-                  disabled={isExportingExcel}
+                  disabled={isExportingExcel || isExportingPdf}
                 >
                   {isExportingExcel ? 'Generating Excel...' : 'Export Excel'}
+                </button>
+                <button
+                  className="button button-primary"
+                  onClick={() => {
+                    // Create a modified ticket with the editable values
+                    const modifiedTicket: ServiceTicket = {
+                      ...selectedTicket,
+                      userName: editableTicket.techName,
+                      projectNumber: editableTicket.projectNumber,
+                      date: editableTicket.date,
+                      ticketNumber: displayTicketNumber,
+                      customerInfo: {
+                        ...selectedTicket.customerInfo,
+                        name: editableTicket.customerName,
+                        address: editableTicket.address,
+                        city: editableTicket.cityState.split(',')[0]?.trim() || '',
+                        state: editableTicket.cityState.split(',')[1]?.trim() || '',
+                        zip_code: editableTicket.zipCode,
+                        phone: editableTicket.phone,
+                        email: editableTicket.email,
+                        service_location: editableTicket.serviceLocation,
+                        location_code: editableTicket.locationCode,
+                        po_number: editableTicket.poNumber,
+                        approver_name: editableTicket.approverName,
+                      },
+                    };
+                    handleExportPdf(modifiedTicket);
+                  }}
+                  style={{ padding: '10px 24px' }}
+                  disabled={isExportingExcel || isExportingPdf}
+                >
+                  {isExportingPdf ? 'Generating PDF...' : 'Export PDF'}
                 </button>
               </div>
             </div>
