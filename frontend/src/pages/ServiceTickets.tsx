@@ -64,7 +64,7 @@ export default function ServiceTickets() {
   const handleExportExcel = async (ticket: ServiceTicket) => {
     setIsExportingExcel(true);
     try {
-      // Use the ticket number that was already generated when opening the popup
+      // Use the ticket number that was already set (either from DB or newly generated)
       const ticketNumber = ticket.ticketNumber || displayTicketNumber;
       
       // Create a copy of the ticket with the ticket number
@@ -72,31 +72,41 @@ export default function ServiceTickets() {
       
       await downloadExcelServiceTicket(ticketWithNumber);
       
-      // Calculate totals for recording
-      const rtRate = 130, ttRate = 130, ftRate = 140, otRate = 195;
-      const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-      const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-      const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-      const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
-      const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+      // Only create a new record if this ticket doesn't already have one
+      // Check if a record already exists for this date/user/customer combo
+      const existingRecord = existingTickets?.find(
+        et => et.date === ticket.date && 
+              et.user_id === ticket.userId && 
+              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+      );
       
-      // Save the ticket record to the database
-      const year = new Date().getFullYear() % 100;
-      const sequenceMatch = ticketNumber.match(/\d{3}$/);
-      const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-      
-      await serviceTicketsService.createTicketRecord({
-        ticketNumber,
-        employeeInitials: ticket.userInitials,
-        year,
-        sequenceNumber,
-        date: ticket.date,
-        customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-        userId: ticket.userId,
-        projectId: ticket.projectId,
-        totalHours: ticket.totalHours,
-        totalAmount,
-      });
+      if (!existingRecord) {
+        // Calculate totals for recording
+        const rtRate = 130, ttRate = 130, ftRate = 140, otRate = 195;
+        const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+        const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+        const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+        const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+        const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+        
+        // Save the ticket record to the database
+        const year = new Date().getFullYear() % 100;
+        const sequenceMatch = ticketNumber.match(/\d{3}$/);
+        const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+        
+        await serviceTicketsService.createTicketRecord({
+          ticketNumber,
+          employeeInitials: ticket.userInitials,
+          year,
+          sequenceNumber,
+          date: ticket.date,
+          customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+          userId: ticket.userId,
+          projectId: ticket.projectId,
+          totalHours: ticket.totalHours,
+          totalAmount,
+        });
+      }
     } catch (error) {
       alert('Failed to export service ticket Excel.');
     } finally {
@@ -370,10 +380,17 @@ export default function ServiceTickets() {
                     projectNumber: ticket.projectNumber || '',
                     date: ticket.date || '',
                   });
-                  // Generate and display the ticket number
-                  serviceTicketsService.getNextTicketNumber(ticket.userInitials)
-                    .then(num => setDisplayTicketNumber(num))
-                    .catch(() => setDisplayTicketNumber(`${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`));
+                  
+                  // Use existing ticket number if already exported, otherwise generate a new one
+                  if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
+                    // This ticket was already exported - use the existing number
+                    setDisplayTicketNumber(ticket.displayTicketNumber);
+                  } else {
+                    // Generate a new ticket number for first-time export
+                    serviceTicketsService.getNextTicketNumber(ticket.userInitials)
+                      .then(num => setDisplayTicketNumber(num))
+                      .catch(() => setDisplayTicketNumber(`${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`));
+                  }
                 };
 
                 return (
