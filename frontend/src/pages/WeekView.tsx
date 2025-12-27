@@ -37,6 +37,10 @@ export default function WeekView() {
   // Zoom level: number of divisions per hour (2=halves, 4=quarters, 5=fifths, 6=sixths, etc.)
   const [divisionsPerHour, setDivisionsPerHour] = useState(4);
   
+  // Week picker popup state
+  const [showWeekPicker, setShowWeekPicker] = useState(false);
+  const [pickerDate, setPickerDate] = useState(new Date());
+  
   // Time entry modal state (for creating new entries)
   const [showTimeEntryModal, setShowTimeEntryModal] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{
@@ -523,19 +527,170 @@ export default function WeekView() {
           >
             ‹
           </button>
-          <div style={{ 
-            padding: '8px 16px', 
-            backgroundColor: 'var(--bg-secondary)', 
-            borderRadius: '6px',
-            border: '1px solid var(--border-color)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            minWidth: '220px'
-          }}>
-            <span>📅</span>
-            <strong>{getWeekLabel()}</strong>
-            <span style={{ color: 'var(--text-secondary)' }}>· W{getWeekNumber(currentDate)}</span>
+          <div style={{ position: 'relative' }}>
+            <div 
+              onClick={() => {
+                setPickerDate(new Date(currentDate));
+                setShowWeekPicker(!showWeekPicker);
+              }}
+              style={{ 
+                padding: '8px 16px', 
+                backgroundColor: 'var(--bg-secondary)', 
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                minWidth: '220px',
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
+            >
+              <span>📅</span>
+              <strong>{getWeekLabel()}</strong>
+              <span style={{ color: 'var(--text-secondary)' }}>· W{getWeekNumber(currentDate)}</span>
+            </div>
+            
+            {/* Week Picker Popup */}
+            {showWeekPicker && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: '0',
+                marginTop: '8px',
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                padding: '16px',
+                zIndex: 1000,
+                minWidth: '280px'
+              }}>
+                {/* Month/Year Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPickerDate(new Date(pickerDate.getFullYear(), pickerDate.getMonth() - 1, 1));
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', padding: '4px 8px' }}
+                  >
+                    ‹
+                  </button>
+                  <strong style={{ fontSize: '14px' }}>
+                    {pickerDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </strong>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPickerDate(new Date(pickerDate.getFullYear(), pickerDate.getMonth() + 1, 1));
+                    }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', padding: '4px 8px' }}
+                  >
+                    ›
+                  </button>
+                </div>
+                
+                {/* Day Headers */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '8px' }}>
+                  {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(day => (
+                    <div key={day} style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>
+                      {day}
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Calendar Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
+                  {(() => {
+                    const year = pickerDate.getFullYear();
+                    const month = pickerDate.getMonth();
+                    const firstDay = new Date(year, month, 1);
+                    const lastDay = new Date(year, month + 1, 0);
+                    const startDay = (firstDay.getDay() + 6) % 7; // Monday = 0
+                    const daysInMonth = lastDay.getDate();
+                    
+                    const cells = [];
+                    
+                    // Empty cells before first day
+                    for (let i = 0; i < startDay; i++) {
+                      cells.push(<div key={`empty-${i}`} style={{ height: '32px' }} />);
+                    }
+                    
+                    // Day cells
+                    for (let day = 1; day <= daysInMonth; day++) {
+                      const cellDate = new Date(year, month, day);
+                      const cellWeekStart = getWeekStart(cellDate);
+                      const isSelectedWeek = cellWeekStart.toDateString() === weekStart.toDateString();
+                      const isToday = cellDate.toDateString() === new Date().toDateString();
+                      
+                      cells.push(
+                        <div
+                          key={day}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCurrentDate(cellDate);
+                            setShowWeekPicker(false);
+                          }}
+                          style={{
+                            height: '32px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            backgroundColor: isSelectedWeek ? 'var(--primary-color)' : 'transparent',
+                            color: isSelectedWeek ? 'white' : 'var(--text-primary)',
+                            border: isToday ? '2px solid #28a745' : 'none',
+                            fontWeight: isToday ? 'bold' : 'normal'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelectedWeek) {
+                              e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelectedWeek) {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                            }
+                          }}
+                        >
+                          {day}
+                        </div>
+                      );
+                    }
+                    
+                    return cells;
+                  })()}
+                </div>
+                
+                {/* Quick Actions */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCurrentDate(new Date());
+                      setShowWeekPicker(false);
+                    }}
+                    className="button button-primary"
+                    style={{ flex: 1, fontSize: '12px', padding: '8px' }}
+                  >
+                    This Week
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowWeekPicker(false);
+                    }}
+                    className="button button-secondary"
+                    style={{ fontSize: '12px', padding: '8px' }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <button 
             className="button" 
