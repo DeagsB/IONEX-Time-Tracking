@@ -349,12 +349,40 @@ export default function ServiceTickets() {
               </tr>
             </thead>
             <tbody>
-              {filteredTickets.map((ticket) => (
+              {filteredTickets.map((ticket) => {
+                const handleRowClick = () => {
+                  setSelectedTicket(ticket);
+                  setEditableTicket({
+                    customerName: ticket.customerInfo.name || '',
+                    address: ticket.customerInfo.address || '',
+                    cityState: ticket.customerInfo.city && ticket.customerInfo.state 
+                      ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
+                      : ticket.customerInfo.city || ticket.customerInfo.state || '',
+                    zipCode: ticket.customerInfo.zip_code || '',
+                    phone: ticket.customerInfo.phone || '',
+                    email: ticket.customerInfo.email || '',
+                    contactName: ticket.userName || '',
+                    serviceLocation: ticket.customerInfo.service_location || ticket.customerInfo.address || '',
+                    locationCode: ticket.customerInfo.location_code || '',
+                    poNumber: ticket.customerInfo.po_number || '',
+                    approverName: ticket.customerInfo.approver_name || '',
+                    techName: ticket.userName || '',
+                    projectNumber: ticket.projectNumber || '',
+                    date: ticket.date || '',
+                  });
+                  // Generate and display the ticket number
+                  serviceTicketsService.getNextTicketNumber(ticket.userInitials)
+                    .then(num => setDisplayTicketNumber(num))
+                    .catch(() => setDisplayTicketNumber(`${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`));
+                };
+
+                return (
                 <tr
                   key={ticket.id}
                   style={{
                     borderBottom: '1px solid var(--border-color)',
                     transition: 'background-color 0.2s',
+                    cursor: 'pointer',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
@@ -362,6 +390,7 @@ export default function ServiceTickets() {
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
+                  onClick={handleRowClick}
                 >
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
                     {ticket.displayTicketNumber}
@@ -397,44 +426,27 @@ export default function ServiceTickets() {
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {ticket.hoursByRateType['Field Overtime'].toFixed(1)}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'center' }}>
+                  <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                     <button
-                      className="button button-secondary"
+                      className="button"
                       onClick={() => {
-                        setSelectedTicket(ticket);
-                        setEditableTicket({
-                          customerName: ticket.customerInfo.name || '',
-                          address: ticket.customerInfo.address || '',
-                          cityState: ticket.customerInfo.city && ticket.customerInfo.state 
-                            ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
-                            : ticket.customerInfo.city || ticket.customerInfo.state || '',
-                          zipCode: ticket.customerInfo.zip_code || '',
-                          phone: ticket.customerInfo.phone || '',
-                          email: ticket.customerInfo.email || '',
-                          contactName: ticket.userName || '',
-                          serviceLocation: ticket.customerInfo.service_location || ticket.customerInfo.address || '',
-                          locationCode: ticket.customerInfo.location_code || '',
-                          poNumber: ticket.customerInfo.po_number || '',
-                          approverName: ticket.customerInfo.approver_name || '',
-                          techName: ticket.userName || '',
-                          projectNumber: ticket.projectNumber || '',
-                          date: ticket.date || '',
-                        });
-                        // Generate and display the ticket number
-                        serviceTicketsService.getNextTicketNumber(ticket.userInitials)
-                          .then(num => setDisplayTicketNumber(num))
-                          .catch(() => setDisplayTicketNumber(`${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`));
+                        // TODO: Implement mark as invoiced functionality
+                        alert('Mark as invoiced functionality coming soon!');
                       }}
                       style={{
                         padding: '6px 16px',
                         fontSize: '13px',
+                        backgroundColor: '#4caf50',
+                        color: 'white',
+                        border: 'none',
                       }}
                     >
-                      View
+                      Mark as Invoiced
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
