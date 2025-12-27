@@ -14,9 +14,9 @@ const getRateCode = (rateType?: string): 'RT' | 'TT' | 'FT' | 'OT' => {
   return RATE_TYPE_MAP[rateType || ''] || 'RT';
 };
 
-// Round to nearest 0.5 hour
+// Round UP to nearest 0.5 hour (never round down)
 const roundToHalfHour = (hours: number): number => {
-  return Math.round(hours * 2) / 2;
+  return Math.ceil(hours * 2) / 2;
 };
 
 // Generate PDF from HTML that matches the Excel template exactly
