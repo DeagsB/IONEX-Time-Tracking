@@ -5,7 +5,7 @@ import { createCellAddress } from './excelTemplateMapping';
 
 // Maximum characters per description row before wrapping to next row
 // This is based on the column width of the description area (B-J merged)
-const MAX_DESCRIPTION_CHARS = 75;
+const MAX_DESCRIPTION_CHARS = 120;
 
 // Round UP to nearest 0.5 hour (never round down)
 const roundToHalfHour = (hours: number): number => {
