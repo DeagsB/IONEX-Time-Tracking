@@ -36,12 +36,22 @@ const INITIAL_POSITIONS: { [key: string]: { x: number; y: number; label: string;
 const PDF_WIDTH = 612;
 const PDF_HEIGHT = 792;
 
+// Grid snap size
+const GRID_SIZE = 5;
+
+// Snap value to grid
+const snapToGrid = (value: number): number => {
+  return Math.round(value / GRID_SIZE) * GRID_SIZE;
+};
+
 export default function PdfCalibrator() {
   const [positions, setPositions] = useState(INITIAL_POSITIONS);
   const [selectedField, setSelectedField] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
-  const [pdfLoaded, setPdfLoaded] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+  const [gridSize, setGridSize] = useState(GRID_SIZE);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
@@ -51,14 +61,19 @@ export default function PdfCalibrator() {
     y: (PDF_HEIGHT - y) * scale, // Flip Y axis (PDF is bottom-up)
   });
 
-  // Convert screen coordinates to PDF coordinates
-  const screenToPdf = (screenX: number, screenY: number) => ({
-    x: Math.round(screenX / scale),
-    y: Math.round(PDF_HEIGHT - screenY / scale),
-  });
+  // Convert screen coordinates to PDF coordinates with grid snap
+  const screenToPdf = (screenX: number, screenY: number) => {
+    const rawX = screenX / scale;
+    const rawY = PDF_HEIGHT - screenY / scale;
+    return {
+      x: snapToGrid(rawX),
+      y: snapToGrid(rawY),
+    };
+  };
 
   const handleMouseDown = (e: React.MouseEvent, fieldKey: string) => {
     e.preventDefault();
+    e.stopPropagation();
     setSelectedField(fieldKey);
     setDragging(true);
     
@@ -70,11 +85,11 @@ export default function PdfCalibrator() {
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragging || !selectedField || !containerRef.current) return;
+    if (!dragging || !selectedField || !pdfContainerRef.current) return;
 
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const screenX = e.clientX - containerRect.left - dragOffset.x + 6;
-    const screenY = e.clientY - containerRect.top - dragOffset.y + 6;
+    const containerRect = pdfContainerRef.current.getBoundingClientRect();
+    const screenX = e.clientX - containerRect.left - dragOffset.x + 8;
+    const screenY = e.clientY - containerRect.top - dragOffset.y + 8;
 
     const pdfCoords = screenToPdf(screenX, screenY);
 
@@ -146,15 +161,21 @@ const LAYOUT = {
 };`;
     
     navigator.clipboard.writeText(code);
-    alert('Coordinates copied to clipboard!');
+    alert('Coordinates copied to clipboard! Share this with me to apply the changes.');
   };
 
-  // Calculate scale to fit the container
+  // Calculate scale to fill available space
   useEffect(() => {
     const updateScale = () => {
       if (containerRef.current) {
-        const containerWidth = containerRef.current.offsetWidth - 40;
-        const newScale = Math.min(containerWidth / PDF_WIDTH, 1.2);
+        const containerHeight = window.innerHeight - 180;
+        const containerWidth = containerRef.current.offsetWidth - 320; // Account for sidebar
+        
+        const scaleByHeight = containerHeight / PDF_HEIGHT;
+        const scaleByWidth = containerWidth / PDF_WIDTH;
+        
+        // Use the larger scale that fits, but cap at 1.5
+        const newScale = Math.min(Math.max(scaleByHeight, scaleByWidth), 1.5);
         setScale(newScale);
       }
     };
@@ -164,11 +185,74 @@ const LAYOUT = {
     return () => window.removeEventListener('resize', updateScale);
   }, []);
 
+  // Generate grid lines
+  const gridLines = [];
+  if (showGrid) {
+    // Vertical lines
+    for (let x = 0; x <= PDF_WIDTH; x += gridSize * 2) {
+      const screenX = x * scale;
+      gridLines.push(
+        <line
+          key={`v-${x}`}
+          x1={screenX}
+          y1={0}
+          x2={screenX}
+          y2={PDF_HEIGHT * scale}
+          stroke={x % 50 === 0 ? 'rgba(100, 100, 255, 0.3)' : 'rgba(100, 100, 255, 0.1)'}
+          strokeWidth={x % 50 === 0 ? 1 : 0.5}
+        />
+      );
+    }
+    // Horizontal lines
+    for (let y = 0; y <= PDF_HEIGHT; y += gridSize * 2) {
+      const screenY = y * scale;
+      gridLines.push(
+        <line
+          key={`h-${y}`}
+          x1={0}
+          y1={screenY}
+          x2={PDF_WIDTH * scale}
+          y2={screenY}
+          stroke={y % 50 === 0 ? 'rgba(255, 100, 100, 0.3)' : 'rgba(255, 100, 100, 0.1)'}
+          strokeWidth={y % 50 === 0 ? 1 : 0.5}
+        />
+      );
+    }
+  }
+
   return (
-    <div style={{ padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+    <div style={{ padding: '20px', height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <h2 style={{ margin: 0, color: 'var(--text-primary)' }}>PDF Position Calibrator</h2>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            <input
+              type="checkbox"
+              checked={showGrid}
+              onChange={(e) => setShowGrid(e.target.checked)}
+              style={{ width: '16px', height: '16px' }}
+            />
+            Show Grid
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Snap:
+            <select
+              value={gridSize}
+              onChange={(e) => setGridSize(Number(e.target.value))}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <option value="1">1px</option>
+              <option value="5">5px</option>
+              <option value="10">10px</option>
+              <option value="25">25px</option>
+            </select>
+          </label>
           <button
             className="button button-secondary"
             onClick={() => setPositions(INITIAL_POSITIONS)}
@@ -185,83 +269,106 @@ const LAYOUT = {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '20px' }}>
+      <div ref={containerRef} style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
         {/* PDF Canvas */}
         <div
-          ref={containerRef}
           style={{
             flex: 1,
             position: 'relative',
-            backgroundColor: '#333',
+            backgroundColor: '#1a1a2e',
             borderRadius: '8px',
-            overflow: 'hidden',
-            cursor: dragging ? 'grabbing' : 'default',
+            overflow: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
-          {/* PDF Background */}
+          {/* PDF Container */}
           <div
+            ref={pdfContainerRef}
             style={{
               width: PDF_WIDTH * scale,
               height: PDF_HEIGHT * scale,
-              margin: '20px',
               position: 'relative',
               backgroundColor: '#fff',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              flexShrink: 0,
             }}
           >
-            {/* Load PDF as image via iframe/embed or show placeholder */}
+            {/* PDF Background */}
             <iframe
-              src="/templates/Service-Ticket-Example.pdf"
+              src="/templates/Service-Ticket-Example.pdf#toolbar=0&navpanes=0"
               style={{
                 width: '100%',
                 height: '100%',
                 border: 'none',
                 pointerEvents: 'none',
               }}
-              onLoad={() => setPdfLoaded(true)}
             />
+
+            {/* Grid Overlay */}
+            {showGrid && (
+              <svg
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none',
+                }}
+              >
+                {gridLines}
+              </svg>
+            )}
 
             {/* Draggable markers */}
             {Object.entries(positions).map(([key, pos]) => {
               const screenPos = pdfToScreen(pos.x, pos.y);
+              const isSelected = selectedField === key;
               return (
                 <div
                   key={key}
                   onMouseDown={(e) => handleMouseDown(e, key)}
                   style={{
                     position: 'absolute',
-                    left: screenPos.x - 6,
-                    top: screenPos.y - 6,
-                    width: 12,
-                    height: 12,
+                    left: screenPos.x - 8,
+                    top: screenPos.y - 8,
+                    width: 16,
+                    height: 16,
                     backgroundColor: pos.color,
                     borderRadius: '50%',
-                    cursor: 'grab',
-                    border: selectedField === key ? '2px solid #fff' : '2px solid rgba(0,0,0,0.3)',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                    zIndex: selectedField === key ? 100 : 10,
+                    cursor: dragging && isSelected ? 'grabbing' : 'grab',
+                    border: isSelected ? '3px solid #fff' : '2px solid rgba(0,0,0,0.4)',
+                    boxShadow: isSelected 
+                      ? '0 0 12px rgba(255,255,255,0.8), 0 4px 8px rgba(0,0,0,0.4)' 
+                      : '0 2px 6px rgba(0,0,0,0.3)',
+                    zIndex: isSelected ? 100 : 10,
+                    transition: isSelected ? 'none' : 'box-shadow 0.2s',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                   title={`${pos.label} (${pos.x}, ${pos.y})`}
                 >
-                  {selectedField === key && (
+                  {isSelected && (
                     <div
                       style={{
                         position: 'absolute',
-                        top: -25,
+                        top: -28,
                         left: '50%',
                         transform: 'translateX(-50%)',
-                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        backgroundColor: 'rgba(0,0,0,0.9)',
                         color: '#fff',
-                        padding: '2px 6px',
+                        padding: '4px 8px',
                         borderRadius: '4px',
-                        fontSize: '10px',
+                        fontSize: '11px',
                         whiteSpace: 'nowrap',
+                        fontFamily: 'monospace',
+                        fontWeight: 'bold',
                       }}
                     >
                       {pos.x}, {pos.y}
@@ -276,12 +383,12 @@ const LAYOUT = {
         {/* Field List */}
         <div
           style={{
-            width: '280px',
+            width: '300px',
             backgroundColor: 'var(--bg-secondary)',
             borderRadius: '8px',
             padding: '16px',
-            maxHeight: '80vh',
             overflowY: 'auto',
+            flexShrink: 0,
           }}
         >
           <h3 style={{ margin: '0 0 16px 0', color: 'var(--text-primary)', fontSize: '14px' }}>
@@ -295,51 +402,57 @@ const LAYOUT = {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                padding: '8px',
+                padding: '10px',
                 marginBottom: '4px',
                 borderRadius: '6px',
                 backgroundColor: selectedField === key ? 'var(--primary-light)' : 'transparent',
                 cursor: 'pointer',
                 transition: 'background-color 0.2s',
+                border: selectedField === key ? `2px solid ${pos.color}` : '2px solid transparent',
               }}
             >
               <div
                 style={{
-                  width: 12,
-                  height: 12,
+                  width: 14,
+                  height: 14,
                   borderRadius: '50%',
                   backgroundColor: pos.color,
                   marginRight: '10px',
                   flexShrink: 0,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                 }}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)' }}>
                   {pos.label}
                 </div>
-                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
                   x: {pos.x}, y: {pos.y}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '4px' }}>
+              <div style={{ display: 'flex', gap: '3px' }}>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setPositions((prev) => ({
                       ...prev,
-                      [key]: { ...prev[key], x: prev[key].x - 5 },
+                      [key]: { ...prev[key], x: snapToGrid(prev[key].x - gridSize) },
                     }));
                   }}
                   style={{
-                    width: 20,
-                    height: 20,
+                    width: 24,
+                    height: 24,
                     border: '1px solid var(--border-color)',
                     borderRadius: '4px',
                     backgroundColor: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
                     cursor: 'pointer',
-                    fontSize: '10px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
+                  title="Move left"
                 >
                   ←
                 </button>
@@ -348,19 +461,23 @@ const LAYOUT = {
                     e.stopPropagation();
                     setPositions((prev) => ({
                       ...prev,
-                      [key]: { ...prev[key], x: prev[key].x + 5 },
+                      [key]: { ...prev[key], x: snapToGrid(prev[key].x + gridSize) },
                     }));
                   }}
                   style={{
-                    width: 20,
-                    height: 20,
+                    width: 24,
+                    height: 24,
                     border: '1px solid var(--border-color)',
                     borderRadius: '4px',
                     backgroundColor: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
                     cursor: 'pointer',
-                    fontSize: '10px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
+                  title="Move right"
                 >
                   →
                 </button>
@@ -369,19 +486,23 @@ const LAYOUT = {
                     e.stopPropagation();
                     setPositions((prev) => ({
                       ...prev,
-                      [key]: { ...prev[key], y: prev[key].y + 5 },
+                      [key]: { ...prev[key], y: snapToGrid(prev[key].y + gridSize) },
                     }));
                   }}
                   style={{
-                    width: 20,
-                    height: 20,
+                    width: 24,
+                    height: 24,
                     border: '1px solid var(--border-color)',
                     borderRadius: '4px',
                     backgroundColor: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
                     cursor: 'pointer',
-                    fontSize: '10px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
+                  title="Move up"
                 >
                   ↑
                 </button>
@@ -390,19 +511,23 @@ const LAYOUT = {
                     e.stopPropagation();
                     setPositions((prev) => ({
                       ...prev,
-                      [key]: { ...prev[key], y: prev[key].y - 5 },
+                      [key]: { ...prev[key], y: snapToGrid(prev[key].y - gridSize) },
                     }));
                   }}
                   style={{
-                    width: 20,
-                    height: 20,
+                    width: 24,
+                    height: 24,
                     border: '1px solid var(--border-color)',
                     borderRadius: '4px',
                     backgroundColor: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
                     cursor: 'pointer',
-                    fontSize: '10px',
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
+                  title="Move down"
                 >
                   ↓
                 </button>
@@ -411,14 +536,15 @@ const LAYOUT = {
           ))}
           
           <div style={{ marginTop: '20px', padding: '12px', backgroundColor: 'var(--bg-primary)', borderRadius: '6px' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
               💡 <strong>Tips:</strong>
             </div>
-            <ul style={{ fontSize: '10px', color: 'var(--text-secondary)', margin: 0, paddingLeft: '16px' }}>
-              <li>Drag dots on PDF to position</li>
+            <ul style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0, paddingLeft: '16px', lineHeight: '1.6' }}>
+              <li>Drag dots to position fields</li>
+              <li>Positions snap to grid ({gridSize}px)</li>
               <li>Use arrow buttons for fine-tuning</li>
+              <li>Toggle grid visibility above</li>
               <li>Click "Copy Coordinates" when done</li>
-              <li>Share the output with me to apply</li>
             </ul>
           </div>
         </div>
@@ -426,4 +552,3 @@ const LAYOUT = {
     </div>
   );
 }
-
