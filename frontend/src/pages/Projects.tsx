@@ -13,8 +13,6 @@ export default function Projects() {
     project_number: '',
     description: '',
     customer_id: '',
-    rate: '',
-    billing_type: 'hourly',
     status: 'active',
     start_date: '',
     end_date: '',
@@ -40,8 +38,6 @@ export default function Projects() {
         project_number: data.project_number || null,
         description: data.description || null,
         customer_id: data.customer_id || null,
-        rate: parseFloat(data.rate),
-        billing_type: data.billing_type,
         status: data.status,
         start_date: data.start_date || null,
         end_date: data.end_date || null,
@@ -64,8 +60,6 @@ export default function Projects() {
       if (data.project_number !== undefined) projectData.project_number = data.project_number || null;
       if (data.description !== undefined) projectData.description = data.description || null;
       if (data.customer_id !== undefined) projectData.customer_id = data.customer_id || null;
-      if (data.rate !== undefined) projectData.rate = parseFloat(data.rate);
-      if (data.billing_type !== undefined) projectData.billing_type = data.billing_type;
       if (data.status !== undefined) projectData.status = data.status;
       if (data.start_date !== undefined) projectData.start_date = data.start_date || null;
       if (data.end_date !== undefined) projectData.end_date = data.end_date || null;
@@ -87,8 +81,6 @@ export default function Projects() {
       project_number: '',
       description: '',
       customer_id: '',
-      rate: '',
-      billing_type: 'hourly',
       status: 'active',
       start_date: '',
       end_date: '',
@@ -104,8 +96,6 @@ export default function Projects() {
       project_number: project.project_number || '',
       description: project.description || '',
       customer_id: project.customer_id || '',
-      rate: project.rate?.toString() || '',
-      billing_type: project.billing_type || 'hourly',
       status: project.status || 'active',
       start_date: project.start_date ? new Date(project.start_date).toISOString().split('T')[0] : '',
       end_date: project.end_date ? new Date(project.end_date).toISOString().split('T')[0] : '',
@@ -134,14 +124,13 @@ export default function Projects() {
               <tr>
                 <th>Name</th>
                 <th>Customer</th>
-                <th>Rate</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {projects && projects.length === 0 && (
                 <tr>
-                  <td colSpan={4} style={{ textAlign: 'center', padding: '20px' }}>
+                  <td colSpan={3} style={{ textAlign: 'center', padding: '20px' }}>
                     No projects found.
                   </td>
                 </tr>
@@ -150,7 +139,6 @@ export default function Projects() {
                 <tr key={project.id}>
                   <td>{project.name}</td>
                   <td>{project.customer?.name || '-'}</td>
-                  <td>${project.rate}/hr</td>
                   <td>{project.status}</td>
                 </tr>
               ))}
@@ -223,33 +211,6 @@ export default function Projects() {
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div className="form-group">
-                <label className="label">Rate ($/hr)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input"
-                  value={formData.rate}
-                  onChange={(e) => setFormData({ ...formData, rate: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="label">Billing Type</label>
-                <select
-                  className="input"
-                  value={formData.billing_type}
-                  onChange={(e) => setFormData({ ...formData, billing_type: e.target.value })}
-                >
-                  <option value="hourly">Hourly</option>
-                  <option value="fixed">Fixed</option>
-                  <option value="retainer">Retainer</option>
-                </select>
-              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
@@ -338,8 +299,6 @@ export default function Projects() {
               <th>Project #</th>
               <th>Name</th>
               <th>Customer</th>
-              <th>Rate</th>
-              <th>Billing Type</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -347,7 +306,7 @@ export default function Projects() {
           <tbody>
             {projects && projects.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '20px' }}>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '20px' }}>
                   No projects found. Create your first project above.
                 </td>
               </tr>
@@ -357,8 +316,6 @@ export default function Projects() {
                 <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{project.project_number || '-'}</td>
                 <td>{project.name}</td>
                 <td>{project.customer?.name || '-'}</td>
-                <td>${project.rate}/hr</td>
-                <td>{project.billing_type}</td>
                 <td>{project.status}</td>
                 <td>
                   <button
