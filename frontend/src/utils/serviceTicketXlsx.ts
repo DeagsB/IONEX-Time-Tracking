@@ -276,7 +276,13 @@ function updateTotals(
     cell.numFmt = '0.0';
   });
 
-  // Summary cells
+  // Write rate values to cells (L column typically shows $/hr rates)
+  setCellWithResult('L35', rtRate);
+  setCellWithResult('L36', ttRate);
+  setCellWithResult('L37', ftRate);
+  setCellWithResult('L38', otRate);
+
+  // Summary cells (amounts)
   setCellWithResult('M35', rtAmount);
   setCellWithResult('M36', ttAmount);
   setCellWithResult('M37', ftAmount);
