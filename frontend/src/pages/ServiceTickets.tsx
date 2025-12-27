@@ -209,13 +209,6 @@ export default function ServiceTickets() {
         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
           Service Tickets
         </h2>
-        <Link
-          to="/pdf-calibrator"
-          className="button button-secondary"
-          style={{ padding: '8px 16px', fontSize: '12px', textDecoration: 'none' }}
-        >
-          📐 PDF Calibrator
-        </Link>
       </div>
 
       {/* Filters */}
