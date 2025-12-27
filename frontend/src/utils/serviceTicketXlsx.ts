@@ -7,6 +7,11 @@ import { createCellAddress } from './excelTemplateMapping';
 // This is based on the column width of the description area (B-J merged)
 const MAX_DESCRIPTION_CHARS = 75;
 
+// Round to nearest 0.5 hour
+const roundToHalfHour = (hours: number): number => {
+  return Math.round(hours * 2) / 2;
+};
+
 /**
  * Splits a description into multiple lines based on max character limit
  * Splits at word boundaries when possible
@@ -64,7 +69,7 @@ function prepareRowItems(entries: ServiceTicket['entries']): RowItem[] {
     for (let i = 0; i < descriptionLines.length; i++) {
       rowItems.push({
         description: descriptionLines[i],
-        hours: i === 0 ? entry.hours : null, // Only first line gets hours
+        hours: i === 0 ? roundToHalfHour(entry.hours) : null, // Only first line gets hours, rounded to 0.5
         rateType: rateType,
         isFirstLineOfEntry: i === 0,
       });

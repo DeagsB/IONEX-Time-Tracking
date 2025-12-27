@@ -14,13 +14,18 @@ const getRateCode = (rateType?: string): 'RT' | 'TT' | 'FT' | 'OT' => {
   return RATE_TYPE_MAP[rateType || ''] || 'RT';
 };
 
+// Round to nearest 0.5 hour
+const roundToHalfHour = (hours: number): number => {
+  return Math.round(hours * 2) / 2;
+};
+
 // Generate PDF from HTML that matches the Excel template exactly
 export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> {
-  // Calculate totals using mapped rate types
-  const rtHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? e.hours : 0), 0);
-  const ttHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? e.hours : 0), 0);
-  const ftHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? e.hours : 0), 0);
-  const otHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'OT' ? e.hours : 0), 0);
+  // Calculate totals using mapped rate types (each entry rounded to nearest 0.5)
+  const rtHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? roundToHalfHour(e.hours) : 0), 0);
+  const ttHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? roundToHalfHour(e.hours) : 0), 0);
+  const ftHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? roundToHalfHour(e.hours) : 0), 0);
+  const otHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'OT' ? roundToHalfHour(e.hours) : 0), 0);
 
   const rtRate = 110;
   const ttRate = 85;
@@ -39,18 +44,19 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
     return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}/${d.getFullYear()}`;
   };
 
-  // Group entries by description (date + notes)
+  // Group entries by description (date + notes), round hours to nearest 0.5
   const descriptionLines: { text: string; rt: number; tt: number; ft: number; ot: number }[] = [];
   ticket.entries.forEach(entry => {
     const dateStr = formatDate(entry.date);
     const desc = `${dateStr} - ${entry.description || 'Work performed'}`;
     const rateCode = getRateCode(entry.rate_type);
+    const roundedHours = roundToHalfHour(entry.hours);
     descriptionLines.push({
       text: desc.substring(0, 60),
-      rt: rateCode === 'RT' ? entry.hours : 0,
-      tt: rateCode === 'TT' ? entry.hours : 0,
-      ft: rateCode === 'FT' ? entry.hours : 0,
-      ot: rateCode === 'OT' ? entry.hours : 0,
+      rt: rateCode === 'RT' ? roundedHours : 0,
+      tt: rateCode === 'TT' ? roundedHours : 0,
+      ft: rateCode === 'FT' ? roundedHours : 0,
+      ot: rateCode === 'OT' ? roundedHours : 0,
     });
   });
 
