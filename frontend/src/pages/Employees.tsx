@@ -9,9 +9,6 @@ export default function Employees() {
   const [formData, setFormData] = useState({
     user_id: '', // Will need to fetch users to link
     employee_id: '',
-    wage_rate: '',
-    hourly_rate: '',
-    salary: '',
     hire_date: new Date().toISOString().split('T')[0],
     department: '',
     position: '',
@@ -33,9 +30,6 @@ export default function Employees() {
       // Convert form data to DB format
       const employeeData = {
         ...data,
-        wage_rate: parseFloat(data.wage_rate),
-        hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
-        salary: data.salary ? parseFloat(data.salary) : null,
         rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
         tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
         ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
@@ -54,9 +48,6 @@ export default function Employees() {
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       const employeeData = {
         ...data,
-        wage_rate: parseFloat(data.wage_rate),
-        hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
-        salary: data.salary ? parseFloat(data.salary) : null,
         rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
         tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
         ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
@@ -84,9 +75,6 @@ export default function Employees() {
     setFormData({
       user_id: '',
       employee_id: '',
-      wage_rate: '',
-      hourly_rate: '',
-      salary: '',
       hire_date: new Date().toISOString().split('T')[0],
       department: '',
       position: '',
@@ -103,9 +91,6 @@ export default function Employees() {
     setFormData({
       user_id: employee.user_id || '',
       employee_id: employee.employee_id || '',
-      wage_rate: employee.wage_rate?.toString() || '',
-      hourly_rate: employee.hourly_rate?.toString() || '',
-      salary: employee.salary?.toString() || '',
       hire_date: employee.hire_date || '',
       department: employee.department || '',
       position: employee.position || '',
@@ -198,40 +183,6 @@ export default function Employees() {
                   <option value="inactive">Inactive</option>
                   <option value="terminated">Terminated</option>
                 </select>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-              <div className="form-group">
-                <label className="label">Wage Rate</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input"
-                  value={formData.wage_rate}
-                  onChange={(e) => setFormData({ ...formData, wage_rate: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label className="label">Hourly Rate (Billing)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input"
-                  value={formData.hourly_rate}
-                  onChange={(e) => setFormData({ ...formData, hourly_rate: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label className="label">Salary (Annual)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="input"
-                  value={formData.salary}
-                  onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
-                />
               </div>
             </div>
 
