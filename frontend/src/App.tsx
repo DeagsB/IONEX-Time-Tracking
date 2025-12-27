@@ -18,6 +18,7 @@ import Approvals from './pages/Approvals';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import ServiceTickets from './pages/ServiceTickets';
+import PdfCalibrator from './pages/PdfCalibrator';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 
@@ -121,6 +122,14 @@ function AppRoutes() {
           element={
             <AdminRoute>
               <ServiceTickets />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="pdf-calibrator"
+          element={
+            <AdminRoute>
+              <PdfCalibrator />
             </AdminRoute>
           }
         />

@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { serviceTicketsService, customersService, employeesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
+import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfServiceTicket } from '../utils/pdfServiceTicket';
-import { downloadCalibrationPdf } from '../utils/pdfCalibrate';
 import { supabase } from '../lib/supabaseClient';
 
 export default function ServiceTickets() {
@@ -204,13 +204,13 @@ export default function ServiceTickets() {
         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
           Service Tickets
         </h2>
-        <button
+        <Link
+          to="/pdf-calibrator"
           className="button button-secondary"
-          onClick={() => downloadCalibrationPdf()}
-          style={{ padding: '8px 16px', fontSize: '12px' }}
+          style={{ padding: '8px 16px', fontSize: '12px', textDecoration: 'none' }}
         >
-          📐 PDF Calibration
-        </button>
+          📐 PDF Calibrator
+        </Link>
       </div>
 
       {/* Filters */}
