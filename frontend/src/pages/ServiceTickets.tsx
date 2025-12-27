@@ -39,6 +39,7 @@ export default function ServiceTickets() {
     poNumber: string;
     approverName: string;
     techName: string;
+    techInitials: string;
     projectNumber: string;
     date: string;
   } | null>(null);
@@ -385,6 +386,7 @@ export default function ServiceTickets() {
                           poNumber: ticket.customerInfo.po_number || '',
                           approverName: ticket.customerInfo.approver_name || '',
                           techName: ticket.userName || '',
+                          techInitials: ticket.userInitials || '',
                           projectNumber: ticket.projectNumber || '',
                           date: ticket.date || '',
                         });
@@ -579,13 +581,25 @@ export default function ServiceTickets() {
                       <div style={sectionStyle}>
                         <h3 style={sectionTitleStyle}>Service Information</h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          <div>
-                            <label style={labelStyle}>Technician</label>
-                            <input
-                              style={inputStyle}
-                              value={editableTicket.techName}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, techName: e.target.value })}
-                            />
+                          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={labelStyle}>Technician</label>
+                              <input
+                                style={inputStyle}
+                                value={editableTicket.techName}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, techName: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Initials (for Ticket #)</label>
+                              <input
+                                style={{ ...inputStyle, textTransform: 'uppercase' }}
+                                value={editableTicket.techInitials}
+                                onChange={(e) => setEditableTicket({ ...editableTicket, techInitials: e.target.value.toUpperCase().slice(0, 3) })}
+                                placeholder="e.g., DT"
+                                maxLength={3}
+                              />
+                            </div>
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
@@ -729,6 +743,7 @@ export default function ServiceTickets() {
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,
                       userName: editableTicket.techName,
+                      userInitials: editableTicket.techInitials,
                       projectNumber: editableTicket.projectNumber,
                       date: editableTicket.date,
                       customerInfo: {
@@ -764,6 +779,7 @@ export default function ServiceTickets() {
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,
                       userName: editableTicket.techName,
+                      userInitials: editableTicket.techInitials,
                       projectNumber: editableTicket.projectNumber,
                       date: editableTicket.date,
                       customerInfo: {
