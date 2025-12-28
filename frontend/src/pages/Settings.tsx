@@ -84,6 +84,7 @@ export default function Settings() {
             description: descriptions[Math.floor(Math.random() * descriptions.length)],
             billable: true,
             approved: true,
+            is_demo: true, // Mark as demo data
           });
         }
       }
@@ -119,13 +120,13 @@ export default function Settings() {
     if (resetData) {
       setIsResetting(true);
       try {
-        // Delete all service tickets
-        await supabase.from('service_tickets').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        // Only delete demo service tickets (marked with is_demo = true)
+        await supabase.from('service_tickets').delete().eq('is_demo', true);
         
-        // Delete all time entries
-        await supabase.from('time_entries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        // Only delete demo time entries (marked with is_demo = true)
+        await supabase.from('time_entries').delete().eq('is_demo', true);
         
-        alert('Demo data has been reset successfully!');
+        alert('Demo data has been reset successfully! Your real data is preserved.');
       } catch (error) {
         console.error('Error resetting demo data:', error);
         alert('Error resetting some data. Check console for details.');
@@ -259,7 +260,7 @@ export default function Settings() {
               Turn Off Demo Mode
             </h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5' }}>
-              Would you like to reset all demo data? This will delete:
+              Would you like to reset demo data? This will <strong>only</strong> delete entries created by demo mode:
             </p>
             <ul style={{ 
               color: 'var(--text-secondary)', 
@@ -267,9 +268,12 @@ export default function Settings() {
               paddingLeft: '20px',
               lineHeight: '1.8',
             }}>
-              <li>All time entries</li>
-              <li>All service ticket records</li>
+              <li>Demo time entries (marked with is_demo flag)</li>
+              <li>Demo service ticket records</li>
             </ul>
+            <p style={{ color: '#4ade80', fontSize: '13px', marginBottom: '16px' }}>
+              ✓ Your real data will NOT be affected
+            </p>
             
             <div style={{ 
               display: 'flex', 
