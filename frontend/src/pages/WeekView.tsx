@@ -80,6 +80,10 @@ export default function WeekView() {
     previewHeight: number;
   } | null>(null);
 
+  // Header visibility state (hide on scroll down, show on scroll up)
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const lastScrollTop = useRef(0);
+
   // Ref for scrollable calendar container
   const calendarScrollRef = useRef<HTMLDivElement>(null);
   
@@ -320,8 +324,33 @@ export default function WeekView() {
       // Header is 50px, so scroll to position 8:00am at the top
       const scrollPosition = 8 * 60 - 50; // 430px
       calendarScrollRef.current.scrollTop = scrollPosition;
+      lastScrollTop.current = scrollPosition;
     }
   }, []); // Run once on mount
+
+  // Handle scroll to hide/show header
+  useEffect(() => {
+    const scrollContainer = calendarScrollRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      const currentScrollTop = scrollContainer.scrollTop;
+      const scrollDifference = currentScrollTop - lastScrollTop.current;
+      
+      // Hide header when scrolling down, show when scrolling up
+      // Add threshold to avoid flickering on small movements
+      if (scrollDifference > 5 && headerVisible) {
+        setHeaderVisible(false);
+      } else if (scrollDifference < -5 && !headerVisible) {
+        setHeaderVisible(true);
+      }
+      
+      lastScrollTop.current = currentScrollTop;
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, [headerVisible]);
 
   const zoomIn = () => {
     if (divisionsPerHour < 12) {
@@ -965,7 +994,9 @@ export default function WeekView() {
               gap: '4px',
               position: 'sticky',
               top: 0,
-              zIndex: 11
+              zIndex: 11,
+              transform: headerVisible ? 'translateY(0)' : 'translateY(-50px)',
+              transition: 'transform 0.2s ease-in-out',
             }}>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
@@ -1079,7 +1110,9 @@ export default function WeekView() {
                   gap: '2px',
                   position: 'sticky',
                   top: 0,
-                  zIndex: 10
+                  zIndex: 10,
+                  transform: headerVisible ? 'translateY(0)' : 'translateY(-50px)',
+                  transition: 'transform 0.2s ease-in-out',
                 }}>
                   <div style={{ 
                     display: 'flex', 
