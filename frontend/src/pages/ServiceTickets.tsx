@@ -102,8 +102,11 @@ export default function ServiceTickets() {
         // Use the display ticket number if it's not a placeholder
         ticketNumber = displayTicketNumber;
       } else {
-        // Generate a new ticket number
-        ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+        // Check if this is a demo ticket
+        const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+        
+        // Generate a new ticket number (demo tickets start at 001)
+        ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
         
         // Calculate totals for recording
         const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
@@ -129,6 +132,7 @@ export default function ServiceTickets() {
           projectId: ticket.projectId,
           totalHours: ticket.totalHours,
           totalAmount,
+          isDemo: isDemoTicket,
         });
       }
       
@@ -152,8 +156,9 @@ export default function ServiceTickets() {
       }
       await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
       
-      // Invalidate queries to refresh the ticket list with the new ticket number
-      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      // Invalidate and refetch queries to refresh the ticket list with the new ticket number
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
     } catch (error) {
       console.error('PDF export error:', error);
       alert('Failed to export service ticket PDF. Check console for details.');
@@ -179,8 +184,11 @@ export default function ServiceTickets() {
         // Use existing ticket number
         ticketNumber = existingRecord.ticket_number;
       } else {
-        // Generate a new ticket number only when exporting
-        ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+        // Check if this is a demo ticket
+        const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+        
+        // Generate a new ticket number only when exporting (demo tickets start at 001)
+        ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
         
         // Calculate totals for recording
         const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
@@ -206,6 +214,7 @@ export default function ServiceTickets() {
           projectId: ticket.projectId,
           totalHours: ticket.totalHours,
           totalAmount,
+          isDemo: isDemoTicket,
         });
       }
       
@@ -235,8 +244,9 @@ export default function ServiceTickets() {
       
       await downloadExcelServiceTicket(ticketWithNumber, ticketExpenses);
       
-      // Invalidate queries to refresh the ticket list with the new ticket number
-      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      // Invalidate and refetch queries to refresh the ticket list with the new ticket number
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
     } catch (error) {
       alert('Failed to export service ticket Excel.');
     } finally {
@@ -290,8 +300,11 @@ export default function ServiceTickets() {
         } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
           ticketNumber = ticket.displayTicketNumber;
         } else {
-          // Generate a new ticket number
-          ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+          // Check if this is a demo ticket
+          const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+          
+          // Generate a new ticket number (demo tickets start at 001)
+          ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
           
           // Save the ticket record
           const year = new Date().getFullYear() % 100;
@@ -316,6 +329,7 @@ export default function ServiceTickets() {
             projectId: ticket.projectId,
             totalHours: ticket.totalHours,
             totalAmount,
+            isDemo: isDemoTicket,
           });
         }
         
@@ -339,6 +353,10 @@ export default function ServiceTickets() {
         // Small delay between exports to avoid overwhelming the browser
         await new Promise(resolve => setTimeout(resolve, 500));
       }
+      
+      // Invalidate and refetch queries to refresh the ticket list with new ticket numbers
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
       
       setSelectedTicketIds(new Set());
       alert(`Successfully exported ${ticketsToExport.length} Excel files!`);
@@ -371,8 +389,11 @@ export default function ServiceTickets() {
         } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
           ticketNumber = ticket.displayTicketNumber;
         } else {
-          // Generate a new ticket number
-          ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+          // Check if this is a demo ticket
+          const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+          
+          // Generate a new ticket number (demo tickets start at 001)
+          ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
           
           // Save the ticket record
           const year = new Date().getFullYear() % 100;
@@ -397,6 +418,7 @@ export default function ServiceTickets() {
             projectId: ticket.projectId,
             totalHours: ticket.totalHours,
             totalAmount,
+            isDemo: isDemoTicket,
           });
         }
         
@@ -420,6 +442,10 @@ export default function ServiceTickets() {
         // Small delay between exports to avoid overwhelming the browser
         await new Promise(resolve => setTimeout(resolve, 500));
       }
+      
+      // Invalidate and refetch queries to refresh the ticket list with new ticket numbers
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
       
       setSelectedTicketIds(new Set());
       alert(`Successfully exported ${ticketsToExport.length} PDF files!`);
@@ -572,24 +598,25 @@ export default function ServiceTickets() {
       // Check if this is a demo ticket (all entries are demo)
       const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
       
-      // For demo tickets, always show XXX placeholder
-      if (isDemoTicket) {
-        return {
-          ...ticket,
-          displayTicketNumber: `${ticket.userInitials}_${new Date(ticket.date).getFullYear() % 100}XXX`
-        };
-      }
-      
-      // For non-demo tickets, try to find an existing ticket number
+      // Try to find an existing ticket number for this ticket
       const existing = existingTickets?.find(
         et => et.date === ticket.date && 
               et.user_id === ticket.userId && 
               (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
       );
       
+      // If there's an existing ticket number, use it (even for demo tickets)
+      if (existing?.ticket_number) {
+        return {
+          ...ticket,
+          displayTicketNumber: existing.ticket_number
+        };
+      }
+      
+      // Otherwise, show XXX placeholder
       return {
         ...ticket,
-        displayTicketNumber: existing?.ticket_number || `${ticket.userInitials}_${new Date(ticket.date).getFullYear() % 100}XXX`
+        displayTicketNumber: `${ticket.userInitials}_${new Date(ticket.date).getFullYear() % 100}XXX`
       };
     });
   }, [tickets, existingTickets]);

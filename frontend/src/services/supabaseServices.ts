@@ -412,16 +412,28 @@ export const serviceTicketsService = {
   /**
    * Get the next available ticket number for an employee
    * Format: {initials}_{YY}{sequence} e.g., "DB_25001"
+   * @param userInitials - Employee initials
+   * @param isDemo - If true, only considers demo tickets for sequence (starts at 001 for demo)
    */
-  async getNextTicketNumber(userInitials: string): Promise<string> {
+  async getNextTicketNumber(userInitials: string, isDemo: boolean = false): Promise<string> {
     const year = new Date().getFullYear() % 100; // Get last 2 digits of year
     
     // Find the highest sequence number for this employee this year
-    const { data, error } = await supabase
+    let query = supabase
       .from('service_tickets')
       .select('sequence_number')
       .eq('employee_initials', userInitials.toUpperCase())
-      .eq('year', year)
+      .eq('year', year);
+    
+    // If demo mode, only count demo tickets (so demo tickets start at 001)
+    // If not demo mode, exclude demo tickets from the count
+    if (isDemo) {
+      query = query.eq('is_demo', true);
+    } else {
+      query = query.or('is_demo.is.null,is_demo.eq.false');
+    }
+    
+    const { data, error } = await query
       .order('sequence_number', { ascending: false })
       .limit(1);
 
@@ -449,6 +461,7 @@ export const serviceTicketsService = {
     projectId?: string;
     totalHours: number;
     totalAmount: number;
+    isDemo?: boolean;
   }) {
     const { data, error } = await supabase
       .from('service_tickets')
@@ -463,7 +476,8 @@ export const serviceTicketsService = {
         project_id: ticket.projectId,
         total_hours: ticket.totalHours,
         total_amount: ticket.totalAmount,
-        status: 'draft'
+        status: 'draft',
+        is_demo: ticket.isDemo || false,
       })
       .select()
       .single();

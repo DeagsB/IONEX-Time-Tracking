@@ -15,7 +15,26 @@ export default function Settings() {
       const { data: userData } = await supabase.from('users').select('id').limit(1).single();
       const userId = userData?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
 
-      // Delete all existing demo customers and projects first to ensure clean state
+      // Delete all existing demo data first to ensure clean state (including service tickets to reset numbering)
+      const { data: existingDemoTickets } = await supabase
+        .from('service_tickets')
+        .select('id')
+        .eq('is_demo', true);
+      
+      if (existingDemoTickets && existingDemoTickets.length > 0) {
+        // Delete service ticket expenses first (foreign key constraint)
+        for (const ticket of existingDemoTickets) {
+          await supabase
+            .from('service_ticket_expenses')
+            .delete()
+            .eq('service_ticket_id', ticket.id);
+        }
+        await supabase
+          .from('service_tickets')
+          .delete()
+          .eq('is_demo', true);
+      }
+
       const { data: existingDemoProjects } = await supabase
         .from('projects')
         .select('id')
@@ -40,7 +59,7 @@ export default function Settings() {
           .eq('is_demo', true);
       }
 
-      // Create CNRL customer with full name
+      // Create CNRL customer with full name, PO number, and contact name
       const { data: newCustomer, error: customerError } = await supabase
         .from('customers')
         .insert({
@@ -51,6 +70,8 @@ export default function Settings() {
           city: 'Calgary',
           state: 'AB',
           zip_code: 'T2P 3H7',
+          po_number: 'PO-2025-001',
+          approver_name: 'John Smith',
           is_demo: true,
         })
         .select('id')
@@ -59,22 +80,28 @@ export default function Settings() {
       if (customerError) throw customerError;
       const cnrlCustomerId = newCustomer.id;
 
-      // Create demo projects for CNRL with project numbers and full names
+      // Create demo projects for CNRL with project numbers, full names, and project-specific PO/contact
       const projectData = [
         { 
           project_number: 'CNRL-001',
           name: 'Pipeline Compressor Station PLC Upgrade',
-          color: '#4ecdc4' 
+          color: '#4ecdc4',
+          po_number: 'PO-2025-001',
+          contact_name: 'Sarah Johnson'
         },
         { 
           project_number: 'CNRL-002',
           name: 'Gas Processing Facility Control System Commissioning',
-          color: '#ff6b6b' 
+          color: '#ff6b6b',
+          po_number: 'PO-2025-002',
+          contact_name: 'Mike Anderson'
         },
         { 
           project_number: 'CNRL-003',
           name: 'Well Pad Automation and HMI Integration',
-          color: '#95e1d3' 
+          color: '#95e1d3',
+          po_number: 'PO-2025-003',
+          contact_name: 'Emily Chen'
         },
       ];
       const projectIds: string[] = [];
@@ -88,6 +115,8 @@ export default function Settings() {
             customer_id: cnrlCustomerId,
             rate: 110,
             color: project.color,
+            po_number: project.po_number,
+            contact_name: project.contact_name,
             is_demo: true,
           })
           .select('id')
