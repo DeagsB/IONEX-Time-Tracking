@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsService } from '../services/supabaseServices';
+import { projectsService, customersService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
@@ -22,13 +22,33 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [description, setDescription] = useState('');
-  const [showProjectSelect, setShowProjectSelect] = useState(false);
+  const [projectSearch, setProjectSearch] = useState('');
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [selectedProjectName, setSelectedProjectName] = useState<string>('');
+  const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [shouldAutoStart, setShouldAutoStart] = useState(false);
+  const projectInputRef = useRef<HTMLInputElement>(null);
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => projectsService.getAll(),
   });
+
+  const { data: customers } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => customersService.getAll(),
+  });
+
+  // Filter projects based on search input
+  const filteredProjects = projects?.filter((project: any) =>
+    project.name.toLowerCase().includes(projectSearch.toLowerCase())
+  ) || [];
+
+  // Check if we should show "Create new project" option
+  const showCreateOption = projectSearch.trim().length > 0 && filteredProjects.length === 0;
 
   const createTimeEntryMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -55,6 +75,52 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     },
   });
 
+  const createProjectMutation = useMutation({
+    mutationFn: async (projectName: string) => {
+      const projectData: any = {
+        name: projectName,
+        status: 'active',
+        color: '#4ecdc4',
+        is_demo: isDemoMode,
+      };
+      return await projectsService.create(projectData);
+    },
+    onSuccess: (newProject) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setSelectedProjectId(newProject.id);
+      setSelectedProjectName(newProject.name);
+      setProjectSearch(newProject.name);
+      setShowCreateProjectModal(false);
+      setNewProjectName('');
+      setShowProjectDropdown(false);
+      
+      // Auto-start timer if user clicked start before creating project
+      if (shouldAutoStart && description.trim()) {
+        setShouldAutoStart(false);
+        onTimerStart(description.trim(), newProject.id);
+      }
+    },
+  });
+
+  // Handle clicking outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        projectDropdownRef.current &&
+        !projectDropdownRef.current.contains(event.target as Node) &&
+        projectInputRef.current &&
+        !projectInputRef.current.contains(event.target as Node)
+      ) {
+        setShowProjectDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const handleStart = () => {
     if (timerRunning) {
       // Stop timer
@@ -68,8 +134,37 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       return;
     }
 
+    // If there's project search text but no selected project, try to create it
+    if (projectSearch.trim() && !selectedProjectId && showCreateOption) {
+      setNewProjectName(projectSearch.trim());
+      setShouldAutoStart(true);
+      setShowCreateProjectModal(true);
+      return;
+    }
+
     onTimerStart(description.trim(), selectedProjectId || undefined);
-    setShowProjectSelect(false);
+    setShowProjectDropdown(false);
+    // Project name will be available through currentEntry once timer starts
+  };
+
+  const handleCreateProject = () => {
+    if (newProjectName.trim()) {
+      createProjectMutation.mutate(newProjectName.trim());
+    }
+  };
+
+  const handleProjectSelect = (project: any) => {
+    setSelectedProjectId(project.id);
+    setSelectedProjectName(project.name);
+    setProjectSearch(project.name);
+    setShowProjectDropdown(false);
+  };
+
+  const handleClearProject = () => {
+    setSelectedProjectId('');
+    setSelectedProjectName('');
+    setProjectSearch('');
+    setShowProjectDropdown(false);
   };
 
   const handleStop = async () => {
@@ -152,7 +247,9 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       // Reset form
       setDescription('');
       setSelectedProjectId('');
-      setShowProjectSelect(false);
+      setSelectedProjectName('');
+      setProjectSearch('');
+      setShowProjectDropdown(false);
       
       // Navigate to week view (which will show today's week)
       // The entry will appear in the correct time slot
@@ -213,6 +310,11 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
             {currentEntry.projectName && (
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                 {currentEntry.projectName}
+              </div>
+            )}
+            {selectedProjectName && !currentEntry?.projectName && (
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                {selectedProjectName}
               </div>
             )}
           </div>
@@ -308,30 +410,131 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       {/* Right side - Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginLeft: '20px' }}>
         {!timerRunning && (
-          <button
-            onClick={() => setShowProjectSelect(!showProjectSelect)}
-            style={{
-              background: 'none',
-              border: '1px solid var(--border-color)',
-              borderRadius: '8px',
-              padding: '8px 12px',
-              cursor: 'pointer',
-              color: 'var(--text-primary)',
-              fontSize: '16px',
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-              e.currentTarget.style.borderColor = 'var(--border-color-hover)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.borderColor = 'var(--border-color)';
-            }}
-            title="Select project"
-          >
-            💰
-          </button>
+          <div style={{ position: 'relative', width: '200px' }}>
+            <input
+              ref={projectInputRef}
+              type="text"
+              placeholder="Select project..."
+              value={projectSearch}
+              onChange={(e) => {
+                setProjectSearch(e.target.value);
+                setShowProjectDropdown(true);
+                if (!e.target.value) {
+                  setSelectedProjectId('');
+                  setSelectedProjectName('');
+                }
+              }}
+              onFocus={() => setShowProjectDropdown(true)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                fontSize: '14px',
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                transition: 'all 0.2s ease',
+              }}
+            />
+            {showProjectDropdown && (filteredProjects.length > 0 || showCreateOption || !projectSearch) && (
+              <div
+                ref={projectDropdownRef}
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  marginTop: '5px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  boxShadow: 'var(--shadow-lg)',
+                  zIndex: 1000,
+                  maxHeight: '250px',
+                  overflowY: 'auto',
+                }}
+              >
+                {!projectSearch && (
+                  <div
+                    style={{
+                      padding: '10px 16px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      color: 'var(--text-secondary)',
+                      borderBottom: '1px solid var(--border-color)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={handleClearProject}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    No project
+                  </div>
+                )}
+                {filteredProjects.map((project: any) => (
+                  <div
+                    key={project.id}
+                    style={{
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      color: 'var(--text-primary)',
+                      backgroundColor: selectedProjectId === project.id ? 'var(--primary-light)' : 'transparent',
+                      transition: 'background-color 0.15s ease',
+                    }}
+                    onClick={() => handleProjectSelect(project)}
+                    onMouseEnter={(e) => {
+                      if (selectedProjectId !== project.id) {
+                        e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedProjectId !== project.id) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    {project.name}
+                    {project.customer && (
+                      <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>
+                        • {project.customer.name}
+                      </span>
+                    )}
+                  </div>
+                ))}
+                {showCreateOption && (
+                  <div
+                    style={{
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      color: 'var(--primary-color)',
+                      borderTop: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--primary-light)',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                    onClick={() => {
+                      setNewProjectName(projectSearch.trim());
+                      setShowCreateProjectModal(true);
+                      setShowProjectDropdown(false);
+                    }}
+                  >
+                    <span>+</span>
+                    <span>Create "{projectSearch.trim()}"</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         <button
@@ -427,6 +630,103 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
           </span>
         </div>
       </div>
+
+      {/* Create Project Modal */}
+      {showCreateProjectModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+          }}
+          onClick={() => {
+            setShowCreateProjectModal(false);
+            setNewProjectName('');
+            setShouldAutoStart(false);
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '400px',
+              width: '90%',
+              boxShadow: 'var(--shadow-lg)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'var(--text-primary)' }}>
+              Create New Project
+            </h3>
+            <input
+              type="text"
+              placeholder="Project name"
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && newProjectName.trim()) {
+                  handleCreateProject();
+                }
+              }}
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                fontSize: '14px',
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                marginBottom: '20px',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowCreateProjectModal(false);
+                  setNewProjectName('');
+                  setShouldAutoStart(false);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateProject}
+                disabled={!newProjectName.trim() || createProjectMutation.isPending}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: 'var(--primary-color)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: newProjectName.trim() && !createProjectMutation.isPending ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  opacity: newProjectName.trim() && !createProjectMutation.isPending ? 1 : 0.5,
+                }}
+              >
+                {createProjectMutation.isPending ? 'Creating...' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
