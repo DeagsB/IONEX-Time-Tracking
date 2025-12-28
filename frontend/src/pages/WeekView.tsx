@@ -152,7 +152,8 @@ export default function WeekView() {
     },
     onSuccess: (data) => {
       console.log('Time entry saved successfully:', data);
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      // Invalidate all timeEntries queries to ensure day totals update
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       setShowTimeEntryModal(false);
       setNewEntry({ description: '', project_id: '', hours: 0.25, billable: true, rate_type: 'Shop Time' });
       setSelectedSlot(null);
@@ -172,7 +173,8 @@ export default function WeekView() {
     },
     onSuccess: () => {
       console.log('Time entry updated successfully');
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      // Invalidate all timeEntries queries to ensure day totals update
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       setShowEditModal(false);
       setEditingEntry(null);
     },
@@ -189,7 +191,8 @@ export default function WeekView() {
     },
     onSuccess: () => {
       console.log('Time entry deleted successfully');
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      // Invalidate all timeEntries queries to ensure day totals update
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       setShowEditModal(false);
       setEditingEntry(null);
     },
@@ -239,7 +242,11 @@ export default function WeekView() {
   // Get day total
   const getDayTotal = (date: Date) => {
     if (!timeEntries) return '0:00:00';
-    const dateStr = date.toISOString().split('T')[0];
+    // Format date in local time (YYYY-MM-DD) to match entry.date format
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
     const totalSeconds = timeEntries
       .filter((e: any) => e.date === dateStr)
       .reduce((sum: number, e: any) => sum + Number(e.hours) * 3600, 0);
