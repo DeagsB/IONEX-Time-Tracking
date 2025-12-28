@@ -151,6 +151,9 @@ export default function ServiceTickets() {
         }
       }
       await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
+      
+      // Invalidate queries to refresh the ticket list with the new ticket number
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
     } catch (error) {
       console.error('PDF export error:', error);
       alert('Failed to export service ticket PDF. Check console for details.');
@@ -163,8 +166,48 @@ export default function ServiceTickets() {
   const handleExportExcel = async (ticket: ServiceTicket) => {
     setIsExportingExcel(true);
     try {
-      // Use the ticket number that was already set (either from DB or newly generated)
-      const ticketNumber = ticket.ticketNumber || displayTicketNumber;
+      // Check if a ticket number already exists in the database
+      const existingRecord = existingTickets?.find(
+        et => et.date === ticket.date && 
+              et.user_id === ticket.userId && 
+              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+      );
+      
+      let ticketNumber: string;
+      
+      if (existingRecord?.ticket_number) {
+        // Use existing ticket number
+        ticketNumber = existingRecord.ticket_number;
+      } else {
+        // Generate a new ticket number only when exporting
+        ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+        
+        // Calculate totals for recording
+        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+        const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+        const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+        const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+        const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+        const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+        
+        // Save the ticket record to the database
+        const year = new Date().getFullYear() % 100;
+        const sequenceMatch = ticketNumber.match(/\d{3}$/);
+        const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+        
+        await serviceTicketsService.createTicketRecord({
+          ticketNumber,
+          employeeInitials: ticket.userInitials,
+          year,
+          sequenceNumber,
+          date: ticket.date,
+          customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+          userId: ticket.userId,
+          projectId: ticket.projectId,
+          totalHours: ticket.totalHours,
+          totalAmount,
+        });
+      }
       
       // Create a copy of the ticket with the ticket number
       const ticketWithNumber = { ...ticket, ticketNumber };
@@ -192,41 +235,8 @@ export default function ServiceTickets() {
       
       await downloadExcelServiceTicket(ticketWithNumber, ticketExpenses);
       
-      // Only create a new record if this ticket doesn't already have one
-      // Check if a record already exists for this date/user/customer combo
-      const existingRecord = existingTickets?.find(
-        et => et.date === ticket.date && 
-              et.user_id === ticket.userId && 
-              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-      );
-      
-      if (!existingRecord) {
-        // Calculate totals for recording
-        const rtRate = 130, ttRate = 130, ftRate = 140, otRate = 195;
-        const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-        const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-        const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-        const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
-        const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-        
-        // Save the ticket record to the database
-        const year = new Date().getFullYear() % 100;
-        const sequenceMatch = ticketNumber.match(/\d{3}$/);
-        const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-        
-        await serviceTicketsService.createTicketRecord({
-          ticketNumber,
-          employeeInitials: ticket.userInitials,
-          year,
-          sequenceNumber,
-          date: ticket.date,
-          customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-          userId: ticket.userId,
-          projectId: ticket.projectId,
-          totalHours: ticket.totalHours,
-          totalAmount,
-        });
-      }
+      // Invalidate queries to refresh the ticket list with the new ticket number
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
     } catch (error) {
       alert('Failed to export service ticket Excel.');
     } finally {
@@ -872,16 +882,8 @@ export default function ServiceTickets() {
                     date: ticket.date || '',
                   });
                   
-                  // Use existing ticket number if already exported, otherwise generate a new one
-                  if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
-                    // This ticket was already exported - use the existing number
-                    setDisplayTicketNumber(ticket.displayTicketNumber);
-                  } else {
-                    // Generate a new ticket number for first-time export
-                    serviceTicketsService.getNextTicketNumber(ticket.userInitials)
-                      .then(num => setDisplayTicketNumber(num))
-                      .catch(() => setDisplayTicketNumber(`${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`));
-                  }
+                  // Set display ticket number (will be XXX until exported)
+                  setDisplayTicketNumber(ticket.displayTicketNumber);
 
                   // Load expenses for this ticket
                   try {
@@ -1601,7 +1603,6 @@ export default function ServiceTickets() {
                       userName: editableTicket.techName,
                       projectNumber: editableTicket.projectNumber,
                       date: editableTicket.date,
-                      ticketNumber: displayTicketNumber,
                       customerInfo: {
                         ...selectedTicket.customerInfo,
                         name: editableTicket.customerName,
@@ -1617,7 +1618,10 @@ export default function ServiceTickets() {
                         approver_name: editableTicket.approverName,
                       },
                     };
-                    handleExportExcel(modifiedTicket);
+                    await handleExportExcel(modifiedTicket);
+                    // Refresh the ticket list to show updated ticket number
+                    queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+                    queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                   }}
                   style={{ 
                     padding: '10px 24px',
@@ -1641,7 +1645,6 @@ export default function ServiceTickets() {
                       userName: editableTicket.techName,
                       projectNumber: editableTicket.projectNumber,
                       date: editableTicket.date,
-                      ticketNumber: displayTicketNumber,
                       customerInfo: {
                         ...selectedTicket.customerInfo,
                         name: editableTicket.customerName,
@@ -1657,7 +1660,10 @@ export default function ServiceTickets() {
                         approver_name: editableTicket.approverName,
                       },
                     };
-                    handleExportPdf(modifiedTicket);
+                    await handleExportPdf(modifiedTicket);
+                    // Refresh the ticket list to show updated ticket number
+                    queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+                    queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                   }}
                   style={{ padding: '10px 24px' }}
                   disabled={isExportingExcel || isExportingPdf}
