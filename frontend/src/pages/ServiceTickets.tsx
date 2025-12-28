@@ -1290,10 +1290,10 @@ export default function ServiceTickets() {
                             onClick={() => {
                               setEditingExpense({
                                 expense_type: 'Travel',
-                                description: '',
+                                description: 'Mileage',
                                 quantity: 1,
-                                rate: 0,
-                                unit: '',
+                                rate: 1,
+                                unit: 'km',
                               });
                             }}
                             style={{
@@ -1337,12 +1337,40 @@ export default function ServiceTickets() {
                                   cursor: 'pointer',
                                 }}
                                 value={editingExpense.expense_type}
-                                onChange={(e) => setEditingExpense({ ...editingExpense, expense_type: e.target.value as any })}
+                                onChange={(e) => {
+                                  const selectedType = e.target.value as 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+                                  // Auto-fill default values based on type
+                                  let defaults = { unit: '', description: '', quantity: 1, rate: 0 };
+                                  
+                                  // Map display types to database types and set defaults
+                                  if (selectedType === 'Travel') {
+                                    // Mileage
+                                    defaults = { unit: 'km', description: 'Mileage', quantity: 1, rate: 1 };
+                                  } else if (selectedType === 'Subsistence') {
+                                    // Per Diem
+                                    defaults = { unit: 'Day', description: 'Per Diem', quantity: 1, rate: 60 };
+                                  } else if (selectedType === 'Equipment') {
+                                    // Equipment Billout
+                                    defaults = { unit: 'unit', description: 'Equipment Billout', quantity: 1, rate: 10 };
+                                  } else if (selectedType === 'Expenses') {
+                                    // Other - all empty
+                                    defaults = { unit: '', description: '', quantity: 0, rate: 0 };
+                                  }
+                                  
+                                  setEditingExpense({
+                                    ...editingExpense,
+                                    expense_type: selectedType,
+                                    unit: defaults.unit,
+                                    description: defaults.description,
+                                    quantity: defaults.quantity,
+                                    rate: defaults.rate,
+                                  });
+                                }}
                               >
-                                <option value="Travel" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Travel</option>
-                                <option value="Subsistence" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Subsistence</option>
-                                <option value="Expenses" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Expenses</option>
-                                <option value="Equipment" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Equipment</option>
+                                <option value="Travel" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Mileage</option>
+                                <option value="Subsistence" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Per Diem</option>
+                                <option value="Equipment" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Equipment Billout</option>
+                                <option value="Expenses" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Other</option>
                               </select>
                             </div>
                             <div>
