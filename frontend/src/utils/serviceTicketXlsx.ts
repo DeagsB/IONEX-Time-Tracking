@@ -227,7 +227,7 @@ function fillRowItems(
 
 /**
  * Fills expenses into the Excel template
- * Expenses section is typically around row 25-30
+ * Expenses start at row 27: B27=Description, I27=Rate, K27=Quantity, M27=Subtotal (I27*K27)
  */
 function fillExpenses(
   worksheet: ExcelJS.Worksheet,
@@ -238,25 +238,25 @@ function fillExpenses(
     rate: number;
     unit?: string;
   }>,
-  startRow: number = 25
+  startRow: number = 27
 ) {
   expenses.forEach((expense, index) => {
     const row = startRow + index;
     const description = expense.description || '';
     const rate = expense.rate || 0;
     const quantity = expense.quantity || 0;
-    const subtotal = quantity * rate;
 
-    // Assuming columns: I=Description, J=Rate, K=Quantity, L=Subtotal
-    // Adjust column letters based on your template structure
-    worksheet.getCell(`I${row}`).value = description;
-    worksheet.getCell(`J${row}`).value = rate;
+    // B27 = Description, I27 = Rate, K27 = Quantity, M27 = Subtotal (formula: I27*K27)
+    worksheet.getCell(`B${row}`).value = description;
+    worksheet.getCell(`I${row}`).value = rate;
     worksheet.getCell(`K${row}`).value = quantity;
-    worksheet.getCell(`L${row}`).value = subtotal;
+    
+    // Set subtotal as formula: I27*K27
+    worksheet.getCell(`M${row}`).value = { formula: `I${row}*K${row}`, result: quantity * rate };
 
     // Format currency cells
-    worksheet.getCell(`J${row}`).numFmt = '$#,##0.00';
-    worksheet.getCell(`L${row}`).numFmt = '$#,##0.00';
+    worksheet.getCell(`I${row}`).numFmt = '$#,##0.00';
+    worksheet.getCell(`M${row}`).numFmt = '$#,##0.00';
   });
 
   return expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
