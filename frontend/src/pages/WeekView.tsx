@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -79,6 +79,9 @@ export default function WeekView() {
     originalEndTime: Date;
     previewHeight: number;
   } | null>(null);
+
+  // Ref for scrollable calendar container
+  const calendarScrollRef = useRef<HTMLDivElement>(null);
   
   // Get week start (Monday)
   const getWeekStart = (date: Date) => {
@@ -309,6 +312,16 @@ export default function WeekView() {
       return () => clearInterval(interval);
     }
   }, [timerRunning]);
+
+  // Scroll to 8:00am on component mount
+  useEffect(() => {
+    if (calendarScrollRef.current) {
+      // 8:00am = hour 8, each hour is 60px tall
+      // Header is 50px, so scroll to position 8:00am at the top
+      const scrollPosition = 8 * 60 - 50; // 430px
+      calendarScrollRef.current.scrollTop = scrollPosition;
+    }
+  }, []); // Run once on mount
 
   const zoomIn = () => {
     if (divisionsPerHour < 12) {
@@ -928,7 +941,7 @@ export default function WeekView() {
       </div>
 
       {/* Calendar Grid */}
-      <div style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)' }}>
+      <div ref={calendarScrollRef} style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)' }}>
         <div style={{ display: 'flex', minWidth: 'min-content' }}>
           {/* Time column */}
           <div style={{ 
