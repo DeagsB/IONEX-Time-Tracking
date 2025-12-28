@@ -344,7 +344,7 @@ export default function ServiceTickets() {
               date: ticket.date,
               user_id: ticket.userId,
               customer_id: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-            } as typeof existingTickets[0]);
+            } as NonNullable<typeof existingTickets>[0]);
             
             ticketRecordId = newRecord.id;
           }
@@ -449,7 +449,7 @@ export default function ServiceTickets() {
               date: ticket.date,
               user_id: ticket.userId,
               customer_id: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-            } as typeof existingTickets[0]);
+            } as NonNullable<typeof existingTickets>[0]);
             
             ticketRecordId = newRecord.id;
           }
