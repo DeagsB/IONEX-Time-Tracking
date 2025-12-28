@@ -228,6 +228,7 @@ function fillRowItems(
 /**
  * Fills expenses into the Excel template
  * Expenses start at row 27: B27=Description, I27=Rate, K27=Quantity, M27=Subtotal (I27*K27)
+ * Returns the total expenses and the last row used
  */
 function fillExpenses(
   worksheet: ExcelJS.Worksheet,
@@ -239,7 +240,7 @@ function fillExpenses(
     unit?: string;
   }>,
   startRow: number = 27
-) {
+): { total: number; lastRow: number } {
   expenses.forEach((expense, index) => {
     const row = startRow + index;
     const description = expense.description || '';
@@ -259,7 +260,23 @@ function fillExpenses(
     worksheet.getCell(`M${row}`).numFmt = '$#,##0.00';
   });
 
-  return expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
+  const total = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
+  const lastRow = expenses.length > 0 ? startRow + expenses.length - 1 : startRow;
+
+  // Set expense sum formula if there are expenses
+  if (expenses.length > 0) {
+    const sumRow = lastRow + 1; // Row after last expense
+    const firstSubtotalCell = `M${startRow}`;
+    const lastSubtotalCell = `M${lastRow}`;
+    
+    // Set the sum formula for expenses (e.g., =SUM(M27:M30))
+    const expenseSumCell = worksheet.getCell(`M${sumRow}`);
+    const sumFormula = `SUM(${firstSubtotalCell}:${lastSubtotalCell})`;
+    expenseSumCell.value = { formula: sumFormula, result: total };
+    expenseSumCell.numFmt = '$#,##0.00';
+  }
+
+  return { total, lastRow };
 }
 
 /**
@@ -329,6 +346,7 @@ function updateTotals(
   setCellWithResult('M36', ttAmount);
   setCellWithResult('M37', ftAmount);
   setCellWithResult('M38', otAmount);
+  setCellWithResult('M39', expensesTotal); // Total Expenses
   setCellWithResult('M40', grandTotal);
 }
 
@@ -381,7 +399,7 @@ export async function generateExcelServiceTicket(
         0,
         maxRowsPerPage
       );
-      const expensesTotal = fillExpenses(templateSheet, expenses);
+      const { total: expensesTotal } = fillExpenses(templateSheet, expenses);
       updateTotals(templateSheet, rtTotal, ttTotal, ftTotal, otTotal, ticket.rates, expensesTotal);
     } else {
       // Multi-page - need to duplicate sheets
@@ -463,7 +481,7 @@ export async function generateExcelServiceTicket(
         cumulativeOtTotal += result.otTotal;
 
         // Fill expenses only on the last page
-        const expensesTotal = page === totalPages ? fillExpenses(worksheet, expenses) : 0;
+        const expensesTotal = page === totalPages ? fillExpenses(worksheet, expenses).total : 0;
 
         // For intermediate pages, show page totals
         // For last page, show cumulative totals
