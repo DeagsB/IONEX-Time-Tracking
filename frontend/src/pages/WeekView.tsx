@@ -1141,7 +1141,7 @@ export default function WeekView() {
                     
                     // Use preview height if dragging this entry
                     const isDragging = draggingEntry?.entry.id === entry.id;
-                    const displayHeight = isDragging ? draggingEntry.previewHeight : Math.max(style.height, 30);
+                    const displayHeight = isDragging && draggingEntry ? draggingEntry.previewHeight : Math.max(style.height, 30);
 
                     return (
                       <div
