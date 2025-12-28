@@ -87,23 +87,25 @@ export default function Settings() {
         }
       }
 
-      // Create demo time entries - deterministic data (same every time)
+      // Create demo time entries - only for current week with cohesive Tue-Thu story
       const today = new Date();
       const demoEntries = [];
       
-      // Fixed entry templates with description and appropriate rate type
-      const entryTemplates = [
-        { description: 'Travel to client site', rateType: 'Travel Time', rate: 85, hours: 1 },
-        { description: 'On-site HVAC inspection and diagnostics', rateType: 'Field Time', rate: 125, hours: 3 },
-        { description: 'Replaced compressor components', rateType: 'Field Time', rate: 125, hours: 4 },
-        { description: 'System testing and calibration', rateType: 'Field Time', rate: 125, hours: 2 },
-        { description: 'Return travel from site', rateType: 'Travel Time', rate: 85, hours: 1 },
-        { description: 'Prepared service documentation', rateType: 'Shop Time', rate: 95, hours: 2 },
-        { description: 'Parts ordering and inventory check', rateType: 'Shop Time', rate: 95, hours: 1.5 },
-        { description: 'Control system programming', rateType: 'Shop Time', rate: 95, hours: 3 },
-        { description: 'Emergency repair service', rateType: 'Field Time', rate: 125, hours: 5 },
-        { description: 'Quarterly maintenance inspection', rateType: 'Field Time', rate: 125, hours: 3 },
-      ];
+      // Get current week (Monday to Friday)
+      const getMonday = (date: Date) => {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+        return new Date(d.setDate(diff));
+      };
+      
+      const monday = getMonday(today);
+      const weekDays: Date[] = [];
+      for (let i = 0; i < 5; i++) {
+        const day = new Date(monday);
+        day.setDate(monday.getDate() + i);
+        weekDays.push(day);
+      }
       
       // Rate type to rate mapping
       const rateTypeToRate: { [key: string]: number } = {
@@ -114,62 +116,165 @@ export default function Settings() {
         'Field Overtime': 187.5,
       };
 
-      // Generate entries for the past 10 business days (deterministic)
-      let templateIndex = 0;
-      for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
-        const entryDate = new Date(today);
-        entryDate.setDate(today.getDate() - dayOffset);
-        
-        // Skip weekends
-        if (entryDate.getDay() === 0 || entryDate.getDay() === 6) continue;
-        
+      // Use first project for the cohesive Tue-Thu story
+      const siteProjectId = projectIds[0];
+
+      // Create entries for each day of the week
+      weekDays.forEach((entryDate, dayIndex) => {
+        const dayOfWeek = entryDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
         const dateStr = entryDate.toISOString().split('T')[0];
         
-        // Fixed number of entries per day (deterministic)
-        const entriesPerDay = [3, 2, 4, 2, 3, 3, 2, 4, 2, 3][dayOffset % 10] || 3;
-        
-        let currentHour = 8;
-        for (let i = 0; i < entriesPerDay; i++) {
-          // Cycle through projects deterministically
-          const projectIndex = (dayOffset + i) % projectIds.length;
-          const projectId = projectIds[projectIndex];
-          
-          // Get template with appropriate rate type
-          const template = entryTemplates[templateIndex % entryTemplates.length];
-          
-          // Use hours from template, with some variation for realism
-          const hoursVariations = [0.9, 1.0, 1.1, 1.05];
-          const hours = template.hours * hoursVariations[(dayOffset + i) % hoursVariations.length];
-          const roundedHours = Math.round(hours * 2) / 2; // Round to nearest 0.5
-          
-          const startHour = currentHour;
-          const endHour = currentHour + roundedHours;
-          currentHour = endHour + 0.5;
-          
-          const startDate = new Date(entryDate);
-          startDate.setHours(Math.floor(startHour), (startHour % 1) * 60);
-          
-          const endDate = new Date(entryDate);
-          endDate.setHours(Math.floor(endHour), (endHour % 1) * 60);
+        if (dayOfWeek === 2) { // Tuesday - Travel to site, begin work
+          // Travel to site (morning)
+          const travelStart = new Date(entryDate);
+          travelStart.setHours(7, 0);
+          const travelEnd = new Date(entryDate);
+          travelEnd.setHours(9, 0);
           
           demoEntries.push({
             user_id: userId,
-            project_id: projectId,
+            project_id: siteProjectId,
             date: dateStr,
-            start_time: startDate.toISOString(),
-            end_time: endDate.toISOString(),
-            hours: roundedHours,
-            rate: rateTypeToRate[template.rateType],
-            rate_type: template.rateType,
-            description: template.description,
+            start_time: travelStart.toISOString(),
+            end_time: travelEnd.toISOString(),
+            hours: 2,
+            rate: rateTypeToRate['Travel Time'],
+            rate_type: 'Travel Time',
+            description: 'Travel to client site',
             billable: true,
             approved: true,
-            is_demo: true, // Mark as demo data
+            is_demo: true,
           });
           
-          templateIndex++;
+          // Begin on-site work (afternoon)
+          const workStart = new Date(entryDate);
+          workStart.setHours(10, 0);
+          const workEnd = new Date(entryDate);
+          workEnd.setHours(17, 0);
+          
+          demoEntries.push({
+            user_id: userId,
+            project_id: siteProjectId,
+            date: dateStr,
+            start_time: workStart.toISOString(),
+            end_time: workEnd.toISOString(),
+            hours: 7,
+            rate: rateTypeToRate['Field Time'],
+            rate_type: 'Field Time',
+            description: 'On-site HVAC inspection and diagnostics',
+            billable: true,
+            approved: true,
+            is_demo: true,
+          });
+          
+        } else if (dayOfWeek === 3) { // Wednesday - Full day of work
+          const workStart = new Date(entryDate);
+          workStart.setHours(8, 0);
+          const workEnd = new Date(entryDate);
+          workEnd.setHours(12, 0);
+          
+          demoEntries.push({
+            user_id: userId,
+            project_id: siteProjectId,
+            date: dateStr,
+            start_time: workStart.toISOString(),
+            end_time: workEnd.toISOString(),
+            hours: 4,
+            rate: rateTypeToRate['Field Time'],
+            rate_type: 'Field Time',
+            description: 'Replaced compressor components',
+            billable: true,
+            approved: true,
+            is_demo: true,
+          });
+          
+          const workStart2 = new Date(entryDate);
+          workStart2.setHours(13, 0);
+          const workEnd2 = new Date(entryDate);
+          workEnd2.setHours(17, 0);
+          
+          demoEntries.push({
+            user_id: userId,
+            project_id: siteProjectId,
+            date: dateStr,
+            start_time: workStart2.toISOString(),
+            end_time: workEnd2.toISOString(),
+            hours: 4,
+            rate: rateTypeToRate['Field Time'],
+            rate_type: 'Field Time',
+            description: 'System testing and calibration',
+            billable: true,
+            approved: true,
+            is_demo: true,
+          });
+          
+        } else if (dayOfWeek === 4) { // Thursday - Finish work, travel home
+          // Complete remaining work (morning)
+          const workStart = new Date(entryDate);
+          workStart.setHours(8, 0);
+          const workEnd = new Date(entryDate);
+          workEnd.setHours(13, 0);
+          
+          demoEntries.push({
+            user_id: userId,
+            project_id: siteProjectId,
+            date: dateStr,
+            start_time: workStart.toISOString(),
+            end_time: workEnd.toISOString(),
+            hours: 5,
+            rate: rateTypeToRate['Field Time'],
+            rate_type: 'Field Time',
+            description: 'Final system testing and documentation',
+            billable: true,
+            approved: true,
+            is_demo: true,
+          });
+          
+          // Return travel (afternoon)
+          const travelStart = new Date(entryDate);
+          travelStart.setHours(14, 0);
+          const travelEnd = new Date(entryDate);
+          travelEnd.setHours(16, 0);
+          
+          demoEntries.push({
+            user_id: userId,
+            project_id: siteProjectId,
+            date: dateStr,
+            start_time: travelStart.toISOString(),
+            end_time: travelEnd.toISOString(),
+            hours: 2,
+            rate: rateTypeToRate['Travel Time'],
+            rate_type: 'Travel Time',
+            description: 'Return travel from site',
+            billable: true,
+            approved: true,
+            is_demo: true,
+          });
+          
+        } else if (dayOfWeek === 1 || dayOfWeek === 5) { // Monday or Friday - Shop work
+          const otherProjectId = projectIds[dayOfWeek === 1 ? 1 : 2]; // Different project for Mon/Fri
+          
+          const workStart = new Date(entryDate);
+          workStart.setHours(8, 0);
+          const workEnd = new Date(entryDate);
+          workEnd.setHours(17, 0);
+          
+          demoEntries.push({
+            user_id: userId,
+            project_id: otherProjectId,
+            date: dateStr,
+            start_time: workStart.toISOString(),
+            end_time: workEnd.toISOString(),
+            hours: 8,
+            rate: rateTypeToRate['Shop Time'],
+            rate_type: 'Shop Time',
+            description: dayOfWeek === 1 ? 'Prepared service documentation' : 'Control system programming',
+            billable: true,
+            approved: true,
+            is_demo: true,
+          });
         }
-      }
+      });
 
       // Insert demo entries
       const { error } = await supabase.from('time_entries').insert(demoEntries);
