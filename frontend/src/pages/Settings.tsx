@@ -46,27 +46,37 @@ export default function Settings() {
         cnrlCustomerId = newCustomer.id;
       }
 
-      // Create demo projects for CNRL (deterministic - same every time)
-      const projectNames = ['CNRL Project Alpha', 'CNRL Project Beta', 'CNRL Project Gamma'];
+      // Create demo projects for CNRL (deterministic - same every time) with different colors
+      const projectData = [
+        { name: 'CNRL Project Alpha', color: '#4ecdc4' }, // Teal
+        { name: 'CNRL Project Beta', color: '#ff6b6b' }, // Red
+        { name: 'CNRL Project Gamma', color: '#95e1d3' }, // Light green
+      ];
       const projectIds: string[] = [];
 
-      for (const projectName of projectNames) {
+      for (const project of projectData) {
         const { data: existingProject } = await supabase
           .from('projects')
           .select('id')
-          .eq('name', projectName)
+          .eq('name', project.name)
           .eq('is_demo', true)
           .single();
 
         if (existingProject) {
+          // Update color if it doesn't match
+          await supabase
+            .from('projects')
+            .update({ color: project.color })
+            .eq('id', existingProject.id);
           projectIds.push(existingProject.id);
         } else {
           const { data: newProject, error: projectError } = await supabase
             .from('projects')
             .insert({
-              name: projectName,
+              name: project.name,
               customer_id: cnrlCustomerId,
               rate: 110,
+              color: project.color,
               is_demo: true,
             })
             .select('id')
