@@ -1370,9 +1370,14 @@ export default function ServiceTickets() {
                               <input
                                 type="number"
                                 step="0.01"
+                                min="0"
                                 style={inputStyle}
-                                value={editingExpense.quantity}
-                                onChange={(e) => setEditingExpense({ ...editingExpense, quantity: parseFloat(e.target.value) || 0 })}
+                                value={editingExpense.quantity || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                  setEditingExpense({ ...editingExpense, quantity: isNaN(val) ? 0 : val });
+                                }}
+                                placeholder="0.00"
                               />
                             </div>
                             <div>
@@ -1380,9 +1385,14 @@ export default function ServiceTickets() {
                               <input
                                 type="number"
                                 step="0.01"
+                                min="0"
                                 style={inputStyle}
-                                value={editingExpense.rate}
-                                onChange={(e) => setEditingExpense({ ...editingExpense, rate: parseFloat(e.target.value) || 0 })}
+                                value={editingExpense.rate || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                  setEditingExpense({ ...editingExpense, rate: isNaN(val) ? 0 : val });
+                                }}
+                                placeholder="0.00"
                               />
                             </div>
                           </div>
