@@ -962,7 +962,10 @@ export default function WeekView() {
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '4px'
+              gap: '4px',
+              position: 'sticky',
+              top: 0,
+              zIndex: 11
             }}>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
@@ -1073,7 +1076,10 @@ export default function WeekView() {
                   flexDirection: 'column',
                   justifyContent: 'center',
                   alignItems: 'center',
-                  gap: '2px'
+                  gap: '2px',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 10
                 }}>
                   <div style={{ 
                     display: 'flex', 
