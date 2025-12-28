@@ -89,7 +89,20 @@ export default function Settings() {
 
       // Create demo time entries - only for current week with cohesive Tue-Thu story
       const today = new Date();
-      const demoEntries = [];
+      const demoEntries: Array<{
+        user_id: string;
+        project_id: string;
+        date: string;
+        start_time: string;
+        end_time: string;
+        hours: number;
+        rate: number;
+        rate_type: string;
+        description: string;
+        billable: boolean;
+        approved: boolean;
+        is_demo: boolean;
+      }> = [];
       
       // Get current week (Monday to Friday)
       const getMonday = (date: Date) => {
