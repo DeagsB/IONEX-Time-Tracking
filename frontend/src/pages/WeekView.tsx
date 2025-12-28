@@ -70,6 +70,15 @@ export default function WeekView() {
     billable: true,
     rate_type: 'Shop Time',
   });
+
+  // Drag resize state
+  const [draggingEntry, setDraggingEntry] = useState<{
+    entry: any;
+    startY: number;
+    originalHeight: number;
+    originalEndTime: Date;
+    previewHeight: number;
+  } | null>(null);
   
   // Get week start (Monday)
   const getWeekStart = (date: Date) => {
@@ -469,6 +478,99 @@ export default function WeekView() {
       deleteTimeEntryMutation.mutate(editingEntry.id);
     }
   };
+
+  // Handle drag start for resizing entry
+  const handleDragStart = (e: React.MouseEvent, entry: any, entryStyle: { top: number; height: number }) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (!entry.start_time || !entry.end_time) return;
+    
+    const parseTime = (timeStr: string) => {
+      if (timeStr.includes('T') || timeStr.includes(' ')) {
+        const date = new Date(timeStr);
+        return { hour: date.getHours(), minute: date.getMinutes() };
+      }
+      const [hour, minute] = timeStr.split(':').map(Number);
+      return { hour, minute };
+    };
+    
+    const endTime = parseTime(entry.end_time);
+    // Create end time date from entry's end_time (which is already an ISO string)
+    const originalEndTime = entry.end_time.includes('T') 
+      ? new Date(entry.end_time)
+      : new Date(entry.date + 'T' + String(endTime.hour).padStart(2, '0') + ':' + String(endTime.minute).padStart(2, '0') + ':00');
+    
+    setDraggingEntry({
+      entry,
+      startY: e.clientY,
+      originalHeight: entryStyle.height,
+      originalEndTime,
+      previewHeight: entryStyle.height,
+    });
+  };
+
+  // Handle drag move for resizing entry
+  useEffect(() => {
+    if (!draggingEntry) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - draggingEntry.startY;
+      const rowHeight = 60; // Each hour is 60px
+      const minutesPerPixel = 60 / rowHeight; // 1 minute per pixel
+      
+      // Calculate new height (minimum 30px)
+      const newHeight = Math.max(30, draggingEntry.originalHeight + deltaY);
+      
+      // Round to nearest 15-minute increment
+      const totalMinutes = (newHeight / rowHeight) * 60;
+      const roundedMinutes = Math.round(totalMinutes / 15) * 15;
+      const roundedHeight = (roundedMinutes / 60) * rowHeight;
+      
+      setDraggingEntry({
+        ...draggingEntry,
+        previewHeight: Math.max(30, roundedHeight),
+      });
+    };
+
+    const handleMouseUp = async () => {
+      if (!draggingEntry) return;
+      
+      const rowHeight = 60;
+      const totalMinutes = (draggingEntry.previewHeight / rowHeight) * 60;
+      const roundedMinutes = Math.round(totalMinutes / 15) * 15;
+      
+      // Calculate new end time based on rounded minutes
+      const startTime = new Date(draggingEntry.entry.start_time);
+      const newEndTime = new Date(startTime);
+      newEndTime.setMinutes(startTime.getMinutes() + roundedMinutes);
+      
+      // Use existing entry date (already in YYYY-MM-DD format)
+      const dateStr = draggingEntry.entry.date;
+      
+      // Calculate new hours
+      const newHours = roundedMinutes / 60;
+      
+      // Update the entry
+      const updateData: any = {
+        end_time: newEndTime.toISOString(),
+        hours: newHours,
+        date: dateStr,
+      };
+      
+      updateTimeEntryMutation.mutate({ id: draggingEntry.entry.id, data: updateData });
+      
+      setDraggingEntry(null);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingEntry, updateTimeEntryMutation]);
 
   // Get time entry position and height for rendering on grid
   const getEntryStyle = (entry: any) => {
@@ -1036,6 +1138,10 @@ export default function WeekView() {
                     const project = projects?.find((p: any) => p.id === entry.project_id);
                     // Use project color if available, otherwise grey for no project
                     const color = entry.project_id && project?.color ? project.color : '#808080';
+                    
+                    // Use preview height if dragging this entry
+                    const isDragging = draggingEntry?.entry.id === entry.id;
+                    const displayHeight = isDragging ? draggingEntry.previewHeight : Math.max(style.height, 30);
 
                     return (
                       <div
@@ -1043,7 +1149,7 @@ export default function WeekView() {
                         style={{
                           position: 'absolute',
                           top: `${style.top}px`,
-                          height: `${Math.max(style.height, 30)}px`,
+                          height: `${displayHeight}px`,
                           left: '4px',
                           right: '4px',
                           backgroundColor: color,
@@ -1054,10 +1160,16 @@ export default function WeekView() {
                           overflow: 'hidden',
                           cursor: 'pointer',
                           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                          zIndex: 10,
+                          zIndex: isDragging ? 20 : 10,
                           pointerEvents: 'auto'
                         }}
-                        onClick={(e) => handleEntryClick(entry, e)}
+                        onClick={(e) => {
+                          // Don't open edit modal if clicking on drag handle
+                          if ((e.target as HTMLElement).closest('.drag-handle')) {
+                            return;
+                          }
+                          handleEntryClick(entry, e);
+                        }}
                       >
                         {/* Description - main text (if exists) */}
                         {entry.description && (
@@ -1072,11 +1184,46 @@ export default function WeekView() {
                         </div>
                         
                         {/* Time range (only show if there's enough space) */}
-                        {style.height > 45 && (
+                        {displayHeight > 45 && (
                           <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.8 }}>
                             {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
                           </div>
                         )}
+                        
+                        {/* Drag handle - three line icon at bottom middle */}
+                        <div
+                          className="drag-handle"
+                          style={{
+                            position: 'absolute',
+                            bottom: '2px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            width: '24px',
+                            height: '12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '2px',
+                            cursor: 'ns-resize',
+                            opacity: 0.7,
+                            transition: 'opacity 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                            e.currentTarget.style.borderRadius = '3px';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = '0.7';
+                            e.currentTarget.style.background = 'transparent';
+                          }}
+                          onMouseDown={(e) => handleDragStart(e, entry, style)}
+                        >
+                          <div style={{ width: '16px', height: '2px', backgroundColor: 'white', borderRadius: '1px' }} />
+                          <div style={{ width: '16px', height: '2px', backgroundColor: 'white', borderRadius: '1px' }} />
+                          <div style={{ width: '16px', height: '2px', backgroundColor: 'white', borderRadius: '1px' }} />
+                        </div>
                       </div>
                     );
                   })}
