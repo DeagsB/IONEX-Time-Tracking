@@ -1330,14 +1330,19 @@ export default function ServiceTickets() {
                             <div>
                               <label style={labelStyle}>Type</label>
                               <select
-                                style={inputStyle}
+                                style={{
+                                  ...inputStyle,
+                                  backgroundColor: 'rgba(255,255,255,0.15)',
+                                  color: '#fff',
+                                  cursor: 'pointer',
+                                }}
                                 value={editingExpense.expense_type}
                                 onChange={(e) => setEditingExpense({ ...editingExpense, expense_type: e.target.value as any })}
                               >
-                                <option value="Travel">Travel</option>
-                                <option value="Subsistence">Subsistence</option>
-                                <option value="Expenses">Expenses</option>
-                                <option value="Equipment">Equipment</option>
+                                <option value="Travel" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Travel</option>
+                                <option value="Subsistence" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Subsistence</option>
+                                <option value="Expenses" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Expenses</option>
+                                <option value="Equipment" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Equipment</option>
                               </select>
                             </div>
                             <div>
