@@ -15,76 +15,86 @@ export default function Settings() {
       const { data: userData } = await supabase.from('users').select('id').limit(1).single();
       const userId = userData?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
 
-      // First, create CNRL customer if it doesn't exist
-      let cnrlCustomerId: string;
-      const { data: existingCustomer } = await supabase
+      // Delete all existing demo customers and projects first to ensure clean state
+      const { data: existingDemoProjects } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('is_demo', true);
+      
+      if (existingDemoProjects && existingDemoProjects.length > 0) {
+        await supabase
+          .from('projects')
+          .delete()
+          .eq('is_demo', true);
+      }
+
+      const { data: existingDemoCustomers } = await supabase
         .from('customers')
         .select('id')
-        .eq('name', 'CNRL')
-        .eq('is_demo', true)
-        .single();
-
-      if (existingCustomer) {
-        cnrlCustomerId = existingCustomer.id;
-      } else {
-        const { data: newCustomer, error: customerError } = await supabase
+        .eq('is_demo', true);
+      
+      if (existingDemoCustomers && existingDemoCustomers.length > 0) {
+        await supabase
           .from('customers')
+          .delete()
+          .eq('is_demo', true);
+      }
+
+      // Create CNRL customer with full name
+      const { data: newCustomer, error: customerError } = await supabase
+        .from('customers')
+        .insert({
+          name: 'Canadian Natural Resources Limited (CNRL)',
+          email: 'demo@cnrl.com',
+          phone: '403-123-4567',
+          address: '250 6 Ave SW',
+          city: 'Calgary',
+          state: 'AB',
+          zip_code: 'T2P 3H7',
+          is_demo: true,
+        })
+        .select('id')
+        .single();
+      
+      if (customerError) throw customerError;
+      const cnrlCustomerId = newCustomer.id;
+
+      // Create demo projects for CNRL with project numbers and full names
+      const projectData = [
+        { 
+          project_number: 'CNRL-001',
+          name: 'Pipeline Compressor Station PLC Upgrade',
+          color: '#4ecdc4' 
+        },
+        { 
+          project_number: 'CNRL-002',
+          name: 'Gas Processing Facility Control System Commissioning',
+          color: '#ff6b6b' 
+        },
+        { 
+          project_number: 'CNRL-003',
+          name: 'Well Pad Automation and HMI Integration',
+          color: '#95e1d3' 
+        },
+      ];
+      const projectIds: string[] = [];
+
+      for (const project of projectData) {
+        const { data: newProject, error: projectError } = await supabase
+          .from('projects')
           .insert({
-            name: 'CNRL',
-            email: 'demo@cnrl.com',
-            phone: '403-123-4567',
-            address: '250 6 Ave SW',
-            city: 'Calgary',
-            state: 'AB',
-            zip_code: 'T2P 3H7',
+            project_number: project.project_number,
+            name: project.name,
+            customer_id: cnrlCustomerId,
+            rate: 110,
+            color: project.color,
             is_demo: true,
           })
           .select('id')
           .single();
         
-        if (customerError) throw customerError;
-        cnrlCustomerId = newCustomer.id;
-      }
-
-      // Create demo projects for CNRL (deterministic - same every time) with different colors
-      const projectData = [
-        { name: 'CNRL Project Alpha', color: '#4ecdc4' }, // Teal
-        { name: 'CNRL Project Beta', color: '#ff6b6b' }, // Red
-        { name: 'CNRL Project Gamma', color: '#95e1d3' }, // Light green
-      ];
-      const projectIds: string[] = [];
-
-      for (const project of projectData) {
-        const { data: existingProject } = await supabase
-          .from('projects')
-          .select('id')
-          .eq('name', project.name)
-          .eq('is_demo', true)
-          .single();
-
-        if (existingProject) {
-          // Update color if it doesn't match
-          await supabase
-            .from('projects')
-            .update({ color: project.color })
-            .eq('id', existingProject.id);
-          projectIds.push(existingProject.id);
-        } else {
-          const { data: newProject, error: projectError } = await supabase
-            .from('projects')
-            .insert({
-              name: project.name,
-              customer_id: cnrlCustomerId,
-              rate: 110,
-              color: project.color,
-              is_demo: true,
-            })
-            .select('id')
-            .single();
-          
-          if (projectError) throw projectError;
-          projectIds.push(newProject.id);
-        }
+        if (projectError) throw projectError;
+        projectIds.push(newProject.id);
       }
 
       // Create demo time entries - only for current week with cohesive Tue-Thu story
