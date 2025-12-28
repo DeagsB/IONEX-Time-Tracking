@@ -111,7 +111,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     }
 
     // Create time entry using actual timer start time
-    const today = new Date();
+    const now = new Date();
     let startTime: Date;
     let endTime = new Date();
     
@@ -128,10 +128,16 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       startTime.setSeconds(0, 0);
     }
 
+    // Format date in local timezone (YYYY-MM-DD) to match calendar display
+    const year = startTime.getFullYear();
+    const month = String(startTime.getMonth() + 1).padStart(2, '0');
+    const day = String(startTime.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
     try {
       await createTimeEntryMutation.mutateAsync({
         projectId: currentEntry.projectId || null,
-        date: today.toISOString().split('T')[0],
+        date: dateStr, // Use date from startTime to ensure correct day
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
         hours: hours,
