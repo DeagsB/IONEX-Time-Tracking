@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { serviceTicketsService, customersService, employeesService } from '../services/supabaseServices';
+import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabaseClient';
 export default function ServiceTickets() {
   const { user } = useAuth();
   const { isDemoMode } = useDemoMode();
+  const queryClient = useQueryClient();
   
   // Filters state
   const [startDate, setStartDate] = useState(() => {
@@ -28,6 +29,25 @@ export default function ServiceTickets() {
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [currentTicketRecordId, setCurrentTicketRecordId] = useState<string | null>(null);
+  
+  // Expense management state
+  const [expenses, setExpenses] = useState<Array<{
+    id?: string;
+    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  }>>([]);
+  const [editingExpense, setEditingExpense] = useState<{
+    id?: string;
+    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  } | null>(null);
   
   // Editable ticket fields state
   const [editableTicket, setEditableTicket] = useState<{
@@ -113,7 +133,24 @@ export default function ServiceTickets() {
       }
       
       const ticketWithNumber = { ...ticket, ticketNumber };
-      await downloadPdfFromHtml(ticketWithNumber);
+      // Load expenses for PDF export if needed
+      let ticketExpenses = expenses;
+      if (!currentTicketRecordId || ticket.id !== selectedTicket?.id) {
+        try {
+          const existing = existingTickets?.find(
+            et => et.date === ticket.date && 
+                  et.user_id === ticket.userId && 
+                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+          );
+          if (existing) {
+            ticketExpenses = await serviceTicketExpensesService.getByTicketId(existing.id);
+          }
+        } catch (error) {
+          console.error('Error loading expenses for export:', error);
+          ticketExpenses = [];
+        }
+      }
+      await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
     } catch (error) {
       console.error('PDF export error:', error);
       alert('Failed to export service ticket PDF. Check console for details.');
@@ -132,7 +169,28 @@ export default function ServiceTickets() {
       // Create a copy of the ticket with the ticket number
       const ticketWithNumber = { ...ticket, ticketNumber };
       
-      await downloadExcelServiceTicket(ticketWithNumber);
+      // Load expenses for this ticket if not already loaded
+      let ticketExpenses = expenses;
+      if (currentTicketRecordId && ticket.id === selectedTicket?.id) {
+        // Expenses already loaded
+      } else {
+        // Load expenses for this ticket
+        try {
+          const existing = existingTickets?.find(
+            et => et.date === ticket.date && 
+                  et.user_id === ticket.userId && 
+                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+          );
+          if (existing) {
+            ticketExpenses = await serviceTicketExpensesService.getByTicketId(existing.id);
+          }
+        } catch (error) {
+          console.error('Error loading expenses for export:', error);
+          ticketExpenses = [];
+        }
+      }
+      
+      await downloadExcelServiceTicket(ticketWithNumber, ticketExpenses);
       
       // Only create a new record if this ticket doesn't already have one
       // Check if a record already exists for this date/user/customer combo
@@ -252,7 +310,21 @@ export default function ServiceTickets() {
         }
         
         const ticketWithNumber = { ...ticket, ticketNumber };
-        await downloadExcelServiceTicket(ticketWithNumber);
+        // Load expenses for bulk export
+        let ticketExpenses = [];
+        try {
+          const existing = existingTickets?.find(
+            et => et.date === ticket.date && 
+                  et.user_id === ticket.userId && 
+                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+          );
+          if (existing) {
+            ticketExpenses = await serviceTicketExpensesService.getByTicketId(existing.id);
+          }
+        } catch (error) {
+          console.error('Error loading expenses for export:', error);
+        }
+        await downloadExcelServiceTicket(ticketWithNumber, ticketExpenses);
         
         // Small delay between exports to avoid overwhelming the browser
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -319,7 +391,21 @@ export default function ServiceTickets() {
         }
         
         const ticketWithNumber = { ...ticket, ticketNumber };
-        await downloadPdfFromHtml(ticketWithNumber);
+        // Load expenses for bulk export
+        let ticketExpenses = [];
+        try {
+          const existing = existingTickets?.find(
+            et => et.date === ticket.date && 
+                  et.user_id === ticket.userId && 
+                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+          );
+          if (existing) {
+            ticketExpenses = await serviceTicketExpensesService.getByTicketId(existing.id);
+          }
+        } catch (error) {
+          console.error('Error loading expenses for export:', error);
+        }
+        await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
         
         // Small delay between exports to avoid overwhelming the browser
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -377,6 +463,98 @@ export default function ServiceTickets() {
       return data;
     },
   });
+
+  // Expense mutations
+  const createExpenseMutation = useMutation({
+    mutationFn: (expense: {
+      service_ticket_id: string;
+      expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+      description: string;
+      quantity: number;
+      rate: number;
+      unit?: string;
+    }) => serviceTicketExpensesService.create(expense),
+    onSuccess: () => {
+      if (currentTicketRecordId) {
+        loadExpenses(currentTicketRecordId);
+      }
+    },
+  });
+
+  const updateExpenseMutation = useMutation({
+    mutationFn: ({ id, ...updates }: { id: string } & Parameters<typeof serviceTicketExpensesService.update>[1]) =>
+      serviceTicketExpensesService.update(id, updates),
+    onSuccess: () => {
+      if (currentTicketRecordId) {
+        loadExpenses(currentTicketRecordId);
+      }
+    },
+  });
+
+  const deleteExpenseMutation = useMutation({
+    mutationFn: (id: string) => serviceTicketExpensesService.delete(id),
+    onSuccess: () => {
+      if (currentTicketRecordId) {
+        loadExpenses(currentTicketRecordId);
+      }
+    },
+  });
+
+  // Load expenses for a service ticket
+  const loadExpenses = async (ticketId: string) => {
+    try {
+      const expenseData = await serviceTicketExpensesService.getByTicketId(ticketId);
+      setExpenses(expenseData || []);
+    } catch (error) {
+      console.error('Error loading expenses:', error);
+      setExpenses([]);
+    }
+  };
+
+  // Get or create service ticket record ID when a ticket is selected
+  const getOrCreateTicketRecord = async (ticket: ServiceTicket): Promise<string> => {
+    // Try to find existing ticket record
+    const existing = existingTickets?.find(
+      et => et.date === ticket.date && 
+            et.user_id === ticket.userId && 
+            (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+    );
+
+    if (existing) {
+      return existing.id;
+    }
+
+    // Create new ticket record
+    const ticketNumber = displayTicketNumber && !displayTicketNumber.includes('XXX')
+      ? displayTicketNumber
+      : await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+    
+    const year = new Date().getFullYear() % 100;
+    const sequenceMatch = ticketNumber.match(/\d{3}$/);
+    const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+    
+    const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+    const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+    const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+    const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+    const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+    const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+
+    const record = await serviceTicketsService.createTicketRecord({
+      ticketNumber,
+      employeeInitials: ticket.userInitials,
+      year,
+      sequenceNumber,
+      date: ticket.date,
+      customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+      userId: ticket.userId,
+      projectId: ticket.projectId,
+      totalHours: ticket.totalHours,
+      totalAmount,
+    });
+
+    return record.id;
+  };
 
   // Match tickets with existing ticket numbers or generate preview
   const ticketsWithNumbers = useMemo(() => {
@@ -662,7 +840,7 @@ export default function ServiceTickets() {
             </thead>
             <tbody>
               {filteredTickets.map((ticket) => {
-                const handleRowClick = () => {
+                const handleRowClick = async () => {
                   setSelectedTicket(ticket);
                   setEditableTicket({
                     customerName: ticket.customerInfo.name || '',
@@ -692,6 +870,16 @@ export default function ServiceTickets() {
                     serviceTicketsService.getNextTicketNumber(ticket.userInitials)
                       .then(num => setDisplayTicketNumber(num))
                       .catch(() => setDisplayTicketNumber(`${ticket.userInitials}_${new Date().getFullYear() % 100}XXX`));
+                  }
+
+                  // Load expenses for this ticket
+                  try {
+                    const ticketRecordId = await getOrCreateTicketRecord(ticket);
+                    setCurrentTicketRecordId(ticketRecordId);
+                    await loadExpenses(ticketRecordId);
+                  } catch (error) {
+                    console.error('Error loading expenses:', error);
+                    setExpenses([]);
                   }
                 };
 
@@ -1092,6 +1280,246 @@ export default function ServiceTickets() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Expenses Section */}
+                    <div style={sectionStyle}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={sectionTitleStyle}>Travel / Subsistence / Expenses / Equipment</h3>
+                        {currentTicketRecordId && (
+                          <button
+                            onClick={() => {
+                              setEditingExpense({
+                                expense_type: 'Travel',
+                                description: '',
+                                quantity: 1,
+                                rate: 0,
+                                unit: '',
+                              });
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              backgroundColor: '#c770f0',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            + Add Expense
+                          </button>
+                        )}
+                      </div>
+                      
+                      {expenses.length === 0 && !editingExpense && (
+                        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', margin: 0 }}>
+                          No expenses added yet.
+                        </p>
+                      )}
+
+                      {editingExpense && currentTicketRecordId && (
+                        <div style={{
+                          backgroundColor: 'rgba(199, 112, 240, 0.1)',
+                          border: '1px solid rgba(199, 112, 240, 0.3)',
+                          borderRadius: '6px',
+                          padding: '12px',
+                          marginBottom: '12px',
+                        }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '12px' }}>
+                            <div>
+                              <label style={labelStyle}>Type</label>
+                              <select
+                                style={inputStyle}
+                                value={editingExpense.expense_type}
+                                onChange={(e) => setEditingExpense({ ...editingExpense, expense_type: e.target.value as any })}
+                              >
+                                <option value="Travel">Travel</option>
+                                <option value="Subsistence">Subsistence</option>
+                                <option value="Expenses">Expenses</option>
+                                <option value="Equipment">Equipment</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Unit (e.g., km, day, hr)</label>
+                              <input
+                                style={inputStyle}
+                                value={editingExpense.unit || ''}
+                                onChange={(e) => setEditingExpense({ ...editingExpense, unit: e.target.value })}
+                                placeholder="km, day, hr, unit"
+                              />
+                            </div>
+                          </div>
+                          <div style={{ marginBottom: '12px' }}>
+                            <label style={labelStyle}>Description</label>
+                            <input
+                              style={inputStyle}
+                              value={editingExpense.description}
+                              onChange={(e) => setEditingExpense({ ...editingExpense, description: e.target.value })}
+                              placeholder="e.g., Mileage, Per diem, Equipment billout"
+                            />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                            <div>
+                              <label style={labelStyle}>Quantity</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                style={inputStyle}
+                                value={editingExpense.quantity}
+                                onChange={(e) => setEditingExpense({ ...editingExpense, quantity: parseFloat(e.target.value) || 0 })}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Rate ($)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                style={inputStyle}
+                                value={editingExpense.rate}
+                                onChange={(e) => setEditingExpense({ ...editingExpense, rate: parseFloat(e.target.value) || 0 })}
+                              />
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => setEditingExpense(null)}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: 'transparent',
+                                color: 'rgba(255,255,255,0.7)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!editingExpense.description.trim()) {
+                                  alert('Please enter a description');
+                                  return;
+                                }
+                                if (editingExpense.id) {
+                                  await updateExpenseMutation.mutateAsync({
+                                    id: editingExpense.id,
+                                    ...editingExpense,
+                                  });
+                                } else {
+                                  await createExpenseMutation.mutateAsync({
+                                    service_ticket_id: currentTicketRecordId,
+                                    ...editingExpense,
+                                  });
+                                }
+                                setEditingExpense(null);
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: '#c770f0',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {editingExpense.id ? 'Update' : 'Add'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {expenses.map((expense) => (
+                        <div
+                          key={expense.id}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr auto',
+                            gap: '12px',
+                            alignItems: 'center',
+                            padding: '10px',
+                            backgroundColor: 'rgba(255,255,255,0.03)',
+                            borderRadius: '6px',
+                            marginBottom: '8px',
+                            fontSize: '13px',
+                          }}
+                        >
+                          <div>
+                            <span style={{ color: '#c770f0', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase' }}>
+                              {expense.expense_type}
+                            </span>
+                            <div style={{ color: '#fff', marginTop: '2px' }}>
+                              {expense.description}
+                              {expense.unit && <span style={{ color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>({expense.unit})</span>}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>
+                            {expense.quantity.toFixed(2)}
+                          </div>
+                          <div style={{ textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>
+                            @ ${expense.rate.toFixed(2)}
+                          </div>
+                          <div style={{ textAlign: 'right', color: '#fff', fontWeight: '700' }}>
+                            ${(expense.quantity * expense.rate).toFixed(2)}
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              onClick={() => setEditingExpense({ ...expense })}
+                              style={{
+                                padding: '4px 8px',
+                                backgroundColor: 'transparent',
+                                color: 'rgba(255,255,255,0.7)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (expense.id && confirm('Delete this expense?')) {
+                                  await deleteExpenseMutation.mutateAsync(expense.id);
+                                }
+                              }}
+                              style={{
+                                padding: '4px 8px',
+                                backgroundColor: 'transparent',
+                                color: '#ef5350',
+                                border: '1px solid rgba(239, 83, 80, 0.3)',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {expenses.length > 0 && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            paddingTop: '12px',
+                            borderTop: '1px solid rgba(255,255,255,0.2)',
+                            marginTop: '8px',
+                          }}
+                        >
+                          <span style={{ fontSize: '15px', color: '#fff', fontWeight: '700' }}>TOTAL EXPENSES:</span>
+                          <span style={{ fontSize: '18px', color: '#c770f0', fontWeight: '700' }}>
+                            ${expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </>
                 );
               })()}
@@ -1108,7 +1536,11 @@ export default function ServiceTickets() {
                 </button>
                 <button
                   className="button button-primary"
-                  onClick={() => {
+                  onClick={async () => {
+                    // Ensure expenses are loaded
+                    if (currentTicketRecordId && expenses.length === 0) {
+                      await loadExpenses(currentTicketRecordId);
+                    }
                     // Create a modified ticket with the editable values
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,
@@ -1144,7 +1576,11 @@ export default function ServiceTickets() {
                 </button>
                 <button
                   className="button button-primary"
-                  onClick={() => {
+                  onClick={async () => {
+                    // Ensure expenses are loaded
+                    if (currentTicketRecordId && expenses.length === 0) {
+                      await loadExpenses(currentTicketRecordId);
+                    }
                     // Create a modified ticket with the editable values
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,

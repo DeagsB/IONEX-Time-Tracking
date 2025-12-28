@@ -226,6 +226,43 @@ function fillRowItems(
 }
 
 /**
+ * Fills expenses into the Excel template
+ * Expenses section is typically around row 25-30
+ */
+function fillExpenses(
+  worksheet: ExcelJS.Worksheet,
+  expenses: Array<{
+    expense_type: string;
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  }>,
+  startRow: number = 25
+) {
+  expenses.forEach((expense, index) => {
+    const row = startRow + index;
+    const description = expense.description || '';
+    const rate = expense.rate || 0;
+    const quantity = expense.quantity || 0;
+    const subtotal = quantity * rate;
+
+    // Assuming columns: I=Description, J=Rate, K=Quantity, L=Subtotal
+    // Adjust column letters based on your template structure
+    worksheet.getCell(`I${row}`).value = description;
+    worksheet.getCell(`J${row}`).value = rate;
+    worksheet.getCell(`K${row}`).value = quantity;
+    worksheet.getCell(`L${row}`).value = subtotal;
+
+    // Format currency cells
+    worksheet.getCell(`J${row}`).numFmt = '$#,##0.00';
+    worksheet.getCell(`L${row}`).numFmt = '$#,##0.00';
+  });
+
+  return expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
+}
+
+/**
  * Updates formula cells with calculated totals for Protected View compatibility
  */
 function updateTotals(
@@ -234,7 +271,8 @@ function updateTotals(
   ttTotal: number,
   ftTotal: number,
   otTotal: number,
-  rates: { rt: number; tt: number; ft: number; ot: number }
+  rates: { rt: number; tt: number; ft: number; ot: number },
+  expensesTotal: number = 0
 ) {
   const totalsRow = 24;
   const rtRate = rates.rt;
@@ -246,7 +284,7 @@ function updateTotals(
   const ttAmount = ttTotal * ttRate;
   const ftAmount = ftTotal * ftRate;
   const otAmount = otTotal * otRate;
-  const grandTotal = rtAmount + ttAmount + ftAmount + otAmount;
+  const grandTotal = rtAmount + ttAmount + ftAmount + otAmount + expensesTotal;
 
   // Helper to set cell with formula result caching
   const setCellWithResult = (address: string, value: number) => {
@@ -298,7 +336,16 @@ function updateTotals(
  * Generates a filled Excel file from the template and ticket data using ExcelJS
  * Handles multi-page output when descriptions overflow
  */
-export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise<Uint8Array> {
+export async function generateExcelServiceTicket(
+  ticket: ServiceTicket,
+  expenses: Array<{
+    expense_type: string;
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  }> = []
+): Promise<Uint8Array> {
   try {
     // Fetch the template
     const templateResponse = await fetch('/templates/service-ticket-template.xlsx');
@@ -334,7 +381,8 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         0,
         maxRowsPerPage
       );
-      updateTotals(templateSheet, rtTotal, ttTotal, ftTotal, otTotal, ticket.rates);
+      const expensesTotal = fillExpenses(templateSheet, expenses);
+      updateTotals(templateSheet, rtTotal, ttTotal, ftTotal, otTotal, ticket.rates, expensesTotal);
     } else {
       // Multi-page - need to duplicate sheets
       let currentItemIndex = 0;
@@ -414,13 +462,16 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
         cumulativeFtTotal += result.ftTotal;
         cumulativeOtTotal += result.otTotal;
 
+        // Fill expenses only on the last page
+        const expensesTotal = page === totalPages ? fillExpenses(worksheet, expenses) : 0;
+
         // For intermediate pages, show page totals
         // For last page, show cumulative totals
         if (page === totalPages) {
-          updateTotals(worksheet, cumulativeRtTotal, cumulativeTtTotal, cumulativeFtTotal, cumulativeOtTotal, ticket.rates);
+          updateTotals(worksheet, cumulativeRtTotal, cumulativeTtTotal, cumulativeFtTotal, cumulativeOtTotal, ticket.rates, expensesTotal);
         } else {
-          // Show this page's totals
-          updateTotals(worksheet, result.rtTotal, result.ttTotal, result.ftTotal, result.otTotal, ticket.rates);
+          // Show this page's totals (no expenses on intermediate pages)
+          updateTotals(worksheet, result.rtTotal, result.ttTotal, result.ftTotal, result.otTotal, ticket.rates, 0);
         }
       }
     }
@@ -483,8 +534,17 @@ export async function generateExcelServiceTicket(ticket: ServiceTicket): Promise
 /**
  * Downloads the generated Excel file
  */
-export async function downloadExcelServiceTicket(ticket: ServiceTicket): Promise<void> {
-  const excelBytes = await generateExcelServiceTicket(ticket);
+export async function downloadExcelServiceTicket(
+  ticket: ServiceTicket,
+  expenses: Array<{
+    expense_type: string;
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  }> = []
+): Promise<void> {
+  const excelBytes = await generateExcelServiceTicket(ticket, expenses);
 
   const blob = new Blob([excelBytes as any], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

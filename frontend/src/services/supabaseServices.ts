@@ -475,3 +475,70 @@ export const serviceTicketsService = {
     return data;
   },
 };
+
+export const serviceTicketExpensesService = {
+  async getByTicketId(ticketId: string) {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .select('*')
+      .eq('service_ticket_id', ticketId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async create(expense: {
+    service_ticket_id: string;
+    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  }) {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .insert(expense)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id: string, updates: {
+    expense_type?: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    description?: string;
+    quantity?: number;
+    rate?: number;
+    unit?: string;
+  }) {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('service_ticket_expenses')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async deleteByTicketId(ticketId: string) {
+    const { error } = await supabase
+      .from('service_ticket_expenses')
+      .delete()
+      .eq('service_ticket_id', ticketId);
+
+    if (error) throw error;
+  },
+};

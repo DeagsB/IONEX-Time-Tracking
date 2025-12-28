@@ -20,7 +20,16 @@ const roundToHalfHour = (hours: number): number => {
 };
 
 // Generate PDF from HTML that matches the Excel template exactly
-export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> {
+export async function downloadPdfFromHtml(
+  ticket: ServiceTicket,
+  expenses: Array<{
+    expense_type: string;
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  }> = []
+): Promise<void> {
   // Calculate totals using mapped rate types (each entry rounded to nearest 0.5)
   const rtHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? roundToHalfHour(e.hours) : 0), 0);
   const ttHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? roundToHalfHour(e.hours) : 0), 0);
@@ -37,7 +46,8 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
   const ttAmount = ttHours * ttRate;
   const ftAmount = ftHours * ftRate;
   const otAmount = otHours * otRate;
-  const grandTotal = rtAmount + ttAmount + ftAmount + otAmount;
+  const expensesTotal = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
+  const grandTotal = rtAmount + ttAmount + ftAmount + otAmount + expensesTotal;
 
   // Format date
   const formatDate = (dateStr: string) => {
@@ -216,7 +226,14 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
             <div style="width: 40px; text-align: center; border-left: 1px solid #000;">QTY</div>
             <div style="width: 60px; text-align: center; border-left: 1px solid #000;">SUB</div>
           </div>
-          ${[1, 2, 3, 4].map(() => `
+          ${expenses.length > 0 ? expenses.map((expense) => `
+            <div style="display: flex; min-height: 16px; border-bottom: 1px solid #eee;">
+              <div style="flex: 1; padding: 2px 4px; font-size: 8pt;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</div>
+              <div style="width: 60px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: right; font-size: 8pt;">$${expense.rate.toFixed(2)}</div>
+              <div style="width: 40px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: center; font-size: 8pt;">${expense.quantity.toFixed(2)}</div>
+              <div style="width: 60px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: right; font-size: 8pt;">$${(expense.quantity * expense.rate).toFixed(2)}</div>
+            </div>
+          `).join('') : [1, 2, 3, 4].map(() => `
             <div style="display: flex; min-height: 16px; border-bottom: 1px solid #eee;">
               <div style="flex: 1; padding: 2px 4px;"></div>
               <div style="width: 60px; border-left: 1px solid #ccc;"></div>
@@ -226,7 +243,7 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
           `).join('')}
           <div style="display: flex; border-top: 1px solid #000; font-weight: bold;">
             <div style="flex: 1; padding: 4px 6px; text-align: right;">Total Expenses</div>
-            <div style="width: 60px; border-left: 1px solid #000; padding: 4px; text-align: center;">$0.00</div>
+            <div style="width: 60px; border-left: 1px solid #000; padding: 4px; text-align: center;">$${expensesTotal.toFixed(2)}</div>
           </div>
         </div>
 
@@ -252,7 +269,7 @@ export async function downloadPdfFromHtml(ticket: ServiceTicket): Promise<void> 
             </tr>
             <tr style="border-bottom: 1px solid #ccc;">
               <td style="padding: 3px 6px;">Total Expenses</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$0.00</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${expensesTotal.toFixed(2)}</td>
             </tr>
             <tr style="background: #f0f0f0;">
               <td style="padding: 4px 6px; font-weight: bold;">TOTAL</td>
