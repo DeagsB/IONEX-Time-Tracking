@@ -335,15 +335,16 @@ export default function ServiceTickets() {
     }
   };
 
-  // Fetch billable entries
+  // Fetch billable entries (filtered by demo mode)
   const { data: billableEntries, isLoading: isLoadingEntries, error: entriesError } = useQuery({
-    queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, selectedUserId, approvedOnly],
+    queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, selectedUserId, approvedOnly, isDemoMode],
     queryFn: () => serviceTicketsService.getBillableEntries({
       startDate,
       endDate,
       customerId: selectedCustomerId || undefined,
       userId: selectedUserId || undefined,
       approvedOnly,
+      isDemoMode, // Only show demo entries in demo mode, real entries otherwise
     }),
   });
 

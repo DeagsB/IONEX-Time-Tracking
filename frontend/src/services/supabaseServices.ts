@@ -3,11 +3,18 @@ import { supabase } from '../lib/supabaseClient';
 // Service functions for interacting with Supabase tables
 
 export const timeEntriesService = {
-  async getAll() {
-    const { data, error } = await supabase
+  async getAll(isDemoMode?: boolean) {
+    let query = supabase
       .from('time_entries')
       .select('*')
       .order('date', { ascending: false });
+    
+    // Filter by demo mode if specified
+    if (isDemoMode !== undefined) {
+      query = query.eq('is_demo', isDemoMode);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data;
@@ -348,6 +355,7 @@ export const serviceTicketsService = {
     customerId?: string;
     userId?: string;
     approvedOnly?: boolean;
+    isDemoMode?: boolean;
   }) {
     let query = supabase
       .from('time_entries')
@@ -375,6 +383,10 @@ export const serviceTicketsService = {
     }
     if (filters?.approvedOnly) {
       query = query.eq('approved', true);
+    }
+    // Filter by demo mode - only show demo entries in demo mode, only real entries outside
+    if (filters?.isDemoMode !== undefined) {
+      query = query.eq('is_demo', filters.isDemoMode);
     }
 
     const { data, error } = await query;

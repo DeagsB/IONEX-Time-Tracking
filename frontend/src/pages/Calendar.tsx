@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { projectsService, timeEntriesService } from '../services/supabaseServices';
 import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
 
 interface TimerState {
   isRunning: boolean;
@@ -13,6 +14,7 @@ interface TimerState {
 
 export default function Calendar() {
   const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -30,8 +32,8 @@ export default function Calendar() {
   });
 
   const { data: timeEntries } = useQuery({
-    queryKey: ['timeEntries', 'calendar', currentDate.getMonth(), currentDate.getFullYear()],
-    queryFn: () => timeEntriesService.getAll(),
+    queryKey: ['timeEntries', 'calendar', currentDate.getMonth(), currentDate.getFullYear(), isDemoMode],
+    queryFn: () => timeEntriesService.getAll(isDemoMode),
   });
 
 

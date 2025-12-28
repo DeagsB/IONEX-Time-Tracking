@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 
 interface TimeEntry {
@@ -35,6 +36,7 @@ interface EmployeeHours {
 
 export default function Payroll() {
   const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
   
   // Default to current pay period (bi-weekly or monthly)
   const [startDate, setStartDate] = useState(() => {
@@ -45,9 +47,9 @@ export default function Payroll() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [approvedOnly, setApprovedOnly] = useState(false);
 
-  // Fetch all time entries for the date range
+  // Fetch all time entries for the date range (filtered by demo mode)
   const { data: timeEntries, isLoading, error } = useQuery({
-    queryKey: ['payrollReport', startDate, endDate, approvedOnly],
+    queryKey: ['payrollReport', startDate, endDate, approvedOnly, isDemoMode],
     queryFn: async () => {
       let query = supabase
         .from('time_entries')
@@ -57,6 +59,7 @@ export default function Payroll() {
         `)
         .gte('date', startDate)
         .lte('date', endDate)
+        .eq('is_demo', isDemoMode) // Only show demo entries in demo mode
         .order('date', { ascending: true });
 
       if (approvedOnly) {

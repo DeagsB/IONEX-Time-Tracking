@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
 import { timeEntriesService, projectsService } from '../services/supabaseServices';
 
 export default function TimeEntries() {
   const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<any>(null);
@@ -20,8 +22,8 @@ export default function TimeEntries() {
   });
 
   const { data: timeEntries, isLoading: isLoadingEntries } = useQuery({
-    queryKey: ['timeEntries'],
-    queryFn: () => timeEntriesService.getAll(),
+    queryKey: ['timeEntries', isDemoMode],
+    queryFn: () => timeEntriesService.getAll(isDemoMode),
   });
 
   const { data: projects } = useQuery({

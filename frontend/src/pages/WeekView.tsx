@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTimer } from '../context/TimerContext';
+import { useDemoMode } from '../context/DemoModeContext';
 import { timeEntriesService, projectsService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 
@@ -27,6 +28,7 @@ interface Project {
 export default function WeekView() {
   const { user } = useAuth();
   const { timerRunning, timerStartTime, currentEntry } = useTimer();
+  const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -126,9 +128,9 @@ export default function WeekView() {
   weekEnd.setDate(weekStart.getDate() + 6);
 
   const { data: timeEntries } = useQuery({
-    queryKey: ['timeEntries', 'week', weekStart.toISOString()],
+    queryKey: ['timeEntries', 'week', weekStart.toISOString(), isDemoMode],
     queryFn: async () => {
-      const allEntries = await timeEntriesService.getAll();
+      const allEntries = await timeEntriesService.getAll(isDemoMode);
       return allEntries?.filter((entry: any) => {
         const entryDate = new Date(entry.date);
         return entryDate >= weekStart && entryDate <= weekEnd;
