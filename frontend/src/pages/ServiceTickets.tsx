@@ -559,7 +559,18 @@ export default function ServiceTickets() {
   // Match tickets with existing ticket numbers or generate preview
   const ticketsWithNumbers = useMemo(() => {
     return tickets.map(ticket => {
-      // Try to find an existing ticket number for this specific ticket
+      // Check if this is a demo ticket (all entries are demo)
+      const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+      
+      // For demo tickets, always show XXX placeholder
+      if (isDemoTicket) {
+        return {
+          ...ticket,
+          displayTicketNumber: `${ticket.userInitials}_${new Date(ticket.date).getFullYear() % 100}XXX`
+        };
+      }
+      
+      // For non-demo tickets, try to find an existing ticket number
       const existing = existingTickets?.find(
         et => et.date === ticket.date && 
               et.user_id === ticket.userId && 
