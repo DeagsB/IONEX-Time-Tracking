@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabaseClient';
 
 export default function Settings() {
   const { isDemoMode, setDemoMode } = useDemoMode();
-  const [showResetModal, setShowResetModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isCreatingDemo, setIsCreatingDemo] = useState(false);
 
@@ -105,8 +104,23 @@ export default function Settings() {
 
   const handleToggleDemoMode = async () => {
     if (isDemoMode) {
-      // Turning OFF demo mode - show confirmation modal
-      setShowResetModal(true);
+      // Turning OFF demo mode - automatically delete all demo data
+      setIsResetting(true);
+      try {
+        // Delete all demo data
+        await supabase.from('service_tickets').delete().eq('is_demo', true);
+        await supabase.from('time_entries').delete().eq('is_demo', true);
+        await supabase.from('projects').delete().eq('is_demo', true);
+        await supabase.from('customers').delete().eq('is_demo', true);
+        
+        setDemoMode(false);
+        alert('Demo mode disabled. All demo data has been deleted.');
+      } catch (error) {
+        console.error('Error deleting demo data:', error);
+        alert('Error deleting some demo data. Check console for details.');
+      } finally {
+        setIsResetting(false);
+      }
     } else {
       // Turning ON demo mode - create demo data first
       const success = await createDemoData();
@@ -114,40 +128,6 @@ export default function Settings() {
         setDemoMode(true);
       }
     }
-  };
-
-  const handleConfirmReset = async (resetData: boolean) => {
-    if (resetData) {
-      setIsResetting(true);
-      try {
-        // Only delete demo service tickets (marked with is_demo = true)
-        await supabase.from('service_tickets').delete().eq('is_demo', true);
-        
-        // Only delete demo time entries (marked with is_demo = true)
-        await supabase.from('time_entries').delete().eq('is_demo', true);
-        
-        // Only delete demo projects (marked with is_demo = true)
-        await supabase.from('projects').delete().eq('is_demo', true);
-        
-        // Only delete demo customers (marked with is_demo = true)
-        await supabase.from('customers').delete().eq('is_demo', true);
-        
-        alert('Demo data has been reset successfully! Your real data is preserved.');
-      } catch (error) {
-        console.error('Error resetting demo data:', error);
-        alert('Error resetting some data. Check console for details.');
-      } finally {
-        setIsResetting(false);
-      }
-    }
-    
-    setDemoMode(false);
-    setShowResetModal(false);
-  };
-
-  const handleCancelReset = () => {
-    setShowResetModal(false);
-    // Don't turn off demo mode if cancelled
   };
 
   return (
@@ -231,115 +211,11 @@ export default function Settings() {
               🎭 Demo Mode is ON
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Hidden pages: Overview, Approvals, Forms, Profile
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-              When you turn off demo mode, you'll have the option to reset all time entries and service tickets.
+              Hidden pages: Overview, Approvals, Forms, Profile. All demo data will be automatically deleted when you turn off demo mode.
             </div>
           </div>
         )}
       </div>
-
-      {/* Reset Confirmation Modal */}
-      {showResetModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-        }}>
-          <div style={{
-            backgroundColor: 'var(--bg-primary)',
-            borderRadius: '12px',
-            padding: '24px',
-            maxWidth: '450px',
-            width: '90%',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-          }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'var(--text-primary)' }}>
-              Turn Off Demo Mode
-            </h3>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5' }}>
-              Would you like to reset demo data? This will <strong>only</strong> delete entries created in demo mode:
-            </p>
-            <ul style={{ 
-              color: 'var(--text-secondary)', 
-              marginBottom: '24px', 
-              paddingLeft: '20px',
-              lineHeight: '1.8',
-            }}>
-              <li>Demo time entries</li>
-              <li>Demo service tickets</li>
-              <li>Demo projects</li>
-              <li>Demo customers</li>
-            </ul>
-            <p style={{ color: '#4ade80', fontSize: '13px', marginBottom: '16px' }}>
-              ✓ Your real data will NOT be affected
-            </p>
-            
-            <div style={{ 
-              display: 'flex', 
-              gap: '12px',
-              flexDirection: 'column',
-            }}>
-              <button
-                onClick={() => handleConfirmReset(true)}
-                disabled={isResetting}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: isResetting ? 'not-allowed' : 'pointer',
-                  opacity: isResetting ? 0.6 : 1,
-                }}
-              >
-                {isResetting ? 'Resetting...' : '🗑️ Yes, Reset All Demo Data'}
-              </button>
-              <button
-                onClick={() => handleConfirmReset(false)}
-                disabled={isResetting}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: isResetting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                No, Keep Data
-              </button>
-              <button
-                onClick={handleCancelReset}
-                disabled={isResetting}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text-secondary)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  cursor: isResetting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                Cancel (Stay in Demo Mode)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
