@@ -91,25 +91,31 @@ export default function Settings() {
       const today = new Date();
       const demoEntries = [];
       
-      // Fixed descriptions in order
-      const descriptions = [
-        'Travel to client site',
-        'On-site HVAC inspection and diagnostics',
-        'Replaced compressor components',
-        'System testing and calibration',
-        'Return travel from site',
-        'Prepared service documentation',
-        'Parts ordering and inventory check',
-        'Control system programming',
-        'Emergency repair service',
-        'Quarterly maintenance inspection',
+      // Fixed entry templates with description and appropriate rate type
+      const entryTemplates = [
+        { description: 'Travel to client site', rateType: 'Travel Time', rate: 85, hours: 1 },
+        { description: 'On-site HVAC inspection and diagnostics', rateType: 'Field Time', rate: 125, hours: 3 },
+        { description: 'Replaced compressor components', rateType: 'Field Time', rate: 125, hours: 4 },
+        { description: 'System testing and calibration', rateType: 'Field Time', rate: 125, hours: 2 },
+        { description: 'Return travel from site', rateType: 'Travel Time', rate: 85, hours: 1 },
+        { description: 'Prepared service documentation', rateType: 'Shop Time', rate: 95, hours: 2 },
+        { description: 'Parts ordering and inventory check', rateType: 'Shop Time', rate: 95, hours: 1.5 },
+        { description: 'Control system programming', rateType: 'Shop Time', rate: 95, hours: 3 },
+        { description: 'Emergency repair service', rateType: 'Field Time', rate: 125, hours: 5 },
+        { description: 'Quarterly maintenance inspection', rateType: 'Field Time', rate: 125, hours: 3 },
       ];
       
-      const rateTypes = ['Shop Time', 'Travel Time', 'Field Time', 'Shop Overtime', 'Field Overtime'];
-      const rates = [95, 85, 125, 142.5, 187.5];
+      // Rate type to rate mapping
+      const rateTypeToRate: { [key: string]: number } = {
+        'Shop Time': 95,
+        'Travel Time': 85,
+        'Field Time': 125,
+        'Shop Overtime': 142.5,
+        'Field Overtime': 187.5,
+      };
 
       // Generate entries for the past 10 business days (deterministic)
-      let descriptionIndex = 0;
+      let templateIndex = 0;
       for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
         const entryDate = new Date(today);
         entryDate.setDate(today.getDate() - dayOffset);
@@ -128,15 +134,16 @@ export default function Settings() {
           const projectIndex = (dayOffset + i) % projectIds.length;
           const projectId = projectIds[projectIndex];
           
-          // Cycle through rate types deterministically
-          const rateTypeIndex = (dayOffset + i) % 3; // Mostly regular types
+          // Get template with appropriate rate type
+          const template = entryTemplates[templateIndex % entryTemplates.length];
           
-          // Fixed hours pattern
-          const hoursPattern = [2, 3, 1.5, 4, 2.5, 2, 3, 1.5, 4, 2.5];
-          const hours = hoursPattern[(dayOffset + i) % hoursPattern.length];
+          // Use hours from template, with some variation for realism
+          const hoursVariations = [0.9, 1.0, 1.1, 1.05];
+          const hours = template.hours * hoursVariations[(dayOffset + i) % hoursVariations.length];
+          const roundedHours = Math.round(hours * 2) / 2; // Round to nearest 0.5
           
           const startHour = currentHour;
-          const endHour = currentHour + hours;
+          const endHour = currentHour + roundedHours;
           currentHour = endHour + 0.5;
           
           const startDate = new Date(entryDate);
@@ -151,16 +158,16 @@ export default function Settings() {
             date: dateStr,
             start_time: startDate.toISOString(),
             end_time: endDate.toISOString(),
-            hours: hours,
-            rate: rates[rateTypeIndex],
-            rate_type: rateTypes[rateTypeIndex],
-            description: descriptions[descriptionIndex % descriptions.length],
+            hours: roundedHours,
+            rate: rateTypeToRate[template.rateType],
+            rate_type: template.rateType,
+            description: template.description,
             billable: true,
             approved: true,
             is_demo: true, // Mark as demo data
           });
           
-          descriptionIndex++;
+          templateIndex++;
         }
       }
 
