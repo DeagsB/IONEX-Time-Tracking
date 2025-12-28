@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useDemoMode } from '../context/DemoModeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +18,7 @@ interface HeaderProps {
 export default function Header({ onTimerStart, onTimerStop, timerRunning, timerDisplay, currentEntry, timerStartTime }: HeaderProps) {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [description, setDescription] = useState('');
@@ -43,6 +45,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rate: parseFloat(data.rate || 0),
         billable: data.billable !== undefined ? data.billable : true,
         description: data.description || null,
+        is_demo: isDemoMode, // Mark as demo entry if in demo mode
       };
       
       return await timeEntriesService.create(entryData);

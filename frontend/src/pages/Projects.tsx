@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService } from '../services/supabaseServices';
 
 export default function Projects() {
   const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingProject, setEditingProject] = useState<any>(null);
@@ -43,6 +45,7 @@ export default function Projects() {
         end_date: data.end_date || null,
         budget: data.budget ? parseFloat(data.budget) : null,
         color: data.color || '#4ecdc4',
+        is_demo: isDemoMode, // Mark as demo project if in demo mode
       };
       return await projectsService.create(projectData);
     },

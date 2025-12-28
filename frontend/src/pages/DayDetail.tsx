@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
 import { timeEntriesService, projectsService } from '../services/supabaseServices';
 
 interface TimeEntry {
@@ -21,6 +22,7 @@ export default function DayDetail() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   
   const [selectedDate] = useState(date ? new Date(date) : new Date());
@@ -55,7 +57,7 @@ export default function DayDetail() {
     mutationFn: async (data: any) => {
       if (!user) throw new Error("No user");
       
-      const entryData = {
+      const entryData: any = {
         user_id: user.id,
         project_id: data.project_id || null,
         date: date,
@@ -65,6 +67,7 @@ export default function DayDetail() {
         rate: 0, // Should fetch project rate
         billable: true,
         description: data.description || null,
+        is_demo: isDemoMode, // Mark as demo entry if in demo mode
       };
       
       // Get project rate if project selected

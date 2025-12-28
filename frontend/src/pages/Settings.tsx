@@ -126,6 +126,12 @@ export default function Settings() {
         // Only delete demo time entries (marked with is_demo = true)
         await supabase.from('time_entries').delete().eq('is_demo', true);
         
+        // Only delete demo projects (marked with is_demo = true)
+        await supabase.from('projects').delete().eq('is_demo', true);
+        
+        // Only delete demo customers (marked with is_demo = true)
+        await supabase.from('customers').delete().eq('is_demo', true);
+        
         alert('Demo data has been reset successfully! Your real data is preserved.');
       } catch (error) {
         console.error('Error resetting demo data:', error);
@@ -260,7 +266,7 @@ export default function Settings() {
               Turn Off Demo Mode
             </h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5' }}>
-              Would you like to reset demo data? This will <strong>only</strong> delete entries created by demo mode:
+              Would you like to reset demo data? This will <strong>only</strong> delete entries created in demo mode:
             </p>
             <ul style={{ 
               color: 'var(--text-secondary)', 
@@ -268,8 +274,10 @@ export default function Settings() {
               paddingLeft: '20px',
               lineHeight: '1.8',
             }}>
-              <li>Demo time entries (marked with is_demo flag)</li>
-              <li>Demo service ticket records</li>
+              <li>Demo time entries</li>
+              <li>Demo service tickets</li>
+              <li>Demo projects</li>
+              <li>Demo customers</li>
             </ul>
             <p style={{ color: '#4ade80', fontSize: '13px', marginBottom: '16px' }}>
               ✓ Your real data will NOT be affected

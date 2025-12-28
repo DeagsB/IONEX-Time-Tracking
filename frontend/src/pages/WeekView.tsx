@@ -367,6 +367,7 @@ export default function WeekView() {
       description: newEntry.description || '',
       billable: newEntry.billable,
       rate_type: newEntry.rate_type,
+      is_demo: isDemoMode, // Mark as demo entry if in demo mode
     };
 
     // Only add project_id if one is selected

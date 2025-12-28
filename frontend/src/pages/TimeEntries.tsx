@@ -46,6 +46,7 @@ export default function TimeEntries() {
         rate: parseFloat(data.rate || 0),
         billable: data.billable !== undefined ? data.billable : true,
         description: data.description || null,
+        is_demo: isDemoMode, // Mark as demo entry if in demo mode
       };
 
       return await timeEntriesService.create(entryData);

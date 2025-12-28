@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
 import { customersService } from '../services/supabaseServices';
 
 export default function Customers() {
   const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
@@ -32,7 +34,10 @@ export default function Customers() {
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      return await customersService.create(data);
+      return await customersService.create({
+        ...data,
+        is_demo: isDemoMode, // Mark as demo customer if in demo mode
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
