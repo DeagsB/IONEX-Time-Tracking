@@ -127,13 +127,17 @@ export default function WeekView() {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
 
-  const { data: timeEntries } = useQuery({
+  const { data: timeEntries, refetch: refetchTimeEntries } = useQuery({
     queryKey: ['timeEntries', 'week', weekStart.toISOString(), isDemoMode],
     queryFn: async () => {
       const allEntries = await timeEntriesService.getAll(isDemoMode);
       return allEntries?.filter((entry: any) => {
-        const entryDate = new Date(entry.date);
-        return entryDate >= weekStart && entryDate <= weekEnd;
+        const entryDate = new Date(entry.date + 'T00:00:00'); // Ensure local time comparison
+        const weekStartDate = new Date(weekStart);
+        weekStartDate.setHours(0, 0, 0, 0);
+        const weekEndDate = new Date(weekEnd);
+        weekEndDate.setHours(23, 59, 59, 999);
+        return entryDate >= weekStartDate && entryDate <= weekEndDate;
       });
     },
   });
@@ -150,10 +154,11 @@ export default function WeekView() {
       console.log('Time entry created:', result);
       return result;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       console.log('Time entry saved successfully:', data);
-      // Invalidate all timeEntries queries to ensure day totals update
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      // Invalidate and refetch all timeEntries queries to ensure entries appear immediately
+      await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await refetchTimeEntries();
       setShowTimeEntryModal(false);
       setNewEntry({ description: '', project_id: '', hours: 0.25, billable: true, rate_type: 'Shop Time' });
       setSelectedSlot(null);
@@ -171,10 +176,11 @@ export default function WeekView() {
       console.log('Time entry updated:', result);
       return result;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       console.log('Time entry updated successfully');
-      // Invalidate all timeEntries queries to ensure day totals update
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      // Invalidate and refetch all timeEntries queries to ensure entries appear immediately
+      await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await refetchTimeEntries();
       setShowEditModal(false);
       setEditingEntry(null);
     },
@@ -189,10 +195,11 @@ export default function WeekView() {
       console.log('Deleting time entry:', id);
       await timeEntriesService.delete(id);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       console.log('Time entry deleted successfully');
-      // Invalidate all timeEntries queries to ensure day totals update
-      queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      // Invalidate and refetch all timeEntries queries to ensure entries update immediately
+      await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await refetchTimeEntries();
       setShowEditModal(false);
       setEditingEntry(null);
     },
