@@ -285,73 +285,89 @@ export default function ServiceTickets() {
     try {
       const ticketsToExport = Array.from(selectedTicketIds).map(id => getTicketById(id)).filter(Boolean) as (ServiceTicket & { displayTicketNumber: string })[];
       
+      let updatedTicketsList = [...(existingTickets || [])];
+      
       for (const ticket of ticketsToExport) {
-        // Check if a ticket number already exists
-        const existingRecord = existingTickets?.find(
-          et => et.date === ticket.date && 
-                et.user_id === ticket.userId && 
-                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-        );
-        
-        let ticketNumber: string;
-        
-        if (existingRecord?.ticket_number) {
-          ticketNumber = existingRecord.ticket_number;
-        } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
-          ticketNumber = ticket.displayTicketNumber;
-        } else {
-          // Check if this is a demo ticket
-          const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
-          
-          // Generate a new ticket number (demo tickets start at 001)
-          ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
-          
-          // Save the ticket record
-          const year = new Date().getFullYear() % 100;
-          const sequenceMatch = ticketNumber.match(/\d{3}$/);
-          const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-          
-          const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
-          const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-          const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-          const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-          const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
-          const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-          
-          await serviceTicketsService.createTicketRecord({
-            ticketNumber,
-            employeeInitials: ticket.userInitials,
-            year,
-            sequenceNumber,
-            date: ticket.date,
-            customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-            userId: ticket.userId,
-            projectId: ticket.projectId,
-            totalHours: ticket.totalHours,
-            totalAmount,
-            isDemo: isDemoTicket,
-          });
-        }
-        
-        const ticketWithNumber = { ...ticket, ticketNumber };
-        // Load expenses for bulk export
-        let ticketExpenses = [];
         try {
-          const existing = existingTickets?.find(
+          // Check if a ticket number already exists (check both original list and newly created tickets)
+          let existingRecord = updatedTicketsList.find(
             et => et.date === ticket.date && 
                   et.user_id === ticket.userId && 
                   (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
           );
-          if (existing) {
-            ticketExpenses = await serviceTicketExpensesService.getByTicketId(existing.id);
+          
+          let ticketNumber: string;
+          let ticketRecordId: string | undefined;
+          
+          if (existingRecord?.ticket_number) {
+            ticketNumber = existingRecord.ticket_number;
+            ticketRecordId = existingRecord.id;
+          } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
+            ticketNumber = ticket.displayTicketNumber;
+          } else {
+            // Check if this is a demo ticket
+            const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+            
+            // Generate a new ticket number (demo tickets start at 001)
+            ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
+            
+            // Save the ticket record
+            const year = new Date().getFullYear() % 100;
+            const sequenceMatch = ticketNumber.match(/\d{3}$/);
+            const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+            
+            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+            const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+            const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+            const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+            const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+            const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+            
+            const newRecord = await serviceTicketsService.createTicketRecord({
+              ticketNumber,
+              employeeInitials: ticket.userInitials,
+              year,
+              sequenceNumber,
+              date: ticket.date,
+              customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+              userId: ticket.userId,
+              projectId: ticket.projectId,
+              totalHours: ticket.totalHours,
+              totalAmount,
+              isDemo: isDemoTicket,
+            });
+            
+            // Add the newly created ticket to our list so subsequent tickets can see it
+            updatedTicketsList.push({
+              id: newRecord.id,
+              ticket_number: ticketNumber,
+              date: ticket.date,
+              user_id: ticket.userId,
+              customer_id: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+            } as typeof existingTickets[0]);
+            
+            ticketRecordId = newRecord.id;
           }
+          
+          const ticketWithNumber = { ...ticket, ticketNumber };
+          // Load expenses for bulk export
+          let ticketExpenses = [];
+          if (ticketRecordId) {
+            try {
+              ticketExpenses = await serviceTicketExpensesService.getByTicketId(ticketRecordId);
+            } catch (error) {
+              console.error('Error loading expenses for export:', error);
+            }
+          }
+          
+          await downloadExcelServiceTicket(ticketWithNumber, ticketExpenses);
+          
+          // Small delay between exports to avoid overwhelming the browser
+          await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-          console.error('Error loading expenses for export:', error);
+          console.error(`Error exporting ticket for ${ticket.date}:`, error);
+          // Continue with next ticket even if this one fails
         }
-        await downloadExcelServiceTicket(ticketWithNumber, ticketExpenses);
-        
-        // Small delay between exports to avoid overwhelming the browser
-        await new Promise(resolve => setTimeout(resolve, 500));
       }
       
       // Invalidate and refetch queries to refresh the ticket list with new ticket numbers
@@ -374,73 +390,89 @@ export default function ServiceTickets() {
     try {
       const ticketsToExport = Array.from(selectedTicketIds).map(id => getTicketById(id)).filter(Boolean) as (ServiceTicket & { displayTicketNumber: string })[];
       
+      let updatedTicketsList = [...(existingTickets || [])];
+      
       for (const ticket of ticketsToExport) {
-        // Check if a ticket number already exists
-        const existingRecord = existingTickets?.find(
-          et => et.date === ticket.date && 
-                et.user_id === ticket.userId && 
-                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-        );
-        
-        let ticketNumber: string;
-        
-        if (existingRecord?.ticket_number) {
-          ticketNumber = existingRecord.ticket_number;
-        } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
-          ticketNumber = ticket.displayTicketNumber;
-        } else {
-          // Check if this is a demo ticket
-          const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
-          
-          // Generate a new ticket number (demo tickets start at 001)
-          ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
-          
-          // Save the ticket record
-          const year = new Date().getFullYear() % 100;
-          const sequenceMatch = ticketNumber.match(/\d{3}$/);
-          const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-          
-          const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
-          const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-          const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-          const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-          const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
-          const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-          
-          await serviceTicketsService.createTicketRecord({
-            ticketNumber,
-            employeeInitials: ticket.userInitials,
-            year,
-            sequenceNumber,
-            date: ticket.date,
-            customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-            userId: ticket.userId,
-            projectId: ticket.projectId,
-            totalHours: ticket.totalHours,
-            totalAmount,
-            isDemo: isDemoTicket,
-          });
-        }
-        
-        const ticketWithNumber = { ...ticket, ticketNumber };
-        // Load expenses for bulk export
-        let ticketExpenses = [];
         try {
-          const existing = existingTickets?.find(
+          // Check if a ticket number already exists (check both original list and newly created tickets)
+          let existingRecord = updatedTicketsList.find(
             et => et.date === ticket.date && 
                   et.user_id === ticket.userId && 
                   (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
           );
-          if (existing) {
-            ticketExpenses = await serviceTicketExpensesService.getByTicketId(existing.id);
+          
+          let ticketNumber: string;
+          let ticketRecordId: string | undefined;
+          
+          if (existingRecord?.ticket_number) {
+            ticketNumber = existingRecord.ticket_number;
+            ticketRecordId = existingRecord.id;
+          } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
+            ticketNumber = ticket.displayTicketNumber;
+          } else {
+            // Check if this is a demo ticket
+            const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+            
+            // Generate a new ticket number (demo tickets start at 001)
+            ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
+            
+            // Save the ticket record
+            const year = new Date().getFullYear() % 100;
+            const sequenceMatch = ticketNumber.match(/\d{3}$/);
+            const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+            
+            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+            const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+            const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+            const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+            const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+            const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+            
+            const newRecord = await serviceTicketsService.createTicketRecord({
+              ticketNumber,
+              employeeInitials: ticket.userInitials,
+              year,
+              sequenceNumber,
+              date: ticket.date,
+              customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+              userId: ticket.userId,
+              projectId: ticket.projectId,
+              totalHours: ticket.totalHours,
+              totalAmount,
+              isDemo: isDemoTicket,
+            });
+            
+            // Add the newly created ticket to our list so subsequent tickets can see it
+            updatedTicketsList.push({
+              id: newRecord.id,
+              ticket_number: ticketNumber,
+              date: ticket.date,
+              user_id: ticket.userId,
+              customer_id: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+            } as typeof existingTickets[0]);
+            
+            ticketRecordId = newRecord.id;
           }
+          
+          const ticketWithNumber = { ...ticket, ticketNumber };
+          // Load expenses for bulk export
+          let ticketExpenses = [];
+          if (ticketRecordId) {
+            try {
+              ticketExpenses = await serviceTicketExpensesService.getByTicketId(ticketRecordId);
+            } catch (error) {
+              console.error('Error loading expenses for export:', error);
+            }
+          }
+          
+          await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
+          
+          // Small delay between exports to avoid overwhelming the browser
+          await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-          console.error('Error loading expenses for export:', error);
+          console.error(`Error exporting ticket for ${ticket.date}:`, error);
+          // Continue with next ticket even if this one fails
         }
-        await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
-        
-        // Small delay between exports to avoid overwhelming the browser
-        await new Promise(resolve => setTimeout(resolve, 500));
       }
       
       // Invalidate and refetch queries to refresh the ticket list with new ticket numbers
