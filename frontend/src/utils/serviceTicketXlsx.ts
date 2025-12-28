@@ -263,17 +263,20 @@ function fillExpenses(
   const total = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
   const lastRow = expenses.length > 0 ? startRow + expenses.length - 1 : startRow;
 
-  // Set expense sum formula if there are expenses
+  // Set expense total in M32 (not M31) - sum only the expense subtotals
   if (expenses.length > 0) {
-    const sumRow = lastRow + 1; // Row after last expense
     const firstSubtotalCell = `M${startRow}`;
     const lastSubtotalCell = `M${lastRow}`;
     
-    // Set the sum formula for expenses (e.g., =SUM(M27:M30))
-    const expenseSumCell = worksheet.getCell(`M${sumRow}`);
-    const sumFormula = `SUM(${firstSubtotalCell}:${lastSubtotalCell})`;
-    expenseSumCell.value = { formula: sumFormula, result: total };
-    expenseSumCell.numFmt = '$#,##0.00';
+    // M32 should sum only the expense subtotals (e.g., =IF(SUM(M27:M30)>0, SUM(M27:M30),""))
+    const expenseTotalCell = worksheet.getCell('M32');
+    const sumFormula = `IF(SUM(${firstSubtotalCell}:${lastSubtotalCell})>0, SUM(${firstSubtotalCell}:${lastSubtotalCell}), "")`;
+    expenseTotalCell.value = { formula: sumFormula, result: total };
+    expenseTotalCell.numFmt = '$#,##0.00';
+  } else {
+    // If no expenses, clear M32
+    const expenseTotalCell = worksheet.getCell('M32');
+    expenseTotalCell.value = '';
   }
 
   return { total, lastRow };
