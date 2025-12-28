@@ -6,7 +6,18 @@ export const timeEntriesService = {
   async getAll(isDemoMode?: boolean) {
     let query = supabase
       .from('time_entries')
-      .select('*')
+      .select(`
+        *,
+        project:projects!time_entries_project_id_fkey(
+          id,
+          name,
+          color,
+          customer:customers!projects_customer_id_fkey(
+            id,
+            name
+          )
+        )
+      `)
       .order('date', { ascending: false });
     
     // Filter by demo mode if specified

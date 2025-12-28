@@ -19,8 +19,8 @@ interface TimeEntry {
 }
 
 interface Project {
-  id: string;
-  name: string;
+    id: string;
+    name: string;
   customer_id?: string;
   color?: string;
 }
@@ -637,19 +637,19 @@ export default function WeekView() {
   return (
     <div style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         padding: '15px 20px',
         borderBottom: '1px solid var(--border-color)',
         backgroundColor: 'var(--bg-primary)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <button 
+          <button
             className="button" 
             onClick={() => navigateWeek('prev')}
-            style={{ 
+            style={{
               padding: '5px 10px',
               backgroundColor: 'transparent',
               border: 'none',
@@ -668,13 +668,13 @@ export default function WeekView() {
               style={{ 
                 padding: '8px 16px', 
                 backgroundColor: 'var(--bg-secondary)', 
-                borderRadius: '6px',
+              borderRadius: '6px',
                 border: '1px solid var(--border-color)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 minWidth: '220px',
-                cursor: 'pointer',
+              cursor: 'pointer',
                 userSelect: 'none'
               }}
             >
@@ -708,11 +708,11 @@ export default function WeekView() {
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', padding: '4px 8px' }}
                   >
                     ‹
-                  </button>
+          </button>
                   <strong style={{ fontSize: '14px' }}>
                     {pickerDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                   </strong>
-                  <button 
+          <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setPickerDate(new Date(pickerDate.getFullYear(), pickerDate.getMonth() + 1, 1));
@@ -764,13 +764,13 @@ export default function WeekView() {
                             setCurrentDate(cellDate);
                             setShowWeekPicker(false);
                           }}
-                          style={{
+            style={{
                             height: '32px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontSize: '13px',
-                            cursor: 'pointer',
+              cursor: 'pointer',
                             borderRadius: '4px',
                             backgroundColor: isSelectedWeek ? 'var(--primary-color)' : 'transparent',
                             color: isSelectedWeek ? 'white' : 'var(--text-primary)',
@@ -809,7 +809,7 @@ export default function WeekView() {
                     style={{ flex: 1, fontSize: '12px', padding: '8px' }}
                   >
                     This Week
-                  </button>
+          </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -820,14 +820,14 @@ export default function WeekView() {
                   >
                     Close
                   </button>
-                </div>
-              </div>
-            )}
           </div>
-          <button 
+        </div>
+            )}
+        </div>
+        <button
             className="button" 
             onClick={() => navigateWeek('next')}
-            style={{ 
+          style={{
               padding: '5px 10px',
               backgroundColor: 'transparent',
               border: 'none',
@@ -841,7 +841,7 @@ export default function WeekView() {
             className="button"
             onClick={() => setCurrentDate(new Date())}
             style={{
-              padding: '6px 12px',
+            padding: '6px 12px',
               fontSize: '13px',
               backgroundColor: 'var(--bg-primary)',
               border: '1px solid var(--border-color)'
@@ -849,14 +849,14 @@ export default function WeekView() {
             title="Go to current week"
           >
             ✕
-          </button>
+        </button>
           <div style={{ marginLeft: '20px', color: 'var(--text-secondary)' }}>
             <span style={{ fontSize: '12px', textTransform: 'uppercase' }}>Week Total</span>
             <span style={{ marginLeft: '10px', fontWeight: 'bold', fontSize: '16px' }}>
               {getWeekTotal()}
             </span>
           </div>
-        </div>
+      </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
           {/* View toggles */}
@@ -913,8 +913,8 @@ export default function WeekView() {
       </div>
 
       {/* Project Summary Bars */}
-      <div style={{ 
-        display: 'flex', 
+        <div style={{
+          display: 'flex',
         gap: '20px', 
         padding: '15px 20px',
         borderBottom: '1px solid var(--border-color)',
@@ -925,7 +925,7 @@ export default function WeekView() {
             <div style={{
               width: '12px',
               height: '12px',
-              borderRadius: '2px',
+                borderRadius: '2px',
               backgroundColor: proj.color || projectColors[index % projectColors.length]
             }} />
             <span style={{ 
@@ -937,24 +937,24 @@ export default function WeekView() {
               {proj.name}
             </span>
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
       {/* Calendar Grid */}
       <div ref={calendarScrollRef} style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)' }}>
         <div style={{ display: 'flex', minWidth: 'min-content' }}>
           {/* Time column */}
-          <div style={{ 
+      <div style={{
             width: '80px', 
             flexShrink: 0, 
             borderRight: '1px solid var(--border-color)',
             position: 'sticky',
             left: 0,
-            backgroundColor: 'var(--bg-primary)',
+        backgroundColor: 'var(--bg-primary)',
             zIndex: 2
-          }}>
+      }}>
             {/* Zoom controls in header */}
-            <div style={{ 
+        <div style={{
               height: '50px', 
               borderBottom: '1px solid var(--border-color)',
               backgroundColor: 'var(--bg-secondary)',
@@ -972,7 +972,7 @@ export default function WeekView() {
                     zoomOut();
                   }}
                   disabled={divisionsPerHour <= 2}
-                  style={{
+                style={{
                     width: '24px',
                     height: '24px',
                     borderRadius: '4px',
@@ -1017,13 +1017,13 @@ export default function WeekView() {
                 >
                   +
                 </button>
-              </div>
+                </div>
               <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: '600' }}>
                 {Math.round(60/divisionsPerHour)}m
-              </div>
-            </div>
-            
-            {/* Time slots */}
+                </div>
+        </div>
+
+        {/* Time slots */}
             {timeSlots.map((time, index) => (
               <div
                 key={index}
@@ -1143,35 +1143,36 @@ export default function WeekView() {
                     </div>
                   ))}
 
-                  {/* Time entries */}
+                {/* Time entries */}
                   {dayEntries.map((entry: any, entryIndex) => {
                     const style = getEntryStyle(entry);
                     if (!style) return null;
 
-                    const project = projects?.find((p: any) => p.id === entry.project_id);
+                    // Use project from entry relationship if available, otherwise fallback to projects list
+                    const project = entry.project || projects?.find((p: any) => p.id === entry.project_id);
                     // Use project color if available, otherwise grey for no project
                     const color = entry.project_id && project?.color ? project.color : '#808080';
                     
                     // Use preview height if dragging this entry
                     const isDragging = draggingEntry?.entry.id === entry.id;
                     const displayHeight = isDragging && draggingEntry ? draggingEntry.previewHeight : Math.max(style.height, 30);
-
-                    return (
-                      <div
-                        key={entry.id}
-                        style={{
-                          position: 'absolute',
+                  
+                  return (
+                    <div
+                      key={entry.id}
+                      style={{
+                        position: 'absolute',
                           top: `${style.top}px`,
                           height: `${displayHeight}px`,
-                          left: '4px',
-                          right: '4px',
-                          backgroundColor: color,
-                          borderRadius: '4px',
-                          padding: '6px 8px',
-                          fontSize: '12px',
+                        left: '4px',
+                        right: '4px',
+                        backgroundColor: color,
+                        borderRadius: '4px',
+                        padding: '6px 8px',
+                        fontSize: '12px',
                           color: 'white',
-                          overflow: 'hidden',
-                          cursor: 'pointer',
+                        overflow: 'hidden',
+                        cursor: 'pointer',
                           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                           zIndex: isDragging ? 20 : 10,
                           pointerEvents: 'auto'
@@ -1188,20 +1189,20 @@ export default function WeekView() {
                         {entry.description && (
                           <div style={{ fontWeight: '600', fontSize: '11px', marginBottom: '2px' }}>
                             {entry.description}
-                          </div>
+                      </div>
                         )}
                         
                         {/* Project name */}
                         <div style={{ fontSize: '10px', opacity: 0.9 }}>
                           {project?.name || '(No Project)'}
-                        </div>
+                      </div>
                         
                         {/* Time range (only show if there's enough space) */}
                         {displayHeight > 45 && (
                           <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.8 }}>
                             {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
-                          </div>
-                        )}
+                        </div>
+                      )}
                         
                         {/* Drag handle - three line icon at bottom middle */}
                         <div
@@ -1236,10 +1237,10 @@ export default function WeekView() {
                           <div style={{ width: '16px', height: '2px', backgroundColor: 'white', borderRadius: '1px' }} />
                           <div style={{ width: '16px', height: '2px', backgroundColor: 'white', borderRadius: '1px' }} />
                           <div style={{ width: '16px', height: '2px', backgroundColor: 'white', borderRadius: '1px' }} />
-                        </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
 
                   {/* Running timer indicator */}
                   {timerRunning && timerStartTime && day.isToday && (() => {
@@ -1286,12 +1287,12 @@ export default function WeekView() {
                         <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
                           <span style={{ fontSize: '10px' }}>⏱️</span>
                           {currentEntry?.description || 'Timer Running'}
-                        </div>
+              </div>
                         
                         {/* Project name */}
                         <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.9 }}>
                           {timerProject?.name || '(No Project)'}
-                        </div>
+          </div>
                         
                         {/* Time range (only if there's space) */}
                         {height > 45 && (
@@ -1337,22 +1338,22 @@ export default function WeekView() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button */}
-            <button
+              <button
               onClick={() => setShowTimeEntryModal(false)}
-              style={{
+                style={{
                 position: 'absolute',
                 top: '15px',
                 right: '15px',
-                background: 'none',
-                border: 'none',
+                  background: 'none',
+                  border: 'none',
                 fontSize: '20px',
-                cursor: 'pointer',
+                  cursor: 'pointer',
                 color: 'var(--text-secondary)',
                 padding: '5px',
               }}
             >
               ✕
-            </button>
+              </button>
 
             <div style={{ padding: '20px' }}>
               <h3 style={{ marginBottom: '20px' }}>Add a description</h3>
@@ -1362,19 +1363,19 @@ export default function WeekView() {
                 placeholder="What are you working on?"
                 value={newEntry.description}
                 onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
-                style={{
-                  width: '100%',
+                  style={{
+                    width: '100%',
                   minHeight: '80px',
-                  padding: '12px',
+                    padding: '12px',
                   marginBottom: '20px',
-                  backgroundColor: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
                   fontSize: '14px',
                   resize: 'vertical',
-                }}
-              />
+                  }}
+                />
 
               {/* Icon buttons */}
               <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
@@ -1521,7 +1522,7 @@ export default function WeekView() {
                   fontSize: '14px',
                   color: 'var(--text-primary)'
                 }}>
-                  <input
+                <input
                     type="checkbox"
                     checked={newEntry.billable}
                     onChange={(e) => setNewEntry({ ...newEntry, billable: e.target.checked })}
@@ -1722,14 +1723,14 @@ export default function WeekView() {
                 />
                 <div
                   style={{
-                    padding: '10px 15px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    color: 'var(--text-primary)',
+                  padding: '10px 15px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  color: 'var(--text-primary)',
                     minWidth: '70px',
-                    textAlign: 'center',
+                  textAlign: 'center',
                   }}
                 >
                   {editedEntry.hours.toFixed(2)}
@@ -1766,8 +1767,8 @@ export default function WeekView() {
                   display: 'flex', 
                   alignItems: 'center', 
                   gap: '10px', 
-                  cursor: 'pointer',
-                  fontSize: '14px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
                   color: 'var(--text-primary)'
                 }}>
                   <input
