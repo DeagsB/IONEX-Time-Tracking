@@ -54,6 +54,7 @@ export interface TimeEntryWithRelations {
   rate_type?: string;
   start_time?: string;
   end_time?: string;
+  is_demo?: boolean;
   user?: {
     id: string;
     email: string;
