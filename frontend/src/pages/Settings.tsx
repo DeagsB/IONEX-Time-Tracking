@@ -174,9 +174,10 @@ export default function Settings() {
       setIsResetting(true);
       try {
         // Delete all demo data in correct order (respecting foreign keys)
-        await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', 
-          (await supabase.from('service_tickets').select('id').eq('is_demo', true)).data?.map(t => t.id) || []
-        );
+        const { data: demoTickets } = await supabase.from('service_tickets').select('id').eq('is_demo', true);
+        if (demoTickets && demoTickets.length > 0) {
+          await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', demoTickets.map(t => t.id));
+        }
         await supabase.from('service_tickets').delete().eq('is_demo', true);
         await supabase.from('time_entries').delete().eq('is_demo', true);
         await supabase.from('projects').delete().eq('is_demo', true);
@@ -195,9 +196,10 @@ export default function Settings() {
       setIsResetting(true);
       try {
         // Delete any existing demo data first to ensure clean state
-        await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', 
-          (await supabase.from('service_tickets').select('id').eq('is_demo', true)).data?.map(t => t.id) || []
-        );
+        const { data: existingDemoTickets } = await supabase.from('service_tickets').select('id').eq('is_demo', true);
+        if (existingDemoTickets && existingDemoTickets.length > 0) {
+          await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', existingDemoTickets.map(t => t.id));
+        }
         await supabase.from('service_tickets').delete().eq('is_demo', true);
         await supabase.from('time_entries').delete().eq('is_demo', true);
         await supabase.from('projects').delete().eq('is_demo', true);
