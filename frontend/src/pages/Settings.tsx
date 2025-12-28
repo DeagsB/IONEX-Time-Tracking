@@ -7,7 +7,7 @@ export default function Settings() {
   const [isResetting, setIsResetting] = useState(false);
   const [isCreatingDemo, setIsCreatingDemo] = useState(false);
 
-  // Create demo data when turning on demo mode
+  // Create demo data when turning on demo mode - always creates the same data
   const createDemoData = async () => {
     setIsCreatingDemo(true);
     try {
@@ -15,19 +15,73 @@ export default function Settings() {
       const { data: userData } = await supabase.from('users').select('id').limit(1).single();
       const userId = userData?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
 
-      // Get existing projects
-      const { data: projects } = await supabase.from('projects').select('id').limit(5);
-      const projectIds = projects?.map(p => p.id) || [];
+      // First, create CNRL customer if it doesn't exist
+      let cnrlCustomerId: string;
+      const { data: existingCustomer } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('name', 'CNRL')
+        .eq('is_demo', true)
+        .single();
 
-      if (projectIds.length === 0) {
-        alert('Please create at least one project before enabling demo mode.');
-        return false;
+      if (existingCustomer) {
+        cnrlCustomerId = existingCustomer.id;
+      } else {
+        const { data: newCustomer, error: customerError } = await supabase
+          .from('customers')
+          .insert({
+            name: 'CNRL',
+            email: 'demo@cnrl.com',
+            phone: '403-123-4567',
+            address: '250 6 Ave SW',
+            city: 'Calgary',
+            state: 'AB',
+            zip_code: 'T2P 3H7',
+            is_demo: true,
+          })
+          .select('id')
+          .single();
+        
+        if (customerError) throw customerError;
+        cnrlCustomerId = newCustomer.id;
       }
 
-      // Create demo time entries for the past 2 weeks
+      // Create demo projects for CNRL (deterministic - same every time)
+      const projectNames = ['CNRL Project Alpha', 'CNRL Project Beta', 'CNRL Project Gamma'];
+      const projectIds: string[] = [];
+
+      for (const projectName of projectNames) {
+        const { data: existingProject } = await supabase
+          .from('projects')
+          .select('id')
+          .eq('name', projectName)
+          .eq('is_demo', true)
+          .single();
+
+        if (existingProject) {
+          projectIds.push(existingProject.id);
+        } else {
+          const { data: newProject, error: projectError } = await supabase
+            .from('projects')
+            .insert({
+              name: projectName,
+              customer_id: cnrlCustomerId,
+              rate: 110,
+              is_demo: true,
+            })
+            .select('id')
+            .single();
+          
+          if (projectError) throw projectError;
+          projectIds.push(newProject.id);
+        }
+      }
+
+      // Create demo time entries - deterministic data (same every time)
       const today = new Date();
       const demoEntries = [];
       
+      // Fixed descriptions in order
       const descriptions = [
         'Travel to client site',
         'On-site HVAC inspection and diagnostics',
@@ -44,8 +98,9 @@ export default function Settings() {
       const rateTypes = ['Shop Time', 'Travel Time', 'Field Time', 'Shop Overtime', 'Field Overtime'];
       const rates = [95, 85, 125, 142.5, 187.5];
 
-      // Generate entries for the past 10 days
-      for (let dayOffset = 0; dayOffset < 10; dayOffset++) {
+      // Generate entries for the past 10 business days (deterministic)
+      let descriptionIndex = 0;
+      for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
         const entryDate = new Date(today);
         entryDate.setDate(today.getDate() - dayOffset);
         
@@ -53,13 +108,22 @@ export default function Settings() {
         if (entryDate.getDay() === 0 || entryDate.getDay() === 6) continue;
         
         const dateStr = entryDate.toISOString().split('T')[0];
-        const entriesPerDay = Math.floor(Math.random() * 3) + 2; // 2-4 entries per day
+        
+        // Fixed number of entries per day (deterministic)
+        const entriesPerDay = [3, 2, 4, 2, 3, 3, 2, 4, 2, 3][dayOffset % 10] || 3;
         
         let currentHour = 8;
         for (let i = 0; i < entriesPerDay; i++) {
-          const projectId = projectIds[Math.floor(Math.random() * projectIds.length)];
-          const rateTypeIndex = Math.floor(Math.random() * 3); // Mostly regular types
-          const hours = [1.5, 2, 2.5, 3, 4, 5, 6][Math.floor(Math.random() * 7)];
+          // Cycle through projects deterministically
+          const projectIndex = (dayOffset + i) % projectIds.length;
+          const projectId = projectIds[projectIndex];
+          
+          // Cycle through rate types deterministically
+          const rateTypeIndex = (dayOffset + i) % 3; // Mostly regular types
+          
+          // Fixed hours pattern
+          const hoursPattern = [2, 3, 1.5, 4, 2.5, 2, 3, 1.5, 4, 2.5];
+          const hours = hoursPattern[(dayOffset + i) % hoursPattern.length];
           
           const startHour = currentHour;
           const endHour = currentHour + hours;
@@ -80,11 +144,13 @@ export default function Settings() {
             hours: hours,
             rate: rates[rateTypeIndex],
             rate_type: rateTypes[rateTypeIndex],
-            description: descriptions[Math.floor(Math.random() * descriptions.length)],
+            description: descriptions[descriptionIndex % descriptions.length],
             billable: true,
             approved: true,
             is_demo: true, // Mark as demo data
           });
+          
+          descriptionIndex++;
         }
       }
 
@@ -104,10 +170,13 @@ export default function Settings() {
 
   const handleToggleDemoMode = async () => {
     if (isDemoMode) {
-      // Turning OFF demo mode - automatically delete all demo data
+      // Turning OFF demo mode - automatically delete all demo data (including any changes)
       setIsResetting(true);
       try {
-        // Delete all demo data
+        // Delete all demo data in correct order (respecting foreign keys)
+        await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', 
+          (await supabase.from('service_tickets').select('id').eq('is_demo', true)).data?.map(t => t.id) || []
+        );
         await supabase.from('service_tickets').delete().eq('is_demo', true);
         await supabase.from('time_entries').delete().eq('is_demo', true);
         await supabase.from('projects').delete().eq('is_demo', true);
@@ -122,10 +191,28 @@ export default function Settings() {
         setIsResetting(false);
       }
     } else {
-      // Turning ON demo mode - create demo data first
-      const success = await createDemoData();
-      if (success) {
-        setDemoMode(true);
+      // Turning ON demo mode - delete any existing demo data first, then create fresh
+      setIsResetting(true);
+      try {
+        // Delete any existing demo data first to ensure clean state
+        await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', 
+          (await supabase.from('service_tickets').select('id').eq('is_demo', true)).data?.map(t => t.id) || []
+        );
+        await supabase.from('service_tickets').delete().eq('is_demo', true);
+        await supabase.from('time_entries').delete().eq('is_demo', true);
+        await supabase.from('projects').delete().eq('is_demo', true);
+        await supabase.from('customers').delete().eq('is_demo', true);
+        
+        // Now create fresh demo data (always the same)
+        const success = await createDemoData();
+        if (success) {
+          setDemoMode(true);
+        }
+      } catch (error) {
+        console.error('Error resetting demo data:', error);
+        alert('Error resetting demo data. Check console for details.');
+      } finally {
+        setIsResetting(false);
       }
     }
   };
