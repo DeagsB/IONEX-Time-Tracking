@@ -8,6 +8,7 @@ export default function Settings() {
   const [isCreatingDemo, setIsCreatingDemo] = useState(false);
 
   // Create demo data when turning on demo mode - always creates the same data
+  // NOTE: Deletion is handled in handleToggleDemoMode before calling this function
   const createDemoData = async () => {
     setIsCreatingDemo(true);
     try {
@@ -15,66 +16,20 @@ export default function Settings() {
       const { data: userData } = await supabase.from('users').select('id').limit(1).single();
       const userId = userData?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
 
-      // Delete all existing demo data first to ensure clean state (including service tickets to reset numbering)
-      // Delete from the demo table
-      const { data: existingDemoTickets } = await supabase
+      // Verify demo table is empty (deletion should have already happened)
+      const { data: remainingTickets } = await supabase
         .from('service_tickets_demo')
-        .select('id');
+        .select('id')
+        .limit(1);
       
-      if (existingDemoTickets && existingDemoTickets.length > 0) {
-        // Delete service ticket expenses first (foreign key constraint)
-        for (const ticket of existingDemoTickets) {
-          await supabase
-            .from('service_ticket_expenses')
-            .delete()
-            .eq('service_ticket_id', ticket.id);
+      if (remainingTickets && remainingTickets.length > 0) {
+        console.warn('Demo tickets still exist, cleaning up...');
+        // Emergency cleanup if something was missed
+        const { data: allTickets } = await supabase.from('service_tickets_demo').select('id');
+        if (allTickets && allTickets.length > 0) {
+          await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', allTickets.map(t => t.id));
+          await supabase.from('service_tickets_demo').delete();
         }
-        await supabase
-          .from('service_tickets_demo')
-          .delete();
-      }
-      
-      // Also delete any demo tickets from the regular table (for backward compatibility)
-      const { data: existingDemoTicketsOld } = await supabase
-        .from('service_tickets')
-        .select('id')
-        .eq('is_demo', true);
-      
-      if (existingDemoTicketsOld && existingDemoTicketsOld.length > 0) {
-        for (const ticket of existingDemoTicketsOld) {
-          await supabase
-            .from('service_ticket_expenses')
-            .delete()
-            .eq('service_ticket_id', ticket.id);
-        }
-        await supabase
-          .from('service_tickets')
-          .delete()
-          .eq('is_demo', true);
-      }
-
-      const { data: existingDemoProjects } = await supabase
-        .from('projects')
-        .select('id')
-        .eq('is_demo', true);
-      
-      if (existingDemoProjects && existingDemoProjects.length > 0) {
-        await supabase
-          .from('projects')
-          .delete()
-          .eq('is_demo', true);
-      }
-
-      const { data: existingDemoCustomers } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('is_demo', true);
-      
-      if (existingDemoCustomers && existingDemoCustomers.length > 0) {
-        await supabase
-          .from('customers')
-          .delete()
-          .eq('is_demo', true);
       }
 
       // Create CNRL customer with full name, PO number, and contact name
@@ -366,22 +321,39 @@ export default function Settings() {
       setIsResetting(true);
       try {
         // Delete all demo data in correct order (respecting foreign keys)
-        // First, delete from the demo table (service_tickets_demo)
+        // 1. Delete expenses first (references service_tickets)
         const { data: demoTicketsDemo } = await supabase.from('service_tickets_demo').select('id');
         if (demoTicketsDemo && demoTicketsDemo.length > 0) {
           await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', demoTicketsDemo.map(t => t.id));
-          await supabase.from('service_tickets_demo').delete();
         }
         
-        // Also delete from regular table for backward compatibility
         const { data: demoTickets } = await supabase.from('service_tickets').select('id').eq('is_demo', true);
         if (demoTickets && demoTickets.length > 0) {
           await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', demoTickets.map(t => t.id));
         }
-        await supabase.from('service_tickets').delete().eq('is_demo', true);
+        
+        // 2. Delete service tickets (references projects, customers)
+        if (demoTicketsDemo && demoTicketsDemo.length > 0) {
+          await supabase.from('service_tickets_demo').delete();
+        }
+        if (demoTickets && demoTickets.length > 0) {
+          await supabase.from('service_tickets').delete().eq('is_demo', true);
+        }
+        
+        // 3. Delete time entries (references projects, customers)
         await supabase.from('time_entries').delete().eq('is_demo', true);
+        
+        // 4. Delete projects (may reference customers, but usually not)
         await supabase.from('projects').delete().eq('is_demo', true);
+        
+        // 5. Delete customers (last, as nothing references them)
         await supabase.from('customers').delete().eq('is_demo', true);
+        
+        // Verify deletion completed
+        const { data: verifyDemo } = await supabase.from('service_tickets_demo').select('id').limit(1);
+        if (verifyDemo && verifyDemo.length > 0) {
+          console.warn('Some demo tickets remain after deletion');
+        }
         
         setDemoMode(false);
         alert('Demo mode disabled. All demo data has been deleted.');
@@ -395,23 +367,45 @@ export default function Settings() {
       // Turning ON demo mode - delete any existing demo data first, then create fresh
       setIsResetting(true);
       try {
-        // Delete any existing demo data first to ensure clean state
-        // First, delete from the demo table (service_tickets_demo)
+        // Delete any existing demo data first to ensure clean state (proper order for foreign keys)
+        // 1. Delete expenses first (references service_tickets)
         const { data: existingDemoTicketsDemo } = await supabase.from('service_tickets_demo').select('id');
         if (existingDemoTicketsDemo && existingDemoTicketsDemo.length > 0) {
           await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', existingDemoTicketsDemo.map(t => t.id));
-          await supabase.from('service_tickets_demo').delete();
         }
         
-        // Also delete from regular table for backward compatibility
         const { data: existingDemoTickets } = await supabase.from('service_tickets').select('id').eq('is_demo', true);
         if (existingDemoTickets && existingDemoTickets.length > 0) {
           await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', existingDemoTickets.map(t => t.id));
         }
-        await supabase.from('service_tickets').delete().eq('is_demo', true);
+        
+        // 2. Delete service tickets (references projects, customers)
+        if (existingDemoTicketsDemo && existingDemoTicketsDemo.length > 0) {
+          await supabase.from('service_tickets_demo').delete();
+        }
+        if (existingDemoTickets && existingDemoTickets.length > 0) {
+          await supabase.from('service_tickets').delete().eq('is_demo', true);
+        }
+        
+        // 3. Delete time entries (references projects, customers)
         await supabase.from('time_entries').delete().eq('is_demo', true);
+        
+        // 4. Delete projects (may reference customers, but usually not)
         await supabase.from('projects').delete().eq('is_demo', true);
+        
+        // 5. Delete customers (last, as nothing references them)
         await supabase.from('customers').delete().eq('is_demo', true);
+        
+        // Verify deletion completed before creating new data
+        const { data: verifyDemo } = await supabase.from('service_tickets_demo').select('id').limit(1);
+        if (verifyDemo && verifyDemo.length > 0) {
+          console.warn('Some demo tickets remain, performing additional cleanup...');
+          const { data: allRemaining } = await supabase.from('service_tickets_demo').select('id');
+          if (allRemaining && allRemaining.length > 0) {
+            await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', allRemaining.map(t => t.id));
+            await supabase.from('service_tickets_demo').delete();
+          }
+        }
         
         // Now create fresh demo data (always the same)
         const success = await createDemoData();
