@@ -30,7 +30,7 @@ export default function Settings() {
         const { data: allTickets } = await supabase.from('service_tickets_demo').select('id');
         if (allTickets && allTickets.length > 0) {
           await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', allTickets.map(t => t.id));
-          await supabase.from('service_tickets_demo').delete();
+          await supabase.from('service_tickets_demo').delete().in('id', allTickets.map(t => t.id));
         }
       }
 
@@ -336,19 +336,34 @@ export default function Settings() {
         
         // 2. Delete service tickets (references projects, customers)
         if (demoTicketsDemo && demoTicketsDemo.length > 0) {
-          await supabase.from('service_tickets_demo').delete();
+          // Delete all demo tickets - need to provide a filter (delete all by using IN with all IDs)
+          await supabase.from('service_tickets_demo').delete().in('id', demoTicketsDemo.map(t => t.id));
         }
         if (demoTickets && demoTickets.length > 0) {
           await supabase.from('service_tickets').delete().eq('is_demo', true);
         }
         
-        // 3. Delete time entries (references projects, customers)
+        // 3. Delete time entries (references projects)
         await supabase.from('time_entries').delete().eq('is_demo', true);
         
-        // 4. Delete projects (may reference customers, but usually not)
-        await supabase.from('projects').delete().eq('is_demo', true);
+        // 4. Delete projects (references customers via customer_id)
+        // Get all demo project IDs first to handle foreign keys properly
+        const { data: demoProjects } = await supabase.from('projects').select('id').eq('is_demo', true);
+        if (demoProjects && demoProjects.length > 0) {
+          // Delete projects - Supabase will handle the customer_id foreign key if CASCADE is set
+          // If not, we need to set customer_id to null first
+          const projectIds = demoProjects.map(p => p.id);
+          // Try deleting directly - if it fails, we'll handle it
+          const { error: projectError } = await supabase.from('projects').delete().in('id', projectIds);
+          if (projectError) {
+            console.warn('Error deleting projects, may have foreign key constraints:', projectError);
+            // Try setting customer_id to null first, then delete
+            await supabase.from('projects').update({ customer_id: null }).in('id', projectIds);
+            await supabase.from('projects').delete().in('id', projectIds);
+          }
+        }
         
-        // 5. Delete customers (last, as nothing references them)
+        // 5. Delete customers (last, as nothing references them after projects are deleted)
         await supabase.from('customers').delete().eq('is_demo', true);
         
         // Verify deletion completed
@@ -383,19 +398,34 @@ export default function Settings() {
         
         // 2. Delete service tickets (references projects, customers)
         if (existingDemoTicketsDemo && existingDemoTicketsDemo.length > 0) {
-          await supabase.from('service_tickets_demo').delete();
+          // Delete all demo tickets - need to provide a filter (delete all by using IN with all IDs)
+          await supabase.from('service_tickets_demo').delete().in('id', existingDemoTicketsDemo.map(t => t.id));
         }
         if (existingDemoTickets && existingDemoTickets.length > 0) {
           await supabase.from('service_tickets').delete().eq('is_demo', true);
         }
         
-        // 3. Delete time entries (references projects, customers)
+        // 3. Delete time entries (references projects)
         await supabase.from('time_entries').delete().eq('is_demo', true);
         
-        // 4. Delete projects (may reference customers, but usually not)
-        await supabase.from('projects').delete().eq('is_demo', true);
+        // 4. Delete projects (references customers via customer_id)
+        // Get all demo project IDs first to handle foreign keys properly
+        const { data: demoProjects } = await supabase.from('projects').select('id').eq('is_demo', true);
+        if (demoProjects && demoProjects.length > 0) {
+          // Delete projects - Supabase will handle the customer_id foreign key if CASCADE is set
+          // If not, we need to set customer_id to null first
+          const projectIds = demoProjects.map(p => p.id);
+          // Try deleting directly - if it fails, we'll handle it
+          const { error: projectError } = await supabase.from('projects').delete().in('id', projectIds);
+          if (projectError) {
+            console.warn('Error deleting projects, may have foreign key constraints:', projectError);
+            // Try setting customer_id to null first, then delete
+            await supabase.from('projects').update({ customer_id: null }).in('id', projectIds);
+            await supabase.from('projects').delete().in('id', projectIds);
+          }
+        }
         
-        // 5. Delete customers (last, as nothing references them)
+        // 5. Delete customers (last, as nothing references them after projects are deleted)
         await supabase.from('customers').delete().eq('is_demo', true);
         
         // Verify deletion completed before creating new data
@@ -405,7 +435,7 @@ export default function Settings() {
           const { data: allRemaining } = await supabase.from('service_tickets_demo').select('id');
           if (allRemaining && allRemaining.length > 0) {
             await supabase.from('service_ticket_expenses').delete().in('service_ticket_id', allRemaining.map(t => t.id));
-            await supabase.from('service_tickets_demo').delete();
+            await supabase.from('service_tickets_demo').delete().in('id', allRemaining.map(t => t.id));
           }
         }
         
