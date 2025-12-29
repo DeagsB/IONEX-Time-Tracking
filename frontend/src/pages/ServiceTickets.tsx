@@ -95,12 +95,6 @@ export default function ServiceTickets() {
       if (existingRecord?.ticket_number) {
         // Use existing ticket number
         ticketNumber = existingRecord.ticket_number;
-      } else if (ticket.ticketNumber && !ticket.ticketNumber.includes('XXX')) {
-        // Use the already assigned ticket number
-        ticketNumber = ticket.ticketNumber;
-      } else if (displayTicketNumber && !displayTicketNumber.includes('XXX')) {
-        // Use the display ticket number if it's not a placeholder
-        ticketNumber = displayTicketNumber;
       } else {
         // Check if this is a demo ticket
         const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
@@ -117,11 +111,12 @@ export default function ServiceTickets() {
         const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
         
         // Save the ticket record to the database
+        // createTicketRecord will handle duplicate key errors by returning existing record
         const year = new Date().getFullYear() % 100;
         const sequenceMatch = ticketNumber.match(/\d{3}$/);
         const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
         
-        await serviceTicketsService.createTicketRecord({
+        const savedRecord = await serviceTicketsService.createTicketRecord({
           ticketNumber,
           employeeInitials: ticket.userInitials,
           year,
@@ -134,6 +129,9 @@ export default function ServiceTickets() {
           totalAmount,
           isDemo: isDemoTicket,
         });
+        
+        // Use the ticket number from the saved record (in case it was an existing one)
+        ticketNumber = savedRecord.ticket_number;
       }
       
       const ticketWithNumber = { ...ticket, ticketNumber };
@@ -365,7 +363,10 @@ export default function ServiceTickets() {
               isDemo: isDemoTicket,
             });
             
-            // Add the newly created ticket to our list so subsequent tickets can see it
+            // Use the ticket number from the saved record (in case it was an existing one)
+            ticketNumber = newRecord.ticket_number;
+            
+            // Add the newly created/existing ticket to our list so subsequent tickets can see it
             updatedTicketsList.push({
               id: newRecord.id,
               ticket_number: ticketNumber,
@@ -485,7 +486,10 @@ export default function ServiceTickets() {
               isDemo: isDemoTicket,
             });
             
-            // Add the newly created ticket to our list so subsequent tickets can see it
+            // Use the ticket number from the saved record (in case it was an existing one)
+            ticketNumber = newRecord.ticket_number;
+            
+            // Add the newly created/existing ticket to our list so subsequent tickets can see it
             updatedTicketsList.push({
               id: newRecord.id,
               ticket_number: ticketNumber,
@@ -563,12 +567,13 @@ export default function ServiceTickets() {
     return groupEntriesIntoTickets(billableEntries, employees);
   }, [billableEntries, employees]);
 
-  // Fetch existing ticket numbers for display
+  // Fetch existing ticket numbers for display (from appropriate table based on demo mode)
   const { data: existingTickets } = useQuery({
-    queryKey: ['existingServiceTickets'],
+    queryKey: ['existingServiceTickets', isDemoMode],
     queryFn: async () => {
+      const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
       const { data, error } = await supabase
-        .from('service_tickets')
+        .from(tableName)
         .select('id, ticket_number, date, user_id, customer_id');
       if (error) throw error;
       return data;

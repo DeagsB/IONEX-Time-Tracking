@@ -413,27 +413,18 @@ export const serviceTicketsService = {
    * Get the next available ticket number for an employee
    * Format: {initials}_{YY}{sequence} e.g., "DB_25001"
    * @param userInitials - Employee initials
-   * @param isDemo - If true, only considers demo tickets for sequence (starts at 001 for demo)
+   * @param isDemo - If true, queries the demo table; otherwise queries the regular table
    */
   async getNextTicketNumber(userInitials: string, isDemo: boolean = false): Promise<string> {
     const year = new Date().getFullYear() % 100; // Get last 2 digits of year
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     
     // Find the highest sequence number for this employee this year
-    let query = supabase
-      .from('service_tickets')
+    const { data, error } = await supabase
+      .from(tableName)
       .select('sequence_number')
       .eq('employee_initials', userInitials.toUpperCase())
-      .eq('year', year);
-    
-    // If demo mode, only count demo tickets (so demo tickets start at 001)
-    // If not demo mode, exclude demo tickets from the count
-    if (isDemo) {
-      query = query.eq('is_demo', true);
-    } else {
-      query = query.or('is_demo.is.null,is_demo.eq.false');
-    }
-    
-    const { data, error } = await query
+      .eq('year', year)
       .order('sequence_number', { ascending: false })
       .limit(1);
 
@@ -449,6 +440,7 @@ export const serviceTicketsService = {
 
   /**
    * Create a service ticket record in the database
+   * If the ticket number already exists, finds the next available ticket number
    */
   async createTicketRecord(ticket: {
     ticketNumber: string;
@@ -463,30 +455,93 @@ export const serviceTicketsService = {
     totalAmount: number;
     isDemo?: boolean;
   }) {
-    const { data, error } = await supabase
-      .from('service_tickets')
-      .insert({
-        ticket_number: ticket.ticketNumber,
-        employee_initials: ticket.employeeInitials,
-        year: ticket.year,
-        sequence_number: ticket.sequenceNumber,
-        date: ticket.date,
-        customer_id: ticket.customerId,
-        user_id: ticket.userId,
-        project_id: ticket.projectId,
-        total_hours: ticket.totalHours,
-        total_amount: ticket.totalAmount,
-        status: 'draft',
-        is_demo: ticket.isDemo || false,
-      })
-      .select()
-      .single();
+    const isDemo = ticket.isDemo || false;
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    let ticketNumber = ticket.ticketNumber;
+    let attempts = 0;
+    const maxAttempts = 100; // Prevent infinite loops
 
-    if (error) {
-      throw error;
+    while (attempts < maxAttempts) {
+      // Check if a ticket with this number already exists
+      const { data: existing, error: checkError } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq('ticket_number', ticketNumber)
+        .maybeSingle();
+
+      // If it doesn't exist, we can use this number
+      if (!existing && !checkError) {
+        // Create the ticket with this number
+        const { data, error } = await supabase
+          .from(tableName)
+          .insert({
+            ticket_number: ticketNumber,
+            employee_initials: ticket.employeeInitials,
+            year: ticket.year,
+            sequence_number: ticket.sequenceNumber,
+            date: ticket.date,
+            customer_id: ticket.customerId,
+            user_id: ticket.userId,
+            project_id: ticket.projectId,
+            total_hours: ticket.totalHours,
+            total_amount: ticket.totalAmount,
+            status: 'draft',
+          })
+          .select()
+          .single();
+
+        // If we get a duplicate key error (race condition), find next number
+        if (error && error.code === '23505') {
+          attempts++;
+          // Get the next sequence number
+          const year = new Date().getFullYear() % 100;
+          const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+          const { data: seqData } = await supabase
+            .from(tableName)
+            .select('sequence_number')
+            .eq('employee_initials', ticket.employeeInitials.toUpperCase())
+            .eq('year', year)
+            .order('sequence_number', { ascending: false })
+            .limit(1);
+          
+          const nextSequence = seqData && seqData.length > 0 ? seqData[0].sequence_number + 1 : 1;
+          ticket.sequenceNumber = nextSequence;
+          const paddedSequence = String(nextSequence).padStart(3, '0');
+          ticketNumber = `${ticket.employeeInitials.toUpperCase()}_${year}${paddedSequence}`;
+          continue; // Try again with the new number
+        }
+
+        if (error) {
+          throw error;
+        }
+        
+        return data;
+      } else if (existing) {
+        // Ticket number exists, find the next available one
+        attempts++;
+        // Get the next sequence number
+        const year = new Date().getFullYear() % 100;
+        const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+        const { data: seqData } = await supabase
+          .from(tableName)
+          .select('sequence_number')
+          .eq('employee_initials', ticket.employeeInitials.toUpperCase())
+          .eq('year', year)
+          .order('sequence_number', { ascending: false })
+          .limit(1);
+        
+        const nextSequence = seqData && seqData.length > 0 ? seqData[0].sequence_number + 1 : 1;
+        ticket.sequenceNumber = nextSequence;
+        const paddedSequence = String(nextSequence).padStart(3, '0');
+        ticketNumber = `${ticket.employeeInitials.toUpperCase()}_${year}${paddedSequence}`;
+        continue; // Try again with the new number
+      } else {
+        // Check error occurred
+        throw checkError;
+      }
     }
-    
-    return data;
+
+    throw new Error(`Failed to create ticket record after ${maxAttempts} attempts. Unable to find available ticket number.`);
   },
 };
 
