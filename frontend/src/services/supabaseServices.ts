@@ -429,13 +429,25 @@ export const serviceTicketsService = {
       .limit(1);
 
     if (error) {
+      console.error(`[getNextTicketNumber] Error querying ${tableName}:`, error);
       throw error;
     }
 
+    // If no records found, start at 001
+    // If records found, increment from the highest
     const nextSequence = data && data.length > 0 ? data[0].sequence_number + 1 : 1;
     const paddedSequence = String(nextSequence).padStart(3, '0');
+    const ticketNumber = `${userInitials.toUpperCase()}_${year}${paddedSequence}`;
     
-    return `${userInitials.toUpperCase()}_${year}${paddedSequence}`;
+    console.log(`[getNextTicketNumber] ${isDemo ? 'DEMO' : 'REGULAR'} - Table: ${tableName}, Found ${data?.length || 0} tickets, Highest sequence: ${data?.[0]?.sequence_number || 'none'}, Next sequence: ${nextSequence}, Ticket: ${ticketNumber}`);
+    
+    // For demo mode, if we found tickets but they shouldn't exist (table should be wiped),
+    // log a warning but still proceed
+    if (isDemo && data && data.length > 0) {
+      console.warn(`[getNextTicketNumber] WARNING: Found ${data.length} existing demo ticket(s). Expected empty table after demo mode enable.`);
+    }
+    
+    return ticketNumber;
   },
 
   /**

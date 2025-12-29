@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 
 export default function Settings() {
   const { isDemoMode, setDemoMode } = useDemoMode();
+  const queryClient = useQueryClient();
   const [isResetting, setIsResetting] = useState(false);
   const [isCreatingDemo, setIsCreatingDemo] = useState(false);
 
@@ -407,10 +409,15 @@ export default function Settings() {
           }
         }
         
+        // Invalidate query cache to ensure fresh data
+        await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+        
         // Now create fresh demo data (always the same)
         const success = await createDemoData();
         if (success) {
           setDemoMode(true);
+          // Invalidate again after creating demo data
+          await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
         }
       } catch (error) {
         console.error('Error resetting demo data:', error);

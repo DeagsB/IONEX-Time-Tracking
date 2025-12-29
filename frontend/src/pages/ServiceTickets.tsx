@@ -84,11 +84,17 @@ export default function ServiceTickets() {
     setIsExportingPdf(true);
     try {
       // Check if a ticket number already exists in the database
+      // In demo mode, existingTickets will already be from the demo table
       const existingRecord = existingTickets?.find(
         et => et.date === ticket.date && 
               et.user_id === ticket.userId && 
               (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
       );
+      
+      // Debug logging
+      if (isDemoMode) {
+        console.log('[DEBUG] Demo mode export - Existing tickets count:', existingTickets?.length || 0, 'Found existing record:', !!existingRecord);
+      }
       
       let ticketNumber: string;
       
@@ -174,11 +180,17 @@ export default function ServiceTickets() {
     setIsExportingExcel(true);
     try {
       // Check if a ticket number already exists in the database
+      // In demo mode, existingTickets will already be from the demo table
       const existingRecord = existingTickets?.find(
         et => et.date === ticket.date && 
               et.user_id === ticket.userId && 
               (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
       );
+      
+      // Debug logging
+      if (isDemoMode) {
+        console.log('[DEBUG] Demo mode export - Existing tickets count:', existingTickets?.length || 0, 'Found existing record:', !!existingRecord);
+      }
       
       let ticketNumber: string;
       
@@ -186,10 +198,28 @@ export default function ServiceTickets() {
         // Use existing ticket number
         ticketNumber = existingRecord.ticket_number;
       } else {
-        // Check if this is a demo ticket
-        const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+        // Check if this is a demo ticket - use demo mode context instead of checking entries
+        // This ensures consistency - if we're in demo mode, all tickets are demo tickets
+        const isDemoTicket = isDemoMode || ticket.entries.every(entry => entry.is_demo === true);
         
         // Generate a new ticket number only when exporting (demo tickets start at 001)
+        // Add a small delay to ensure any pending deletions complete
+        if (isDemoTicket) {
+          // Verify demo table is empty before generating number
+          const { data: verifyEmpty } = await supabase
+            .from('service_tickets_demo')
+            .select('sequence_number')
+            .eq('employee_initials', ticket.userInitials.toUpperCase())
+            .eq('year', new Date().getFullYear() % 100)
+            .order('sequence_number', { ascending: false })
+            .limit(1);
+          
+          if (verifyEmpty && verifyEmpty.length === 0) {
+            // Table is empty, will start at 001
+            console.log('[DEBUG] Demo table is empty, ticket number will start at 001');
+          }
+        }
+        
         ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
         
         // Calculate totals for recording
