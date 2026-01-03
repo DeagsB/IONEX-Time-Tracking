@@ -1003,18 +1003,6 @@ export default function WeekView() {
             >
               List view
             </button>
-            <button
-              className="button"
-              onClick={() => navigate('/reports')}
-              style={{
-                backgroundColor: viewMode === 'timesheet' ? 'var(--primary-color)' : 'transparent',
-                color: viewMode === 'timesheet' ? 'white' : 'var(--text-primary)',
-                padding: '6px 12px',
-                fontSize: '13px'
-              }}
-            >
-              Timesheet
-            </button>
           </div>
         </div>
       </div>
