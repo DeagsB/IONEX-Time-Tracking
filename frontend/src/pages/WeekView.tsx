@@ -992,10 +992,13 @@ export default function WeekView() {
               className="button"
               onClick={() => navigate('/time-entries')}
               style={{
-                backgroundColor: viewMode === 'list' ? 'var(--primary-color)' : 'transparent',
-                color: viewMode === 'list' ? 'white' : 'var(--text-primary)',
+                backgroundColor: 'transparent',
+                color: viewMode === 'list' ? '#28a745' : 'var(--text-primary)',
                 padding: '6px 12px',
-                fontSize: '13px'
+                fontSize: '13px',
+                borderBottom: viewMode === 'list' ? '2px solid #28a745' : '2px solid transparent',
+                borderRadius: 0,
+                fontWeight: viewMode === 'list' ? '600' : '400'
               }}
             >
               List view
