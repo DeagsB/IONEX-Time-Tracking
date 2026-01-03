@@ -311,7 +311,7 @@ export async function downloadPdfFromHtml(
 
       <!-- Footer -->
       <div style="text-align: center; font-size: 7pt; color: #666; margin-top: 10px; border-top: 1px solid #ccc; padding-top: 6px;">
-        IONEX Oilfield Services | Calgary, Alberta | Phone: (403) 555-1234 | Email: service@ionex.ca
+        IONEX Systems | Calgary, Alberta | Email: accounting@ionexsystems.com
       </div>
     </div>
   `;
