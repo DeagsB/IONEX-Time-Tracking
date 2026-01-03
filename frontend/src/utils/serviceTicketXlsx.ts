@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { ServiceTicket } from './serviceTickets';
+import { ServiceTicket, getRateTypeSortOrder } from './serviceTickets';
 import { createCellAddress } from './excelTemplateMapping';
 
 // Maximum characters per description row before wrapping to next row
@@ -62,7 +62,22 @@ interface RowItem {
 function prepareRowItems(entries: ServiceTicket['entries']): RowItem[] {
   const rowItems: RowItem[] = [];
 
-  for (const entry of entries) {
+  // Sort entries by rate type order: Shop Time, Field Time, Travel Time, then Overtime
+  const sortedEntries = [...entries].sort((a, b) => {
+    const rateTypeA = a.rate_type || 'Shop Time';
+    const rateTypeB = b.rate_type || 'Shop Time';
+    const orderA = getRateTypeSortOrder(rateTypeA);
+    const orderB = getRateTypeSortOrder(rateTypeB);
+    
+    // If same order, maintain original order
+    if (orderA === orderB) {
+      return 0;
+    }
+    
+    return orderA - orderB;
+  });
+
+  for (const entry of sortedEntries) {
     const descriptionLines = splitDescription(entry.description || 'No description', MAX_DESCRIPTION_CHARS);
     const rateType = entry.rate_type || 'Shop Time';
 

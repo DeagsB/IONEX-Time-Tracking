@@ -261,3 +261,18 @@ export function generateTicketDisplayId(ticket: ServiceTicket): string {
   return `${datePart}-${customerPart}`;
 }
 
+/**
+ * Get the sort order for rate types
+ * Order: Shop Time, Field Time, Travel Time, then Overtime (Shop/Field)
+ */
+export function getRateTypeSortOrder(rateType: string): number {
+  const order: { [key: string]: number } = {
+    'Shop Time': 1,
+    'Field Time': 2,
+    'Travel Time': 3,
+    'Shop Overtime': 4,
+    'Field Overtime': 4,
+  };
+  return order[rateType] || 99;
+}
+

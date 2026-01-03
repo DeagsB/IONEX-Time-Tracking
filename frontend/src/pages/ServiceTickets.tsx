@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -1363,36 +1363,42 @@ export default function ServiceTickets() {
                     <div style={sectionStyle}>
                       <h3 style={sectionTitleStyle}>Service Description</h3>
                       <div style={{ color: '#fff', fontSize: '14px' }}>
-                        {Object.entries(selectedTicket.hoursByRateType).map(([rateType, hours]) => {
-                          if (hours === 0) return null;
-                          const entriesForType = selectedTicket.entries.filter(
-                            (e) => (e.rate_type || 'Shop Time') === rateType
-                          );
-                          const roundedTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
-                          return (
-                            <div key={rateType} style={{ marginBottom: '16px' }}>
-                              <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', marginBottom: '8px' }}>
-                                {rateType} ({roundedTotal.toFixed(2)} hrs)
-                              </h4>
-                              <ul style={{ margin: 0, paddingLeft: '20px', color: 'rgba(255,255,255,0.8)' }}>
-                                {entriesForType.map((entry) => (
-                                  <li key={entry.id} style={{ marginBottom: '4px', lineHeight: '1.5' }}>
-                                    {entry.description || 'No description'}
-                                    {entry.start_time && entry.end_time && (
-                                      <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginLeft: '8px' }}>
-                                        ({new Date(entry.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
-                                        {new Date(entry.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })})
+                        {Object.entries(selectedTicket.hoursByRateType)
+                          .filter(([rateType, hours]) => hours > 0)
+                          .sort(([rateTypeA], [rateTypeB]) => {
+                            const orderA = getRateTypeSortOrder(rateTypeA);
+                            const orderB = getRateTypeSortOrder(rateTypeB);
+                            return orderA - orderB;
+                          })
+                          .map(([rateType, hours]) => {
+                            const entriesForType = selectedTicket.entries.filter(
+                              (e) => (e.rate_type || 'Shop Time') === rateType
+                            );
+                            const roundedTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
+                            return (
+                              <div key={rateType} style={{ marginBottom: '16px' }}>
+                                <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', marginBottom: '8px' }}>
+                                  {rateType} ({roundedTotal.toFixed(2)} hrs)
+                                </h4>
+                                <ul style={{ margin: 0, paddingLeft: '20px', color: 'rgba(255,255,255,0.8)' }}>
+                                  {entriesForType.map((entry) => (
+                                    <li key={entry.id} style={{ marginBottom: '4px', lineHeight: '1.5' }}>
+                                      {entry.description || 'No description'}
+                                      {entry.start_time && entry.end_time && (
+                                        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginLeft: '8px' }}>
+                                          ({new Date(entry.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
+                                          {new Date(entry.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })})
+                                        </span>
+                                      )}
+                                      <span style={{ fontWeight: '600', marginLeft: '8px', color: '#fff' }}>
+                                        {roundToHalfHour(entry.hours).toFixed(2)} hrs
                                       </span>
-                                    )}
-                                    <span style={{ fontWeight: '600', marginLeft: '8px', color: '#fff' }}>
-                                      {roundToHalfHour(entry.hours).toFixed(2)} hrs
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          );
-                        })}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            );
+                          })}
                       </div>
                     </div>
 
@@ -1400,18 +1406,25 @@ export default function ServiceTickets() {
                     <div style={sectionStyle}>
                       <h3 style={sectionTitleStyle}>Hours Summary</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                        {Object.entries(selectedTicket.hoursByRateType).map(([rateType, hours]) => {
-                          const entriesForType = selectedTicket.entries.filter(
-                            (e) => (e.rate_type || 'Shop Time') === rateType
-                          );
-                          const roundedTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
-                          return (
-                            <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>{rateType}:</span>
-                              <span style={{ fontSize: '14px', color: '#fff', fontWeight: '700' }}>{roundedTotal.toFixed(2)}</span>
-                            </div>
-                          );
-                        })}
+                        {Object.entries(selectedTicket.hoursByRateType)
+                          .filter(([rateType, hours]) => hours > 0)
+                          .sort(([rateTypeA], [rateTypeB]) => {
+                            const orderA = getRateTypeSortOrder(rateTypeA);
+                            const orderB = getRateTypeSortOrder(rateTypeB);
+                            return orderA - orderB;
+                          })
+                          .map(([rateType, hours]) => {
+                            const entriesForType = selectedTicket.entries.filter(
+                              (e) => (e.rate_type || 'Shop Time') === rateType
+                            );
+                            const roundedTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
+                            return (
+                              <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>{rateType}:</span>
+                                <span style={{ fontSize: '14px', color: '#fff', fontWeight: '700' }}>{roundedTotal.toFixed(2)}</span>
+                              </div>
+                            );
+                          })}
                         <div
                           style={{
                             display: 'flex',
