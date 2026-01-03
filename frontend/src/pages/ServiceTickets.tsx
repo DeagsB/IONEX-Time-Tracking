@@ -109,11 +109,13 @@ export default function ServiceTickets() {
         ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
         
         // Calculate totals for recording
-        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
         const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
         const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
         const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-        const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+        const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
+        const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
+        const otAmount = shopOtAmount + fieldOtAmount;
         const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
         
         // Save the ticket record to the database
@@ -223,11 +225,13 @@ export default function ServiceTickets() {
         ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
         
         // Calculate totals for recording
-        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
         const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
         const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
         const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-        const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+        const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
+        const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
+        const otAmount = shopOtAmount + fieldOtAmount;
         const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
         
         // Save the ticket record to the database

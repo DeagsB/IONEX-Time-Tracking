@@ -42,7 +42,8 @@ export interface ServiceTicket {
     rt: number; // Regular Time / Shop Time rate
     tt: number; // Travel Time rate
     ft: number; // Field Time rate
-    ot: number; // Overtime rate
+    shop_ot: number; // Shop Overtime rate
+    field_ot: number; // Field Overtime rate
   };
 }
 
@@ -93,7 +94,8 @@ export interface EmployeeWithRates {
   rt_rate?: number;
   tt_rate?: number;
   ft_rate?: number;
-  ot_rate?: number;
+  shop_ot_rate?: number;
+  field_ot_rate?: number;
 }
 
 // Default rates if employee doesn't have custom rates
@@ -101,7 +103,8 @@ const DEFAULT_RATES = {
   rt: 110,
   tt: 85,
   ft: 140,
-  ot: 165,
+  shop_ot: 165,
+  field_ot: 165,
 };
 
 /**
@@ -117,14 +120,15 @@ export function groupEntriesIntoTickets(
   const ticketMap = new Map<string, ServiceTicket>();
   
   // Create a map of user_id to employee rates for quick lookup
-  const employeeRatesMap = new Map<string, { rt: number; tt: number; ft: number; ot: number }>();
+  const employeeRatesMap = new Map<string, { rt: number; tt: number; ft: number; shop_ot: number; field_ot: number }>();
   if (employees) {
     for (const emp of employees) {
       employeeRatesMap.set(emp.user_id, {
         rt: emp.rt_rate ?? DEFAULT_RATES.rt,
         tt: emp.tt_rate ?? DEFAULT_RATES.tt,
         ft: emp.ft_rate ?? DEFAULT_RATES.ft,
-        ot: emp.ot_rate ?? DEFAULT_RATES.ot,
+        shop_ot: emp.shop_ot_rate ?? DEFAULT_RATES.shop_ot,
+        field_ot: emp.field_ot_rate ?? DEFAULT_RATES.field_ot,
       });
     }
   }

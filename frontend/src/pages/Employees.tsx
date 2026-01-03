@@ -17,7 +17,8 @@ export default function Employees() {
     rt_rate: '110.00',
     tt_rate: '85.00',
     ft_rate: '140.00',
-    ot_rate: '165.00',
+    shop_ot_rate: '165.00',
+    field_ot_rate: '165.00',
   });
 
   const { data: employees } = useQuery({
@@ -33,7 +34,8 @@ export default function Employees() {
         rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
         tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
         ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
-        ot_rate: data.ot_rate ? parseFloat(data.ot_rate) : 165.00,
+        shop_ot_rate: data.shop_ot_rate ? parseFloat(data.shop_ot_rate) : 165.00,
+        field_ot_rate: data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00,
       };
       return await employeesService.create(employeeData);
     },
@@ -51,7 +53,8 @@ export default function Employees() {
         rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
         tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
         ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
-        ot_rate: data.ot_rate ? parseFloat(data.ot_rate) : 165.00,
+        shop_ot_rate: data.shop_ot_rate ? parseFloat(data.shop_ot_rate) : 165.00,
+        field_ot_rate: data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00,
       };
       return await employeesService.update(id, employeeData);
     },
@@ -98,7 +101,8 @@ export default function Employees() {
       rt_rate: employee.rt_rate?.toString() || '110.00',
       tt_rate: employee.tt_rate?.toString() || '85.00',
       ft_rate: employee.ft_rate?.toString() || '140.00',
-      ot_rate: employee.ot_rate?.toString() || '165.00',
+      shop_ot_rate: employee.shop_ot_rate?.toString() || '165.00',
+      field_ot_rate: employee.field_ot_rate?.toString() || '165.00',
     });
     setShowForm(true);
   };
@@ -200,7 +204,7 @@ export default function Employees() {
             <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
               Billable Rates (Service Tickets)
             </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Regular Time (RT)</label>
                 <div style={{ position: 'relative' }}>
@@ -247,7 +251,7 @@ export default function Employees() {
                 </div>
               </div>
               <div className="form-group">
-                <label className="label">Overtime (OT)</label>
+                <label className="label">Shop OT Rate</label>
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
                   <input
@@ -255,8 +259,23 @@ export default function Employees() {
                     step="0.01"
                     className="input"
                     style={{ paddingLeft: '25px' }}
-                    value={formData.ot_rate}
-                    onChange={(e) => setFormData({ ...formData, ot_rate: e.target.value })}
+                    value={formData.shop_ot_rate}
+                    onChange={(e) => setFormData({ ...formData, shop_ot_rate: e.target.value })}
+                    placeholder="165.00"
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="label">Field OT Rate</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.field_ot_rate}
+                    onChange={(e) => setFormData({ ...formData, field_ot_rate: e.target.value })}
                     placeholder="165.00"
                   />
                 </div>

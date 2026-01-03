@@ -40,12 +40,19 @@ export async function downloadPdfFromHtml(
   const rtRate = ticket.rates.rt;
   const ttRate = ticket.rates.tt;
   const ftRate = ticket.rates.ft;
-  const otRate = ticket.rates.ot;
+  const shopOtRate = ticket.rates.shop_ot;
+  const fieldOtRate = ticket.rates.field_ot;
+
+  // Calculate OT amounts separately
+  const shopOtHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(e.hours) : 0), 0);
+  const fieldOtHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(e.hours) : 0), 0);
+  const shopOtAmount = shopOtHours * shopOtRate;
+  const fieldOtAmount = fieldOtHours * fieldOtRate;
 
   const rtAmount = rtHours * rtRate;
   const ttAmount = ttHours * ttRate;
   const ftAmount = ftHours * ftRate;
-  const otAmount = otHours * otRate;
+  const otAmount = shopOtAmount + fieldOtAmount;
   const expensesTotal = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
   const grandTotal = rtAmount + ttAmount + ftAmount + otAmount + expensesTotal;
 
@@ -213,7 +220,8 @@ export async function downloadPdfFromHtml(
         <div><strong>RT Rate:</strong> $${rtRate.toFixed(2)}</div>
         <div><strong>TT Rate:</strong> $${ttRate.toFixed(2)}</div>
         <div><strong>FT Rate:</strong> $${ftRate.toFixed(2)}</div>
-        <div><strong>OT Rate:</strong> $${otRate.toFixed(2)}</div>
+        <div><strong>Shop OT Rate:</strong> $${shopOtRate.toFixed(2)}</div>
+        <div><strong>Field OT Rate:</strong> $${fieldOtRate.toFixed(2)}</div>
       </div>
 
       <!-- Travel/Expenses and Summary Row -->

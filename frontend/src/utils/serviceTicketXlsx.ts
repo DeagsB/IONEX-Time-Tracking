@@ -179,7 +179,7 @@ function fillRowItems(
   rowItems: RowItem[],
   startIndex: number,
   maxRows: number
-): { endIndex: number; rtTotal: number; ttTotal: number; ftTotal: number; otTotal: number } {
+): { endIndex: number; rtTotal: number; ttTotal: number; ftTotal: number; shopOtTotal: number; fieldOtTotal: number } {
   const firstDataRow = 14;
   const descriptionCol = 'B';
   const rtCol = 'K';
@@ -190,7 +190,8 @@ function fillRowItems(
   let rtTotal = 0,
     ttTotal = 0,
     ftTotal = 0,
-    otTotal = 0;
+    shopOtTotal = 0,
+    fieldOtTotal = 0;
   let currentRow = firstDataRow;
   let itemIndex = startIndex;
 
@@ -222,9 +223,12 @@ function fillRowItems(
       } else if (item.rateType === 'Field Time') {
         hoursCol = ftCol;
         ftTotal += roundedHours;
-      } else if (item.rateType === 'Shop Overtime' || item.rateType === 'Field Overtime') {
+      } else if (item.rateType === 'Shop Overtime') {
         hoursCol = otCol;
-        otTotal += roundedHours;
+        shopOtTotal += roundedHours;
+      } else if (item.rateType === 'Field Overtime') {
+        hoursCol = otCol;
+        fieldOtTotal += roundedHours;
       } else {
         rtTotal += roundedHours;
       }
@@ -237,7 +241,7 @@ function fillRowItems(
     itemIndex++;
   }
 
-  return { endIndex: itemIndex, rtTotal, ttTotal, ftTotal, otTotal };
+  return { endIndex: itemIndex, rtTotal, ttTotal, ftTotal, shopOtTotal, fieldOtTotal };
 }
 
 /**
@@ -305,20 +309,25 @@ function updateTotals(
   rtTotal: number,
   ttTotal: number,
   ftTotal: number,
-  otTotal: number,
-  rates: { rt: number; tt: number; ft: number; ot: number },
+  shopOtTotal: number,
+  fieldOtTotal: number,
+  rates: { rt: number; tt: number; ft: number; shop_ot: number; field_ot: number },
   expensesTotal: number = 0
 ) {
   const totalsRow = 24;
   const rtRate = rates.rt;
   const ttRate = rates.tt;
   const ftRate = rates.ft;
-  const otRate = rates.ot;
+  const shopOtRate = rates.shop_ot;
+  const fieldOtRate = rates.field_ot;
 
   const rtAmount = rtTotal * rtRate;
   const ttAmount = ttTotal * ttRate;
   const ftAmount = ftTotal * ftRate;
-  const otAmount = otTotal * otRate;
+  const shopOtAmount = shopOtTotal * shopOtRate;
+  const fieldOtAmount = fieldOtTotal * fieldOtRate;
+  const otTotal = shopOtTotal + fieldOtTotal;
+  const otAmount = shopOtAmount + fieldOtAmount;
   const grandTotal = rtAmount + ttAmount + ftAmount + otAmount + expensesTotal;
 
   // Helper to set cell with formula result caching
@@ -345,7 +354,7 @@ function updateTotals(
   setCellWithResult(`K${totalsRow}`, rtTotal);
   setCellWithResult(`L${totalsRow}`, ttTotal);
   setCellWithResult(`M${totalsRow}`, ftTotal);
-  setCellWithResult(`N${totalsRow}`, otTotal);
+  setCellWithResult(`N${totalsRow}`, otTotal); // Combined OT total for display
   
   // Ensure totals display with 1 decimal place
   ['K', 'L', 'M', 'N'].forEach(col => {
@@ -411,21 +420,22 @@ export async function generateExcelServiceTicket(
     if (totalPages === 1) {
       // Single page - simple case
       fillHeaderInfo(templateSheet, ticket, 1, 1);
-      const { rtTotal, ttTotal, ftTotal, otTotal } = fillRowItems(
+      const { rtTotal, ttTotal, ftTotal, shopOtTotal, fieldOtTotal } = fillRowItems(
         templateSheet,
         rowItems,
         0,
         maxRowsPerPage
       );
       const { total: expensesTotal } = fillExpenses(templateSheet, expenses);
-      updateTotals(templateSheet, rtTotal, ttTotal, ftTotal, otTotal, ticket.rates, expensesTotal);
+      updateTotals(templateSheet, rtTotal, ttTotal, ftTotal, shopOtTotal, fieldOtTotal, ticket.rates, expensesTotal);
     } else {
       // Multi-page - need to duplicate sheets
       let currentItemIndex = 0;
       let cumulativeRtTotal = 0,
         cumulativeTtTotal = 0,
         cumulativeFtTotal = 0,
-        cumulativeOtTotal = 0;
+        cumulativeShopOtTotal = 0,
+        cumulativeFieldOtTotal = 0;
 
       for (let page = 1; page <= totalPages; page++) {
         let worksheet: ExcelJS.Worksheet;
@@ -496,7 +506,8 @@ export async function generateExcelServiceTicket(
         cumulativeRtTotal += result.rtTotal;
         cumulativeTtTotal += result.ttTotal;
         cumulativeFtTotal += result.ftTotal;
-        cumulativeOtTotal += result.otTotal;
+        cumulativeShopOtTotal += result.shopOtTotal;
+        cumulativeFieldOtTotal += result.fieldOtTotal;
 
         // Fill expenses only on the last page
         const expensesTotal = page === totalPages ? fillExpenses(worksheet, expenses).total : 0;
@@ -504,10 +515,10 @@ export async function generateExcelServiceTicket(
         // For intermediate pages, show page totals
         // For last page, show cumulative totals
         if (page === totalPages) {
-          updateTotals(worksheet, cumulativeRtTotal, cumulativeTtTotal, cumulativeFtTotal, cumulativeOtTotal, ticket.rates, expensesTotal);
+          updateTotals(worksheet, cumulativeRtTotal, cumulativeTtTotal, cumulativeFtTotal, cumulativeShopOtTotal, cumulativeFieldOtTotal, ticket.rates, expensesTotal);
         } else {
           // Show this page's totals (no expenses on intermediate pages)
-          updateTotals(worksheet, result.rtTotal, result.ttTotal, result.ftTotal, result.otTotal, ticket.rates, 0);
+          updateTotals(worksheet, result.rtTotal, result.ttTotal, result.ftTotal, result.shopOtTotal, result.fieldOtTotal, ticket.rates, 0);
         }
       }
     }

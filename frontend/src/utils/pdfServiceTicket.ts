@@ -170,15 +170,17 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
   const totalPages = Math.max(1, Math.ceil(rowItems.length / maxRowsPerPage));
   
   // Calculate totals
-  let rtTotal = 0, ttTotal = 0, ftTotal = 0, otTotal = 0;
+  let rtTotal = 0, ttTotal = 0, ftTotal = 0, shopOtTotal = 0, fieldOtTotal = 0;
   for (const entry of ticket.entries) {
     const rateType = entry.rate_type || 'Shop Time';
     if (rateType === 'Travel Time') {
       ttTotal += entry.hours;
     } else if (rateType === 'Field Time') {
       ftTotal += entry.hours;
-    } else if (rateType === 'Shop Overtime' || rateType === 'Field Overtime') {
-      otTotal += entry.hours;
+    } else if (rateType === 'Shop Overtime') {
+      shopOtTotal += entry.hours;
+    } else if (rateType === 'Field Overtime') {
+      fieldOtTotal += entry.hours;
     } else {
       rtTotal += entry.hours;
     }
@@ -188,11 +190,15 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
   const rtRate = ticket.rates.rt;
   const ttRate = ticket.rates.tt;
   const ftRate = ticket.rates.ft;
-  const otRate = ticket.rates.ot;
+  const shopOtRate = ticket.rates.shop_ot;
+  const fieldOtRate = ticket.rates.field_ot;
   const rtAmount = rtTotal * rtRate;
   const ttAmount = ttTotal * ttRate;
   const ftAmount = ftTotal * ftRate;
-  const otAmount = otTotal * otRate;
+  const shopOtAmount = shopOtTotal * shopOtRate;
+  const fieldOtAmount = fieldOtTotal * fieldOtRate;
+  const otTotal = shopOtTotal + fieldOtTotal;
+  const otAmount = shopOtAmount + fieldOtAmount;
   const grandTotal = rtAmount + ttAmount + ftAmount + otAmount;
   
   const customer = ticket.customerInfo;
