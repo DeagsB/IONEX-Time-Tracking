@@ -1142,7 +1142,7 @@ export default function WeekView() {
                           return (
                             <div 
                               key={entry.id}
-                              onClick={() => handleEntryClick(entry)}
+                              onClick={(e) => handleEntryClick(entry, e)}
                               style={{
                                 padding: '12px 0',
                                 borderBottom: '1px solid var(--border-color)',
