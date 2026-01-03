@@ -687,11 +687,13 @@ export default function ServiceTickets() {
     const sequenceMatch = ticketNumber.match(/\d{3}$/);
     const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
     
-    const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+    const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
     const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
     const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
     const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-    const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+    const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
+    const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
+    const otAmount = shopOtAmount + fieldOtAmount;
     const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
 
     const record = await serviceTicketsService.createTicketRecord({
