@@ -373,11 +373,13 @@ export default function ServiceTickets() {
             const sequenceMatch = ticketNumber.match(/\d{3}$/);
             const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
             
-            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
             const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
             const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
             const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-            const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+            const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
+            const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
+            const otAmount = shopOtAmount + fieldOtAmount;
             const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
             // #region agent log
             fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:331',message:'Excel: Creating ticket record',data:{ticketNumber,year,sequenceNumber,totalAmount},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
@@ -499,11 +501,13 @@ export default function ServiceTickets() {
             const sequenceMatch = ticketNumber.match(/\d{3}$/);
             const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
             
-            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, otRate = ticket.rates.ot;
+            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
             const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
             const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
             const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-            const otAmount = (ticket.hoursByRateType['Shop Overtime'] + ticket.hoursByRateType['Field Overtime']) * otRate;
+            const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
+            const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
+            const otAmount = shopOtAmount + fieldOtAmount;
             const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
             
             const newRecord = await serviceTicketsService.createTicketRecord({

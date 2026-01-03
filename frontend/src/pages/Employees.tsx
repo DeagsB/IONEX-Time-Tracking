@@ -85,7 +85,8 @@ export default function Employees() {
       rt_rate: '110.00',
       tt_rate: '85.00',
       ft_rate: '140.00',
-      ot_rate: '165.00',
+      shop_ot_rate: '165.00',
+      field_ot_rate: '165.00',
     });
   };
 

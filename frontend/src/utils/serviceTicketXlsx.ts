@@ -366,7 +366,7 @@ function updateTotals(
   setCellWithResult('L35', rtRate);
   setCellWithResult('L36', ttRate);
   setCellWithResult('L37', ftRate);
-  setCellWithResult('L38', otRate);
+  setCellWithResult('L38', shopOtRate); // Using Shop OT Rate for the OT column (template has single OT column)
 
   // Summary cells (amounts)
   setCellWithResult('M35', rtAmount);
