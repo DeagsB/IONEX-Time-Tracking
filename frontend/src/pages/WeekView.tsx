@@ -990,7 +990,7 @@ export default function WeekView() {
             </button>
             <button
               className="button"
-              onClick={() => navigate('/time-entries')}
+              onClick={() => setViewMode('list')}
               style={{
                 backgroundColor: 'transparent',
                 color: viewMode === 'list' ? '#28a745' : 'var(--text-primary)',
@@ -1047,7 +1047,180 @@ export default function WeekView() {
           ))}
         </div>
 
+      {/* List View */}
+      {viewMode === 'list' && (
+        <div style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)' }}>
+          {timeEntries && timeEntries.length > 0 ? (
+            (() => {
+              // Group entries by date
+              const entriesByDate = timeEntries.reduce((acc: any, entry: any) => {
+                const date = entry.date;
+                if (!acc[date]) {
+                  acc[date] = [];
+                }
+                acc[date].push(entry);
+                return acc;
+              }, {});
+
+              // Sort dates descending
+              const sortedDates = Object.keys(entriesByDate).sort((a, b) => 
+                new Date(b).getTime() - new Date(a).getTime()
+              );
+
+              return (
+                <div style={{ padding: '20px' }}>
+                  {sortedDates.map((dateStr) => {
+                    const entries = entriesByDate[dateStr];
+                    const date = new Date(dateStr);
+                    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+                    const dayNum = date.getDate();
+                    const monthName = date.toLocaleDateString('en-US', { month: 'short' });
+                    const year = date.getFullYear();
+                    const isCurrentYear = year === new Date().getFullYear();
+                    
+                    // Calculate day total
+                    const dayTotalSeconds = entries.reduce((sum: number, e: any) => sum + Number(e.hours) * 3600, 0);
+                    const dayTotalHours = Math.floor(dayTotalSeconds / 3600);
+                    const dayTotalMinutes = Math.floor((dayTotalSeconds % 3600) / 60);
+                    const dayTotalSecs = dayTotalSeconds % 60;
+                    const dayTotal = `${dayTotalHours}:${String(dayTotalMinutes).padStart(2, '0')}:${String(dayTotalSecs).padStart(2, '0')}`;
+
+                    // Check for overlaps
+                    const checkOverlap = (entry1: any, entry2: any) => {
+                      if (!entry1.start_time || !entry1.end_time || !entry2.start_time || !entry2.end_time) return false;
+                      const start1 = new Date(entry1.start_time).getTime();
+                      const end1 = new Date(entry1.end_time).getTime();
+                      const start2 = new Date(entry2.start_time).getTime();
+                      const end2 = new Date(entry2.end_time).getTime();
+                      return !(end1 <= start2 || end2 <= start1);
+                    };
+
+                    return (
+                      <div key={dateStr} style={{ marginBottom: '30px' }}>
+                        {/* Date header */}
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          marginBottom: '15px',
+                          paddingBottom: '10px',
+                          borderBottom: '1px solid var(--border-color)'
+                        }}>
+                          <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                            {dayName}, {dayNum} {monthName}{!isCurrentYear ? `, ${year}` : ''}
+                          </div>
+                          <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                            {dayTotal}
+                          </div>
+                        </div>
+
+                        {/* Entries */}
+                        {entries.map((entry: any) => {
+                          const project = entry.project || projects?.find((p: any) => p.id === entry.project_id);
+                          const hasOverlap = entries.some((e: any) => e.id !== entry.id && checkOverlap(entry, e));
+                          
+                          // Format times
+                          const formatTimeDisplay = (timeStr: string) => {
+                            if (!timeStr) return '';
+                            const date = new Date(timeStr);
+                            const hours = date.getHours();
+                            const minutes = date.getMinutes();
+                            const ampm = hours >= 12 ? 'PM' : 'AM';
+                            const displayHours = hours % 12 || 12;
+                            return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+                          };
+
+                          // Format duration
+                          const formatDuration = (hours: number) => {
+                            const totalSeconds = Math.floor(hours * 3600);
+                            const h = Math.floor(totalSeconds / 3600);
+                            const m = Math.floor((totalSeconds % 3600) / 60);
+                            const s = totalSeconds % 60;
+                            return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                          };
+
+                          return (
+                            <div 
+                              key={entry.id}
+                              onClick={() => handleEntryClick(entry)}
+                              style={{
+                                padding: '12px 0',
+                                borderBottom: '1px solid var(--border-color)',
+                                cursor: 'pointer',
+                                transition: 'background-color 0.2s'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = 'transparent';
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                                {/* Description */}
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: '14px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                                    {entry.description || 'Add description'}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                    {project && (
+                                      <>
+                                        <div style={{
+                                          width: '8px',
+                                          height: '8px',
+                                          borderRadius: '50%',
+                                          backgroundColor: project.color || '#666',
+                                          flexShrink: 0
+                                        }} />
+                                        <span>• {project.name}</span>
+                                      </>
+                                    )}
+                                    {hasOverlap && (
+                                      <span style={{
+                                        backgroundColor: 'var(--bg-tertiary)',
+                                        color: 'var(--text-secondary)',
+                                        padding: '2px 8px',
+                                        borderRadius: '12px',
+                                        fontSize: '10px',
+                                        fontWeight: '500'
+                                      }}>
+                                        OVERLAP
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* Times and duration */}
+                                <div style={{ textAlign: 'right', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                  {entry.start_time && entry.end_time && (
+                                    <div style={{ marginBottom: '4px' }}>
+                                      {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
+                                    </div>
+                                  )}
+                                  <div style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '500' }}>
+                                    {formatDuration(entry.hours)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()
+          ) : (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              No time entries found
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Calendar Grid */}
+      {viewMode !== 'list' && (
       <div ref={calendarScrollRef} style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)' }}>
         <div style={{ display: 'flex', minWidth: 'min-content' }}>
           {/* Time column */}
@@ -1427,6 +1600,7 @@ export default function WeekView() {
           })}
         </div>
       </div>
+      )}
 
       {/* Time Entry Modal */}
       {showTimeEntryModal && selectedSlot && (
