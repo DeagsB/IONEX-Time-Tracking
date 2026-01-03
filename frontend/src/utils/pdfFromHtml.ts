@@ -193,8 +193,8 @@ export async function downloadPdfFromHtml(
         <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000; display: flex;">
           <div style="flex: 1;">Service Description</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000;">ST</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">TT</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000;">FT</div>
+          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">TT</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000;">SO</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000;">FO</div>
         </div>
@@ -202,8 +202,8 @@ export async function downloadPdfFromHtml(
           <div style="display: flex; border-bottom: 1px solid #eee; min-height: 16px;">
             <div style="flex: 1; padding: 2px 4px; font-size: 8pt;">${line.text}</div>
             <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.st || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.tt || ''}</div>
             <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.ft || ''}</div>
+            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.tt || ''}</div>
             <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.so || ''}</div>
             <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.fo || ''}</div>
           </div>
@@ -212,8 +212,8 @@ export async function downloadPdfFromHtml(
         <div style="display: flex; border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
           <div style="flex: 1; padding: 4px 6px; text-align: right;">Total Time</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${rtHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ttHours || ''}</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ftHours || ''}</div>
+          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ttHours || ''}</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${shopOtHours || ''}</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${fieldOtHours || ''}</div>
         </div>
