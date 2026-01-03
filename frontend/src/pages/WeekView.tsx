@@ -39,6 +39,9 @@ export default function WeekView() {
   // Zoom level: number of divisions per hour (2=halves, 4=quarters, 5=fifths, 6=sixths, etc.)
   const [divisionsPerHour, setDivisionsPerHour] = useState(4);
   
+  // Row height: height of each hour row in pixels (default 60px, can be adjusted)
+  const [rowHeight, setRowHeight] = useState(60);
+  
   // Week picker popup state
   const [showWeekPicker, setShowWeekPicker] = useState(false);
   const [pickerDate, setPickerDate] = useState(new Date());
@@ -320,9 +323,9 @@ export default function WeekView() {
   // Scroll to 8:00am on component mount
   useEffect(() => {
     if (calendarScrollRef.current) {
-      // 8:00am = hour 8, each hour is 60px tall
+      // 8:00am = hour 8, each hour is rowHeight px tall
       // Header is 50px, so scroll to position 8:00am at the top
-      const scrollPosition = 8 * 60 - 50; // 430px
+      const scrollPosition = 8 * rowHeight - 50;
       calendarScrollRef.current.scrollTop = scrollPosition;
       lastScrollTop.current = scrollPosition;
     }
@@ -370,6 +373,16 @@ export default function WeekView() {
         return newValue;
       });
     }
+  };
+
+  // Increase row height (makes calendar boxes taller for more detail)
+  const increaseRowHeight = () => {
+    setRowHeight(prev => Math.min(prev + 20, 200)); // Max 200px per hour
+  };
+
+  // Decrease row height (makes calendar boxes shorter to see more of the day)
+  const decreaseRowHeight = () => {
+    setRowHeight(prev => Math.max(prev - 20, 40)); // Min 40px per hour
   };
 
   // Handle clicking on a time slot division
@@ -567,7 +580,6 @@ export default function WeekView() {
 
     const handleMouseMove = (e: MouseEvent) => {
       const deltaY = e.clientY - draggingEntry.startY;
-      const rowHeight = 60; // Each hour is 60px
       const minutesPerPixel = 60 / rowHeight; // 1 minute per pixel
       
       // Calculate new height (minimum 30px)
@@ -587,7 +599,6 @@ export default function WeekView() {
     const handleMouseUp = async () => {
       if (!draggingEntry) return;
       
-      const rowHeight = 60;
       const totalMinutes = (draggingEntry.previewHeight / rowHeight) * 60;
       const roundedMinutes = Math.round(totalMinutes / 15) * 15;
       
@@ -649,7 +660,7 @@ export default function WeekView() {
     const endMinutes = endTime.hour * 60 + endTime.minute;
     const duration = endMinutes - startMinutes;
     
-    const rowHeight = 60; // Each hour is 60px
+    // Use state rowHeight instead of hardcoded 60
     const top = (startMinutes / 60) * rowHeight;
     const height = (duration / 60) * rowHeight;
     
@@ -1066,10 +1077,9 @@ export default function WeekView() {
                 <button
                   onClick={(e) => {
                     e.preventDefault();
-                    console.log('Zoom OUT button clicked, current:', divisionsPerHour);
-                    zoomOut();
+                    decreaseRowHeight();
                   }}
-                  disabled={divisionsPerHour <= 2}
+                  disabled={rowHeight <= 40}
                 style={{
                     width: '24px',
                     height: '24px',
@@ -1077,25 +1087,24 @@ export default function WeekView() {
                     border: '1px solid var(--border-color)',
                     backgroundColor: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
-                    cursor: divisionsPerHour <= 2 ? 'not-allowed' : 'pointer',
-                    opacity: divisionsPerHour <= 2 ? 0.5 : 1,
+                    cursor: rowHeight <= 40 ? 'not-allowed' : 'pointer',
+                    opacity: rowHeight <= 40 ? 0.5 : 1,
                     fontSize: '16px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: 0,
                   }}
-                  title={`Zoom out (larger blocks) - Current: ${60/divisionsPerHour}min`}
+                  title={`Decrease row height - Current: ${rowHeight}px per hour`}
                 >
                   −
                 </button>
                 <button
                   onClick={(e) => {
                     e.preventDefault();
-                    console.log('Zoom IN button clicked, current:', divisionsPerHour);
-                    zoomIn();
+                    increaseRowHeight();
                   }}
-                  disabled={divisionsPerHour >= 12}
+                  disabled={rowHeight >= 200}
                   style={{
                     width: '24px',
                     height: '24px',
@@ -1103,21 +1112,21 @@ export default function WeekView() {
                     border: '1px solid var(--border-color)',
                     backgroundColor: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
-                    cursor: divisionsPerHour >= 12 ? 'not-allowed' : 'pointer',
-                    opacity: divisionsPerHour >= 12 ? 0.5 : 1,
+                    cursor: rowHeight >= 200 ? 'not-allowed' : 'pointer',
+                    opacity: rowHeight >= 200 ? 0.5 : 1,
                     fontSize: '16px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: 0,
                   }}
-                  title={`Zoom in (smaller blocks) - Current: ${60/divisionsPerHour}min`}
+                  title={`Increase row height - Current: ${rowHeight}px per hour`}
                 >
                   +
                 </button>
                 </div>
               <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: '600' }}>
-                {Math.round(60/divisionsPerHour)}m
+                {rowHeight}px
                 </div>
         </div>
 
@@ -1126,7 +1135,7 @@ export default function WeekView() {
               <div
                 key={index}
                 style={{
-                  height: '60px',
+                  height: `${rowHeight}px`,
                   borderBottom: '1px solid var(--border-color)',
                   display: 'flex',
                   alignItems: 'flex-start',
@@ -1212,7 +1221,7 @@ export default function WeekView() {
                     <div
                       key={`hour-${hourIndex}-${divisionsPerHour}`}
                       style={{
-                        height: '60px',
+                        height: `${rowHeight}px`,
                         borderBottom: '1px solid var(--border-color)',
                         backgroundColor: hourIndex % 2 === 0 ? 'var(--bg-primary)' : 'var(--bg-secondary)',
                         display: 'flex',
@@ -1362,7 +1371,6 @@ export default function WeekView() {
                     const endMinutes = endHour * 60 + endMin;
 
                     const duration = endMinutes - startMinutes;
-                    const rowHeight = 60;
                     const top = (startMinutes / 60) * rowHeight;
                     const height = Math.max((duration / 60) * rowHeight, 30);
 
