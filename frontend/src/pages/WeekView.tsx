@@ -653,7 +653,65 @@ export default function WeekView() {
     const top = (startMinutes / 60) * rowHeight;
     const height = (duration / 60) * rowHeight;
     
-    return { top, height };
+    return { top, height, startMinutes, endMinutes };
+  };
+
+  // Check if two time ranges overlap
+  const doEntriesOverlap = (entry1: any, entry2: any) => {
+    const style1 = getEntryStyle(entry1);
+    const style2 = getEntryStyle(entry2);
+    if (!style1 || !style2) return false;
+    
+    // Check if time ranges overlap
+    return !(style1.endMinutes <= style2.startMinutes || style2.endMinutes <= style1.startMinutes);
+  };
+
+  // Calculate overlap position for an entry within a group of overlapping entries
+  const getOverlapPosition = (entry: any, allEntries: any[], entryIndex: number) => {
+    // Find all entries that overlap with this one
+    const overlappingEntries = allEntries.filter((e, idx) => 
+      idx !== entryIndex && doEntriesOverlap(entry, e)
+    );
+    
+    if (overlappingEntries.length === 0) {
+      // No overlap, use default position
+      return { left: '4px', right: '4px', topOffset: 0, zIndex: 10 };
+    }
+    
+    // Find the index of this entry within the overlapping group
+    // Sort overlapping entries by start time to determine lane assignment
+    const allOverlapping = [entry, ...overlappingEntries];
+    const sortedOverlapping = allOverlapping.sort((a, b) => {
+      const styleA = getEntryStyle(a);
+      const styleB = getEntryStyle(b);
+      if (!styleA || !styleB) return 0;
+      return styleA.startMinutes - styleB.startMinutes;
+    });
+    
+    const positionInGroup = sortedOverlapping.findIndex(e => e.id === entry.id);
+    const lane = positionInGroup % 2; // Alternate between left (0) and right (1)
+    
+    // Calculate vertical offset - alternate between slight up and down
+    const verticalOffset = lane * 3; // 0px for left, 3px for right
+    
+    // Position based on lane
+    if (lane === 0) {
+      // Left lane - slightly to the left and up
+      return { 
+        left: '4px', 
+        right: '52%', // Leave space for right lane
+        topOffset: -verticalOffset, 
+        zIndex: 10 + positionInGroup 
+      };
+    } else {
+      // Right lane - slightly to the right and down
+      return { 
+        left: '48%', // Start from middle
+        right: '4px', 
+        topOffset: verticalOffset, 
+        zIndex: 10 + positionInGroup 
+      };
+    }
   };
 
   const projectColors = ['#4ecdc4', '#ff6b6b', '#ffd93d', '#a8e6cf', '#dda0dd'];
@@ -1204,16 +1262,20 @@ export default function WeekView() {
                     // Use preview height if dragging this entry
                     const isDragging = draggingEntry?.entry.id === entry.id;
                     const displayHeight = isDragging && draggingEntry ? draggingEntry.previewHeight : Math.max(style.height, 30);
+                    
+                    // Calculate overlap position
+                    const overlapPos = getOverlapPosition(entry, dayEntries, entryIndex);
+                    const topPosition = style.top + overlapPos.topOffset;
                   
                   return (
                     <div
                       key={entry.id}
                       style={{
                         position: 'absolute',
-                          top: `${style.top}px`,
+                          top: `${topPosition}px`,
                           height: `${displayHeight}px`,
-                        left: '4px',
-                        right: '4px',
+                        left: overlapPos.left,
+                        right: overlapPos.right,
                         backgroundColor: color,
                         borderRadius: '4px',
                         padding: '6px 8px',
@@ -1222,7 +1284,7 @@ export default function WeekView() {
                         overflow: 'hidden',
                         cursor: 'pointer',
                           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                          zIndex: isDragging ? 20 : 10,
+                          zIndex: isDragging ? 20 : overlapPos.zIndex,
                           pointerEvents: 'auto'
                         }}
                         onClick={(e) => {
