@@ -1438,8 +1438,8 @@ export default function WeekView() {
                     const overlapPos = getOverlapPosition(entry, dayEntries, entryIndex);
                     const topPosition = style.top + overlapPos.topOffset;
                     
-                    // Adjust height to stop exactly at the time line (subtract 1px to account for border)
-                    const adjustedHeight = displayHeight - 1;
+                    // Adjust height to stop exactly at the time line (subtract 2px to account for border and ensure no overlap)
+                    const adjustedHeight = Math.max(displayHeight - 2, 28);
                   
                   return (
                     <div
