@@ -221,9 +221,9 @@ export async function downloadPdfFromHtml(
 
       <!-- Rates Row -->
       <div style="display: flex; gap: 20px; margin-bottom: 10px; font-size: 8pt;">
-        <div><strong>RT Rate:</strong> $${rtRate.toFixed(2)}</div>
-        <div><strong>TT Rate:</strong> $${ttRate.toFixed(2)}</div>
-        <div><strong>FT Rate:</strong> $${ftRate.toFixed(2)}</div>
+        <div><strong>Shop Time Rate:</strong> $${rtRate.toFixed(2)}</div>
+        <div><strong>Field Time Rate:</strong> $${ftRate.toFixed(2)}</div>
+        <div><strong>Travel Time Rate:</strong> $${ttRate.toFixed(2)}</div>
         <div><strong>Shop OT Rate:</strong> $${shopOtRate.toFixed(2)}</div>
         <div><strong>Field OT Rate:</strong> $${fieldOtRate.toFixed(2)}</div>
       </div>
