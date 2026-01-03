@@ -421,6 +421,9 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
                       color: 'var(--text-primary)',
                       backgroundColor: selectedProjectId === project.id ? 'var(--primary-light)' : 'transparent',
                       transition: 'background-color 0.15s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
                     }}
                     onClick={() => handleProjectSelect(project)}
                     onMouseEnter={(e) => {
@@ -434,12 +437,23 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
                       }
                     }}
                   >
-                    {project.name}
-                    {project.customer && (
-                      <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>
-                        • {project.customer.name}
-                      </span>
-                    )}
+                    <div
+                      style={{
+                        backgroundColor: project.color || '#666',
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      {project.name}
+                      {project.customer && (
+                        <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>
+                          • {project.customer.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {showCreateOption && (
