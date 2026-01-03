@@ -476,8 +476,17 @@ export default function WeekView() {
   const handleSaveEdit = () => {
     if (!editingEntry) return;
     
-    // Parse the date from the original entry
-    const entryDate = new Date(editingEntry.date);
+    // Parse the date from the original entry - handle both string and Date formats
+    // If it's a string like "2024-01-15", parse it carefully to avoid timezone issues
+    let entryDate: Date;
+    if (typeof editingEntry.date === 'string') {
+      // Parse YYYY-MM-DD format in local timezone
+      const [year, month, day] = editingEntry.date.split('-').map(Number);
+      entryDate = new Date(year, month - 1, day);
+    } else {
+      entryDate = new Date(editingEntry.date);
+    }
+    
     const year = entryDate.getFullYear();
     const month = String(entryDate.getMonth() + 1).padStart(2, '0');
     const day = String(entryDate.getDate()).padStart(2, '0');

@@ -169,7 +169,7 @@ export default function DayDetail() {
       endTimeISO = end.toISOString();
     }
 
-    const data = {
+    const data: any = {
       project_id: formData.project_id,
       hours: formData.hours,
       description: formData.description,
@@ -177,7 +177,10 @@ export default function DayDetail() {
       end_time: endTimeISO,
     };
 
+    // When editing, ensure the date is preserved to prevent entry from disappearing
     if (editingEntry) {
+      // Preserve the original date to avoid timezone issues
+      data.date = editingEntry.date;
       updateEntryMutation.mutate({ id: editingEntry.id, data });
     } else {
       createEntryMutation.mutate(data);
