@@ -662,6 +662,7 @@ export default function WeekView() {
     
     // Use state rowHeight instead of hardcoded 60
     const top = (startMinutes / 60) * rowHeight;
+    // Calculate height precisely to stop at the end time line (not overlap it)
     const height = (duration / 60) * rowHeight;
     
     return { top, height, startMinutes, endMinutes };
@@ -1436,6 +1437,9 @@ export default function WeekView() {
                     // Calculate overlap position
                     const overlapPos = getOverlapPosition(entry, dayEntries, entryIndex);
                     const topPosition = style.top + overlapPos.topOffset;
+                    
+                    // Adjust height to stop exactly at the time line (subtract 1px to account for border)
+                    const adjustedHeight = displayHeight - 1;
                   
                   return (
                     <div
@@ -1443,7 +1447,7 @@ export default function WeekView() {
                       style={{
                         position: 'absolute',
                           top: `${topPosition}px`,
-                          height: `${displayHeight}px`,
+                          height: `${adjustedHeight}px`,
                         left: overlapPos.left,
                         right: overlapPos.right,
                         backgroundColor: color,
@@ -1455,7 +1459,8 @@ export default function WeekView() {
                         cursor: 'pointer',
                           boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                           zIndex: isDragging ? 20 : overlapPos.zIndex,
-                          pointerEvents: 'auto'
+                          pointerEvents: 'auto',
+                          boxSizing: 'border-box'
                         }}
                         onClick={(e) => {
                           // Don't open edit modal if clicking on drag handle
