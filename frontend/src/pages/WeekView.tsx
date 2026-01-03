@@ -691,16 +691,13 @@ export default function WeekView() {
     const positionInGroup = sortedOverlapping.findIndex(e => e.id === entry.id);
     const lane = positionInGroup % 2; // Alternate between left (0) and right (1)
     
-    // Calculate vertical offset - alternate between slight up and down
-    const verticalOffset = lane * 3; // 0px for left, 3px for right
-    
     // Position based on lane
     if (lane === 0) {
       // Left lane - slightly to the left and up
       return { 
         left: '4px', 
         right: '52%', // Leave space for right lane
-        topOffset: -verticalOffset, 
+        topOffset: -3, // Move up 3px
         zIndex: 10 + positionInGroup 
       };
     } else {
@@ -708,7 +705,7 @@ export default function WeekView() {
       return { 
         left: '48%', // Start from middle
         right: '4px', 
-        topOffset: verticalOffset, 
+        topOffset: 3, // Move down 3px
         zIndex: 10 + positionInGroup 
       };
     }
