@@ -7,6 +7,7 @@ import { timeEntriesService, projectsService } from '../services/supabaseService
 
 interface TimeEntry {
   id: string;
+  date?: string;
   project_id?: string;
   start_time?: string;
   end_time?: string;
@@ -180,7 +181,8 @@ export default function DayDetail() {
     // When editing, ensure the date is preserved to prevent entry from disappearing
     if (editingEntry) {
       // Preserve the original date to avoid timezone issues
-      data.date = editingEntry.date;
+      // Use entry date if available, otherwise use the date from URL params
+      data.date = editingEntry.date || date;
       updateEntryMutation.mutate({ id: editingEntry.id, data });
     } else {
       createEntryMutation.mutate(data);
