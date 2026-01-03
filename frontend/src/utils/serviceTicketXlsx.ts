@@ -182,10 +182,11 @@ function fillRowItems(
 ): { endIndex: number; rtTotal: number; ttTotal: number; ftTotal: number; shopOtTotal: number; fieldOtTotal: number } {
   const firstDataRow = 14;
   const descriptionCol = 'B';
-  const rtCol = 'K';
+  const stCol = 'K';  // Shop Time (was RT)
   const ttCol = 'L';
   const ftCol = 'M';
-  const otCol = 'N';
+  const soCol = 'N';  // Shop Overtime
+  const foCol = 'O';  // Field Overtime
 
   let rtTotal = 0,
     ttTotal = 0,
@@ -213,25 +214,25 @@ function fillRowItems(
     const descAddr = createCellAddress(currentRow, descriptionCol);
     setCellValue(descAddr, item.description);
 
-    // Set hours if this is the first line of an entry (already rounded to 0.5)
-    if (item.hours !== null) {
-      const roundedHours = roundToHalfHour(item.hours); // Ensure rounding is applied
-      let hoursCol = rtCol;
-      if (item.rateType === 'Travel Time') {
-        hoursCol = ttCol;
-        ttTotal += roundedHours;
-      } else if (item.rateType === 'Field Time') {
-        hoursCol = ftCol;
-        ftTotal += roundedHours;
-      } else if (item.rateType === 'Shop Overtime') {
-        hoursCol = otCol;
-        shopOtTotal += roundedHours;
-      } else if (item.rateType === 'Field Overtime') {
-        hoursCol = otCol;
-        fieldOtTotal += roundedHours;
-      } else {
-        rtTotal += roundedHours;
-      }
+      // Set hours if this is the first line of an entry (already rounded to 0.5)
+      if (item.hours !== null) {
+        const roundedHours = roundToHalfHour(item.hours); // Ensure rounding is applied
+        let hoursCol = stCol;
+        if (item.rateType === 'Travel Time') {
+          hoursCol = ttCol;
+          ttTotal += roundedHours;
+        } else if (item.rateType === 'Field Time') {
+          hoursCol = ftCol;
+          ftTotal += roundedHours;
+        } else if (item.rateType === 'Shop Overtime') {
+          hoursCol = soCol;
+          shopOtTotal += roundedHours;
+        } else if (item.rateType === 'Field Overtime') {
+          hoursCol = foCol;
+          fieldOtTotal += roundedHours;
+        } else {
+          rtTotal += roundedHours; // Shop Time
+        }
 
       const hoursAddr = createCellAddress(currentRow, hoursCol);
       setCellValue(hoursAddr, roundedHours);
@@ -351,13 +352,14 @@ function updateTotals(
   setCellWithResult('E24', ftRate);  // Field Time rate
 
   // Row 24 totals - explicitly format to show decimals
-  setCellWithResult(`K${totalsRow}`, rtTotal);
-  setCellWithResult(`L${totalsRow}`, ttTotal);
-  setCellWithResult(`M${totalsRow}`, ftTotal);
-  setCellWithResult(`N${totalsRow}`, otTotal); // Combined OT total for display
+  setCellWithResult(`K${totalsRow}`, rtTotal);  // ST (Shop Time)
+  setCellWithResult(`L${totalsRow}`, ttTotal);  // TT
+  setCellWithResult(`M${totalsRow}`, ftTotal);  // FT
+  setCellWithResult(`N${totalsRow}`, shopOtTotal);  // SO (Shop Overtime)
+  setCellWithResult(`O${totalsRow}`, fieldOtTotal);  // FO (Field Overtime)
   
   // Ensure totals display with 1 decimal place
-  ['K', 'L', 'M', 'N'].forEach(col => {
+  ['K', 'L', 'M', 'N', 'O'].forEach(col => {
     const cell = worksheet.getCell(`${col}${totalsRow}`);
     cell.numFmt = '0.0';
   });

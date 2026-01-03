@@ -63,7 +63,7 @@ export async function downloadPdfFromHtml(
   };
 
   // Group entries by description (date + notes), round hours to nearest 0.5
-  const descriptionLines: { text: string; rt: number; tt: number; ft: number; ot: number }[] = [];
+  const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
   ticket.entries.forEach(entry => {
     const dateStr = formatDate(entry.date);
     const desc = `${dateStr} - ${entry.description || 'Work performed'}`;
@@ -71,16 +71,17 @@ export async function downloadPdfFromHtml(
     const roundedHours = roundToHalfHour(entry.hours);
     descriptionLines.push({
       text: desc, // Show full description without truncating
-      rt: rateCode === 'RT' ? roundedHours : 0,
+      st: rateCode === 'RT' ? roundedHours : 0,
       tt: rateCode === 'TT' ? roundedHours : 0,
       ft: rateCode === 'FT' ? roundedHours : 0,
-      ot: rateCode === 'OT' ? roundedHours : 0,
+      so: entry.rate_type === 'Shop Overtime' ? roundedHours : 0,
+      fo: entry.rate_type === 'Field Overtime' ? roundedHours : 0,
     });
   });
 
   // Pad to 10 rows minimum
   while (descriptionLines.length < 10) {
-    descriptionLines.push({ text: '', rt: 0, tt: 0, ft: 0, ot: 0 });
+    descriptionLines.push({ text: '', st: 0, tt: 0, ft: 0, so: 0, fo: 0 });
   }
 
   // Get employee name from first entry
@@ -191,18 +192,20 @@ export async function downloadPdfFromHtml(
       <div style="border: 1px solid #000; margin-bottom: 10px;">
         <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000; display: flex;">
           <div style="flex: 1;">Service Description</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">RT</div>
+          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">ST</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000;">TT</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000;">FT</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">OT</div>
+          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">SO</div>
+          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">FO</div>
         </div>
         ${descriptionLines.map(line => `
           <div style="display: flex; border-bottom: 1px solid #eee; min-height: 16px;">
             <div style="flex: 1; padding: 2px 4px; font-size: 8pt;">${line.text}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.rt || ''}</div>
+            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.st || ''}</div>
             <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.tt || ''}</div>
             <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.ft || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.ot || ''}</div>
+            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.so || ''}</div>
+            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.fo || ''}</div>
           </div>
         `).join('')}
         <!-- Totals row -->
@@ -211,7 +214,8 @@ export async function downloadPdfFromHtml(
           <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${rtHours || ''}</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ttHours || ''}</div>
           <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ftHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${otHours || ''}</div>
+          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${shopOtHours || ''}</div>
+          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${fieldOtHours || ''}</div>
         </div>
       </div>
 

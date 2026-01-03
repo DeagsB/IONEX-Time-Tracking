@@ -987,10 +987,7 @@ export default function ServiceTickets() {
                   Total Hours
                 </th>
                 <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  RT
-                </th>
-                <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  OT
+                  ST
                 </th>
                 <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   TT
@@ -999,7 +996,10 @@ export default function ServiceTickets() {
                   FT
                 </th>
                 <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  FOT
+                  SO
+                </th>
+                <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                  FO
                 </th>
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Action
@@ -1091,13 +1091,13 @@ export default function ServiceTickets() {
                     {ticket.hoursByRateType['Shop Time'].toFixed(1)}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    {ticket.hoursByRateType['Shop Overtime'].toFixed(1)}
-                  </td>
-                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {ticket.hoursByRateType['Travel Time'].toFixed(1)}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {ticket.hoursByRateType['Field Time'].toFixed(1)}
+                  </td>
+                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    {ticket.hoursByRateType['Shop Overtime'].toFixed(1)}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {ticket.hoursByRateType['Field Overtime'].toFixed(1)}
