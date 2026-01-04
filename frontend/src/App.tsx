@@ -79,7 +79,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<Navigate to="/calendar" replace />} />
+      <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
         path="/"

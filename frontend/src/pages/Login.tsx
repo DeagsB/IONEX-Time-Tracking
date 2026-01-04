@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -13,8 +13,15 @@ export default function Login() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, signUp } = useAuth();
+  const { login, signUp, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate('/calendar', { replace: true });
+    }
+  }, [user, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,24 +52,85 @@ export default function Login() {
     }
   };
 
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-primary)' }}>
+          <div style={{ fontSize: '18px', marginBottom: '10px' }}>Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if user is logged in (will redirect)
+  if (user) {
+    return null;
+  }
+
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', position: 'relative' }}>
+    <div style={{ 
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      minHeight: '100vh', 
+      position: 'relative',
+      background: 'linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%)',
+      padding: '20px'
+    }}>
       <button 
         className="theme-toggle" 
         onClick={toggleTheme} 
-        style={{ position: 'absolute', top: '20px', right: '20px' }}
+        style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}
         title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
       >
         {theme === 'light' ? '🌙' : '☀️'}
       </button>
-      <div className="card" style={{ width: '400px' }}>
-        <h2 style={{ marginBottom: '20px', textAlign: 'center' }}>IONEX Time Tracking</h2>
-        <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>
-          {isSignUp ? 'Create Account' : 'Login'}
-        </h3>
+      <div className="card" style={{ 
+        width: '100%', 
+        maxWidth: '420px',
+        boxShadow: 'var(--shadow-lg)',
+        border: '1px solid var(--border-color)'
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <h1 style={{ 
+            marginBottom: '8px', 
+            fontSize: '28px',
+            fontWeight: '700',
+            color: 'var(--text-primary)'
+          }}>
+            IONEX Time Tracking
+          </h1>
+          <h2 style={{ 
+            marginBottom: '0',
+            fontSize: '20px',
+            fontWeight: '500',
+            color: 'var(--text-secondary)'
+          }}>
+            {isSignUp ? 'Create Your Account' : 'Welcome Back'}
+          </h2>
+        </div>
         
-        {error && <div className="error" style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#fee', color: '#c33', borderRadius: '4px' }}>{error}</div>}
-        {success && <div className="success" style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#efe', color: '#3c3', borderRadius: '4px' }}>{success}</div>}
+        {error && (
+          <div className="error" style={{ 
+            marginBottom: '16px', 
+            padding: '12px 16px', 
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="success" style={{ 
+            marginBottom: '16px', 
+            padding: '12px 16px', 
+            borderRadius: '8px',
+            fontSize: '14px'
+          }}>
+            {success}
+          </div>
+        )}
         
         <form onSubmit={handleSubmit}>
           {isSignUp && (
@@ -122,24 +190,43 @@ export default function Login() {
           <button
             type="submit"
             className="button button-primary"
-            style={{ width: '100%', marginBottom: '15px' }}
+            style={{ 
+              width: '100%', 
+              marginTop: '8px',
+              marginBottom: '24px',
+              padding: '12px 20px',
+              fontSize: '16px',
+              fontWeight: '600'
+            }}
             disabled={loading}
           >
             {loading 
               ? (isSignUp ? 'Creating account...' : 'Logging in...') 
-              : (isSignUp ? 'Create Account' : 'Login')
+              : (isSignUp ? 'Create Account' : 'Sign In')
             }
           </button>
         </form>
 
-        <div style={{ textAlign: 'center', marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-          <p style={{ marginBottom: '10px', color: 'var(--text-secondary)' }}>
+        <div style={{ 
+          textAlign: 'center', 
+          marginTop: '24px', 
+          paddingTop: '24px', 
+          borderTop: '1px solid var(--border-color)' 
+        }}>
+          <p style={{ 
+            marginBottom: '12px', 
+            color: 'var(--text-secondary)',
+            fontSize: '14px'
+          }}>
             {isSignUp ? 'Already have an account?' : "Don't have an account?"}
           </p>
           <button
             type="button"
-            className="button"
-            style={{ width: '100%', backgroundColor: 'transparent', border: '1px solid var(--border-color)' }}
+            className="button button-secondary"
+            style={{ 
+              width: '100%',
+              padding: '10px 20px'
+            }}
             onClick={() => {
               setIsSignUp(!isSignUp);
               setError('');
@@ -151,7 +238,7 @@ export default function Login() {
             }}
             disabled={loading}
           >
-            {isSignUp ? 'Login instead' : 'Create Account'}
+            {isSignUp ? 'Sign In instead' : 'Create New Account'}
           </button>
         </div>
       </div>
