@@ -103,13 +103,19 @@ export function aggregateEmployeeMetrics(
   entries: TimeEntry[],
   employee?: EmployeeWithRates
 ): EmployeeMetrics {
+  console.log('aggregateEmployeeMetrics called:', { entriesCount: entries?.length || 0, employee: employee?.user_id });
+  
   if (!entries || entries.length === 0) {
-    const user = entries?.[0]?.user;
+    const userId = employee?.user_id || '';
+    const employeeName = employee?.user 
+      ? `${employee.user.first_name || ''} ${employee.user.last_name || ''}`.trim() || 'Unknown'
+      : employee?.user_id || 'Unknown';
+    
+    console.log('No entries for employee:', { userId, employeeName, employee });
+    
     return {
-      userId: employee?.user_id || '',
-      employeeName: employee?.user 
-        ? `${employee.user.first_name || ''} ${employee.user.last_name || ''}`.trim() || 'Unknown'
-        : 'Unknown',
+      userId,
+      employeeName,
       employeeEmail: employee?.user?.email,
       department: employee?.department,
       position: employee?.position,
@@ -136,6 +142,8 @@ export function aggregateEmployeeMetrics(
 
   const user = entries[0]?.user;
   const userId = entries[0]?.user_id || employee?.user_id || '';
+  
+  console.log('Processing entries for userId:', userId, 'entry count:', entries.length);
 
   // Calculate totals
   let totalHours = 0;
@@ -382,16 +390,39 @@ export function aggregateAllEmployees(
   entries: TimeEntry[],
   employees: EmployeeWithRates[]
 ): EmployeeMetrics[] {
+  console.log('aggregateAllEmployees called:', { 
+    entriesCount: entries?.length || 0, 
+    employeesCount: employees?.length || 0 
+  });
+  
+  if (!entries || entries.length === 0) {
+    console.log('No entries provided, returning metrics for all employees with zero hours');
+    // Return all employees with zero metrics
+    return employees.map(employee => aggregateEmployeeMetrics([], employee));
+  }
+  
+  if (!employees || employees.length === 0) {
+    console.log('No employees provided, returning empty array');
+    return [];
+  }
+  
   // Group entries by user_id
   const entriesByUser = new Map<string, TimeEntry[]>();
   
   entries.forEach(entry => {
     const userId = entry.user_id;
+    if (!userId) {
+      console.warn('Entry missing user_id:', entry);
+      return;
+    }
     if (!entriesByUser.has(userId)) {
       entriesByUser.set(userId, []);
     }
     entriesByUser.get(userId)!.push(entry);
   });
+
+  console.log('Entries grouped by user_id:', Array.from(entriesByUser.keys()));
+  console.log('Employee user_ids:', employees.map(e => e.user_id));
 
   // Create metrics for each employee
   const employeeMetrics: EmployeeMetrics[] = [];
@@ -399,6 +430,7 @@ export function aggregateAllEmployees(
   // Process employees with entries
   entriesByUser.forEach((userEntries, userId) => {
     const employee = employees.find(e => e.user_id === userId);
+    console.log(`Processing entries for userId ${userId}, found employee:`, !!employee);
     const metrics = aggregateEmployeeMetrics(userEntries, employee);
     employeeMetrics.push(metrics);
   });
@@ -406,10 +438,12 @@ export function aggregateAllEmployees(
   // Add employees with no entries (with zero metrics)
   employees.forEach(employee => {
     if (!entriesByUser.has(employee.user_id)) {
+      console.log(`Adding employee with no entries: ${employee.user_id}`);
       employeeMetrics.push(aggregateEmployeeMetrics([], employee));
     }
   });
 
+  console.log('Final employee metrics count:', employeeMetrics.length);
   return employeeMetrics.sort((a, b) => b.totalHours - a.totalHours);
 }
 

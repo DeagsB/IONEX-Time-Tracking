@@ -53,14 +53,14 @@ export default function EmployeeReports() {
   const { startDate, endDate } = getDateRange();
 
   // Fetch employees with rates
-  const { data: employees, isLoading: loadingEmployees } = useQuery({
+  const { data: employees, isLoading: loadingEmployees, error: employeesError } = useQuery({
     queryKey: ['employeesWithRates'],
     queryFn: () => reportsService.getEmployeesWithRates(),
     enabled: user?.role === 'ADMIN',
   });
 
   // Fetch time entries for the period
-  const { data: timeEntries, isLoading: loadingEntries } = useQuery({
+  const { data: timeEntries, isLoading: loadingEntries, error: entriesError } = useQuery({
     queryKey: ['employeeAnalytics', startDate, endDate, selectedEmployeeId],
     queryFn: () => reportsService.getEmployeeAnalytics(
       startDate,
@@ -70,6 +70,32 @@ export default function EmployeeReports() {
     enabled: user?.role === 'ADMIN',
   });
 
+  // Debug logging
+  useMemo(() => {
+    console.log('=== Employee Reports Debug ===');
+    console.log('Date Range:', { startDate, endDate });
+    console.log('Employees:', {
+      data: employees,
+      count: employees?.length || 0,
+      loading: loadingEmployees,
+      error: employeesError
+    });
+    console.log('Time Entries:', {
+      data: timeEntries,
+      count: timeEntries?.length || 0,
+      loading: loadingEntries,
+      error: entriesError
+    });
+    if (employees && employees.length > 0) {
+      console.log('Sample Employee:', employees[0]);
+      console.log('Employee user_ids:', employees.map((e: any) => e.user_id));
+    }
+    if (timeEntries && timeEntries.length > 0) {
+      console.log('Sample Time Entry:', timeEntries[0]);
+      console.log('Time Entry user_ids:', timeEntries.map((e: any) => e.user_id));
+    }
+  }, [employees, timeEntries, loadingEmployees, loadingEntries, employeesError, entriesError, startDate, endDate]);
+
   // Aggregate employee metrics
   const employeeMetrics = useMemo(() => {
     if (!timeEntries || !employees) {
@@ -77,7 +103,9 @@ export default function EmployeeReports() {
       return [];
     }
     console.log('Aggregating metrics:', { timeEntriesCount: timeEntries.length, employeesCount: employees.length });
-    return aggregateAllEmployees(timeEntries, employees);
+    const metrics = aggregateAllEmployees(timeEntries, employees);
+    console.log('Aggregated metrics:', metrics);
+    return metrics;
   }, [timeEntries, employees]);
 
   // Filter by selected employee if needed
