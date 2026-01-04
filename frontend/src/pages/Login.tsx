@@ -34,7 +34,7 @@ export default function Login() {
         setIsSignUp(false);
       } else {
         await login(email, password);
-        navigate('/dashboard');
+        navigate('/calendar');
       }
     } catch (err: any) {
       console.error('❌ Authentication error:', err);

@@ -45,11 +45,6 @@ export default function Sidebar() {
           }}>
             TRACK
           </div>
-          {!isDemoMode && (
-            <SidebarLink to="/dashboard" active={isActive('/dashboard')}>
-              Overview
-            </SidebarLink>
-          )}
           <SidebarLink to="/calendar" active={isActive('/calendar')}>
             Timer
           </SidebarLink>

@@ -6,7 +6,6 @@ import { TimerProvider } from './context/TimerContext';
 import { DemoModeProvider } from './context/DemoModeContext';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
-import Dashboard from './pages/Dashboard';
 import WeekView from './pages/WeekView';
 import TimeEntries from './pages/TimeEntries';
 import DayDetail from './pages/DayDetail';
@@ -71,7 +70,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (user.role !== 'ADMIN') {
-    return <Navigate to="/dashboard" />;
+    return <Navigate to="/calendar" />;
   }
 
   return <>{children}</>;
@@ -80,7 +79,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/login" element={<Navigate to="/calendar" replace />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
         path="/"
@@ -90,8 +89,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/dashboard" />} />
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route index element={<Navigate to="/calendar" />} />
         <Route path="calendar" element={<WeekView />} />
         <Route path="calendar/:date" element={<DayDetail />} />
         <Route path="time-entries" element={<TimeEntries />} />

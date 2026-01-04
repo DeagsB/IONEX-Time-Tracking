@@ -32,11 +32,11 @@ export default function AuthCallback() {
         }
 
         if (data.session) {
-          console.log('✅ AuthCallback: Session established, redirecting to dashboard...');
-          // Session established, navigate to dashboard
+          console.log('✅ AuthCallback: Session established, redirecting to calendar...');
+          // Session established, navigate to calendar
           // The AuthContext will pick up the session change automatically
           setTimeout(() => {
-            navigate('/dashboard');
+            navigate('/calendar');
           }, 1000);
         } else {
           setError('Failed to establish session');
@@ -86,7 +86,7 @@ export default function AuthCallback() {
         <div className="card" style={{ width: '400px', textAlign: 'center' }}>
           <h2 style={{ marginBottom: '20px', color: '#3c3' }}>Email Verified!</h2>
           <p style={{ marginBottom: '20px', color: 'var(--text-secondary)' }}>
-            Your account has been verified successfully. Redirecting to dashboard...
+            Your account has been verified successfully. Redirecting to calendar...
           </p>
         </div>
       )}

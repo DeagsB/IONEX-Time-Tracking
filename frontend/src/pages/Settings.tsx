@@ -484,7 +484,7 @@ export default function Settings() {
             <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
               {isCreatingDemo 
                 ? 'Creating demo time entries...' 
-                : 'When enabled, creates demo data and hides Overview and Profile pages'}
+                : 'When enabled, creates demo data and hides Profile page'}
             </div>
           </div>
           <label style={{ 
@@ -539,7 +539,7 @@ export default function Settings() {
               🎭 Demo Mode is ON
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Hidden pages: Overview, Profile. All demo data will be automatically deleted when you turn off demo mode.
+              Hidden pages: Profile. All demo data will be automatically deleted when you turn off demo mode.
             </div>
           </div>
         )}
