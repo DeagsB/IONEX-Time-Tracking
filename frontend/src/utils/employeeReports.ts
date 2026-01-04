@@ -198,6 +198,18 @@ export function aggregateEmployeeMetrics(
 
   // Calculate total cost based on pay rates
   let totalCost = 0;
+  
+  // Debug: Log employee pay rates
+  if (employee) {
+    console.log('Employee pay rates for cost calculation:', {
+      userId: employee.user_id,
+      shop_pay_rate: employee.shop_pay_rate,
+      field_pay_rate: employee.field_pay_rate,
+      shop_ot_pay_rate: employee.shop_ot_pay_rate,
+      field_ot_pay_rate: employee.field_ot_pay_rate,
+    });
+  }
+  
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
@@ -218,8 +230,22 @@ export function aggregateEmployeeMetrics(
       payRate = employee?.shop_pay_rate || 0;
     }
     
-    totalCost += hours * payRate;
+    const entryCost = hours * payRate;
+    totalCost += entryCost;
+    
+    // Debug: Log cost calculation for first few entries
+    if (totalCost === entryCost || totalCost < 100) {
+      console.log('Cost calculation:', {
+        rateType,
+        hours,
+        payRate,
+        entryCost,
+        totalCost,
+      });
+    }
   });
+  
+  console.log('Final totalCost:', totalCost, 'for userId:', userId);
 
   // Calculate profit metrics
   const netProfit = totalRevenue - totalCost;
