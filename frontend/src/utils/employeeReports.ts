@@ -203,11 +203,15 @@ export function aggregateEmployeeMetrics(
   if (employee) {
     console.log('Employee pay rates for cost calculation:', {
       userId: employee.user_id,
+      employee_id: employee.employee_id,
       shop_pay_rate: employee.shop_pay_rate,
       field_pay_rate: employee.field_pay_rate,
       shop_ot_pay_rate: employee.shop_ot_pay_rate,
       field_ot_pay_rate: employee.field_ot_pay_rate,
+      hasPayRates: !!(employee.shop_pay_rate || employee.field_pay_rate || employee.shop_ot_pay_rate || employee.field_ot_pay_rate),
     });
+  } else {
+    console.warn('No employee object provided for cost calculation, userId:', userId);
   }
   
   entries.forEach(entry => {
@@ -217,26 +221,27 @@ export function aggregateEmployeeMetrics(
     // Determine pay rate based on rate type
     let payRate = 0;
     if (rateType.includes('shop') && rateType.includes('overtime')) {
-      payRate = employee?.shop_ot_pay_rate || 0;
+      payRate = Number(employee?.shop_ot_pay_rate) || 0;
     } else if (rateType.includes('field') && rateType.includes('overtime')) {
-      payRate = employee?.field_ot_pay_rate || 0;
+      payRate = Number(employee?.field_ot_pay_rate) || 0;
     } else if (rateType.includes('field')) {
-      payRate = employee?.field_pay_rate || 0;
+      payRate = Number(employee?.field_pay_rate) || 0;
     } else if (rateType.includes('travel')) {
       // Travel time is paid at shop rate
-      payRate = employee?.shop_pay_rate || 0;
+      payRate = Number(employee?.shop_pay_rate) || 0;
     } else {
       // Default to shop time
-      payRate = employee?.shop_pay_rate || 0;
+      payRate = Number(employee?.shop_pay_rate) || 0;
     }
     
     const entryCost = hours * payRate;
     totalCost += entryCost;
     
-    // Debug: Log cost calculation for first few entries
-    if (totalCost === entryCost || totalCost < 100) {
-      console.log('Cost calculation:', {
-        rateType,
+    // Debug: Log cost calculation for first entry
+    if (totalCost === entryCost) {
+      console.log('First entry cost calculation:', {
+        rateType: entry.rate_type,
+        rateTypeLower: rateType,
         hours,
         payRate,
         entryCost,
@@ -245,7 +250,7 @@ export function aggregateEmployeeMetrics(
     }
   });
   
-  console.log('Final totalCost:', totalCost, 'for userId:', userId);
+  console.log('Final totalCost:', totalCost, 'for userId:', userId, 'entries count:', entries.length);
 
   // Calculate profit metrics
   const netProfit = totalRevenue - totalCost;
