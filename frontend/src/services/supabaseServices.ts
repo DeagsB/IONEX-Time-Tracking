@@ -360,6 +360,8 @@ export const reportsService = {
 
   // Get comprehensive employee analytics for all or specific employee
   async getEmployeeAnalytics(startDate: string, endDate: string, userId?: string) {
+    console.log('getEmployeeAnalytics called:', { startDate, endDate, userId });
+    
     let query = supabase
       .from('time_entries')
       .select(`
@@ -376,8 +378,14 @@ export const reportsService = {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
-    return data;
+    
+    if (error) {
+      console.error('Error fetching employee analytics:', error);
+      throw error;
+    }
+    
+    console.log('getEmployeeAnalytics result:', { count: data?.length || 0, data });
+    return data || [];
   },
 
   // Get all employees with their rates

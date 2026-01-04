@@ -62,12 +62,23 @@ export default function EmployeeReports() {
   // Fetch time entries for the period
   const { data: timeEntries, isLoading: loadingEntries, error: entriesError } = useQuery({
     queryKey: ['employeeAnalytics', startDate, endDate, selectedEmployeeId],
-    queryFn: () => reportsService.getEmployeeAnalytics(
-      startDate,
-      endDate,
-      selectedEmployeeId !== 'all' ? selectedEmployeeId : undefined
-    ),
-    enabled: user?.role === 'ADMIN',
+    queryFn: async () => {
+      console.log('Query function called for time entries:', { startDate, endDate, selectedEmployeeId });
+      try {
+        const result = await reportsService.getEmployeeAnalytics(
+          startDate,
+          endDate,
+          selectedEmployeeId !== 'all' ? selectedEmployeeId : undefined
+        );
+        console.log('Query function result:', result);
+        return result;
+      } catch (error) {
+        console.error('Query function error:', error);
+        throw error;
+      }
+    },
+    enabled: user?.role === 'ADMIN' && !!startDate && !!endDate,
+    retry: 1,
   });
 
   // Debug logging
