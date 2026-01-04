@@ -366,8 +366,8 @@ export const reportsService = {
       .from('time_entries')
       .select(`
         *,
-        user:users(id, first_name, last_name, email),
-        project:projects(id, name, project_number, customer:customers(id, name))
+        user:users!time_entries_user_id_fkey(id, first_name, last_name, email),
+        project:projects!time_entries_project_id_fkey(id, name, project_number, customer:customers!projects_customer_id_fkey(id, name))
       `)
       .gte('date', startDate)
       .lte('date', endDate)
