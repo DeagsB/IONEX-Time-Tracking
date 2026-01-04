@@ -357,6 +357,135 @@ export const reportsService = {
     if (error) throw error;
     return data;
   },
+
+  // Get comprehensive employee analytics for all or specific employee
+  async getEmployeeAnalytics(startDate: string, endDate: string, userId?: string) {
+    let query = supabase
+      .from('time_entries')
+      .select(`
+        *,
+        user:users(id, first_name, last_name, email),
+        project:projects(id, name, project_number, customer:customers(id, name))
+      `)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date');
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  // Get all employees with their rates
+  async getEmployeesWithRates() {
+    const { data, error } = await supabase
+      .from('employees')
+      .select(`
+        *,
+        user:users(id, first_name, last_name, email)
+      `)
+      .eq('status', 'active');
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get time entries grouped by rate type for an employee
+  async getEmployeeTimeBreakdown(userId: string, startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        rate_type,
+        hours,
+        rate,
+        billable
+      `)
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get service tickets for an employee
+  async getEmployeeServiceTickets(userId: string, startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        *,
+        project:projects(id, name, customer:customers(id, name))
+      `)
+      .eq('user_id', userId)
+      .eq('billable', true)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date');
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get project breakdown for an employee
+  async getEmployeeProjectBreakdown(userId: string, startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        project_id,
+        hours,
+        rate,
+        billable,
+        project:projects(id, name)
+      `)
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get customer breakdown for an employee (via projects)
+  async getEmployeeCustomerBreakdown(userId: string, startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        hours,
+        rate,
+        billable,
+        project:projects(id, name, customer:customers(id, name))
+      `)
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get time entries for trends analysis
+  async getEmployeeTrends(userId: string, startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        date,
+        hours,
+        rate,
+        billable,
+        rate_type
+      `)
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date');
+
+    if (error) throw error;
+    return data;
+  },
 };
 
 export const serviceTicketsService = {

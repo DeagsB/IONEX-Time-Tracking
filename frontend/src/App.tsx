@@ -19,6 +19,7 @@ import Approvals from './pages/Approvals';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import ServiceTickets from './pages/ServiceTickets';
+import EmployeeReports from './pages/EmployeeReports';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 
@@ -122,6 +123,14 @@ function AppRoutes() {
           element={
             <AdminRoute>
               <ServiceTickets />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="employee-reports"
+          element={
+            <AdminRoute>
+              <EmployeeReports />
             </AdminRoute>
           }
         />

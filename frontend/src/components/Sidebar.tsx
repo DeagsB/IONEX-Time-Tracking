@@ -80,6 +80,11 @@ export default function Sidebar() {
               Service Tickets
             </SidebarLink>
           )}
+          {user?.role === 'ADMIN' && (
+            <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
+              Employee Reports
+            </SidebarLink>
+          )}
         </div>
 
         <div style={{ marginBottom: '30px' }}>
