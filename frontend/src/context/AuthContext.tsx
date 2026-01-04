@@ -16,6 +16,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (updates: Partial<User>) => void;
+  refreshUserProfile: () => Promise<void>;
   loading: boolean;
 }
 
@@ -205,6 +207,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSession(null);
   };
 
+  const updateUser = (updates: Partial<User>) => {
+    if (user) {
+      setUser({ ...user, ...updates });
+    }
+  };
+
+  const refreshUserProfile = async () => {
+    if (DEV_MODE && user) {
+      // In dev mode, fetch from database to get updated values
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (!error && data) {
+          setUser({
+            id: data.id,
+            email: data.email || user.email,
+            firstName: data.first_name || user.firstName,
+            lastName: data.last_name || user.lastName,
+            role: data.role || user.role,
+          });
+        }
+      } catch (error) {
+        console.error('Error refreshing user profile:', error);
+      }
+      return;
+    }
+
+    const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+    if (supabaseUser) {
+      await fetchUserProfile(supabaseUser);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -213,6 +252,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         login,
         signUp,
         logout,
+        updateUser,
+        refreshUserProfile,
         loading,
       }}
     >

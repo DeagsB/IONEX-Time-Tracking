@@ -341,6 +341,68 @@ export const formsService = {
   },
 };
 
+export const usersService = {
+  async getUserProfile(userId: string) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updateProfile(userId: string, updates: {
+    first_name?: string;
+    last_name?: string;
+    timezone?: string;
+    date_format?: string;
+    time_format?: string;
+  }) {
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updateEmail(newEmail: string) {
+    const { data, error } = await supabase.auth.updateUser({
+      email: newEmail,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updatePassword(newPassword: string) {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async verifyCurrentPassword(email: string, currentPassword: string) {
+    // Try to sign in with the current password to verify it
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    });
+
+    if (error) {
+      return false;
+    }
+    return true;
+  },
+};
+
 export const reportsService = {
   async getEmployeeReport(startDate: string, endDate: string) {
     const { data, error } = await supabase
