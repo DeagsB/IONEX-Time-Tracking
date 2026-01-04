@@ -70,11 +70,6 @@ export default function Sidebar() {
           <SidebarLink to="/payroll" active={isActive('/payroll')}>
             Payroll
           </SidebarLink>
-          {!isDemoMode && (
-            <SidebarLink to="/approvals" active={isActive('/approvals')}>
-              Approvals
-            </SidebarLink>
-          )}
           {user?.role === 'ADMIN' && (
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
               Service Tickets
@@ -111,14 +106,6 @@ export default function Sidebar() {
                 Members
               </SidebarLink>
             </>
-          )}
-          <SidebarLink to="/time-entries" active={isActive('/time-entries')}>
-            Timesheet
-          </SidebarLink>
-          {!isDemoMode && (
-            <SidebarLink to="/forms" active={isActive('/forms')}>
-              Forms
-            </SidebarLink>
           )}
         </div>
 
