@@ -190,11 +190,18 @@ export default function EmployeeReports() {
         alignItems: 'center'
       }}>
         {/* Time Period Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Period:</label>
           <select
             value={selectedPeriod}
-            onChange={(e) => setSelectedPeriod(e.target.value)}
+            onChange={(e) => {
+              setSelectedPeriod(e.target.value);
+              // Reset custom dates when switching away from Custom Range
+              if (e.target.value !== 'Custom Range') {
+                setCustomStartDate('');
+                setCustomEndDate('');
+              }
+            }}
             style={{
               padding: '8px 12px',
               borderRadius: '6px',
@@ -209,6 +216,41 @@ export default function EmployeeReports() {
               <option key={preset.label} value={preset.label}>{preset.label}</option>
             ))}
           </select>
+          
+          {/* Custom Date Range Inputs */}
+          {selectedPeriod === 'Custom Range' && (
+            <>
+              <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>From:</label>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  fontSize: '13px'
+                }}
+              />
+              <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>To:</label>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                min={customStartDate}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-primary)',
+                  color: 'var(--text-primary)',
+                  fontSize: '13px'
+                }}
+              />
+            </>
+          )}
         </div>
 
         {/* Employee Filter */}
