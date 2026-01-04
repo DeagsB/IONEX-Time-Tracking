@@ -10,11 +10,17 @@ interface User {
   role: 'ADMIN' | 'USER';
 }
 
+interface SignUpResult {
+  user: SupabaseUser | null;
+  session: Session | null;
+  needsEmailConfirmation: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   login: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
+  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<SignUpResult>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
   refreshUserProfile: () => Promise<void>;
@@ -173,13 +179,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signUp = async (email: string, password: string, firstName: string, lastName: string) => {
+  const signUp = async (email: string, password: string, firstName: string, lastName: string): Promise<SignUpResult> => {
     if (DEV_MODE) {
       console.log('🔧 DEV MODE: SignUp bypassed');
-      return;
+      return {
+        user: null,
+        session: null,
+        needsEmailConfirmation: false,
+      };
     }
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -192,8 +202,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     if (error) throw error;
-    // Note: Supabase requires email confirmation by default
-    // User profile will be created automatically via trigger
+    
+    // Return data to check if email confirmation is required
+    return {
+      user: data.user,
+      session: data.session,
+      needsEmailConfirmation: !data.session && !!data.user, // If user exists but no session, email confirmation is needed
+    };
   };
 
   const logout = async () => {

@@ -31,8 +31,25 @@ export default function Login() {
 
     try {
       if (isSignUp) {
-        await signUp(email, password, firstName, lastName);
-        setSuccess('Account created successfully! Please check your email to confirm your account before logging in.');
+        const result = await signUp(email, password, firstName, lastName);
+        
+        if (result.needsEmailConfirmation) {
+          setSuccess(
+            'Account created! Please check your email (including spam folder) for a confirmation link. ' +
+            'Click the link to activate your account, then you can log in. ' +
+            'If you don\'t receive the email within a few minutes, check your spam folder or contact support.'
+          );
+        } else if (result.session) {
+          // Email confirmation disabled - user is automatically logged in
+          setSuccess('Account created successfully! Redirecting...');
+          setTimeout(() => {
+            navigate('/calendar');
+          }, 1000);
+          return;
+        } else {
+          setSuccess('Account created successfully! Please check your email to confirm your account.');
+        }
+        
         // Reset form
         setEmail('');
         setPassword('');
@@ -45,7 +62,17 @@ export default function Login() {
       }
     } catch (err: any) {
       console.error('❌ Authentication error:', err);
-      const errorMessage = err.message || (isSignUp ? 'Sign up failed' : 'Login failed');
+      let errorMessage = err.message || (isSignUp ? 'Sign up failed' : 'Login failed');
+      
+      // Provide more helpful error messages
+      if (err.message?.includes('already registered')) {
+        errorMessage = 'This email is already registered. Please log in instead.';
+      } else if (err.message?.includes('email')) {
+        errorMessage = 'Invalid email address. Please check and try again.';
+      } else if (err.message?.includes('password')) {
+        errorMessage = 'Password must be at least 6 characters long.';
+      }
+      
       setError(errorMessage);
     } finally {
       setLoading(false);
