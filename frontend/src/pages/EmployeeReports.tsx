@@ -101,10 +101,15 @@ export default function EmployeeReports() {
     if (employees && employees.length > 0) {
       console.log('Sample Employee:', employees[0]);
       console.log('Employee user_ids:', employees.map((e: any) => e.user_id));
+      console.log('Employee user object:', employees[0]?.user);
     }
     if (timeEntries && timeEntries.length > 0) {
       console.log('Sample Time Entry:', timeEntries[0]);
       console.log('Time Entry user_ids:', timeEntries.map((e: any) => e.user_id));
+      console.log('Time Entry user object:', timeEntries[0]?.user);
+      console.log('Time Entry dates:', timeEntries.map((e: any) => e.date));
+    } else if (!loadingEntries && timeEntries !== undefined) {
+      console.log('No time entries found for date range:', { startDate, endDate });
     }
   }, [employees, timeEntries, loadingEmployees, loadingEntries, employeesError, entriesError, startDate, endDate]);
 

@@ -395,15 +395,15 @@ export function aggregateAllEmployees(
     employeesCount: employees?.length || 0 
   });
   
-  if (!entries || entries.length === 0) {
-    console.log('No entries provided, returning metrics for all employees with zero hours');
-    // Return all employees with zero metrics
-    return employees.map(employee => aggregateEmployeeMetrics([], employee));
-  }
-  
   if (!employees || employees.length === 0) {
     console.log('No employees provided, returning empty array');
     return [];
+  }
+  
+  // If no entries, return all employees with zero metrics
+  if (!entries || entries.length === 0) {
+    console.log('No entries provided, returning metrics for all employees with zero hours');
+    return employees.map(employee => aggregateEmployeeMetrics([], employee));
   }
   
   // Group entries by user_id
@@ -412,7 +412,7 @@ export function aggregateAllEmployees(
   entries.forEach(entry => {
     const userId = entry.user_id;
     if (!userId) {
-      console.warn('Entry missing user_id:', entry);
+      console.warn('Entry missing user_id:', entry.id, entry);
       return;
     }
     if (!entriesByUser.has(userId)) {
@@ -423,6 +423,8 @@ export function aggregateAllEmployees(
 
   console.log('Entries grouped by user_id:', Array.from(entriesByUser.keys()));
   console.log('Employee user_ids:', employees.map(e => e.user_id));
+  console.log('Sample entry user_id:', entries[0]?.user_id);
+  console.log('Sample entry:', entries[0]);
 
   // Create metrics for each employee
   const employeeMetrics: EmployeeMetrics[] = [];
@@ -430,15 +432,19 @@ export function aggregateAllEmployees(
   // Process employees with entries
   entriesByUser.forEach((userEntries, userId) => {
     const employee = employees.find(e => e.user_id === userId);
-    console.log(`Processing entries for userId ${userId}, found employee:`, !!employee);
-    const metrics = aggregateEmployeeMetrics(userEntries, employee);
-    employeeMetrics.push(metrics);
+    console.log(`Processing entries for userId ${userId}, found employee:`, !!employee, 'entries count:', userEntries.length);
+    if (employee) {
+      const metrics = aggregateEmployeeMetrics(userEntries, employee);
+      employeeMetrics.push(metrics);
+    } else {
+      console.warn(`No employee found for userId ${userId}, but has ${userEntries.length} entries`);
+    }
   });
 
   // Add employees with no entries (with zero metrics)
   employees.forEach(employee => {
     if (!entriesByUser.has(employee.user_id)) {
-      console.log(`Adding employee with no entries: ${employee.user_id}`);
+      console.log(`Adding employee with no entries: ${employee.user_id} (${employee.user?.first_name} ${employee.user?.last_name})`);
       employeeMetrics.push(aggregateEmployeeMetrics([], employee));
     }
   });
