@@ -155,7 +155,21 @@ export default function Projects() {
               )}
               {projects?.map((project: any) => (
                 <tr key={project.id}>
-                  <td>{project.name}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div
+                        style={{
+                          backgroundColor: project.color || '#4ecdc4',
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '4px',
+                          flexShrink: 0,
+                          border: '1px solid rgba(0, 0, 0, 0.1)',
+                        }}
+                      />
+                      <span>{project.name}</span>
+                    </div>
+                  </td>
                   <td>{project.customer?.name || '-'}</td>
                   <td>{project.status}</td>
                 </tr>
@@ -332,7 +346,21 @@ export default function Projects() {
             {projects?.map((project: any) => (
               <tr key={project.id}>
                 <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{project.project_number || '-'}</td>
-                <td>{project.name}</td>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div
+                      style={{
+                        backgroundColor: project.color || '#4ecdc4',
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '4px',
+                        flexShrink: 0,
+                        border: '1px solid rgba(0, 0, 0, 0.1)',
+                      }}
+                    />
+                    <span>{project.name}</span>
+                  </div>
+                </td>
                 <td>{project.customer?.name || '-'}</td>
                 <td>{project.status}</td>
                 <td>
