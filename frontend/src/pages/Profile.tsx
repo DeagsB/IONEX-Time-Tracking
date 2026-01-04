@@ -5,7 +5,7 @@ import { usersService } from '../services/supabaseServices';
 
 // Common timezone options
 const TIMEZONE_OPTIONS = [
-  { value: 'America/Edmonton', label: 'Mountain Time (Edmonton)' },
+  { value: 'America/Edmonton', label: 'Mountain Time (Calgary)' },
   { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
   { value: 'America/Toronto', label: 'Eastern Time (Toronto)' },
   { value: 'America/Winnipeg', label: 'Central Time (Winnipeg)' },
