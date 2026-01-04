@@ -388,10 +388,14 @@ export const reportsService = {
         *,
         user:users(id, first_name, last_name, email)
       `)
-      .or('status.eq.active,status.is.null');
+      .order('employee_id');
 
-    if (error) throw error;
-    return data;
+    if (error) {
+      console.error('Error fetching employees:', error);
+      throw error;
+    }
+    console.log('Fetched employees:', data?.length || 0);
+    return data || [];
   },
 
   // Get time entries grouped by rate type for an employee
