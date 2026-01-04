@@ -388,7 +388,7 @@ export const reportsService = {
         *,
         user:users(id, first_name, last_name, email)
       `)
-      .eq('status', 'active');
+      .or('status.eq.active,status.is.null');
 
     if (error) throw error;
     return data;

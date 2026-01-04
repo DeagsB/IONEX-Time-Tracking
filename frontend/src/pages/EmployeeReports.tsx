@@ -72,7 +72,11 @@ export default function EmployeeReports() {
 
   // Aggregate employee metrics
   const employeeMetrics = useMemo(() => {
-    if (!timeEntries || !employees) return [];
+    if (!timeEntries || !employees) {
+      console.log('Missing data:', { timeEntries: !!timeEntries, employees: !!employees, timeEntriesCount: timeEntries?.length, employeesCount: employees?.length });
+      return [];
+    }
+    console.log('Aggregating metrics:', { timeEntriesCount: timeEntries.length, employeesCount: employees.length });
     return aggregateAllEmployees(timeEntries, employees);
   }, [timeEntries, employees]);
 
