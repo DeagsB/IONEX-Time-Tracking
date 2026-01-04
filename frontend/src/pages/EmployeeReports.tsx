@@ -163,9 +163,11 @@ export default function EmployeeReports() {
         totalHours: acc.totalHours + m.totalHours,
         billableHours: acc.billableHours + m.billableHours,
         totalRevenue: acc.totalRevenue + m.totalRevenue,
+        totalCost: acc.totalCost + m.totalCost,
+        netProfit: acc.netProfit + m.netProfit,
         serviceTicketCount: acc.serviceTicketCount + m.serviceTicketCount,
       }),
-      { totalHours: 0, billableHours: 0, totalRevenue: 0, serviceTicketCount: 0 }
+      { totalHours: 0, billableHours: 0, totalRevenue: 0, totalCost: 0, netProfit: 0, serviceTicketCount: 0 }
     );
   }, [sortedMetrics]);
 
@@ -409,6 +411,33 @@ export default function EmployeeReports() {
         </div>
         <div className="card" style={{ padding: '16px' }}>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
+            Total Cost
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '600', color: '#dc3545' }}>
+            {formatCurrency(totals.totalCost)}
+          </div>
+        </div>
+        <div className="card" style={{ padding: '16px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
+            Net Profit
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '600', color: totals.netProfit >= 0 ? '#28a745' : '#dc3545' }}>
+            {formatCurrency(totals.netProfit)}
+          </div>
+        </div>
+        <div className="card" style={{ padding: '16px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
+            Profit Margin
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '600', color: totals.totalRevenue > 0 && (totals.netProfit / totals.totalRevenue) >= 0 ? '#28a745' : '#dc3545' }}>
+            {totals.totalRevenue > 0 
+              ? formatPercentage((totals.netProfit / totals.totalRevenue) * 100)
+              : '0%'
+            }
+          </div>
+        </div>
+        <div className="card" style={{ padding: '16px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
             Avg Efficiency
           </div>
           <div style={{ fontSize: '24px', fontWeight: '600' }}>
@@ -464,6 +493,24 @@ export default function EmployeeReports() {
                   Revenue {sortField === 'totalRevenue' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
                 <th 
+                  onClick={() => handleSort('totalCost')}
+                  style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
+                >
+                  Cost {sortField === 'totalCost' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th 
+                  onClick={() => handleSort('netProfit')}
+                  style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
+                >
+                  Net Profit {sortField === 'netProfit' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th 
+                  onClick={() => handleSort('profitMargin')}
+                  style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
+                >
+                  Profit Margin {sortField === 'profitMargin' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th 
                   onClick={() => handleSort('averageRate')}
                   style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
                 >
@@ -481,7 +528,7 @@ export default function EmployeeReports() {
             <tbody>
               {sortedMetrics.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={11} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                     No employee data for this period
                   </td>
                 </tr>
@@ -678,8 +725,30 @@ export default function EmployeeReports() {
                     <div style={{ fontSize: '18px', fontWeight: '600', color: '#28a745' }}>{formatCurrency(metrics.totalRevenue)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Avg Rate</div>
-                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatCurrency(metrics.averageRate)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cost</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600', color: '#dc3545' }}>{formatCurrency(metrics.totalCost)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Net Profit</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600', color: metrics.netProfit >= 0 ? '#28a745' : '#dc3545' }}>
+                      {formatCurrency(metrics.netProfit)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Profit Margin</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600', color: metrics.profitMargin >= 0 ? '#28a745' : '#dc3545' }}>
+                      {formatPercentage(metrics.profitMargin)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Revenue/Hour</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatCurrency(metrics.revenuePerHour)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Profit/Hour</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600', color: metrics.profitPerHour >= 0 ? '#28a745' : '#dc3545' }}>
+                      {formatCurrency(metrics.profitPerHour)}
+                    </div>
                   </div>
                 </div>
 

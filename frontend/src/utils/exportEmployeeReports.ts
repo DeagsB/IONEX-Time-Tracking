@@ -50,18 +50,30 @@ export async function exportEmployeeReportsToExcel(
   summarySheet.getCell('B7').value = totals.totalRevenue;
   summarySheet.getCell('B7').numFmt = '"$"#,##0.00';
 
-  summarySheet.getCell('A8').value = 'Service Tickets:';
-  summarySheet.getCell('B8').value = totals.serviceTicketCount;
+  summarySheet.getCell('A8').value = 'Total Cost:';
+  summarySheet.getCell('B8').value = totals.totalCost;
+  summarySheet.getCell('B8').numFmt = '"$"#,##0.00';
 
-  summarySheet.getCell('A9').value = 'Avg Efficiency:';
-  summarySheet.getCell('B9').value = totals.totalHours > 0 
+  summarySheet.getCell('A9').value = 'Net Profit:';
+  summarySheet.getCell('B9').value = totals.netProfit;
+  summarySheet.getCell('B9').numFmt = '"$"#,##0.00';
+
+  summarySheet.getCell('A10').value = 'Profit Margin:';
+  summarySheet.getCell('B10').value = totals.totalRevenue > 0 ? (totals.netProfit / totals.totalRevenue) * 100 : 0;
+  summarySheet.getCell('B10').numFmt = '0.00%';
+
+  summarySheet.getCell('A11').value = 'Service Tickets:';
+  summarySheet.getCell('B11').value = totals.serviceTicketCount;
+
+  summarySheet.getCell('A12').value = 'Avg Efficiency:';
+  summarySheet.getCell('B12').value = totals.totalHours > 0 
     ? (totals.billableHours / totals.totalHours) * 100 
     : 0;
-  summarySheet.getCell('B9').numFmt = '0.0"%"';
+  summarySheet.getCell('B12').numFmt = '0.0"%";
 
-  // Employee details header (row 11)
-  const headerRow = 11;
-  const headers = ['Employee', 'Position', 'Total Hours', 'Billable Hours', 'Non-Billable', 'Efficiency', 'Revenue', 'Avg Rate', 'Tickets'];
+  // Employee details header (row 13)
+  const headerRow = 13;
+  const headers = ['Employee', 'Position', 'Total Hours', 'Billable Hours', 'Non-Billable', 'Efficiency', 'Revenue', 'Cost', 'Net Profit', 'Profit Margin', 'Avg Rate', 'Tickets'];
   headers.forEach((header, index) => {
     const cell = summarySheet.getCell(headerRow, index + 1);
     cell.value = header;
@@ -92,12 +104,18 @@ export async function exportEmployeeReportsToExcel(
     summarySheet.getCell(rowNum, 6).numFmt = '0.0%';
     summarySheet.getCell(rowNum, 7).value = emp.totalRevenue;
     summarySheet.getCell(rowNum, 7).numFmt = '"$"#,##0.00';
-    summarySheet.getCell(rowNum, 8).value = emp.averageRate;
+    summarySheet.getCell(rowNum, 8).value = emp.totalCost;
     summarySheet.getCell(rowNum, 8).numFmt = '"$"#,##0.00';
-    summarySheet.getCell(rowNum, 9).value = emp.serviceTicketCount;
+    summarySheet.getCell(rowNum, 9).value = emp.netProfit;
+    summarySheet.getCell(rowNum, 9).numFmt = '"$"#,##0.00';
+    summarySheet.getCell(rowNum, 10).value = emp.profitMargin / 100;
+    summarySheet.getCell(rowNum, 10).numFmt = '0.00%';
+    summarySheet.getCell(rowNum, 11).value = emp.averageRate;
+    summarySheet.getCell(rowNum, 11).numFmt = '"$"#,##0.00';
+    summarySheet.getCell(rowNum, 12).value = emp.serviceTicketCount;
 
     // Add borders
-    for (let col = 1; col <= 9; col++) {
+    for (let col = 1; col <= 12; col++) {
       summarySheet.getCell(rowNum, col).border = {
         top: { style: 'thin' },
         bottom: { style: 'thin' },

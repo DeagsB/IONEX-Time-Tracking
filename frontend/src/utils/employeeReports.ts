@@ -34,11 +34,17 @@ export interface EmployeeWithRates {
   department?: string;
   position?: string;
   status?: string;
+  // Billable rates (what customers are charged)
   rt_rate?: number;
   tt_rate?: number;
   ft_rate?: number;
   shop_ot_rate?: number;
   field_ot_rate?: number;
+  // Pay rates (what employee gets paid)
+  shop_pay_rate?: number;
+  field_pay_rate?: number;
+  shop_ot_pay_rate?: number;
+  field_ot_pay_rate?: number;
   user?: {
     id: string;
     first_name?: string;
@@ -58,7 +64,13 @@ export interface EmployeeMetrics {
   nonBillableHours: number;
   billableRatio: number;
   totalRevenue: number;
+  totalCost: number; // Total internal cost (pay rates * hours)
+  netProfit: number; // Revenue - Cost
+  profitMargin: number; // (Net Profit / Revenue) * 100
   averageRate: number;
+  averageCostPerHour: number; // Average pay rate
+  revenuePerHour: number; // Revenue / Total Hours
+  profitPerHour: number; // Net Profit / Total Hours
   serviceTicketCount: number;
   efficiency: number;
   rateTypeBreakdown: RateTypeBreakdown;
@@ -68,11 +80,11 @@ export interface EmployeeMetrics {
 }
 
 export interface RateTypeBreakdown {
-  shopTime: { hours: number; revenue: number };
-  fieldTime: { hours: number; revenue: number };
-  travelTime: { hours: number; revenue: number };
-  shopOvertime: { hours: number; revenue: number };
-  fieldOvertime: { hours: number; revenue: number };
+  shopTime: { hours: number; revenue: number; cost: number; profit: number };
+  fieldTime: { hours: number; revenue: number; cost: number; profit: number };
+  travelTime: { hours: number; revenue: number; cost: number; profit: number };
+  shopOvertime: { hours: number; revenue: number; cost: number; profit: number };
+  fieldOvertime: { hours: number; revenue: number; cost: number; profit: number };
 }
 
 export interface ProjectBreakdown {
@@ -124,15 +136,21 @@ export function aggregateEmployeeMetrics(
       nonBillableHours: 0,
       billableRatio: 0,
       totalRevenue: 0,
+      totalCost: 0,
+      netProfit: 0,
+      profitMargin: 0,
       averageRate: 0,
+      averageCostPerHour: 0,
+      revenuePerHour: 0,
+      profitPerHour: 0,
       serviceTicketCount: 0,
       efficiency: 0,
       rateTypeBreakdown: {
-        shopTime: { hours: 0, revenue: 0 },
-        fieldTime: { hours: 0, revenue: 0 },
-        travelTime: { hours: 0, revenue: 0 },
-        shopOvertime: { hours: 0, revenue: 0 },
-        fieldOvertime: { hours: 0, revenue: 0 },
+        shopTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
+        fieldTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
+        travelTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
+        shopOvertime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
+        fieldOvertime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
       },
       projectBreakdown: [],
       customerBreakdown: [],
@@ -175,8 +193,40 @@ export function aggregateEmployeeMetrics(
   });
   const serviceTicketCount = ticketKeys.size;
 
-  // Rate type breakdown
-  const rateTypeBreakdown = calculateRateTypeBreakdown(entries);
+  // Rate type breakdown (includes cost and profit calculations)
+  const rateTypeBreakdown = calculateRateTypeBreakdown(entries, employee);
+
+  // Calculate total cost based on pay rates
+  let totalCost = 0;
+  entries.forEach(entry => {
+    const hours = Number(entry.hours) || 0;
+    const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+    
+    // Determine pay rate based on rate type
+    let payRate = 0;
+    if (rateType.includes('shop') && rateType.includes('overtime')) {
+      payRate = employee?.shop_ot_pay_rate || 0;
+    } else if (rateType.includes('field') && rateType.includes('overtime')) {
+      payRate = employee?.field_ot_pay_rate || 0;
+    } else if (rateType.includes('field')) {
+      payRate = employee?.field_pay_rate || 0;
+    } else if (rateType.includes('travel')) {
+      // Travel time is paid at shop rate
+      payRate = employee?.shop_pay_rate || 0;
+    } else {
+      // Default to shop time
+      payRate = employee?.shop_pay_rate || 0;
+    }
+    
+    totalCost += hours * payRate;
+  });
+
+  // Calculate profit metrics
+  const netProfit = totalRevenue - totalCost;
+  const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  const averageCostPerHour = totalHours > 0 ? totalCost / totalHours : 0;
+  const revenuePerHour = totalHours > 0 ? totalRevenue / totalHours : 0;
+  const profitPerHour = totalHours > 0 ? netProfit / totalHours : 0;
 
   // Project breakdown
   const projectBreakdown = calculateProjectBreakdown(entries);
@@ -202,7 +252,13 @@ export function aggregateEmployeeMetrics(
     nonBillableHours,
     billableRatio,
     totalRevenue,
+    totalCost,
+    netProfit,
+    profitMargin,
     averageRate,
+    averageCostPerHour,
+    revenuePerHour,
+    profitPerHour,
     serviceTicketCount,
     efficiency,
     rateTypeBreakdown,
@@ -212,14 +268,17 @@ export function aggregateEmployeeMetrics(
   };
 }
 
-// Calculate breakdown by rate type
-export function calculateRateTypeBreakdown(entries: TimeEntry[]): RateTypeBreakdown {
+// Calculate breakdown by rate type (includes cost and profit)
+export function calculateRateTypeBreakdown(
+  entries: TimeEntry[],
+  employee?: EmployeeWithRates
+): RateTypeBreakdown {
   const breakdown: RateTypeBreakdown = {
-    shopTime: { hours: 0, revenue: 0 },
-    fieldTime: { hours: 0, revenue: 0 },
-    travelTime: { hours: 0, revenue: 0 },
-    shopOvertime: { hours: 0, revenue: 0 },
-    fieldOvertime: { hours: 0, revenue: 0 },
+    shopTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
+    fieldTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
+    travelTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
+    shopOvertime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
+    fieldOvertime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
   };
 
   entries.forEach(entry => {
@@ -228,22 +287,51 @@ export function calculateRateTypeBreakdown(entries: TimeEntry[]): RateTypeBreakd
     const revenue = entry.billable ? hours * rate : 0;
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
 
+    // Determine pay rate based on rate type
+    let payRate = 0;
+    if (rateType.includes('shop') && rateType.includes('overtime')) {
+      payRate = employee?.shop_ot_pay_rate || 0;
+    } else if (rateType.includes('field') && rateType.includes('overtime')) {
+      payRate = employee?.field_ot_pay_rate || 0;
+    } else if (rateType.includes('field')) {
+      payRate = employee?.field_pay_rate || 0;
+    } else if (rateType.includes('travel')) {
+      // Travel time is paid at shop rate
+      payRate = employee?.shop_pay_rate || 0;
+    } else {
+      // Default to shop time
+      payRate = employee?.shop_pay_rate || 0;
+    }
+
+    const cost = hours * payRate;
+    const profit = revenue - cost;
+
     if (rateType.includes('shop') && rateType.includes('overtime')) {
       breakdown.shopOvertime.hours += hours;
       breakdown.shopOvertime.revenue += revenue;
+      breakdown.shopOvertime.cost += cost;
+      breakdown.shopOvertime.profit += profit;
     } else if (rateType.includes('field') && rateType.includes('overtime')) {
       breakdown.fieldOvertime.hours += hours;
       breakdown.fieldOvertime.revenue += revenue;
+      breakdown.fieldOvertime.cost += cost;
+      breakdown.fieldOvertime.profit += profit;
     } else if (rateType.includes('field')) {
       breakdown.fieldTime.hours += hours;
       breakdown.fieldTime.revenue += revenue;
+      breakdown.fieldTime.cost += cost;
+      breakdown.fieldTime.profit += profit;
     } else if (rateType.includes('travel')) {
       breakdown.travelTime.hours += hours;
       breakdown.travelTime.revenue += revenue;
+      breakdown.travelTime.cost += cost;
+      breakdown.travelTime.profit += profit;
     } else {
       // Default to shop time
       breakdown.shopTime.hours += hours;
       breakdown.shopTime.revenue += revenue;
+      breakdown.shopTime.cost += cost;
+      breakdown.shopTime.profit += profit;
     }
   });
 
