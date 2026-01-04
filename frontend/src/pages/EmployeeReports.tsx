@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { reportsService } from '../services/supabaseServices';
 import {
   aggregateAllEmployees,
+  aggregateEmployeeMetrics,
   getTimePeriodPresets,
   formatCurrency,
   formatHours,
@@ -567,7 +568,7 @@ export default function EmployeeReports() {
                                 Top Projects
                               </h4>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {metrics.projectBreakdown.slice(0, 5).map(proj => (
+                                {metrics.projectBreakdown.slice(0, 5).map((proj: any) => (
                                   <div key={proj.projectId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}>
                                       {proj.projectName}
@@ -587,7 +588,7 @@ export default function EmployeeReports() {
                                 Top Customers
                               </h4>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {metrics.customerBreakdown.slice(0, 5).map(cust => (
+                                {metrics.customerBreakdown.slice(0, 5).map((cust: any) => (
                                   <div key={cust.customerId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}>
                                       {cust.customerName}
@@ -741,7 +742,7 @@ export default function EmployeeReports() {
                       <div style={{ marginBottom: '16px' }}>
                         <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '600' }}>Top Projects</h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {metrics.projectBreakdown.slice(0, 3).map(proj => (
+                          {metrics.projectBreakdown.slice(0, 3).map((proj: any) => (
                             <div key={proj.projectId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
                                 {proj.projectName}
@@ -758,7 +759,7 @@ export default function EmployeeReports() {
                       <div>
                         <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '600' }}>Top Customers</h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {metrics.customerBreakdown.slice(0, 3).map(cust => (
+                          {metrics.customerBreakdown.slice(0, 3).map((cust: any) => (
                             <div key={cust.customerId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
                                 {cust.customerName}
