@@ -198,7 +198,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = async () => {
     if (DEV_MODE) {
-      console.log('🔧 DEV MODE: Logout bypassed');
+      console.log('🔧 DEV MODE: Logout - clearing user state');
+      // In dev mode, still clear the user state so logout works
+      setUser(null);
+      setSession(null);
       return;
     }
 
