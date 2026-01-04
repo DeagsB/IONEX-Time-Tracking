@@ -403,6 +403,21 @@ export const reportsService = {
       throw error;
     }
     console.log('Fetched employees:', data?.length || 0);
+    
+    // Debug: Log first employee to check pay rates
+    if (data && data.length > 0) {
+      console.log('Sample employee data:', {
+        id: data[0].id,
+        user_id: data[0].user_id,
+        employee_id: data[0].employee_id,
+        shop_pay_rate: data[0].shop_pay_rate,
+        field_pay_rate: data[0].field_pay_rate,
+        shop_ot_pay_rate: data[0].shop_ot_pay_rate,
+        field_ot_pay_rate: data[0].field_ot_pay_rate,
+        allKeys: Object.keys(data[0]),
+      });
+    }
+    
     return data || [];
   },
 
