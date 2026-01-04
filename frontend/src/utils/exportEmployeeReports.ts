@@ -69,7 +69,7 @@ export async function exportEmployeeReportsToExcel(
   summarySheet.getCell('B12').value = totals.totalHours > 0 
     ? (totals.billableHours / totals.totalHours) * 100 
     : 0;
-  summarySheet.getCell('B12').numFmt = '0.0"%";
+  summarySheet.getCell('B12').numFmt = '0.0"%';
 
   // Employee details header (row 13)
   const headerRow = 13;
