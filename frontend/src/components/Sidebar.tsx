@@ -1,12 +1,22 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 
 export default function Sidebar() {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { isDemoMode } = useDemoMode();
+  const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
+
+  const handleSignOut = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   return (
     <div style={{
@@ -127,6 +137,48 @@ export default function Sidebar() {
             </SidebarLink>
           </div>
         )}
+      </div>
+
+      {/* Sign Out Button at Bottom */}
+      <div style={{
+        position: 'absolute',
+        bottom: '24px',
+        left: '0',
+        right: '0',
+        padding: '0 15px'
+      }}>
+        <button
+          onClick={handleSignOut}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            backgroundColor: 'transparent',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            color: 'var(--text-primary)',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+            e.currentTarget.style.borderColor = 'var(--error-color)';
+            e.currentTarget.style.color = 'var(--error-color)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.borderColor = 'var(--border-color)';
+            e.currentTarget.style.color = 'var(--text-primary)';
+          }}
+        >
+          <span>🚪</span>
+          <span>Sign Out</span>
+        </button>
       </div>
     </div>
   );
