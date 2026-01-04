@@ -11,7 +11,7 @@ import {
 // Export employee reports to Excel
 export async function exportEmployeeReportsToExcel(
   employees: EmployeeMetrics[],
-  totals: { totalHours: number; billableHours: number; totalRevenue: number; serviceTicketCount: number },
+  totals: { totalHours: number; billableHours: number; totalRevenue: number; totalCost: number; netProfit: number; serviceTicketCount: number },
   periodLabel: string,
   filename: string = 'employee-reports'
 ): Promise<void> {
@@ -255,7 +255,7 @@ export async function exportEmployeeReportsToExcel(
 // Export employee reports to PDF
 export async function exportEmployeeReportsToPDF(
   employees: EmployeeMetrics[],
-  totals: { totalHours: number; billableHours: number; totalRevenue: number; serviceTicketCount: number },
+  totals: { totalHours: number; billableHours: number; totalRevenue: number; totalCost: number; netProfit: number; serviceTicketCount: number },
   periodLabel: string,
   filename: string = 'employee-reports'
 ): Promise<void> {
