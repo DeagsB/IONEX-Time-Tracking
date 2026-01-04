@@ -453,6 +453,42 @@ export function getTimePeriodPresets(): { label: string; getValue: () => { start
       },
     },
     {
+      label: 'Last Month',
+      getValue: () => {
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth(), 0);
+        return {
+          startDate: firstDay.toISOString().split('T')[0],
+          endDate: lastDay.toISOString().split('T')[0],
+        };
+      },
+    },
+    {
+      label: '2 Months Ago',
+      getValue: () => {
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() - 1, 0);
+        return {
+          startDate: firstDay.toISOString().split('T')[0],
+          endDate: lastDay.toISOString().split('T')[0],
+        };
+      },
+    },
+    {
+      label: '3 Months Ago',
+      getValue: () => {
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() - 2, 0);
+        return {
+          startDate: firstDay.toISOString().split('T')[0],
+          endDate: lastDay.toISOString().split('T')[0],
+        };
+      },
+    },
+    {
       label: 'This Quarter',
       getValue: () => {
         const today = new Date();
@@ -466,11 +502,51 @@ export function getTimePeriodPresets(): { label: string; getValue: () => { start
       },
     },
     {
+      label: 'Last Quarter',
+      getValue: () => {
+        const today = new Date();
+        const quarter = Math.floor(today.getMonth() / 3);
+        const prevQuarter = quarter === 0 ? 3 : quarter - 1;
+        const prevQuarterYear = quarter === 0 ? today.getFullYear() - 1 : today.getFullYear();
+        const firstDay = new Date(prevQuarterYear, prevQuarter * 3, 1);
+        const lastDay = new Date(prevQuarterYear, prevQuarter * 3 + 3, 0);
+        return {
+          startDate: firstDay.toISOString().split('T')[0],
+          endDate: lastDay.toISOString().split('T')[0],
+        };
+      },
+    },
+    {
       label: 'This Year',
       getValue: () => {
         const today = new Date();
         const firstDay = new Date(today.getFullYear(), 0, 1);
         const lastDay = new Date(today.getFullYear(), 11, 31);
+        return {
+          startDate: firstDay.toISOString().split('T')[0],
+          endDate: lastDay.toISOString().split('T')[0],
+        };
+      },
+    },
+    {
+      label: 'Last Year',
+      getValue: () => {
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear() - 1, 0, 1);
+        const lastDay = new Date(today.getFullYear() - 1, 11, 31);
+        return {
+          startDate: firstDay.toISOString().split('T')[0],
+          endDate: lastDay.toISOString().split('T')[0],
+        };
+      },
+    },
+    {
+      label: 'Custom Range',
+      getValue: () => {
+        // This will be handled by the component
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         return {
           startDate: firstDay.toISOString().split('T')[0],
           endDate: lastDay.toISOString().split('T')[0],

@@ -25,11 +25,32 @@ export default function EmployeeReports() {
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const [sortField, setSortField] = useState<keyof EmployeeMetrics>('totalHours');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
 
   // Get time period dates
   const periodPresets = getTimePeriodPresets();
   const currentPeriod = periodPresets.find(p => p.label === selectedPeriod) || periodPresets[2];
-  const { startDate, endDate } = currentPeriod.getValue();
+  
+  // Use custom dates if Custom Range is selected, otherwise use preset
+  const getDateRange = () => {
+    if (selectedPeriod === 'Custom Range') {
+      if (customStartDate && customEndDate) {
+        return { startDate: customStartDate, endDate: customEndDate };
+      }
+      // Default to current month if custom dates not set
+      const today = new Date();
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      return {
+        startDate: firstDay.toISOString().split('T')[0],
+        endDate: lastDay.toISOString().split('T')[0],
+      };
+    }
+    return currentPeriod.getValue();
+  };
+
+  const { startDate, endDate } = getDateRange();
 
   // Fetch employees with rates
   const { data: employees, isLoading: loadingEmployees } = useQuery({
