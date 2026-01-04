@@ -109,15 +109,23 @@ export default function EmployeeReports() {
 
   // Aggregate employee metrics
   const employeeMetrics = useMemo(() => {
-    if (!timeEntries || !employees) {
-      console.log('Missing data:', { timeEntries: !!timeEntries, employees: !!employees, timeEntriesCount: timeEntries?.length, employeesCount: employees?.length });
+    // Show employees even if time entries are still loading or empty
+    if (!employees) {
+      console.log('No employees data');
       return [];
     }
+    
+    // If time entries are still loading, show employees with zero metrics
+    if (loadingEntries || !timeEntries) {
+      console.log('Time entries still loading or undefined, showing employees with zero metrics');
+      return employees.map((emp: any) => aggregateEmployeeMetrics([], emp));
+    }
+    
     console.log('Aggregating metrics:', { timeEntriesCount: timeEntries.length, employeesCount: employees.length });
     const metrics = aggregateAllEmployees(timeEntries, employees);
     console.log('Aggregated metrics:', metrics);
     return metrics;
-  }, [timeEntries, employees]);
+  }, [timeEntries, employees, loadingEntries]);
 
   // Filter by selected employee if needed
   const filteredMetrics = useMemo(() => {
