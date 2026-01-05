@@ -38,7 +38,7 @@ export const useAuth = () => {
 };
 
 // Development mode - bypass authentication
-const DEV_MODE = true; // Set to false for production
+const DEV_MODE = false; // Set to false for production
 const DEV_USER_ID = '235d854a-1b7d-4e00-a5a4-43835c85c086'; // Existing user from database
 
 const DEV_USER: User = {
