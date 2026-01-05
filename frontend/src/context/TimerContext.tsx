@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { useAuth } from './AuthContext';
 
 interface TimerContextType {
   timerRunning: boolean;
@@ -22,12 +23,20 @@ export const useTimer = () => {
 };
 
 export const TimerProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerDisplay, setTimerDisplay] = useState('0:00:00');
   const [currentEntry, setCurrentEntry] = useState<{ description: string; projectId?: string; projectName?: string } | null>(null);
   const timerStartTimeRef = useRef<number | null>(null);
   const timerElapsedRef = useRef<number>(0);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
+
+  // Get user-specific localStorage key
+  const getTimerStorageKey = (userId: string | null) => {
+    if (!userId) return null;
+    return `timerState_${userId}`;
+  };
 
   // Update timer display every 100ms when running
   useEffect(() => {
@@ -54,22 +63,59 @@ export const TimerProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     };
   }, [timerRunning]);
 
-  // Load timer state from localStorage on mount
+  // Clear timer state when user changes
   useEffect(() => {
-    const saved = localStorage.getItem('timerState');
-    if (saved) {
-      const { startTime, description, projectId, projectName, elapsed } = JSON.parse(saved);
-      timerStartTimeRef.current = startTime;
-      timerElapsedRef.current = elapsed || 0;
-      setCurrentEntry({ description, projectId, projectName });
-      setTimerRunning(true);
+    // If user changed, clear the timer state
+    if (currentUserIdRef.current !== null && currentUserIdRef.current !== user?.id) {
+      console.log('🔄 TimerContext: User changed, clearing timer state');
+      setTimerRunning(false);
+      setTimerDisplay('0:00:00');
+      setCurrentEntry(null);
+      timerStartTimeRef.current = null;
+      timerElapsedRef.current = 0;
     }
-  }, []);
+    currentUserIdRef.current = user?.id || null;
+  }, [user?.id]);
 
-  // Save timer state to localStorage when it changes
+  // Load timer state from localStorage for current user
   useEffect(() => {
+    if (!user?.id) {
+      // No user logged in, clear timer
+      setTimerRunning(false);
+      setCurrentEntry(null);
+      timerStartTimeRef.current = null;
+      timerElapsedRef.current = 0;
+      return;
+    }
+
+    const storageKey = getTimerStorageKey(user.id);
+    if (!storageKey) return;
+
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        const { startTime, description, projectId, projectName, elapsed } = JSON.parse(saved);
+        timerStartTimeRef.current = startTime;
+        timerElapsedRef.current = elapsed || 0;
+        setCurrentEntry({ description, projectId, projectName });
+        setTimerRunning(true);
+        console.log('✅ TimerContext: Loaded timer state for user', user.id);
+      } catch (error) {
+        console.error('❌ TimerContext: Error loading timer state', error);
+        localStorage.removeItem(storageKey);
+      }
+    }
+  }, [user?.id]);
+
+  // Save timer state to localStorage when it changes (user-specific)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const storageKey = getTimerStorageKey(user.id);
+    if (!storageKey) return;
+
     if (timerRunning && currentEntry) {
-      localStorage.setItem('timerState', JSON.stringify({
+      localStorage.setItem(storageKey, JSON.stringify({
         startTime: timerStartTimeRef.current,
         description: currentEntry.description,
         projectId: currentEntry.projectId,
@@ -77,9 +123,9 @@ export const TimerProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         elapsed: timerElapsedRef.current,
       }));
     } else {
-      localStorage.removeItem('timerState');
+      localStorage.removeItem(storageKey);
     }
-  }, [timerRunning, currentEntry]);
+  }, [timerRunning, currentEntry, user?.id]);
 
   const startTimer = (description: string, projectId?: string) => {
     timerStartTimeRef.current = Date.now();
