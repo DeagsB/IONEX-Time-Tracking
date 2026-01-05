@@ -11,9 +11,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
   const [showBugReportModal, setShowBugReportModal] = useState(false);
-  const [bugReportTitle, setBugReportTitle] = useState('');
   const [bugReportDescription, setBugReportDescription] = useState('');
-  const [bugReportPriority, setBugReportPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [isSubmittingBug, setIsSubmittingBug] = useState(false);
 
   const handleSignOut = async () => {
@@ -26,26 +24,29 @@ export default function Sidebar() {
   };
 
   const handleSubmitBugReport = async () => {
-    if (!bugReportTitle.trim() || !bugReportDescription.trim()) {
-      alert('Please fill in both title and description.');
+    if (!bugReportDescription.trim()) {
+      alert('Please describe the issue.');
       return;
     }
 
     setIsSubmittingBug(true);
     try {
+      // Auto-generate title from first line or first 50 characters
+      const description = bugReportDescription.trim();
+      const firstLine = description.split('\n')[0];
+      const title = firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
+
       await bugReportsService.create({
         user_id: user?.id,
         user_email: user?.email,
         user_name: `${user?.firstName} ${user?.lastName}`,
-        title: bugReportTitle.trim(),
-        description: bugReportDescription.trim(),
-        priority: bugReportPriority,
+        title: title || 'Bug Report',
+        description: description,
+        priority: 'medium',
       });
       
       alert('Bug report submitted successfully! Thank you for your feedback.');
-      setBugReportTitle('');
       setBugReportDescription('');
-      setBugReportPriority('medium');
       setShowBugReportModal(false);
     } catch (error: any) {
       console.error('Error submitting bug report:', error);
@@ -283,9 +284,7 @@ export default function Sidebar() {
           onClick={() => {
             if (!isSubmittingBug) {
               setShowBugReportModal(false);
-              setBugReportTitle('');
               setBugReportDescription('');
-              setBugReportPriority('medium');
             }
           }}
         >
@@ -307,9 +306,7 @@ export default function Sidebar() {
                 onClick={() => {
                   if (!isSubmittingBug) {
                     setShowBugReportModal(false);
-                    setBugReportTitle('');
                     setBugReportDescription('');
-                    setBugReportPriority('medium');
                   }
                 }}
                 disabled={isSubmittingBug}
@@ -319,44 +316,17 @@ export default function Sidebar() {
               </button>
             </div>
 
-            <div className="form-group" style={{ marginBottom: '15px' }}>
-              <label className="label">Title *</label>
-              <input
-                type="text"
-                className="input"
-                value={bugReportTitle}
-                onChange={(e) => setBugReportTitle(e.target.value)}
-                placeholder="Brief description of the issue"
-                disabled={isSubmittingBug}
-                required
-              />
-            </div>
-
-            <div className="form-group" style={{ marginBottom: '15px' }}>
-              <label className="label">Priority</label>
-              <select
-                className="input"
-                value={bugReportPriority}
-                onChange={(e) => setBugReportPriority(e.target.value as 'low' | 'medium' | 'high' | 'critical')}
-                disabled={isSubmittingBug}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-
             <div className="form-group" style={{ marginBottom: '20px' }}>
-              <label className="label">Description *</label>
+              <label className="label">Describe the issue</label>
               <textarea
                 className="input"
-                rows={8}
+                rows={10}
                 value={bugReportDescription}
                 onChange={(e) => setBugReportDescription(e.target.value)}
-                placeholder="Please provide detailed information about the bug or problem you encountered..."
+                placeholder="Please describe the bug or problem you encountered..."
                 disabled={isSubmittingBug}
-                required
+                autoFocus
+                style={{ width: '100%', resize: 'vertical' }}
               />
             </div>
 
@@ -366,9 +336,7 @@ export default function Sidebar() {
                 onClick={() => {
                   if (!isSubmittingBug) {
                     setShowBugReportModal(false);
-                    setBugReportTitle('');
                     setBugReportDescription('');
-                    setBugReportPriority('medium');
                   }
                 }}
                 disabled={isSubmittingBug}
@@ -378,9 +346,9 @@ export default function Sidebar() {
               <button
                 className="button button-primary"
                 onClick={handleSubmitBugReport}
-                disabled={isSubmittingBug || !bugReportTitle.trim() || !bugReportDescription.trim()}
+                disabled={isSubmittingBug || !bugReportDescription.trim()}
               >
-                {isSubmittingBug ? 'Submitting...' : 'Submit Report'}
+                {isSubmittingBug ? 'Submitting...' : 'Submit'}
               </button>
             </div>
           </div>
