@@ -331,6 +331,135 @@ export default function Projects() {
         <div className="card" style={{ marginBottom: '20px' }}>
           <h3>New Project</h3>
           <form onSubmit={handleSubmit}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Name</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Project Number (Job ID)</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.project_number}
+                  onChange={(e) => setFormData({ ...formData, project_number: e.target.value })}
+                  placeholder="e.g., PRJ-001"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Customer</label>
+              <select
+                className="input"
+                value={formData.customer_id}
+                onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+                required
+              >
+                <option value="">Select Customer</option>
+                {customers?.map((customer: any) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Description</label>
+              <textarea
+                className="input"
+                rows={3}
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Status</label>
+                <select
+                  className="input"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                >
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="on-hold">On Hold</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Start Date</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={formData.start_date}
+                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">End Date</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Project Color</label>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <input
+                  type="color"
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  style={{
+                    width: '60px',
+                    height: '40px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                />
+                <span style={{ 
+                  fontSize: '14px', 
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'monospace'
+                }}>
+                  {formData.color}
+                </span>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Budget</label>
+              <input
+                type="number"
+                step="0.01"
+                className="input"
+                value={formData.budget}
+                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+              />
+            </div>
+
+            <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+              Create Project
+            </button>
+          </form>
+        </div>
+      )}
 
       <div className="card">
         <table className="table">
