@@ -107,7 +107,7 @@ export const customersService = {
 
     let query = supabase
       .from('customers')
-      .select('*, projects(*)')
+      .select('*, projects(*), created_by') // Explicitly include created_by
       .order('name');
 
     // Filter: Show all public customers + private customers created by current user
