@@ -163,7 +163,7 @@ export default function BugReports() {
                 <th>Priority</th>
                 <th>Status</th>
                 <th>Created</th>
-                <th>Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -225,8 +225,8 @@ export default function BugReports() {
                   <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                     {new Date(report.created_at).toLocaleDateString()}
                   </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       <button
                         className="button button-secondary"
                         style={{ padding: '4px 8px', fontSize: '12px' }}

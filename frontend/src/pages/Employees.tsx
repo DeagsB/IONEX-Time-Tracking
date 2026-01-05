@@ -523,7 +523,7 @@ export default function Employees() {
                 <th>Department</th>
                 <th>Position</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -562,7 +562,7 @@ export default function Employees() {
                 <td>{employee.department}</td>
                 <td>{employee.position}</td>
                 <td>{employee.status}</td>
-                <td>
+                <td style={{ textAlign: 'right' }}>
                   <button
                     className="button button-secondary"
                     style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}

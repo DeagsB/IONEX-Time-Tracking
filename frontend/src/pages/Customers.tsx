@@ -545,7 +545,7 @@ export default function Customers() {
               <th>Phone</th>
               <th>City</th>
               <th>Projects</th>
-              <th>Actions</th>
+              <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -563,7 +563,7 @@ export default function Customers() {
                 <td>{customer.phone || '-'}</td>
                 <td>{customer.city || '-'}</td>
                 <td>{customer.projects?.length || 0}</td>
-                <td>
+                <td style={{ textAlign: 'right' }}>
                   {/* Allow users to edit/delete their own customers, or admins to edit/delete any */}
                   {(user?.id === customer.created_by || user?.role === 'ADMIN' || customer.created_by === null || customer.created_by === undefined) && (
                     <>

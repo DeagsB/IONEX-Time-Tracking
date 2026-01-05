@@ -113,7 +113,7 @@ export default function UserManagement() {
                 <th>Role</th>
                 <th>Global Admin</th>
                 <th>Status</th>
-                <th>Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -183,8 +183,8 @@ export default function UserManagement() {
                       </span>
                     )}
                   </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <td style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
                       {u.id === user?.id && (
                         <span style={{ 
                           fontSize: '12px',

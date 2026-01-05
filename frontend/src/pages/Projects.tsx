@@ -685,7 +685,7 @@ export default function Projects() {
               <th>Customer</th>
               <th>Status</th>
               <th style={{ textAlign: 'right' }}>Total Hours</th>
-              <th>Actions</th>
+              <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -719,7 +719,7 @@ export default function Projects() {
                 <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                   {formatHours(projectHours[project.id] || 0)}
                 </td>
-                <td>
+                <td style={{ textAlign: 'right' }}>
                   {/* Allow users to edit/delete their own projects, or admins to edit/delete any */}
                   {(user?.id === project.created_by || user?.role === 'ADMIN' || !project.created_by) && (
                     <>
