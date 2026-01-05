@@ -1033,4 +1033,21 @@ export const bugReportsService = {
     if (error) throw error;
     return data;
   },
+
+  async updateStatus(id: string, status: string) {
+    const updateData: any = { status };
+    if (status === 'resolved' || status === 'closed') {
+      updateData.resolved_at = new Date().toISOString();
+    }
+    
+    const { data, error } = await supabase
+      .from('bug_reports')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { data, error: null };
+  },
 };

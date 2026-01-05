@@ -165,9 +165,14 @@ export default function Sidebar() {
               ADMIN
             </div>
             {user?.global_admin && (
-              <SidebarLink to="/user-management" active={isActive('/user-management')}>
-                User Management
-              </SidebarLink>
+              <>
+                <SidebarLink to="/user-management" active={isActive('/user-management')}>
+                  User Management
+                </SidebarLink>
+                <SidebarLink to="/bug-reports" active={isActive('/bug-reports')}>
+                  Bug Reports
+                </SidebarLink>
+              </>
             )}
             {!isDemoMode && (
               <SidebarLink to="/profile" active={isActive('/profile')}>
