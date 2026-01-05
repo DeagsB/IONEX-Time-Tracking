@@ -147,7 +147,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Sign Out Button at Bottom */}
+      {/* Report Bug and Sign Out Buttons at Bottom */}
       <div style={{
         position: 'absolute',
         bottom: '24px',
@@ -155,6 +155,44 @@ export default function Sidebar() {
         right: '0',
         padding: '0 15px'
       }}>
+        <button
+          onClick={() => {
+            // Open email client or create issue link
+            const subject = encodeURIComponent('Bug Report - IONEX Time Tracking');
+            const body = encodeURIComponent(`Please describe the bug or problem you encountered:\n\n\n\n---\nUser: ${user?.firstName} ${user?.lastName}\nEmail: ${user?.email}\nDate: ${new Date().toLocaleString()}`);
+            window.open(`mailto:support@ionexsystems.com?subject=${subject}&body=${body}`, '_blank');
+          }}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            backgroundColor: 'transparent',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            color: 'var(--text-primary)',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            marginBottom: '10px',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+            e.currentTarget.style.borderColor = 'var(--info-color)';
+            e.currentTarget.style.color = 'var(--info-color)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.borderColor = 'var(--border-color)';
+            e.currentTarget.style.color = 'var(--text-primary)';
+          }}
+        >
+          <span>🐛</span>
+          <span>Report a Bug/Problem</span>
+        </button>
         <button
           onClick={handleSignOut}
           style={{
