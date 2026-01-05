@@ -40,7 +40,13 @@ export default function Employees() {
     mutationFn: async (data: any) => {
       // Convert form data to DB format
       const employeeData = {
-        ...data,
+        user_id: data.user_id || null,
+        employee_id: data.employee_id,
+        hire_date: data.hire_date,
+        department: data.department || null,
+        position: data.position || null,
+        status: data.status || 'active',
+        wage_rate: data.wage_rate ? parseFloat(data.wage_rate) : 25.00,
         rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
         tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
         ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
@@ -58,12 +64,21 @@ export default function Employees() {
       setShowForm(false);
       resetForm();
     },
+    onError: (error: any) => {
+      console.error('Error creating employee:', error);
+      alert(`Failed to create employee: ${error.message || 'Unknown error'}`);
+    },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const employeeData = {
-        ...data,
+    mutationFn: async ({ id, data, existingEmployee }: { id: string; data: any; existingEmployee: any }) => {
+      const employeeData: any = {
+        employee_id: data.employee_id,
+        hire_date: data.hire_date,
+        department: data.department || null,
+        position: data.position || null,
+        status: data.status || 'active',
+        wage_rate: existingEmployee?.wage_rate || 25.00, // Preserve existing wage_rate
         rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
         tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
         ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
@@ -79,7 +94,12 @@ export default function Employees() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       setEditingEmployee(null);
+      setShowForm(false);
       resetForm();
+    },
+    onError: (error: any) => {
+      console.error('Error updating employee:', error);
+      alert(`Failed to update employee: ${error.message || 'Unknown error'}`);
     },
   });
 
@@ -137,7 +157,7 @@ export default function Employees() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingEmployee) {
-      updateMutation.mutate({ id: editingEmployee.id, data: formData });
+      updateMutation.mutate({ id: editingEmployee.id, data: formData, existingEmployee: editingEmployee });
     } else {
       createMutation.mutate(formData);
     }
@@ -407,8 +427,16 @@ export default function Employees() {
               </div>
             </div>
 
-            <button type="submit" className="button button-primary">
-              {editingEmployee ? 'Update' : 'Create'} Employee
+            <button 
+              type="submit" 
+              className="button button-primary"
+              disabled={updateMutation.isPending || createMutation.isPending}
+            >
+              {updateMutation.isPending || createMutation.isPending 
+                ? 'Saving...' 
+                : editingEmployee 
+                  ? 'Update' 
+                  : 'Create'} Employee
             </button>
           </form>
         </div>

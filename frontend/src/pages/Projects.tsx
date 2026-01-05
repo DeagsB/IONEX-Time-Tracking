@@ -10,7 +10,13 @@ export default function Projects() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [editingProject, setEditingProject] = useState<any>(null);
+  const [newCustomerData, setNewCustomerData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+  });
   const [formData, setFormData] = useState({
     name: '',
     project_number: '',
@@ -89,6 +95,25 @@ export default function Projects() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  const createCustomerMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await customersService.create({
+        ...data,
+        is_demo: isDemoMode,
+      });
+    },
+    onSuccess: (newCustomer) => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setFormData({ ...formData, customer_id: newCustomer.id });
+      setShowCustomerModal(false);
+      setNewCustomerData({ name: '', email: '', phone: '' });
+    },
+    onError: (error: any) => {
+      console.error('Error creating customer:', error);
+      alert(`Failed to create customer: ${error.message || 'Unknown error'}`);
     },
   });
 
@@ -220,19 +245,30 @@ export default function Projects() {
 
             <div className="form-group">
               <label className="label">Customer</label>
-              <select
-                className="input"
-                value={formData.customer_id}
-                onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                required
-              >
-                <option value="">Select Customer</option>
-                {customers?.map((customer: any) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                <select
+                  className="input"
+                  value={formData.customer_id}
+                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+                  required
+                  style={{ flex: 1 }}
+                >
+                  <option value="">Select Customer</option>
+                  {customers?.map((customer: any) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => setShowCustomerModal(true)}
+                  style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}
+                >
+                  + New
+                </button>
+              </div>
             </div>
 
             <div className="form-group">
@@ -326,6 +362,112 @@ export default function Projects() {
         </div>
       )}
 
+      {/* Modal for creating new customer */}
+      {showCustomerModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+          onClick={() => {
+            setShowCustomerModal(false);
+            setNewCustomerData({ name: '', email: '', phone: '' });
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '500px',
+              width: '100%',
+              position: 'relative',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3>Create New Customer</h3>
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setShowCustomerModal(false);
+                  setNewCustomerData({ name: '', email: '', phone: '' });
+                }}
+                style={{ padding: '5px 10px', fontSize: '14px' }}
+              >
+                ✕
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newCustomerData.name.trim()) {
+                  createCustomerMutation.mutate(newCustomerData);
+                }
+              }}
+            >
+              <div className="form-group">
+                <label className="label">Customer Name *</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={newCustomerData.name}
+                  onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
+                  required
+                  placeholder="Enter customer name"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Email</label>
+                <input
+                  type="email"
+                  className="input"
+                  value={newCustomerData.email}
+                  onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
+                  placeholder="customer@example.com"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Phone</label>
+                <input
+                  type="tel"
+                  className="input"
+                  value={newCustomerData.phone}
+                  onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => {
+                    setShowCustomerModal(false);
+                    setNewCustomerData({ name: '', email: '', phone: '' });
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="button button-primary"
+                  disabled={createCustomerMutation.isPending}
+                >
+                  {createCustomerMutation.isPending ? 'Creating...' : 'Create Customer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Form at top for creating new projects */}
       {showForm && !editingProject && (
         <div className="card" style={{ marginBottom: '20px' }}>
@@ -357,19 +499,30 @@ export default function Projects() {
 
             <div className="form-group">
               <label className="label">Customer</label>
-              <select
-                className="input"
-                value={formData.customer_id}
-                onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                required
-              >
-                <option value="">Select Customer</option>
-                {customers?.map((customer: any) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                <select
+                  className="input"
+                  value={formData.customer_id}
+                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+                  required
+                  style={{ flex: 1 }}
+                >
+                  <option value="">Select Customer</option>
+                  {customers?.map((customer: any) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => setShowCustomerModal(true)}
+                  style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}
+                >
+                  + New
+                </button>
+              </div>
             </div>
 
             <div className="form-group">
