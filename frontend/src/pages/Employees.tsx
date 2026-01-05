@@ -41,6 +41,8 @@ export default function Employees() {
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       // Convert form data to DB format
+      const isPanelShop = data.department === 'Panel Shop';
+      const shopPayRate = data.shop_pay_rate ? parseFloat(data.shop_pay_rate) : 25.00;
       const employeeData = {
         user_id: data.user_id || null,
         employee_id: data.employee_id,
@@ -49,16 +51,16 @@ export default function Employees() {
         position: data.position || null,
         status: data.status || 'active',
         wage_rate: data.wage_rate ? parseFloat(data.wage_rate) : 25.00,
-        rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
-        tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
-        ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
-        shop_ot_rate: data.shop_ot_rate ? parseFloat(data.shop_ot_rate) : 165.00,
-        field_ot_rate: data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00,
+        rt_rate: isPanelShop ? null : (data.rt_rate ? parseFloat(data.rt_rate) : 110.00),
+        tt_rate: isPanelShop ? null : (data.tt_rate ? parseFloat(data.tt_rate) : 85.00),
+        ft_rate: isPanelShop ? null : (data.ft_rate ? parseFloat(data.ft_rate) : 140.00),
+        shop_ot_rate: isPanelShop ? null : (data.shop_ot_rate ? parseFloat(data.shop_ot_rate) : 165.00),
+        field_ot_rate: isPanelShop ? null : (data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00),
         internal_rate: data.internal_rate ? parseFloat(data.internal_rate) : 0.00,
-        shop_pay_rate: data.shop_pay_rate ? parseFloat(data.shop_pay_rate) : 25.00,
-        field_pay_rate: data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00,
-        shop_ot_pay_rate: data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50,
-        field_ot_pay_rate: data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : 45.00,
+        shop_pay_rate: shopPayRate,
+        field_pay_rate: isPanelShop ? shopPayRate : (data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00),
+        shop_ot_pay_rate: isPanelShop ? shopPayRate : (data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50),
+        field_ot_pay_rate: isPanelShop ? shopPayRate : (data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : 45.00),
       };
       return await employeesService.create(employeeData);
     },
@@ -75,6 +77,8 @@ export default function Employees() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data, existingEmployee }: { id: string; data: any; existingEmployee: any }) => {
+      const isPanelShop = data.department === 'Panel Shop';
+      const shopPayRate = data.shop_pay_rate ? parseFloat(data.shop_pay_rate) : 25.00;
       const employeeData: any = {
         employee_id: data.employee_id,
         hire_date: data.hire_date,
@@ -82,16 +86,16 @@ export default function Employees() {
         position: data.position || null,
         status: data.status || 'active',
         wage_rate: existingEmployee?.wage_rate || 25.00, // Preserve existing wage_rate
-        rt_rate: data.rt_rate ? parseFloat(data.rt_rate) : 110.00,
-        tt_rate: data.tt_rate ? parseFloat(data.tt_rate) : 85.00,
-        ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
-        shop_ot_rate: data.shop_ot_rate ? parseFloat(data.shop_ot_rate) : 165.00,
-        field_ot_rate: data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00,
+        rt_rate: isPanelShop ? null : (data.rt_rate ? parseFloat(data.rt_rate) : 110.00),
+        tt_rate: isPanelShop ? null : (data.tt_rate ? parseFloat(data.tt_rate) : 85.00),
+        ft_rate: isPanelShop ? null : (data.ft_rate ? parseFloat(data.ft_rate) : 140.00),
+        shop_ot_rate: isPanelShop ? null : (data.shop_ot_rate ? parseFloat(data.shop_ot_rate) : 165.00),
+        field_ot_rate: isPanelShop ? null : (data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00),
         internal_rate: data.internal_rate ? parseFloat(data.internal_rate) : 0.00,
-        shop_pay_rate: data.shop_pay_rate ? parseFloat(data.shop_pay_rate) : 25.00,
-        field_pay_rate: data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00,
-        shop_ot_pay_rate: data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50,
-        field_ot_pay_rate: data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : 45.00,
+        shop_pay_rate: shopPayRate,
+        field_pay_rate: isPanelShop ? shopPayRate : (data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00),
+        shop_ot_pay_rate: isPanelShop ? shopPayRate : (data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50),
+        field_ot_pay_rate: isPanelShop ? shopPayRate : (data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : 45.00),
       };
       return await employeesService.update(id, employeeData);
     },
@@ -249,12 +253,15 @@ export default function Employees() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Department</label>
-                <input
-                  type="text"
+                <select
                   className="input"
                   value={formData.department}
                   onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                />
+                >
+                  <option value="">Select Department</option>
+                  <option value="Automation">Automation</option>
+                  <option value="Panel Shop">Panel Shop</option>
+                </select>
               </div>
               <div className="form-group">
                 <label className="label">Position</label>
@@ -290,10 +297,12 @@ export default function Employees() {
               />
             </div>
 
-            <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
-              Billable Rates (Service Tickets)
-            </h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '10px' }}>
+            {formData.department !== 'Panel Shop' && (
+              <>
+                <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+                  Billable Rates (Service Tickets)
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Regular Time (RT)</label>
                 <div style={{ position: 'relative' }}>
@@ -369,7 +378,9 @@ export default function Employees() {
                   />
                 </div>
               </div>
-            </div>
+                </div>
+              </>
+            )}
 
             <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
               Internal Rate
@@ -398,10 +409,16 @@ export default function Employees() {
             <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
               Pay Rates (Employee Compensation)
             </h4>
-            <p style={{ fontSize: '0.9em', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-              Note: Travel time is paid at the Shop Rate
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
+            {formData.department === 'Panel Shop' ? (
+              <p style={{ fontSize: '0.9em', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                Panel Shop employees only have a single shop pay rate
+              </p>
+            ) : (
+              <p style={{ fontSize: '0.9em', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                Note: Travel time is paid at the Shop Rate
+              </p>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: formData.department === 'Panel Shop' ? '1fr' : '1fr 1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Shop Pay Rate</label>
                 <div style={{ position: 'relative' }}>
@@ -417,51 +434,55 @@ export default function Employees() {
                   />
                 </div>
               </div>
-              <div className="form-group">
-                <label className="label">Field Pay Rate</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input"
-                    style={{ paddingLeft: '25px' }}
-                    value={formData.field_pay_rate}
-                    onChange={(e) => setFormData({ ...formData, field_pay_rate: e.target.value })}
-                    placeholder="30.00"
-                  />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="label">Shop OT Pay Rate</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input"
-                    style={{ paddingLeft: '25px' }}
-                    value={formData.shop_ot_pay_rate}
-                    onChange={(e) => setFormData({ ...formData, shop_ot_pay_rate: e.target.value })}
-                    placeholder="37.50"
-                  />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="label">Field OT Pay Rate</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input"
-                    style={{ paddingLeft: '25px' }}
-                    value={formData.field_ot_pay_rate}
-                    onChange={(e) => setFormData({ ...formData, field_ot_pay_rate: e.target.value })}
-                    placeholder="45.00"
-                  />
-                </div>
-              </div>
+              {formData.department !== 'Panel Shop' && (
+                <>
+                  <div className="form-group">
+                    <label className="label">Field Pay Rate</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="input"
+                        style={{ paddingLeft: '25px' }}
+                        value={formData.field_pay_rate}
+                        onChange={(e) => setFormData({ ...formData, field_pay_rate: e.target.value })}
+                        placeholder="30.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Shop OT Pay Rate</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="input"
+                        style={{ paddingLeft: '25px' }}
+                        value={formData.shop_ot_pay_rate}
+                        onChange={(e) => setFormData({ ...formData, shop_ot_pay_rate: e.target.value })}
+                        placeholder="37.50"
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Field OT Pay Rate</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="input"
+                        style={{ paddingLeft: '25px' }}
+                        value={formData.field_ot_pay_rate}
+                        onChange={(e) => setFormData({ ...formData, field_ot_pay_rate: e.target.value })}
+                        placeholder="45.00"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <button 

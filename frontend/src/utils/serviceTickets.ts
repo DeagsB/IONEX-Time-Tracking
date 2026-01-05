@@ -91,6 +91,7 @@ export interface TimeEntryWithRelations {
 export interface EmployeeWithRates {
   id: string;
   user_id: string;
+  department?: string;
   rt_rate?: number;
   tt_rate?: number;
   ft_rate?: number;
@@ -121,6 +122,7 @@ export function groupEntriesIntoTickets(
   
   // Create a map of user_id to employee rates for quick lookup
   const employeeRatesMap = new Map<string, { rt: number; tt: number; ft: number; shop_ot: number; field_ot: number }>();
+  const employeeDepartmentMap = new Map<string, string>();
   if (employees) {
     for (const emp of employees) {
       employeeRatesMap.set(emp.user_id, {
@@ -130,10 +132,18 @@ export function groupEntriesIntoTickets(
         shop_ot: emp.shop_ot_rate ?? DEFAULT_RATES.shop_ot,
         field_ot: emp.field_ot_rate ?? DEFAULT_RATES.field_ot,
       });
+      if (emp.department) {
+        employeeDepartmentMap.set(emp.user_id, emp.department);
+      }
     }
   }
 
   for (const entry of entries) {
+    // Skip entries from Panel Shop employees - they don't create service tickets
+    const employeeDepartment = employeeDepartmentMap.get(entry.user_id);
+    if (employeeDepartment === 'Panel Shop') {
+      continue;
+    }
     // Handle entries without project/customer as "Unassigned Client"
     let customerId: string;
     let customerName: string;
