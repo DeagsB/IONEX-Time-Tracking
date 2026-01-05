@@ -157,7 +157,7 @@ export default function Login() {
                 height: 'auto',
                 margin: '0 auto',
                 display: 'block',
-                borderRadius: '12px',
+                borderRadius: '4px',
               }}
             />
           </div>
