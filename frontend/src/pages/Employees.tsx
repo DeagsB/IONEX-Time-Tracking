@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeesService } from '../services/supabaseServices';
+import { employeesService, usersService } from '../services/supabaseServices';
 
 export default function Employees() {
   const queryClient = useQueryClient();
@@ -141,6 +141,35 @@ export default function Employees() {
   const handleDelete = (id: string) => {
     if (window.confirm('Are you sure you want to delete this employee?')) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  const archiveMutation = useMutation({
+    mutationFn: (userId: string) => usersService.archiveUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: (userId: string) => usersService.unarchiveUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+
+  const handleToggleArchive = (userId: string, isArchived: boolean) => {
+    const action = isArchived ? 'unarchive' : 'archive';
+    const message = isArchived
+      ? 'Are you sure you want to unarchive this user? Their data will be visible again in reports and the application.'
+      : 'Are you sure you want to archive this user? Their data will be hidden from reports and the application, but will be preserved.';
+
+    if (window.confirm(message)) {
+      if (isArchived) {
+        unarchiveMutation.mutate(userId);
+      } else {
+        archiveMutation.mutate(userId);
+      }
     }
   };
 
@@ -396,7 +425,30 @@ export default function Employees() {
             {employees?.map((employee: any) => (
               <tr key={employee.id}>
                 <td>{employee.employee_id}</td>
-                <td>{employee.user ? `${employee.user.first_name} ${employee.user.last_name}` : 'Unlinked'}</td>
+                <td>
+                  {employee.user ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>{`${employee.user.first_name} ${employee.user.last_name}`}</span>
+                      {employee.user.archived && (
+                        <span
+                          style={{
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            backgroundColor: 'var(--warning-color)',
+                            color: 'white',
+                            fontWeight: '500',
+                          }}
+                          title="User is archived - data hidden from reports"
+                        >
+                          ARCHIVED
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    'Unlinked'
+                  )}
+                </td>
                 <td>{employee.department}</td>
                 <td>{employee.position}</td>
                 <td>{employee.status}</td>
@@ -408,6 +460,23 @@ export default function Employees() {
                   >
                     Edit
                   </button>
+                  {employee.user && (
+                    <button
+                      className="button"
+                      style={{
+                        marginRight: '5px',
+                        padding: '5px 10px',
+                        fontSize: '12px',
+                        backgroundColor: employee.user.archived ? 'var(--success-color)' : 'var(--warning-color)',
+                        color: 'white',
+                        border: 'none',
+                      }}
+                      onClick={() => handleToggleArchive(employee.user.id, employee.user.archived)}
+                      title={employee.user.archived ? 'Unarchive user' : 'Archive user'}
+                    >
+                      {employee.user.archived ? 'Unarchive' : 'Archive'}
+                    </button>
+                  )}
                   <button
                     className="button button-danger"
                     style={{ padding: '5px 10px', fontSize: '12px' }}
