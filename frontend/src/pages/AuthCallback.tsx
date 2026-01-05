@@ -11,40 +11,133 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        const code = searchParams.get('code');
+        // First, check if user is already authenticated (Supabase might have auto-authenticated)
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
         
-        if (!code) {
-          setError('No verification code found in the URL');
+        if (existingSession) {
+          console.log('✅ AuthCallback: User already authenticated, redirecting...');
           setLoading(false);
-          return;
-        }
-
-        console.log('🔐 AuthCallback: Exchanging code for session...');
-        
-        // Exchange the code for a session
-        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-
-        if (exchangeError) {
-          console.error('❌ AuthCallback: Error exchanging code:', exchangeError);
-          setError(exchangeError.message);
-          setLoading(false);
-          return;
-        }
-
-        if (data.session) {
-          console.log('✅ AuthCallback: Session established, redirecting to calendar...');
-          // Session established, navigate to calendar
-          // The AuthContext will pick up the session change automatically
           setTimeout(() => {
             navigate('/calendar');
-          }, 1000);
+          }, 500);
+          return;
+        }
+        
+        // Check for code in query parameters
+        const code = searchParams.get('code');
+        
+        // Also check hash fragment (Supabase sometimes uses #access_token=...)
+        const hash = window.location.hash;
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        
+        console.log('🔐 AuthCallback: Checking verification parameters...', {
+          hasCode: !!code,
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          url: window.location.href
+        });
+        
+        // Try to exchange code for session
+        if (code) {
+          console.log('🔐 AuthCallback: Exchanging code for session...');
+          
+          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (exchangeError) {
+            console.error('❌ AuthCallback: Error exchanging code:', exchangeError);
+            // Don't set error immediately - check if tokens in hash work or if already authenticated
+            if (!accessToken) {
+              // Wait a moment and check session again (Supabase might process async)
+              await new Promise(resolve => setTimeout(resolve, 500));
+              const { data: { session: retrySession } } = await supabase.auth.getSession();
+              if (retrySession) {
+                console.log('✅ AuthCallback: Session established after retry, redirecting...');
+                setLoading(false);
+                setTimeout(() => {
+                  navigate('/calendar');
+                }, 500);
+                return;
+              }
+              setError(exchangeError.message);
+              setLoading(false);
+              return;
+            }
+          } else if (data.session) {
+            console.log('✅ AuthCallback: Session established via code exchange, redirecting...');
+            setLoading(false);
+            setTimeout(() => {
+              navigate('/calendar');
+            }, 500);
+            return;
+          }
+        }
+        
+        // Try to use tokens from hash fragment
+        if (accessToken && refreshToken) {
+          console.log('🔐 AuthCallback: Setting session from hash tokens...');
+          const { data, error: tokenError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          
+          if (tokenError) {
+            console.error('❌ AuthCallback: Error setting session from tokens:', tokenError);
+            setError(tokenError.message);
+            setLoading(false);
+            return;
+          }
+          
+          if (data.session) {
+            console.log('✅ AuthCallback: Session established via hash tokens, redirecting...');
+            setLoading(false);
+            setTimeout(() => {
+              navigate('/calendar');
+            }, 500);
+            return;
+          }
+        }
+        
+        // If no code or tokens found, wait a moment for Supabase to process (it might be async)
+        if (!code && !accessToken) {
+          console.log('⚠️ AuthCallback: No code or tokens found, waiting for async processing...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Final check - maybe session was established asynchronously
+          const { data: { session: finalSession } } = await supabase.auth.getSession();
+          if (finalSession) {
+            console.log('✅ AuthCallback: Session found after wait, redirecting...');
+            setLoading(false);
+            setTimeout(() => {
+              navigate('/calendar');
+            }, 500);
+            return;
+          }
+          
+          // If still no session, show error but allow login (account might already be created)
+          console.warn('⚠️ AuthCallback: No session found, but account may already be verified');
+          setError('Verification link may have already been used, or the link has expired. Please try logging in.');
+          setLoading(false);
+          return;
+        }
+        
+        // Final check after all attempts
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const { data: { session: finalSession } } = await supabase.auth.getSession();
+        if (finalSession) {
+          console.log('✅ AuthCallback: Session found on final check, redirecting...');
+          setLoading(false);
+          setTimeout(() => {
+            navigate('/calendar');
+          }, 500);
         } else {
-          setError('Failed to establish session');
+          setError('Failed to establish session. Your account may already be verified - please try logging in.');
           setLoading(false);
         }
       } catch (err: any) {
         console.error('❌ AuthCallback: Unexpected error:', err);
-        setError(err.message || 'An unexpected error occurred');
+        setError(err.message || 'An unexpected error occurred. Please try logging in.');
         setLoading(false);
       }
     };
