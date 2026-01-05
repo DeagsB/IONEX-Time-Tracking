@@ -9,6 +9,9 @@ export default function BugReports() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [selectedReport, setSelectedReport] = useState<any>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [notes, setNotes] = useState('');
 
   // Redirect if not global admin
   if (!user?.global_admin) {
@@ -25,16 +28,41 @@ export default function BugReports() {
     queryFn: () => bugReportsService.getAll(),
   });
 
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { data, error } = await bugReportsService.updateStatus(id, status);
-      if (error) throw error;
-      return data;
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: any }) => {
+      return await bugReportsService.update(id, updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bugReports'] });
+      setShowDetailsModal(false);
+      setSelectedReport(null);
+      setNotes('');
     },
   });
+
+  const handleMarkResolved = (report: any) => {
+    const updates: any = {
+      status: 'resolved',
+      resolved_at: new Date().toISOString(),
+      resolved_by: user?.id,
+    };
+    if (notes.trim()) {
+      updates.notes = notes.trim();
+    }
+    updateMutation.mutate({ id: report.id, updates });
+  };
+
+  const handleMarkClosed = (report: any) => {
+    const updates: any = {
+      status: 'closed',
+      resolved_at: report.resolved_at || new Date().toISOString(),
+      resolved_by: report.resolved_by || user?.id,
+    };
+    if (notes.trim()) {
+      updates.notes = notes.trim();
+    }
+    updateMutation.mutate({ id: report.id, updates });
+  };
 
   const filteredReports = bugReports?.filter((report: any) => {
     const matchesSearch = 
@@ -50,7 +78,18 @@ export default function BugReports() {
   });
 
   const handleStatusChange = (id: string, newStatus: string) => {
-    updateStatusMutation.mutate({ id, status: newStatus });
+    const updates: any = { status: newStatus };
+    if (newStatus === 'resolved' || newStatus === 'closed') {
+      updates.resolved_at = new Date().toISOString();
+      updates.resolved_by = user?.id;
+    }
+    updateMutation.mutate({ id, updates });
+  };
+
+  const handleViewDetails = (report: any) => {
+    setSelectedReport(report);
+    setNotes(report.notes || '');
+    setShowDetailsModal(true);
   };
 
   const getStatusColor = (status: string) => {
@@ -187,16 +226,53 @@ export default function BugReports() {
                     {new Date(report.created_at).toLocaleDateString()}
                   </td>
                   <td>
-                    <button
-                      className="button button-secondary"
-                      style={{ padding: '4px 8px', fontSize: '12px' }}
-                      onClick={() => {
-                        const fullDescription = `Title: ${report.title}\n\nDescription:\n${report.description}\n\nPriority: ${report.priority}\nStatus: ${report.status}\nReported by: ${report.user_name} (${report.user_email})\nCreated: ${new Date(report.created_at).toLocaleString()}`;
-                        alert(fullDescription);
-                      }}
-                    >
-                      View Details
-                    </button>
+                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                      <button
+                        className="button button-secondary"
+                        style={{ padding: '4px 8px', fontSize: '12px' }}
+                        onClick={() => handleViewDetails(report)}
+                      >
+                        View Details
+                      </button>
+                      {report.status !== 'resolved' && report.status !== 'closed' && (
+                        <button
+                          className="button"
+                          style={{ 
+                            padding: '4px 8px', 
+                            fontSize: '12px',
+                            backgroundColor: 'var(--success-color)',
+                            color: 'white',
+                            border: 'none'
+                          }}
+                          onClick={() => {
+                            if (window.confirm('Mark this bug as resolved?')) {
+                              handleMarkResolved(report);
+                            }
+                          }}
+                        >
+                          Mark Resolved
+                        </button>
+                      )}
+                      {report.status === 'resolved' && (
+                        <button
+                          className="button"
+                          style={{ 
+                            padding: '4px 8px', 
+                            fontSize: '12px',
+                            backgroundColor: 'var(--text-tertiary)',
+                            color: 'white',
+                            border: 'none'
+                          }}
+                          onClick={() => {
+                            if (window.confirm('Close this bug report?')) {
+                              handleMarkClosed(report);
+                            }
+                          }}
+                        >
+                          Close
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -204,6 +280,221 @@ export default function BugReports() {
           </table>
         )}
       </div>
+
+      {/* Details Modal */}
+      {showDetailsModal && selectedReport && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+          }}
+          onClick={() => {
+            setShowDetailsModal(false);
+            setSelectedReport(null);
+            setNotes('');
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '700px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              position: 'relative',
+              backgroundColor: 'var(--bg-primary)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2>Bug Report Details</h2>
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setShowDetailsModal(false);
+                  setSelectedReport(null);
+                  setNotes('');
+                }}
+                style={{ padding: '5px 10px', fontSize: '14px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ marginBottom: '15px' }}>
+                <label className="label">Title</label>
+                <div style={{ 
+                  padding: '10px', 
+                  backgroundColor: 'var(--bg-secondary)', 
+                  borderRadius: '4px',
+                  fontWeight: '500'
+                }}>
+                  {selectedReport.title}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label className="label">Description</label>
+                <div style={{ 
+                  padding: '10px', 
+                  backgroundColor: 'var(--bg-secondary)', 
+                  borderRadius: '4px',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: '200px',
+                  overflowY: 'auto'
+                }}>
+                  {selectedReport.description}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+                <div>
+                  <label className="label">Priority</label>
+                  <div>
+                    <span style={{
+                      backgroundColor: getPriorityColor(selectedReport.priority),
+                      color: 'white',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase',
+                    }}>
+                      {selectedReport.priority}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Status</label>
+                  <div>
+                    <span style={{
+                      backgroundColor: getStatusColor(selectedReport.status),
+                      color: 'white',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase',
+                    }}>
+                      {selectedReport.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+                <div>
+                  <label className="label">Reported By</label>
+                  <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                    {selectedReport.user_name || 'Anonymous'}
+                    {selectedReport.user_email && (
+                      <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                        {selectedReport.user_email}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Created</label>
+                  <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                    {new Date(selectedReport.created_at).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {selectedReport.resolved_at && (
+                <div style={{ marginBottom: '15px' }}>
+                  <label className="label">Resolved</label>
+                  <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                    {new Date(selectedReport.resolved_at).toLocaleString()}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: '15px' }}>
+                <label className="label">Admin Notes</label>
+                <textarea
+                  className="input"
+                  rows={4}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add notes about this bug report..."
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setShowDetailsModal(false);
+                  setSelectedReport(null);
+                  setNotes('');
+                }}
+              >
+                Cancel
+              </button>
+              {selectedReport.status !== 'resolved' && selectedReport.status !== 'closed' && (
+                <button
+                  className="button"
+                  style={{ 
+                    backgroundColor: 'var(--success-color)',
+                    color: 'white',
+                    border: 'none'
+                  }}
+                  onClick={() => handleMarkResolved(selectedReport)}
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? 'Saving...' : 'Mark as Resolved'}
+                </button>
+              )}
+              {selectedReport.status === 'resolved' && (
+                <button
+                  className="button"
+                  style={{ 
+                    backgroundColor: 'var(--text-tertiary)',
+                    color: 'white',
+                    border: 'none'
+                  }}
+                  onClick={() => handleMarkClosed(selectedReport)}
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? 'Saving...' : 'Close Bug Report'}
+                </button>
+              )}
+              <button
+                className="button button-primary"
+                onClick={() => {
+                  if (notes.trim() !== (selectedReport.notes || '')) {
+                    updateMutation.mutate({ 
+                      id: selectedReport.id, 
+                      updates: { notes: notes.trim() } 
+                    });
+                  } else {
+                    setShowDetailsModal(false);
+                    setSelectedReport(null);
+                    setNotes('');
+                  }
+                }}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? 'Saving...' : 'Save Notes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
