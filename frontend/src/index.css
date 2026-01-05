@@ -172,6 +172,15 @@ code {
   box-shadow: 0 0 0 3px var(--primary-light);
 }
 
+.input:invalid:not(:focus):not(:placeholder-shown) {
+  border-color: var(--error-color);
+}
+
+/* Remove validation styling when form has success message */
+.success ~ form .input:invalid {
+  border-color: var(--input-border);
+}
+
 .label {
   display: block;
   margin-bottom: 8px;

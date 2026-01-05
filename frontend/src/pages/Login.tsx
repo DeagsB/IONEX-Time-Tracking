@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -15,6 +15,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { login, signUp, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -22,6 +23,18 @@ export default function Login() {
       navigate('/calendar', { replace: true });
     }
   }, [user, authLoading, navigate]);
+
+  // Reset form validation state when success is shown
+  useEffect(() => {
+    if (success && formRef.current) {
+      // Clear validation states for all inputs
+      const inputs = formRef.current.querySelectorAll('input');
+      inputs.forEach((input) => {
+        input.setCustomValidity('');
+        input.blur(); // Remove focus to clear any :focus validation states
+      });
+    }
+  }, [success]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,17 +172,18 @@ export default function Login() {
           </div>
         )}
         
-        <form onSubmit={handleSubmit}>
+        <form ref={formRef} onSubmit={handleSubmit} noValidate>
           {isSignUp && (
             <>
               <div className="form-group">
                 <label className="label">First Name</label>
                 <input
                   type="text"
+                  name="firstName"
                   className="input"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  required={isSignUp}
+                  required={isSignUp && !success}
                 />
               </div>
               
@@ -177,10 +191,11 @@ export default function Login() {
                 <label className="label">Last Name</label>
                 <input
                   type="text"
+                  name="lastName"
                   className="input"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  required={isSignUp}
+                  required={isSignUp && !success}
                 />
               </div>
             </>
@@ -190,10 +205,11 @@ export default function Login() {
             <label className="label">Email</label>
             <input
               type="email"
+              name="email"
               className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              required={!success}
             />
           </div>
           
@@ -201,13 +217,14 @@ export default function Login() {
             <label className="label">Password</label>
             <input
               type="password"
+              name="password"
               className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
+              required={!success}
+              minLength={success ? undefined : 6}
             />
-            {isSignUp && (
+            {isSignUp && !success && (
               <small style={{ color: 'var(--text-tertiary)', fontSize: '12px', display: 'block', marginTop: '4px' }}>
                 Password must be at least 6 characters
               </small>
