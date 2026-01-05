@@ -2117,7 +2117,7 @@ export default function WeekView() {
                       width: '18px',
                       height: '18px',
                       cursor: 'pointer',
-                      accentColor: '#c770f0'
+                      accentColor: '#dc2626'
                     }}
                   />
                   <span>Billable?</span>
@@ -2135,7 +2135,7 @@ export default function WeekView() {
                 style={{
                   width: '100%',
                   padding: '12px',
-                  backgroundColor: '#c770f0',
+                  backgroundColor: '#dc2626',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -2378,7 +2378,7 @@ export default function WeekView() {
                       width: '18px',
                       height: '18px',
                       cursor: 'pointer',
-                      accentColor: '#c770f0'
+                      accentColor: '#dc2626'
                     }}
                   />
                   <span>Billable?</span>
@@ -2397,7 +2397,7 @@ export default function WeekView() {
                   style={{
                     flex: 1,
                     padding: '12px',
-                    backgroundColor: '#c770f0',
+                    backgroundColor: '#dc2626',
                     color: 'white',
                     border: 'none',
                     borderRadius: '6px',
