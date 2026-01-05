@@ -73,9 +73,11 @@ export default function Sidebar() {
             }}>
               ANALYZE
             </div>
-            <SidebarLink to="/payroll" active={isActive('/payroll')}>
-              Payroll
-            </SidebarLink>
+            {user?.global_admin && (
+              <SidebarLink to="/payroll" active={isActive('/payroll')}>
+                Payroll
+              </SidebarLink>
+            )}
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
               Service Tickets
             </SidebarLink>
@@ -125,6 +127,11 @@ export default function Sidebar() {
             }}>
               ADMIN
             </div>
+            {user?.global_admin && (
+              <SidebarLink to="/user-management" active={isActive('/user-management')}>
+                User Management
+              </SidebarLink>
+            )}
             {!isDemoMode && (
               <SidebarLink to="/profile" active={isActive('/profile')}>
                 Profile

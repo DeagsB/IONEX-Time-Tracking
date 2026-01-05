@@ -8,6 +8,7 @@ interface User {
   firstName: string;
   lastName: string;
   role: 'ADMIN' | 'USER';
+  global_admin?: boolean;
 }
 
 interface SignUpResult {
@@ -47,6 +48,7 @@ const DEV_USER: User = {
   firstName: 'Deagan',
   lastName: 'Bespalko',
   role: 'ADMIN', // Override to ADMIN for dev mode
+  global_admin: true, // Global admin for dev mode
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -127,6 +129,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           firstName: data.first_name || '',
           lastName: data.last_name || '',
           role: data.role || 'USER',
+          global_admin: data.global_admin || false,
         });
       } else {
         // User profile doesn't exist yet, create it
@@ -149,6 +152,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             firstName: newUser.first_name || '',
             lastName: newUser.last_name || '',
             role: newUser.role || 'USER',
+            global_admin: newUser.global_admin || false,
           });
         }
       }

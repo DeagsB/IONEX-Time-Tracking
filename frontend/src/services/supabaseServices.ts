@@ -514,6 +514,23 @@ export const usersService = {
     }
     return true;
   },
+
+  async updateUserRole(userId: string, role: 'ADMIN' | 'USER', globalAdmin?: boolean) {
+    const updateData: any = { role };
+    if (globalAdmin !== undefined) {
+      updateData.global_admin = globalAdmin;
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
 };
 
 export const reportsService = {
