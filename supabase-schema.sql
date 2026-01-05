@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS public.projects (
 -- Create employees table
 CREATE TABLE IF NOT EXISTS public.employees (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
+  user_id UUID UNIQUE REFERENCES public.users(id) ON DELETE SET NULL,
   employee_id TEXT UNIQUE,
   wage_rate DECIMAL(10, 2) NOT NULL,
   hourly_rate DECIMAL(10, 2),
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
 -- Create time_entries table
 CREATE TABLE IF NOT EXISTS public.time_entries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   employee_id UUID REFERENCES public.employees(id) ON DELETE SET NULL,
   project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
   date DATE NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS public.time_entries (
   billable BOOLEAN DEFAULT true,
   description TEXT,
   approved BOOLEAN DEFAULT false,
-  approved_by UUID REFERENCES public.users(id),
+  approved_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
   approved_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS public.forms (
   content TEXT,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
   submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  reviewed_by UUID REFERENCES public.users(id),
+  reviewed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
   reviewed_at TIMESTAMP WITH TIME ZONE,
   notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
