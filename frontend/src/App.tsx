@@ -17,6 +17,7 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import ServiceTickets from './pages/ServiceTickets';
 import EmployeeReports from './pages/EmployeeReports';
+import UserArchive from './pages/UserArchive';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 
@@ -126,6 +127,14 @@ function AppRoutes() {
           element={
             <AdminRoute>
               <EmployeeReports />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="user-archive"
+          element={
+            <AdminRoute>
+              <UserArchive />
             </AdminRoute>
           }
         />

@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS public.users (
   first_name TEXT,
   last_name TEXT,
   role TEXT DEFAULT 'USER' CHECK (role IN ('ADMIN', 'USER')),
+  archived BOOLEAN DEFAULT false,
+  archived_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

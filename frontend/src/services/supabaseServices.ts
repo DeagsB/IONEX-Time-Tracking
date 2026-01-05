@@ -214,14 +214,21 @@ export const projectsService = {
 };
 
 export const employeesService = {
-  async getAll() {
-    const { data, error } = await supabase
+  async getAll(includeArchived: boolean = false) {
+    let query = supabase
       .from('employees')
       .select(`
         *,
-        user:users(id, email, first_name, last_name)
+        user:users(id, email, first_name, last_name, archived)
       `)
       .order('employee_id');
+
+    // Filter out archived users if not including them
+    if (!includeArchived) {
+      query = query.or('user.archived.is.null,user.archived.eq.false');
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data;
@@ -353,6 +360,51 @@ export const usersService = {
     return data;
   },
 
+  async getAll(includeArchived: boolean = false) {
+    let query = supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!includeArchived) {
+      query = query.eq('archived', false);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  async archiveUser(userId: string) {
+    const { data, error } = await supabase
+      .from('users')
+      .update({
+        archived: true,
+        archived_at: new Date().toISOString(),
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async unarchiveUser(userId: string) {
+    const { data, error } = await supabase
+      .from('users')
+      .update({
+        archived: false,
+        archived_at: null,
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
   async updateProfile(userId: string, updates: {
     first_name?: string;
     last_name?: string;
@@ -421,14 +473,14 @@ export const reportsService = {
   },
 
   // Get comprehensive employee analytics for all or specific employee
-  async getEmployeeAnalytics(startDate: string, endDate: string, userId?: string) {
-    console.log('getEmployeeAnalytics called:', { startDate, endDate, userId });
+  async getEmployeeAnalytics(startDate: string, endDate: string, userId?: string, includeArchived: boolean = false) {
+    console.log('getEmployeeAnalytics called:', { startDate, endDate, userId, includeArchived });
     
     let query = supabase
       .from('time_entries')
       .select(`
         *,
-        user:users!time_entries_user_id_fkey(id, first_name, last_name, email),
+        user:users!time_entries_user_id_fkey(id, first_name, last_name, email, archived),
         project:projects!time_entries_project_id_fkey(id, name, project_number, customer:customers!projects_customer_id_fkey(id, name))
       `)
       .gte('date', startDate)
@@ -446,19 +498,39 @@ export const reportsService = {
       throw error;
     }
     
-    console.log('getEmployeeAnalytics result:', { count: data?.length || 0, data });
-    return data || [];
+    // Filter out archived users if not including them
+    let filteredData = data || [];
+    if (!includeArchived && data) {
+      filteredData = data.filter((entry: any) => {
+        // Include entries where user is null (deleted user) or not archived
+        return !entry.user || !entry.user.archived;
+      });
+    }
+    
+    console.log('getEmployeeAnalytics result:', { 
+      total: data?.length || 0, 
+      filtered: filteredData.length,
+      includeArchived 
+    });
+    return filteredData;
   },
 
-  // Get all employees with their rates
-  async getEmployeesWithRates() {
-    const { data, error } = await supabase
+  // Get all employees with their rates (excluding archived users by default)
+  async getEmployeesWithRates(includeArchived: boolean = false) {
+    let query = supabase
       .from('employees')
       .select(`
         *,
-        user:users(id, first_name, last_name, email)
+        user:users(id, first_name, last_name, email, archived)
       `)
       .order('employee_id');
+
+    // Filter out archived users if not including them
+    if (!includeArchived) {
+      query = query.or('user.archived.is.null,user.archived.eq.false');
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching employees:', error);

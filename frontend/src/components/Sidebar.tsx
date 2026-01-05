@@ -132,6 +132,9 @@ export default function Sidebar() {
                 Profile
               </SidebarLink>
             )}
+            <SidebarLink to="/user-archive" active={isActive('/user-archive')}>
+              User Archive
+            </SidebarLink>
             <SidebarLink to="/settings" active={isActive('/settings')}>
               Settings
             </SidebarLink>
