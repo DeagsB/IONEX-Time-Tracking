@@ -143,7 +143,7 @@ export default function Login() {
             alignItems: 'center'
           }}>
             <img 
-              src="/ionex-logo-removebg-preview.png" 
+              src={theme === 'dark' ? '/Black w WHT background square.png' : '/ionex-logo-removebg-preview.png'} 
               alt="IONEX Logo" 
               onError={(e) => {
                 console.error('Logo failed to load, trying fallback:', e.currentTarget.src);
@@ -157,11 +157,6 @@ export default function Login() {
                 height: 'auto',
                 margin: '0 auto',
                 display: 'block',
-                backgroundColor: 'transparent',
-                // Use mix-blend-mode to remove white/light background artifacts in dark mode
-                mixBlendMode: theme === 'dark' ? 'screen' : 'normal',
-                // Ensure transparency is preserved
-                imageRendering: 'auto'
               }}
             />
           </div>
