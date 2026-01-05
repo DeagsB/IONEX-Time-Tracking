@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -13,6 +14,11 @@ export default function Sidebar() {
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [bugReportDescription, setBugReportDescription] = useState('');
   const [isSubmittingBug, setIsSubmittingBug] = useState(false);
+  const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setModalRoot(document.body);
+  }, []);
 
   const handleSignOut = async () => {
     try {
@@ -199,7 +205,12 @@ export default function Sidebar() {
         padding: '0 15px'
       }}>
         <button
-          onClick={() => setShowBugReportModal(true)}
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setShowBugReportModal(true);
+          }}
           style={{
             width: '100%',
             padding: '12px 16px',
@@ -278,15 +289,19 @@ export default function Sidebar() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 2000,
+            zIndex: 9999,
             padding: '20px',
+            userSelect: 'none',
           }}
-          onClick={() => {
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
             if (!isSubmittingBug) {
               setShowBugReportModal(false);
               setBugReportDescription('');
             }
           }}
+          onMouseDown={(e) => e.preventDefault()}
         >
           <div
             className="card"
@@ -296,8 +311,14 @@ export default function Sidebar() {
               maxHeight: '90vh',
               overflowY: 'auto',
               position: 'relative',
+              zIndex: 10000,
+              userSelect: 'text',
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h3>Report a Bug/Problem</h3>
@@ -352,7 +373,8 @@ export default function Sidebar() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        modalRoot
       )}
     </div>
   );
