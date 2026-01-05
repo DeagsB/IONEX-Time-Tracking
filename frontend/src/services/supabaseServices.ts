@@ -1056,4 +1056,16 @@ export const bugReportsService = {
     if (error) throw error;
     return { data, error: null };
   },
+
+  async update(id: string, updates: any) {
+    const { data, error } = await supabase
+      .from('bug_reports')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
 };
