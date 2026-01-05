@@ -753,15 +753,15 @@ export default function WeekView() {
       const minutesDelta = deltaY * minutesPerPixel;
       
       // Calculate new start time based on original start time
-      // Dragging DOWN (positive deltaY) = move start time EARLIER (subtract minutes)
-      // Dragging UP (negative deltaY) = move start time LATER (add minutes, which is subtracting negative)
+      // Dragging DOWN (positive deltaY) = move start time LATER (add minutes)
+      // Dragging UP (negative deltaY) = move start time EARLIER (subtract minutes)
       const newStartTime = new Date(draggingTimer.originalStartTime);
       const currentMinutes = newStartTime.getMinutes();
       const currentHours = newStartTime.getHours();
       
       // Calculate total minutes from midnight, adjust by delta, then convert back
       const totalMinutesFromMidnight = currentHours * 60 + currentMinutes;
-      const newTotalMinutes = totalMinutesFromMidnight - minutesDelta;
+      const newTotalMinutes = totalMinutesFromMidnight + minutesDelta;
       
       // Round to nearest 15-minute increment
       const roundedTotalMinutes = Math.round(newTotalMinutes / 15) * 15;
