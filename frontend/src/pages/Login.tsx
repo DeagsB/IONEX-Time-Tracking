@@ -135,7 +135,13 @@ export default function Login() {
         border: '1px solid var(--border-color)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ 
+            marginBottom: '20px',
+            backgroundColor: 'transparent',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}>
             <img 
               src="/ionex-logo-removebg-preview.png" 
               alt="IONEX Logo" 
@@ -152,10 +158,10 @@ export default function Login() {
                 margin: '0 auto',
                 display: 'block',
                 backgroundColor: 'transparent',
-                // Remove any potential white background artifacts in dark mode
-                filter: theme === 'dark' ? 'brightness(1.1) contrast(1.1)' : 'none',
-                // Ensure no background shows through
-                imageRendering: 'crisp-edges'
+                // Use mix-blend-mode to remove white/light background artifacts in dark mode
+                mixBlendMode: theme === 'dark' ? 'screen' : 'normal',
+                // Ensure transparency is preserved
+                imageRendering: 'auto'
               }}
             />
           </div>
