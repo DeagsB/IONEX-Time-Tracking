@@ -137,21 +137,14 @@ export default function Login() {
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{ marginBottom: '20px' }}>
             <img 
-              key={theme} // Force re-render when theme changes
-              src={theme === 'dark' ? '/ionex-logo-dark.png' : '/ionex-logo.png'} 
+              src="/ionex-logo.png" 
               alt="IONEX Logo" 
-              onError={(e) => {
-                console.error('Logo failed to load:', e.currentTarget.src);
-                // Fallback to light mode logo if dark mode logo fails
-                if (theme === 'dark' && e.currentTarget.src.includes('dark')) {
-                  e.currentTarget.src = '/ionex-logo.png';
-                }
-              }}
               style={{
                 maxWidth: '180px',
                 height: 'auto',
                 margin: '0 auto',
-                display: 'block'
+                display: 'block',
+                backgroundColor: 'transparent'
               }}
             />
           </div>
