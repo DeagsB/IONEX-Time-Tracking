@@ -138,14 +138,12 @@ export default function Customers() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2>Customers</h2>
-        {user?.role === 'ADMIN' && (
-          <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingCustomer(null); resetForm(); }}>
-            {showForm ? 'Cancel' : 'Add Customer'}
-          </button>
-        )}
+        <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingCustomer(null); resetForm(); }}>
+          {showForm ? 'Cancel' : 'Add Customer'}
+        </button>
       </div>
 
-      {showForm && user?.role === 'ADMIN' && (
+      {showForm && (
         <div className="card" style={{ marginBottom: '20px' }}>
           <h3>{editingCustomer ? 'Edit Customer' : 'New Customer'}</h3>
           <form onSubmit={handleSubmit}>
