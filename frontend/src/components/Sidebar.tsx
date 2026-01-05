@@ -277,7 +277,7 @@ export default function Sidebar() {
       </div>
 
       {/* Bug Report Modal - Rendered via Portal */}
-      {showBugReportModal && modalRoot ? createPortal(
+      {showBugReportModal && modalRoot && createPortal(
         <div
           style={{
             position: 'fixed',
@@ -375,7 +375,7 @@ export default function Sidebar() {
           </div>
         </div>,
         modalRoot
-      ) : null}
+      )}
     </div>
   );
 }
