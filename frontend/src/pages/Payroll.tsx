@@ -25,6 +25,11 @@ interface EmployeeHours {
   userId: string;
   name: string;
   email: string;
+  internalShopTime: number;
+  internalShopOvertime: number;
+  internalTravelTime: number;
+  internalFieldTime: number;
+  internalFieldOvertime: number;
   shopTime: number;
   shopOvertime: number;
   travelTime: number;
@@ -91,6 +96,11 @@ export default function Payroll() {
           userId,
           name: userName,
           email: entry.user?.email || '',
+          internalShopTime: 0,
+          internalShopOvertime: 0,
+          internalTravelTime: 0,
+          internalFieldTime: 0,
+          internalFieldOvertime: 0,
           shopTime: 0,
           shopOvertime: 0,
           travelTime: 0,
@@ -114,24 +124,50 @@ export default function Payroll() {
       }
 
       const rateType = entry.rate_type || 'Shop Time';
+      const isInternal = !entry.billable;
+      
       switch (rateType) {
         case 'Shop Time':
-          emp.shopTime += Number(entry.hours) || 0;
+          if (isInternal) {
+            emp.internalShopTime += hours;
+          } else {
+            emp.shopTime += hours;
+          }
           break;
         case 'Shop Overtime':
-          emp.shopOvertime += Number(entry.hours) || 0;
+          if (isInternal) {
+            emp.internalShopOvertime += hours;
+          } else {
+            emp.shopOvertime += hours;
+          }
           break;
         case 'Travel Time':
-          emp.travelTime += Number(entry.hours) || 0;
+          if (isInternal) {
+            emp.internalTravelTime += hours;
+          } else {
+            emp.travelTime += hours;
+          }
           break;
         case 'Field Time':
-          emp.fieldTime += Number(entry.hours) || 0;
+          if (isInternal) {
+            emp.internalFieldTime += hours;
+          } else {
+            emp.fieldTime += hours;
+          }
           break;
         case 'Field Overtime':
-          emp.fieldOvertime += Number(entry.hours) || 0;
+          if (isInternal) {
+            emp.internalFieldOvertime += hours;
+          } else {
+            emp.fieldOvertime += hours;
+          }
           break;
         default:
-          emp.shopTime += Number(entry.hours) || 0;
+          if (isInternal) {
+            emp.internalShopTime += hours;
+          } else {
+            emp.shopTime += hours;
+          }
       }
     }
 
@@ -142,6 +178,11 @@ export default function Payroll() {
   const grandTotals = useMemo(() => {
     return employeeHours.reduce(
       (totals, emp) => ({
+        internalShopTime: totals.internalShopTime + emp.internalShopTime,
+        internalShopOvertime: totals.internalShopOvertime + emp.internalShopOvertime,
+        internalTravelTime: totals.internalTravelTime + emp.internalTravelTime,
+        internalFieldTime: totals.internalFieldTime + emp.internalFieldTime,
+        internalFieldOvertime: totals.internalFieldOvertime + emp.internalFieldOvertime,
         shopTime: totals.shopTime + emp.shopTime,
         shopOvertime: totals.shopOvertime + emp.shopOvertime,
         travelTime: totals.travelTime + emp.travelTime,
@@ -151,7 +192,7 @@ export default function Payroll() {
         billableHours: totals.billableHours + emp.billableHours,
         internalHours: totals.internalHours + emp.internalHours,
       }),
-      { shopTime: 0, shopOvertime: 0, travelTime: 0, fieldTime: 0, fieldOvertime: 0, totalHours: 0, billableHours: 0, internalHours: 0 }
+      { internalShopTime: 0, internalShopOvertime: 0, internalTravelTime: 0, internalFieldTime: 0, internalFieldOvertime: 0, shopTime: 0, shopOvertime: 0, travelTime: 0, fieldTime: 0, fieldOvertime: 0, totalHours: 0, billableHours: 0, internalHours: 0 }
     );
   }, [employeeHours]);
 
@@ -342,6 +383,9 @@ export default function Payroll() {
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                     Employee
                   </th>
+                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#dc3545', textTransform: 'uppercase' }}>
+                    Internal Time
+                  </th>
                   <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase' }}>
                     Shop Time
                   </th>
@@ -369,6 +413,9 @@ export default function Payroll() {
                       <div style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{emp.name}</div>
                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{emp.email}</div>
                     </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.internalHours > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
+                      {emp.internalHours.toFixed(2)}
+                    </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.shopTime > 0 ? '#4caf50' : 'var(--text-secondary)' }}>
                       {emp.shopTime.toFixed(2)}
                     </td>
@@ -393,6 +440,9 @@ export default function Payroll() {
                 <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
                   <td style={{ padding: '14px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>
                     TOTALS
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#dc3545' }}>
+                    {grandTotals.internalHours.toFixed(2)}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#4caf50' }}>
                     {grandTotals.shopTime.toFixed(2)}
