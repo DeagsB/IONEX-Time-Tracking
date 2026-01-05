@@ -172,25 +172,11 @@ export function aggregateEmployeeMetrics(
   let billableHours = 0;
   let totalRevenue = 0;
 
-  // Debug: Log first few entries to check billable field
-  if (entries.length > 0) {
-    console.log('Sample entries for billable calculation:', entries.slice(0, 3).map(e => ({
-      id: e.id,
-      hours: e.hours,
-      billable: e.billable,
-      billableType: typeof e.billable,
-      rate: e.rate
-    })));
-  }
-
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
     totalHours += hours;
-    // Explicitly check for billable - handle both boolean and string values
-    // Also handle null/undefined as false
-    const isBillable = entry.billable === true || entry.billable === 'true' || entry.billable === 1;
     
-    if (isBillable) {
+    if (entry.billable) {
       billableHours += hours;
       // For billable entries, use employee's billable rates based on rate_type
       const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
@@ -222,22 +208,6 @@ export function aggregateEmployeeMetrics(
       const internalRate = Number(employee?.internal_rate) || 0;
       totalRevenue += hours * internalRate;
     }
-  });
-
-  console.log('Billable hours and revenue calculation result:', {
-    totalHours,
-    billableHours,
-    nonBillableHours: totalHours - billableHours,
-    totalRevenue,
-    entriesCount: entries.length,
-    employeeRates: employee ? {
-      rt_rate: employee.rt_rate,
-      tt_rate: employee.tt_rate,
-      ft_rate: employee.ft_rate,
-      shop_ot_rate: employee.shop_ot_rate,
-      field_ot_rate: employee.field_ot_rate,
-      internal_rate: employee.internal_rate
-    } : 'No employee data'
   });
 
   const nonBillableHours = totalHours - billableHours;
