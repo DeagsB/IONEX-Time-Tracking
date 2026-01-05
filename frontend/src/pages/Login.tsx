@@ -172,7 +172,7 @@ export default function Login() {
           </div>
         )}
         
-        <form ref={formRef} onSubmit={handleSubmit} noValidate>
+        <form ref={formRef} onSubmit={handleSubmit} noValidate className={success ? 'form-success' : ''}>
           {isSignUp && (
             <>
               <div className="form-group">

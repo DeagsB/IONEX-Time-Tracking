@@ -176,8 +176,13 @@ code {
   border-color: var(--error-color);
 }
 
-/* Remove validation styling when form has success message */
-.success ~ form .input:invalid {
+/* Remove validation styling when form has success state */
+.form-success .input:invalid {
+  border-color: var(--input-border);
+}
+
+/* Fallback for browsers that support :has() */
+.card:has(.success) .input:invalid {
   border-color: var(--input-border);
 }
 
