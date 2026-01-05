@@ -70,7 +70,7 @@ export default function Projects() {
       if (data.color !== undefined) projectData.color = data.color;
       // is_private is always false, don't include it
 
-      return await projectsService.update(id, projectData, user?.id || '');
+      return await projectsService.update(id, projectData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
