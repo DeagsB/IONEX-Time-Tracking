@@ -375,7 +375,7 @@ export default function Sidebar() {
           </div>
         </div>,
         modalRoot
-      )}
+      ) : null}
     </div>
   );
 }
