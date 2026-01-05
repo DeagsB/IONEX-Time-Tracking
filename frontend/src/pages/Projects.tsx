@@ -20,17 +20,17 @@ export default function Projects() {
     end_date: '',
     budget: '',
     color: '#4ecdc4',
+    is_private: false,
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsService.getAll(),
+    queryKey: ['projects', user?.id],
+    queryFn: () => projectsService.getAll(user?.id),
   });
 
   const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => customersService.getAll(),
-    enabled: user?.role === 'ADMIN',
+    queryKey: ['customers', user?.id],
+    queryFn: () => customersService.getAll(user?.id),
   });
 
   const createMutation = useMutation({
@@ -45,6 +45,7 @@ export default function Projects() {
         end_date: data.end_date || null,
         budget: data.budget ? parseFloat(data.budget) : null,
         color: data.color || '#4ecdc4',
+        is_private: data.is_private || false,
         is_demo: isDemoMode, // Mark as demo project if in demo mode
       };
       return await projectsService.create(projectData);
@@ -68,6 +69,7 @@ export default function Projects() {
       if (data.end_date !== undefined) projectData.end_date = data.end_date || null;
       if (data.budget !== undefined) projectData.budget = data.budget ? parseFloat(data.budget) : null;
       if (data.color !== undefined) projectData.color = data.color;
+      if (data.is_private !== undefined) projectData.is_private = data.is_private;
 
       return await projectsService.update(id, projectData);
     },
@@ -98,6 +100,7 @@ export default function Projects() {
       end_date: '',
       budget: '',
       color: '#4ecdc4',
+      is_private: false,
     });
   };
 
@@ -113,6 +116,7 @@ export default function Projects() {
       end_date: project.end_date ? new Date(project.end_date).toISOString().split('T')[0] : '',
       budget: project.budget?.toString() || '',
       color: project.color || '#4ecdc4',
+      is_private: project.is_private || false,
     });
     setShowForm(true);
   };
@@ -131,55 +135,6 @@ export default function Projects() {
       deleteMutation.mutate(id);
     }
   };
-
-  if (user?.role !== 'ADMIN') {
-    return (
-      <div>
-        <h2>Projects</h2>
-        <div className="card">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Customer</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects && projects.length === 0 && (
-                <tr>
-                  <td colSpan={3} style={{ textAlign: 'center', padding: '20px' }}>
-                    No projects found.
-                  </td>
-                </tr>
-              )}
-              {projects?.map((project: any) => (
-                <tr key={project.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div
-                        style={{
-                          backgroundColor: project.color || '#4ecdc4',
-                          width: '16px',
-                          height: '16px',
-                          borderRadius: '4px',
-                          flexShrink: 0,
-                          border: '1px solid rgba(0, 0, 0, 0.1)',
-                        }}
-                      />
-                      <span>{project.name}</span>
-                    </div>
-                  </td>
-                  <td>{project.customer?.name || '-'}</td>
-                  <td>{project.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -317,6 +272,19 @@ export default function Projects() {
               />
             </div>
 
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input
+                type="checkbox"
+                id="is_private"
+                checked={formData.is_private}
+                onChange={(e) => setFormData({ ...formData, is_private: e.target.checked })}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <label htmlFor="is_private" style={{ cursor: 'pointer', margin: 0 }}>
+                Make this project private (only visible to me)
+              </label>
+            </div>
+
             <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
               {editingProject ? 'Update' : 'Create'} Project
             </button>
@@ -359,25 +327,42 @@ export default function Projects() {
                       }}
                     />
                     <span>{project.name}</span>
+                    {project.is_private && (
+                      <span style={{
+                        fontSize: '10px',
+                        backgroundColor: 'var(--warning-color)',
+                        color: 'white',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontWeight: '600',
+                        textTransform: 'uppercase'
+                      }}>
+                        Private
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td>{project.customer?.name || '-'}</td>
                 <td>{project.status}</td>
                 <td>
-                  <button
-                    className="button button-secondary"
-                    style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                    onClick={() => handleEdit(project)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="button button-danger"
-                    style={{ padding: '5px 10px', fontSize: '12px' }}
-                    onClick={() => handleDelete(project.id)}
-                  >
-                    Delete
-                  </button>
+                  {(user?.id === project.created_by || user?.role === 'ADMIN' || !project.created_by) && (
+                    <>
+                      <button
+                        className="button button-secondary"
+                        style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleEdit(project)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="button button-danger"
+                        style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleDelete(project.id)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}

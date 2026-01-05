@@ -589,8 +589,8 @@ export default function ServiceTickets() {
 
   // Fetch customers for filter
   const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => customersService.getAll(),
+    queryKey: ['customers', user?.id],
+    queryFn: () => customersService.getAll(user?.id),
   });
 
   // Fetch employees for filter

@@ -25,11 +25,12 @@ export default function Customers() {
     approver_name: '',
     location_code: '',
     service_location: '',
+    is_private: false,
   });
 
   const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => customersService.getAll(),
+    queryKey: ['customers', user?.id],
+    queryFn: () => customersService.getAll(user?.id),
   });
 
   const createMutation = useMutation({
@@ -82,6 +83,7 @@ export default function Customers() {
       approver_name: '',
       location_code: '',
       service_location: '',
+      is_private: false,
     });
   };
 
@@ -102,6 +104,7 @@ export default function Customers() {
       approver_name: customer.approver_name || '',
       location_code: customer.location_code || '',
       service_location: customer.service_location || '',
+      is_private: customer.is_private || false,
     });
     setShowForm(true);
   };
@@ -296,6 +299,19 @@ export default function Customers() {
               </div>
             </div>
 
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input
+                type="checkbox"
+                id="is_private"
+                checked={formData.is_private}
+                onChange={(e) => setFormData({ ...formData, is_private: e.target.checked })}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <label htmlFor="is_private" style={{ cursor: 'pointer', margin: 0 }}>
+                Make this client private (only visible to me)
+              </label>
+            </div>
+
             <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
               {editingCustomer ? 'Update' : 'Create'} Customer
             </button>
@@ -312,42 +328,61 @@ export default function Customers() {
               <th>Phone</th>
               <th>City</th>
               <th>Projects</th>
-              {user?.role === 'ADMIN' && <th>Actions</th>}
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {customers && customers.length === 0 && (
               <tr>
-                <td colSpan={user?.role === 'ADMIN' ? 6 : 5} style={{ textAlign: 'center', padding: '20px' }}>
-                  {user?.role === 'ADMIN' ? 'No customers found. Create your first customer above.' : 'No customers found.'}
+                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
+                  No customers found. Create your first customer above.
                 </td>
               </tr>
             )}
             {customers?.map((customer: any) => (
               <tr key={customer.id}>
-                <td>{customer.name}</td>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>{customer.name}</span>
+                    {customer.is_private && (
+                      <span style={{
+                        fontSize: '10px',
+                        backgroundColor: 'var(--warning-color)',
+                        color: 'white',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontWeight: '600',
+                        textTransform: 'uppercase'
+                      }}>
+                        Private
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td>{customer.email || '-'}</td>
                 <td>{customer.phone || '-'}</td>
                 <td>{customer.city || '-'}</td>
                 <td>{customer.projects?.length || 0}</td>
-                {user?.role === 'ADMIN' && (
-                  <td>
-                    <button
-                      className="button button-secondary"
-                      style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                      onClick={() => handleEdit(customer)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="button button-danger"
-                      style={{ padding: '5px 10px', fontSize: '12px' }}
-                      onClick={() => handleDelete(customer.id)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                )}
+                <td>
+                  {(user?.id === customer.created_by || user?.role === 'ADMIN' || !customer.created_by) && (
+                    <>
+                      <button
+                        className="button button-secondary"
+                        style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleEdit(customer)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="button button-danger"
+                        style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleDelete(customer.id)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

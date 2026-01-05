@@ -100,11 +100,25 @@ export const timeEntriesService = {
 };
 
 export const customersService = {
-  async getAll() {
-    const { data, error } = await supabase
+  async getAll(userId?: string) {
+    // Get current user from auth
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const currentUserId = userId || authUser?.id;
+
+    let query = supabase
       .from('customers')
       .select('*, projects(*)')
       .order('name');
+
+    // Filter: Show all public customers + private customers created by current user
+    // If no user is logged in, only show public customers
+    if (currentUserId) {
+      query = query.or(`is_private.eq.false,and(is_private.eq.true,created_by.eq.${currentUserId})`);
+    } else {
+      query = query.eq('is_private', false);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data;
@@ -122,9 +136,17 @@ export const customersService = {
   },
 
   async create(customer: any) {
+    // Get current user from auth
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    const customerData = {
+      ...customer,
+      created_by: authUser?.id || null, // Set created_by to current user
+    };
+
     const { data, error } = await supabase
       .from('customers')
-      .insert(customer)
+      .insert(customerData)
       .select()
       .single();
 
@@ -155,14 +177,28 @@ export const customersService = {
 };
 
 export const projectsService = {
-  async getAll() {
-    const { data, error } = await supabase
+  async getAll(userId?: string) {
+    // Get current user from auth
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const currentUserId = userId || authUser?.id;
+
+    let query = supabase
       .from('projects')
       .select(`
         *,
         customer:customers(*)
       `)
       .order('name');
+
+    // Filter: Show all public projects + private projects created by current user
+    // If no user is logged in, only show public projects
+    if (currentUserId) {
+      query = query.or(`is_private.eq.false,and(is_private.eq.true,created_by.eq.${currentUserId})`);
+    } else {
+      query = query.eq('is_private', false);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data;
@@ -183,9 +219,17 @@ export const projectsService = {
   },
 
   async create(project: any) {
+    // Get current user from auth
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    const projectData = {
+      ...project,
+      created_by: authUser?.id || null, // Set created_by to current user
+    };
+
     const { data, error } = await supabase
       .from('projects')
-      .insert(project)
+      .insert(projectData)
       .select(`
         *,
         customer:customers(*)

@@ -185,8 +185,8 @@ export default function WeekView() {
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: projectsService.getAll,
+    queryKey: ['projects', user?.id],
+    queryFn: () => projectsService.getAll(user?.id),
   });
 
   const createTimeEntryMutation = useMutation({

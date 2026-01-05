@@ -33,13 +33,13 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const projectDropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsService.getAll(),
+    queryKey: ['projects', user?.id],
+    queryFn: () => projectsService.getAll(user?.id),
   });
 
   const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => customersService.getAll(),
+    queryKey: ['customers', user?.id],
+    queryFn: () => customersService.getAll(user?.id),
   });
 
   // Filter projects based on search input
