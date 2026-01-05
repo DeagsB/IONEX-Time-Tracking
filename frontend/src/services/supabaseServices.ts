@@ -193,26 +193,59 @@ export const projectsService = {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const currentUserId = userId || authUser?.id;
 
-    let query = supabase
+    // Get user role to determine filtering
+    let userRole: string | undefined;
+    if (currentUserId) {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', currentUserId)
+        .single();
+      userRole = userData?.role;
+    }
+
+    // If user is ADMIN, show all projects
+    if (userRole === 'ADMIN') {
+      let query = supabase
+        .from('projects')
+        .select(`
+          *,
+          customer:customers(*)
+        `)
+        .order('name');
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    }
+
+    // For regular users, only show projects assigned to them
+    // First, get assigned project IDs
+    const { data: assignments, error: assignmentsError } = await supabase
+      .from('project_user_assignments')
+      .select('project_id')
+      .eq('user_id', currentUserId);
+
+    if (assignmentsError) throw assignmentsError;
+
+    // If no assignments, return empty array
+    if (!assignments || assignments.length === 0) {
+      return [];
+    }
+
+    // Get projects for assigned project IDs
+    const projectIds = assignments.map(a => a.project_id);
+    const { data, error } = await supabase
       .from('projects')
       .select(`
         *,
         customer:customers(*)
       `)
+      .in('id', projectIds)
       .order('name');
 
-    // Filter: Show all public projects + private projects created by current user
-    // If no user is logged in, only show public projects
-    if (currentUserId) {
-      query = query.or(`is_private.eq.false,and(is_private.eq.true,created_by.eq.${currentUserId})`);
-    } else {
-      query = query.eq('is_private', false);
-    }
-
-    const { data, error } = await query;
-
     if (error) throw error;
-    return data;
+    return data || [];
   },
 
   async getById(id: string) {

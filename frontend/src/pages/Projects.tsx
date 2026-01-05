@@ -30,7 +30,7 @@ export default function Projects() {
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects', user?.id],
+    queryKey: ['projects', user?.id, user?.role],
     queryFn: () => projectsService.getAll(user?.id),
   });
 
@@ -38,6 +38,9 @@ export default function Projects() {
     queryKey: ['customers', user?.id],
     queryFn: () => customersService.getAll(user?.id),
   });
+
+  // Toggle for admins to show only their hours vs all hours
+  const [showOnlyMyHours, setShowOnlyMyHours] = useState(false);
 
   // Fetch all time entries to calculate total hours per project
   const { data: allTimeEntries } = useQuery({
@@ -55,12 +58,23 @@ export default function Projects() {
     allTimeEntries.forEach((entry: any) => {
       if (entry.project_id && entry.hours) {
         const projectId = entry.project_id;
-        hoursMap[projectId] = (hoursMap[projectId] || 0) + Number(entry.hours);
+        
+        // For non-admin users, only count their own hours
+        // For admin users, count all hours unless toggle is on
+        if (user?.role !== 'ADMIN' || showOnlyMyHours) {
+          // Only count hours for the current user
+          if (entry.user_id === user?.id) {
+            hoursMap[projectId] = (hoursMap[projectId] || 0) + Number(entry.hours);
+          }
+        } else {
+          // Count all users' hours
+          hoursMap[projectId] = (hoursMap[projectId] || 0) + Number(entry.hours);
+        }
       }
     });
     
     return hoursMap;
-  }, [allTimeEntries, projects]);
+  }, [allTimeEntries, projects, user?.id, user?.role, showOnlyMyHours]);
 
   // Format hours helper
   const formatHours = (hours: number): string => {
@@ -196,9 +210,27 @@ export default function Projects() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2>Projects</h2>
-        <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingProject(null); resetForm(); }}>
-          {showForm ? 'Cancel' : 'Add Project'}
-        </button>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+          {user?.role === 'ADMIN' && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+              <input
+                type="checkbox"
+                checked={showOnlyMyHours}
+                onChange={(e) => setShowOnlyMyHours(e.target.checked)}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  cursor: 'pointer',
+                  accentColor: '#dc2626'
+                }}
+              />
+              <span>Show only my hours</span>
+            </label>
+          )}
+          <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingProject(null); resetForm(); }}>
+            {showForm ? 'Cancel' : 'Add Project'}
+          </button>
+        </div>
       </div>
 
       {/* Modal for editing */}
