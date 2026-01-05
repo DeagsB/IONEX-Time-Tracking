@@ -144,7 +144,7 @@ export default function Login() {
                 height: 'auto',
                 margin: '0 auto',
                 display: 'block',
-                backgroundColor: 'transparent'
+                mixBlendMode: theme === 'dark' ? 'lighten' : 'normal'
               }}
             />
           </div>
