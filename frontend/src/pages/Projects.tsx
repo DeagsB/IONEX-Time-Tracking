@@ -68,9 +68,9 @@ export default function Projects() {
       if (data.end_date !== undefined) projectData.end_date = data.end_date || null;
       if (data.budget !== undefined) projectData.budget = data.budget ? parseFloat(data.budget) : null;
       if (data.color !== undefined) projectData.color = data.color;
-      if (data.is_private !== undefined) projectData.is_private = data.is_private;
+      // is_private is always false, don't include it
 
-      return await projectsService.update(id, projectData);
+      return await projectsService.update(id, projectData, user?.id || '');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
