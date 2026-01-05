@@ -44,10 +44,10 @@ export default function Projects() {
         end_date: data.end_date || null,
         budget: data.budget ? parseFloat(data.budget) : null,
         color: data.color || '#4ecdc4',
-        is_private: false, // Always set to false
         is_demo: isDemoMode, // Mark as demo project if in demo mode
       };
-      return await projectsService.create(projectData);
+      if (!user?.id) throw new Error('User not authenticated.');
+      return await projectsService.create(projectData, user.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -312,19 +312,6 @@ export default function Projects() {
                       }}
                     />
                     <span>{project.name}</span>
-                    {project.is_private && (
-                      <span style={{
-                        fontSize: '10px',
-                        backgroundColor: 'var(--warning-color)',
-                        color: 'white',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        fontWeight: '600',
-                        textTransform: 'uppercase'
-                      }}>
-                        Private
-                      </span>
-                    )}
                   </div>
                 </td>
                 <td>{project.customer?.name || '-'}</td>

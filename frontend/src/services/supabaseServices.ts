@@ -229,13 +229,11 @@ export const projectsService = {
     return data;
   },
 
-  async create(project: any) {
-    // Get current user from auth
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    
+  async create(project: any, currentUserId: string) {
     const projectData = {
       ...project,
-      created_by: authUser?.id || null, // Set created_by to current user
+      created_by: currentUserId, // Set created_by
+      is_private: false, // Always set to false (private option removed)
     };
 
     const { data, error } = await supabase
