@@ -4,6 +4,18 @@
 
 If you've configured custom SMTP in Supabase but aren't receiving emails, follow these troubleshooting steps:
 
+## 0. Enable Email Signups (IMPORTANT!)
+
+**If you see the error "Email signups are disabled":**
+
+1. Go to **Supabase Dashboard** → **Authentication** → **Providers**
+2. Find **"Email"** in the list of providers
+3. Click to expand the Email provider settings
+4. **Enable** the Email provider (toggle it ON)
+5. Save the changes
+
+This is required before email/password authentication will work!
+
 ## 1. Verify SMTP Configuration in Supabase Dashboard
 
 1. Go to **Supabase Dashboard** → **Settings** → **Auth** → **SMTP Settings**
