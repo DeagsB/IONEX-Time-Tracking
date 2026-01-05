@@ -150,7 +150,12 @@ export default function Login() {
                 maxWidth: '180px',
                 height: 'auto',
                 margin: '0 auto',
-                display: 'block'
+                display: 'block',
+                backgroundColor: 'transparent',
+                // Remove any potential white background artifacts in dark mode
+                filter: theme === 'dark' ? 'brightness(1.1) contrast(1.1)' : 'none',
+                // Ensure no background shows through
+                imageRendering: 'crisp-edges'
               }}
             />
           </div>
