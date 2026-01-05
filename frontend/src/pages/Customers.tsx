@@ -545,13 +545,13 @@ export default function Customers() {
               <th>Phone</th>
               <th>City</th>
               <th>Projects</th>
-              <th>Actions</th>
+              {user?.role === 'ADMIN' && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {customers && customers.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
+                <td colSpan={user?.role === 'ADMIN' ? 6 : 5} style={{ textAlign: 'center', padding: '20px' }}>
                   No customers found. Create your first customer above.
                 </td>
               </tr>
@@ -563,26 +563,28 @@ export default function Customers() {
                 <td>{customer.phone || '-'}</td>
                 <td>{customer.city || '-'}</td>
                 <td>{customer.projects?.length || 0}</td>
-                <td>
-                  {(user?.id === customer.created_by || user?.role === 'ADMIN' || customer.created_by === null || customer.created_by === undefined) && (
-                    <>
-                      <button
-                        className="button button-secondary"
-                        style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleEdit(customer)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="button button-danger"
-                        style={{ padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleDelete(customer.id)}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </td>
+                {user?.role === 'ADMIN' && (
+                  <td>
+                    {(user?.id === customer.created_by || user?.role === 'ADMIN' || customer.created_by === null || customer.created_by === undefined) && (
+                      <>
+                        <button
+                          className="button button-secondary"
+                          style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
+                          onClick={() => handleEdit(customer)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="button button-danger"
+                          style={{ padding: '5px 10px', fontSize: '12px' }}
+                          onClick={() => handleDelete(customer.id)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
