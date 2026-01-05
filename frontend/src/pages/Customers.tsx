@@ -50,12 +50,22 @@ export default function Customers() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       if (!user?.id) throw new Error('User not authenticated.');
-      return await customersService.update(id, data);
+      try {
+        return await customersService.update(id, data);
+      } catch (error: any) {
+        console.error('Error updating customer:', error);
+        alert(`Failed to update customer: ${error.message || 'Unknown error'}`);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       setEditingCustomer(null);
       resetForm();
+    },
+    onError: (error: any) => {
+      console.error('Update mutation error:', error);
+      alert(`Failed to update customer: ${error.message || 'Unknown error'}`);
     },
   });
 
@@ -365,7 +375,7 @@ export default function Customers() {
                 <td>{customer.city || '-'}</td>
                 <td>{customer.projects?.length || 0}</td>
                 <td>
-                  {(user?.id === customer.created_by || user?.role === 'ADMIN' || !customer.created_by) && (
+                  {(user?.id === customer.created_by || user?.role === 'ADMIN' || customer.created_by === null || customer.created_by === undefined) && (
                     <>
                       <button
                         className="button button-secondary"
