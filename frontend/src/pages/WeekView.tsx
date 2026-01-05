@@ -2091,6 +2091,7 @@ export default function WeekView() {
                     color: 'var(--text-primary)',
                   }}
                 >
+                  {!newEntry.billable && <option value="Internal">Internal</option>}
                   <option value="Shop Time">Shop Time</option>
                   <option value="Shop Overtime">Shop Overtime</option>
                   <option value="Travel Time">Travel Time</option>
@@ -2112,7 +2113,15 @@ export default function WeekView() {
                 <input
                     type="checkbox"
                     checked={newEntry.billable}
-                    onChange={(e) => setNewEntry({ ...newEntry, billable: e.target.checked })}
+                    onChange={(e) => {
+                      const isBillable = e.target.checked;
+                      // If unchecking billable, set rate_type to Internal
+                      // If checking billable and rate_type is Internal, set to Shop Time
+                      const newRateType = !isBillable 
+                        ? 'Internal' 
+                        : (newEntry.rate_type === 'Internal' ? 'Shop Time' : newEntry.rate_type);
+                      setNewEntry({ ...newEntry, billable: isBillable, rate_type: newRateType });
+                    }}
                     style={{
                       width: '18px',
                       height: '18px',
@@ -2352,6 +2361,7 @@ export default function WeekView() {
                     fontSize: '14px',
                   }}
                 >
+                  {!editedEntry.billable && <option value="Internal">Internal</option>}
                   <option value="Shop Time">Shop Time</option>
                   <option value="Shop Overtime">Shop Overtime</option>
                   <option value="Travel Time">Travel Time</option>
@@ -2373,7 +2383,15 @@ export default function WeekView() {
                   <input
                     type="checkbox"
                     checked={editedEntry.billable}
-                    onChange={(e) => setEditedEntry({ ...editedEntry, billable: e.target.checked })}
+                    onChange={(e) => {
+                      const isBillable = e.target.checked;
+                      // If unchecking billable, set rate_type to Internal
+                      // If checking billable and rate_type is Internal, set to Shop Time
+                      const newRateType = !isBillable 
+                        ? 'Internal' 
+                        : (editedEntry.rate_type === 'Internal' ? 'Shop Time' : editedEntry.rate_type);
+                      setEditedEntry({ ...editedEntry, billable: isBillable, rate_type: newRateType });
+                    }}
                     style={{
                       width: '18px',
                       height: '18px',
