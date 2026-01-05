@@ -549,7 +549,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         </button>
 
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '15px', borderLeft: '1px solid var(--border-color)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
             {user?.firstName} {user?.lastName}
           </span>
