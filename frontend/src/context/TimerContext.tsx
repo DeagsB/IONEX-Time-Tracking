@@ -8,7 +8,7 @@ interface TimerContextType {
   startTimer: (description: string, projectId?: string) => void;
   stopTimer: () => void;
   updateStartTime: (newStartTime: number) => void;
-  updateTimerEntry: (description: string, projectId?: string) => void;
+  updateTimerEntry: (description: string, projectId?: string, projectName?: string) => void;
 }
 
 const TimerContext = createContext<TimerContextType | undefined>(undefined);
