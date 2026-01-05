@@ -40,6 +40,8 @@ export interface EmployeeWithRates {
   ft_rate?: number;
   shop_ot_rate?: number;
   field_ot_rate?: number;
+  // Internal rate (for non-billable work)
+  internal_rate?: number;
   // Pay rates (what employee gets paid)
   shop_pay_rate?: number;
   field_pay_rate?: number;
@@ -175,6 +177,10 @@ export function aggregateEmployeeMetrics(
     if (entry.billable) {
       billableHours += hours;
       totalRevenue += hours * rate;
+    } else {
+      // Use internal rate for non-billable entries
+      const internalRate = Number(employee?.internal_rate) || 0;
+      totalRevenue += hours * internalRate;
     }
   });
 
@@ -260,10 +266,10 @@ export function aggregateEmployeeMetrics(
   const profitPerHour = totalHours > 0 ? netProfit / totalHours : 0;
 
   // Project breakdown
-  const projectBreakdown = calculateProjectBreakdown(entries);
+  const projectBreakdown = calculateProjectBreakdown(entries, employee);
 
   // Customer breakdown
-  const customerBreakdown = calculateCustomerBreakdown(entries);
+  const customerBreakdown = calculateCustomerBreakdown(entries, employee);
 
   // Trends
   const trends = calculateTrends(entries);
@@ -315,7 +321,9 @@ export function calculateRateTypeBreakdown(
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
     const rate = Number(entry.rate) || 0;
-    const revenue = entry.billable ? hours * rate : 0;
+    // Use internal rate for non-billable entries, otherwise use the entry rate
+    const internalRate = Number(employee?.internal_rate) || 0;
+    const revenue = entry.billable ? hours * rate : hours * internalRate;
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
 
     // Determine pay rate based on rate type
@@ -370,7 +378,7 @@ export function calculateRateTypeBreakdown(
 }
 
 // Calculate breakdown by project
-export function calculateProjectBreakdown(entries: TimeEntry[]): ProjectBreakdown[] {
+export function calculateProjectBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates): ProjectBreakdown[] {
   const projectMap = new Map<string, ProjectBreakdown>();
 
   entries.forEach(entry => {
@@ -378,7 +386,9 @@ export function calculateProjectBreakdown(entries: TimeEntry[]): ProjectBreakdow
     const projectName = entry.project?.name || '(No Project)';
     const hours = Number(entry.hours) || 0;
     const rate = Number(entry.rate) || 0;
-    const revenue = entry.billable ? hours * rate : 0;
+    // Use internal rate for non-billable entries
+    const internalRate = Number(employee?.internal_rate) || 0;
+    const revenue = entry.billable ? hours * rate : hours * internalRate;
     const billableHours = entry.billable ? hours : 0;
 
     if (!projectMap.has(projectId)) {
@@ -401,7 +411,7 @@ export function calculateProjectBreakdown(entries: TimeEntry[]): ProjectBreakdow
 }
 
 // Calculate breakdown by customer
-export function calculateCustomerBreakdown(entries: TimeEntry[]): CustomerBreakdown[] {
+export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates): CustomerBreakdown[] {
   const customerMap = new Map<string, CustomerBreakdown>();
 
   entries.forEach(entry => {
@@ -409,7 +419,9 @@ export function calculateCustomerBreakdown(entries: TimeEntry[]): CustomerBreakd
     const customerName = entry.project?.customer?.name || '(No Customer)';
     const hours = Number(entry.hours) || 0;
     const rate = Number(entry.rate) || 0;
-    const revenue = entry.billable ? hours * rate : 0;
+    // Use internal rate for non-billable entries
+    const internalRate = Number(employee?.internal_rate) || 0;
+    const revenue = entry.billable ? hours * rate : hours * internalRate;
     const billableHours = entry.billable ? hours : 0;
 
     if (!customerMap.has(customerId)) {
@@ -439,6 +451,8 @@ export function calculateTrends(entries: TimeEntry[]): TrendData[] {
     const date = entry.date;
     const hours = Number(entry.hours) || 0;
     const rate = Number(entry.rate) || 0;
+    // Note: Trends function doesn't have employee context, so internal rate won't be used here
+    // This is okay as trends are typically for billable work visualization
     const revenue = entry.billable ? hours * rate : 0;
     const billableHours = entry.billable ? hours : 0;
 

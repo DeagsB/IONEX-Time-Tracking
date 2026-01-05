@@ -19,6 +19,8 @@ export default function Employees() {
     ft_rate: '140.00',
     shop_ot_rate: '165.00',
     field_ot_rate: '165.00',
+    // Internal rate (for non-billable work)
+    internal_rate: '0.00',
     // Pay rates (what employee gets paid)
     shop_pay_rate: '25.00',
     field_pay_rate: '30.00',
@@ -52,6 +54,7 @@ export default function Employees() {
         ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
         shop_ot_rate: data.shop_ot_rate ? parseFloat(data.shop_ot_rate) : 165.00,
         field_ot_rate: data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00,
+        internal_rate: data.internal_rate ? parseFloat(data.internal_rate) : 0.00,
         shop_pay_rate: data.shop_pay_rate ? parseFloat(data.shop_pay_rate) : 25.00,
         field_pay_rate: data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00,
         shop_ot_pay_rate: data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50,
@@ -84,6 +87,7 @@ export default function Employees() {
         ft_rate: data.ft_rate ? parseFloat(data.ft_rate) : 140.00,
         shop_ot_rate: data.shop_ot_rate ? parseFloat(data.shop_ot_rate) : 165.00,
         field_ot_rate: data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00,
+        internal_rate: data.internal_rate ? parseFloat(data.internal_rate) : 0.00,
         shop_pay_rate: data.shop_pay_rate ? parseFloat(data.shop_pay_rate) : 25.00,
         field_pay_rate: data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00,
         shop_ot_pay_rate: data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50,
@@ -132,6 +136,7 @@ export default function Employees() {
       ft_rate: '140.00',
       shop_ot_rate: '165.00',
       field_ot_rate: '165.00',
+      internal_rate: '0.00',
       shop_pay_rate: '25.00',
       field_pay_rate: '30.00',
       shop_ot_pay_rate: '37.50',
@@ -153,6 +158,7 @@ export default function Employees() {
       ft_rate: employee.ft_rate?.toString() || '140.00',
       shop_ot_rate: employee.shop_ot_rate?.toString() || '165.00',
       field_ot_rate: employee.field_ot_rate?.toString() || '165.00',
+      internal_rate: employee.internal_rate?.toString() || '0.00',
       shop_pay_rate: employee.shop_pay_rate?.toString() || '25.00',
       field_pay_rate: employee.field_pay_rate?.toString() || '30.00',
       shop_ot_pay_rate: employee.shop_ot_pay_rate?.toString() || '37.50',
@@ -360,6 +366,30 @@ export default function Employees() {
                     value={formData.field_ot_rate}
                     onChange={(e) => setFormData({ ...formData, field_ot_rate: e.target.value })}
                     placeholder="165.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+              Internal Rate
+            </h4>
+            <p style={{ fontSize: '0.9em', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+              Rate charged for internal (non-billable) work
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Internal Rate</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.internal_rate}
+                    onChange={(e) => setFormData({ ...formData, internal_rate: e.target.value })}
+                    placeholder="0.00"
                   />
                 </div>
               </div>
