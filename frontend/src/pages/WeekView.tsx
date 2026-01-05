@@ -27,7 +27,7 @@ interface Project {
 
 export default function WeekView() {
   const { user } = useAuth();
-  const { timerRunning, timerStartTime, currentEntry, updateStartTime } = useTimer();
+  const { timerRunning, timerStartTime, currentEntry, updateStartTime, updateTimerEntry, stopTimer } = useTimer();
   const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -102,6 +102,29 @@ export default function WeekView() {
 
   // Ref for scrollable calendar container
   const calendarScrollRef = useRef<HTMLDivElement>(null);
+
+  // Update end time and hours in real-time for running timer in edit modal
+  useEffect(() => {
+    if (showEditModal && editingEntry?.isRunningTimer && timerStartTime) {
+      const interval = setInterval(() => {
+        const now = new Date();
+        const startDate = new Date(timerStartTime);
+        const formatTime = (date: Date) => {
+          return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        };
+        const durationMs = now.getTime() - startDate.getTime();
+        const hours = durationMs / (1000 * 60 * 60);
+        
+        setEditedEntry(prev => ({
+          ...prev,
+          end_time: formatTime(now),
+          hours: hours,
+        }));
+      }, 1000); // Update every second
+      
+      return () => clearInterval(interval);
+    }
+  }, [showEditModal, editingEntry?.isRunningTimer, timerStartTime]);
   
   // Get week start (Monday)
   const getWeekStart = (date: Date) => {
@@ -526,9 +549,87 @@ export default function WeekView() {
     setShowEditModal(true);
   };
 
+  // Handle clicking on the running timer to edit it
+  const handleTimerClick = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (!timerRunning || !timerStartTime || !currentEntry) return;
+    
+    // Create a temporary entry object from the timer state
+    const now = new Date();
+    const startDate = new Date(timerStartTime);
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
+    // Format times for display
+    const formatTime = (date: Date) => {
+      return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    };
+    
+    // Calculate hours
+    const durationMs = now.getTime() - startDate.getTime();
+    const hours = durationMs / (1000 * 60 * 60);
+    
+    const timerEntry = {
+      id: null, // No id means it's a running timer
+      isRunningTimer: true, // Flag to identify running timer
+      description: currentEntry.description || '',
+      project_id: currentEntry.projectId || '',
+      start_time: startDate.toISOString(),
+      end_time: now.toISOString(),
+      hours: hours,
+      date: dateStr,
+      billable: true,
+      rate_type: 'Shop Time',
+    };
+    
+    setEditingEntry(timerEntry);
+    setEditedEntry({
+      description: currentEntry.description || '',
+      project_id: currentEntry.projectId || '',
+      start_time: formatTime(startDate),
+      end_time: formatTime(now),
+      hours: hours,
+      billable: true,
+      rate_type: 'Shop Time',
+    });
+    setShowEditModal(true);
+  };
+
   // Handle saving edited time entry
   const handleSaveEdit = () => {
     if (!editingEntry) return;
+    
+    // Check if this is a running timer (no id)
+    if (editingEntry.isRunningTimer || !editingEntry.id) {
+      // Update the timer context instead of creating/updating a database entry
+      const selectedProject = projects?.find((p: any) => p.id === editedEntry.project_id);
+      updateTimerEntry(
+        editedEntry.description,
+        editedEntry.project_id || undefined,
+        selectedProject?.name
+      );
+      
+      // If start time was changed, update it
+      if (timerStartTime) {
+        const [startHour, startMin] = editedEntry.start_time.split(':').map(Number);
+        const today = new Date();
+        const newStartTime = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate(),
+          startHour,
+          startMin
+        );
+        // Only update if the time actually changed
+        if (newStartTime.getTime() !== timerStartTime) {
+          updateStartTime(newStartTime.getTime());
+        }
+      }
+      
+      setShowEditModal(false);
+      setEditingEntry(null);
+      return;
+    }
     
     // Parse the date from the original entry - handle both string and Date formats
     // If it's a string like "2024-01-15", parse it carefully to avoid timezone issues
@@ -579,6 +680,17 @@ export default function WeekView() {
   // Handle deleting time entry
   const handleDeleteEntry = () => {
     if (!editingEntry) return;
+    
+    // If it's a running timer, stop it instead of deleting
+    if (editingEntry.isRunningTimer || !editingEntry.id) {
+      if (window.confirm('Are you sure you want to stop and discard this timer?')) {
+        stopTimer();
+        setShowEditModal(false);
+        setEditingEntry(null);
+      }
+      return;
+    }
+    
     if (window.confirm('Are you sure you want to delete this time entry?')) {
       deleteTimeEntryMutation.mutate(editingEntry.id);
     }
@@ -635,21 +747,38 @@ export default function WeekView() {
     if (!draggingTimer) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      // Calculate deltaY relative to the original drag start position
       const deltaY = e.clientY - draggingTimer.startY;
       const minutesPerPixel = 60 / rowHeight;
       const minutesDelta = deltaY * minutesPerPixel;
       
-      // Calculate new start time
-      // Dragging down (positive deltaY) = earlier start time (subtract minutes)
-      // Dragging up (negative deltaY) = later start time (add minutes)
+      // Calculate new start time based on original start time
+      // Dragging DOWN (positive deltaY) = move start time EARLIER (subtract minutes)
+      // Dragging UP (negative deltaY) = move start time LATER (add minutes, which is subtracting negative)
       const newStartTime = new Date(draggingTimer.originalStartTime);
-      newStartTime.setMinutes(newStartTime.getMinutes() - minutesDelta);
+      const currentMinutes = newStartTime.getMinutes();
+      const currentHours = newStartTime.getHours();
+      
+      // Calculate total minutes from midnight, adjust by delta, then convert back
+      const totalMinutesFromMidnight = currentHours * 60 + currentMinutes;
+      const newTotalMinutes = totalMinutesFromMidnight - minutesDelta;
       
       // Round to nearest 15-minute increment
-      const roundedMinutes = Math.round(newStartTime.getMinutes() / 15) * 15;
-      newStartTime.setMinutes(roundedMinutes);
-      newStartTime.setSeconds(0);
-      newStartTime.setMilliseconds(0);
+      const roundedTotalMinutes = Math.round(newTotalMinutes / 15) * 15;
+      
+      // Convert back to hours and minutes
+      const newHours = Math.floor(roundedTotalMinutes / 60);
+      const newMinutes = roundedTotalMinutes % 60;
+      
+      // Handle negative minutes (going before midnight) or hours > 24
+      if (roundedTotalMinutes < 0) {
+        return; // Don't allow going before midnight
+      }
+      if (newHours >= 24) {
+        return; // Don't allow going past midnight
+      }
+      
+      newStartTime.setHours(newHours, newMinutes, 0, 0);
       
       // Don't allow start time to be in the future
       const now = Date.now();
@@ -1683,6 +1812,7 @@ export default function WeekView() {
                     return (
                       <div
                         key="running-timer"
+                        onClick={handleTimerClick}
                         style={{
                           position: 'absolute',
                           top: `${top}px`,
@@ -1700,17 +1830,19 @@ export default function WeekView() {
                           border: '2px solid #ff5252',
                           animation: draggingTimer ? 'none' : 'pulse 2s ease-in-out infinite',
                           pointerEvents: 'auto',
-                          cursor: draggingTimer ? 'grabbing' : 'default'
+                          cursor: draggingTimer ? 'grabbing' : 'pointer'
                         }}
                       >
                         {/* Draggable handle at the top */}
                         <div
                           onMouseDown={(e) => {
+                            e.stopPropagation(); // Prevent click event when dragging
                             const dayContainer = e.currentTarget.closest('[data-day-container]') as HTMLElement;
                             if (dayContainer) {
                               handleTimerDragStart(e, dayContainer);
                             }
                           }}
+                          onClick={(e) => e.stopPropagation()} // Prevent click when clicking handle
                           style={{
                             position: 'absolute',
                             top: 0,
@@ -2059,8 +2191,15 @@ export default function WeekView() {
             }}>
               <div>
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
-                  {new Date(editingEntry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                  {editingEntry.isRunningTimer 
+                    ? 'Running Timer'
+                    : new Date(editingEntry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                 </div>
+                {editingEntry.isRunningTimer && (
+                  <div style={{ fontSize: '11px', color: '#ff6b6b', fontWeight: '600' }}>
+                    ⏱️ Timer is currently running
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setShowEditModal(false)}
@@ -2158,6 +2297,8 @@ export default function WeekView() {
                   type="time"
                   value={editedEntry.end_time}
                   onChange={(e) => {
+                    // Don't allow changing end time for running timer
+                    if (editingEntry.isRunningTimer) return;
                     setEditedEntry({ ...editedEntry, end_time: e.target.value });
                     // Recalculate hours
                     if (editedEntry.start_time) {
@@ -2167,14 +2308,17 @@ export default function WeekView() {
                       setEditedEntry({ ...editedEntry, end_time: e.target.value, hours });
                     }
                   }}
+                  disabled={editingEntry.isRunningTimer}
                   style={{
                     padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
+                    backgroundColor: editingEntry.isRunningTimer ? 'var(--bg-secondary)' : 'var(--bg-primary)',
                     border: '1px solid var(--border-color)',
                     borderRadius: '6px',
-                    color: 'var(--text-primary)',
+                    color: editingEntry.isRunningTimer ? 'var(--text-secondary)' : 'var(--text-primary)',
                     fontSize: '14px',
+                    cursor: editingEntry.isRunningTimer ? 'not-allowed' : 'text',
                   }}
+                  title={editingEntry.isRunningTimer ? 'End time updates automatically while timer is running' : ''}
                 />
                 <div
                   style={{
@@ -2277,8 +2421,9 @@ export default function WeekView() {
                     fontWeight: '600',
                     cursor: 'pointer',
                   }}
+                  title={editingEntry.isRunningTimer ? 'Stop timer' : 'Delete entry'}
                 >
-                  {deleteTimeEntryMutation.isPending ? '...' : '🗑️'}
+                  {editingEntry.isRunningTimer ? '⏹️' : (deleteTimeEntryMutation.isPending ? '...' : '🗑️')}
                 </button>
               </div>
             </div>

@@ -1,0 +1,27 @@
+🎉 Welcome to IONEX Time Tracking!
+
+Hey there! 👋
+
+We're thrilled to have you on board! You're just one click away from getting started with the most efficient time tracking solution for your team.
+
+Click the link below to confirm your email address and activate your account:
+
+{{ .ConfirmationURL }}
+
+💡 Quick Tip: This link will expire in 24 hours for security reasons. If you didn't create an account, you can safely ignore this email.
+
+Once you're confirmed, you'll be able to:
+⏱️ Track your time with our intuitive timer
+📊 View detailed reports and analytics
+👥 Manage projects and team members
+💼 Create service tickets and invoices
+📈 Generate comprehensive payroll reports
+
+We're here to help you streamline your workflow and make time tracking effortless. If you have any questions, don't hesitate to reach out!
+
+Happy tracking! 🚀
+
+The IONEX Time Tracking Team
+
+---
+This email was sent to confirm your account. If you didn't sign up, please ignore this message.

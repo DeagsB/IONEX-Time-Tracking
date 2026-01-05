@@ -8,6 +8,7 @@ interface TimerContextType {
   startTimer: (description: string, projectId?: string) => void;
   stopTimer: () => void;
   updateStartTime: (newStartTime: number) => void;
+  updateTimerEntry: (description: string, projectId?: string) => void;
 }
 
 const TimerContext = createContext<TimerContextType | undefined>(undefined);
@@ -105,6 +106,12 @@ export const TimerProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     }
   };
 
+  const updateTimerEntry = (description: string, projectId?: string, projectName?: string) => {
+    if (timerRunning && currentEntry) {
+      setCurrentEntry({ description, projectId, projectName });
+    }
+  };
+
   return (
     <TimerContext.Provider
       value={{
@@ -115,6 +122,7 @@ export const TimerProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         startTimer,
         stopTimer,
         updateStartTime,
+        updateTimerEntry,
       }}
     >
       {children}
