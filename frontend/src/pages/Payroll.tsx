@@ -333,7 +333,7 @@ export default function Payroll() {
               <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)' }}>{grandTotals.totalHours.toFixed(2)}</div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Internal Hours</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Internal Time</div>
               <div style={{ fontSize: '28px', fontWeight: '700', color: '#dc3545' }}>{grandTotals.internalHours.toFixed(2)}</div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
