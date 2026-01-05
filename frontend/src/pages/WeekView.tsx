@@ -1980,43 +1980,6 @@ export default function WeekView() {
                   }}
                 />
 
-              {/* Icon buttons */}
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                <button
-                  className="button"
-                  style={{
-                    padding: '8px 12px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                  }}
-                  title="Project"
-                >
-                  📁
-                </button>
-                <button
-                  className="button"
-                  style={{
-                    padding: '8px 12px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                  }}
-                  title="Tags"
-                >
-                  🏷️
-                </button>
-                <button
-                  className="button"
-                  style={{
-                    padding: '8px 12px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                  }}
-                  title="Billable"
-                >
-                  💰
-                </button>
-              </div>
-
               {/* Time inputs */}
               <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px' }}>
                 <input
