@@ -172,11 +172,25 @@ export function aggregateEmployeeMetrics(
   let billableHours = 0;
   let totalRevenue = 0;
 
+  // Debug: Log first few entries to check billable field
+  if (entries.length > 0) {
+    console.log('Sample entries for billable calculation:', entries.slice(0, 3).map(e => ({
+      id: e.id,
+      hours: e.hours,
+      billable: e.billable,
+      billableType: typeof e.billable,
+      rate: e.rate
+    })));
+  }
+
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
     const rate = Number(entry.rate) || 0;
     totalHours += hours;
-    if (entry.billable) {
+    // Explicitly check for billable - handle both boolean and string values
+    // Also handle null/undefined as false
+    const isBillable = entry.billable === true || entry.billable === 'true' || entry.billable === 1;
+    if (isBillable) {
       billableHours += hours;
       totalRevenue += hours * rate;
     } else {
@@ -184,6 +198,13 @@ export function aggregateEmployeeMetrics(
       const internalRate = Number(employee?.internal_rate) || 0;
       totalRevenue += hours * internalRate;
     }
+  });
+
+  console.log('Billable hours calculation result:', {
+    totalHours,
+    billableHours,
+    nonBillableHours: totalHours - billableHours,
+    entriesCount: entries.length
   });
 
   const nonBillableHours = totalHours - billableHours;

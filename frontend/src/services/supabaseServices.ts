@@ -651,7 +651,23 @@ export const reportsService = {
     let query = supabase
       .from('time_entries')
       .select(`
-        *,
+        id,
+        user_id,
+        project_id,
+        date,
+        start_time,
+        end_time,
+        hours,
+        rate,
+        billable,
+        rate_type,
+        description,
+        approved,
+        approved_by,
+        approved_at,
+        created_at,
+        updated_at,
+        is_demo,
         user:users!time_entries_user_id_fkey(id, first_name, last_name, email, archived),
         project:projects!time_entries_project_id_fkey(id, name, project_number, customer:customers!projects_customer_id_fkey(id, name))
       `)
