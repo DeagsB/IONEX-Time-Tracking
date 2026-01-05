@@ -21,7 +21,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   login: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<SignUpResult>;
+  signUp: (email: string, password: string, firstName: string, lastName: string, department?: string) => Promise<SignUpResult>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
   refreshUserProfile: () => Promise<void>;
