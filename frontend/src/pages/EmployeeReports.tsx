@@ -414,6 +414,14 @@ export default function EmployeeReports() {
         </div>
         <div className="card" style={{ padding: '16px' }}>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
+            Internal Hours
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: '600' }}>
+            {formatHours(totals.totalHours - totals.billableHours)}
+          </div>
+        </div>
+        <div className="card" style={{ padding: '16px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
             Total Revenue
           </div>
           <div style={{ fontSize: '24px', fontWeight: '600', color: '#28a745' }}>
@@ -500,6 +508,12 @@ export default function EmployeeReports() {
                   Billable {sortField === 'billableHours' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
                 <th 
+                  onClick={() => handleSort('nonBillableHours')}
+                  style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
+                >
+                  Internal {sortField === 'nonBillableHours' && (sortDirection === 'asc' ? '↑' : '↓')}
+                </th>
+                <th 
                   onClick={() => handleSort('efficiency')}
                   style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
                 >
@@ -547,7 +561,7 @@ export default function EmployeeReports() {
             <tbody>
               {sortedMetrics.length === 0 ? (
                 <tr>
-                  <td colSpan={11} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={12} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                     No employee data for this period
                   </td>
                 </tr>
@@ -571,6 +585,7 @@ export default function EmployeeReports() {
                       </td>
                       <td style={{ textAlign: 'right' }}>{formatHours(metrics.totalHours)}</td>
                       <td style={{ textAlign: 'right' }}>{formatHours(metrics.billableHours)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatHours(metrics.nonBillableHours)}</td>
                       <td style={{ textAlign: 'right' }}>
                         <span style={{
                           padding: '4px 8px',
@@ -613,7 +628,7 @@ export default function EmployeeReports() {
                     {/* Expanded Details */}
                     {expandedEmployee === metrics.userId && (
                       <tr>
-                        <td colSpan={11} style={{ backgroundColor: 'var(--bg-secondary)', padding: '20px' }}>
+                        <td colSpan={12} style={{ backgroundColor: 'var(--bg-secondary)', padding: '20px' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                             {/* Rate Type Breakdown */}
                             <div>
@@ -749,6 +764,10 @@ export default function EmployeeReports() {
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Billable</div>
                     <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatHours(metrics.billableHours)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Internal</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatHours(metrics.nonBillableHours)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Revenue</div>
