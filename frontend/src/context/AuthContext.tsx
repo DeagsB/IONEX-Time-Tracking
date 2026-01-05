@@ -201,7 +201,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       },
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Signup error:', error);
+      throw error;
+    }
+    
+    // Log signup result for debugging
+    console.log('✅ Signup successful:', {
+      user: data.user?.id,
+      email: data.user?.email,
+      emailConfirmed: data.user?.email_confirmed_at ? 'Yes' : 'No',
+      hasSession: !!data.session,
+      needsEmailConfirmation: !data.session && !!data.user,
+    });
     
     // Return data to check if email confirmation is required
     return {

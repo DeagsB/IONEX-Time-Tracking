@@ -21,7 +21,26 @@
 3. Paste and run it in the SQL Editor
 4. This creates all tables, triggers, and Row Level Security policies
 
-## Step 3: Enable Microsoft OAuth (Optional but Recommended)
+## Step 3: Configure Email Settings (SMTP)
+
+1. In Supabase Dashboard, go to **Settings > Auth > SMTP Settings**
+2. Configure your SMTP provider:
+   - **SMTP Host**: Your email provider's SMTP server
+   - **SMTP Port**: Usually `587` (TLS) or `465` (SSL)
+   - **SMTP User**: Your full email address
+   - **SMTP Password**: Your email password or app-specific password
+   - **Sender Email**: The email address that will appear as the sender
+   - **Sender Name**: Display name for emails
+
+3. **For Gmail users**: You'll need to use an [App Password](https://support.google.com/accounts/answer/185833) instead of your regular password
+
+4. **Test the connection**: Use the "Send test email" feature if available
+
+5. **Verify email templates**: Go to **Authentication > Email Templates** and ensure templates are configured with correct redirect URLs
+
+> **Note**: See `SMTP_TROUBLESHOOTING.md` for detailed troubleshooting if emails aren't being received.
+
+## Step 4: Enable Microsoft OAuth (Optional but Recommended)
 
 1. In Supabase Dashboard, go to **Authentication > Providers**
 2. Enable **Azure** provider
@@ -31,14 +50,14 @@
    - Add redirect URL: `https://YOUR_SUPABASE_PROJECT.supabase.co/auth/v1/callback`
 4. Enter these credentials in Supabase
 
-## Step 4: Install Dependencies
+## Step 5: Install Dependencies
 
 ```bash
 cd frontend
 npm install
 ```
 
-## Step 5: Configure Environment Variables
+## Step 6: Configure Environment Variables
 
 1. Copy `env.example` to `.env.local`:
    ```bash
@@ -51,7 +70,7 @@ npm install
    VITE_SUPABASE_ANON_KEY=your_anon_key_here
    ```
 
-## Step 6: Test Locally
+## Step 7: Test Locally
 
 ```bash
 npm run dev
@@ -59,7 +78,7 @@ npm run dev
 
 Visit `http://localhost:5173` and test the application.
 
-## Step 7: Deploy to Vercel
+## Step 8: Deploy to Vercel
 
 ### Option A: Deploy via Vercel CLI
 
@@ -89,7 +108,7 @@ Visit `http://localhost:5173` and test the application.
    - `VITE_SUPABASE_ANON_KEY`
 7. Click "Deploy"
 
-## Step 8: Update Supabase Redirect URLs
+## Step 9: Update Supabase Redirect URLs
 
 After deploying to Vercel, update your Supabase redirect URLs:
 
@@ -98,7 +117,7 @@ After deploying to Vercel, update your Supabase redirect URLs:
    - `https://your-app.vercel.app`
    - `https://your-app.vercel.app/**`
 
-## Step 9: Create First Admin User
+## Step 10: Create First Admin User
 
 1. Sign up through the app (either email/password or Microsoft OAuth)
 2. Go to Supabase Dashboard > **Table Editor > users**
@@ -134,6 +153,13 @@ After deploying to Vercel, update your Supabase redirect URLs:
 ### Database permission errors
 - Check Row Level Security policies in Supabase
 - Verify user role is set correctly in `users` table
+
+### Not receiving confirmation emails
+- Check `SMTP_TROUBLESHOOTING.md` for detailed SMTP configuration help
+- Verify SMTP settings in Supabase Dashboard
+- Check spam/junk folder
+- Ensure email confirmation is enabled in Authentication settings
+- Review Supabase Auth logs for email sending errors
 - Check that user profile exists in `public.users` table
 
 
