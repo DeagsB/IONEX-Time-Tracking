@@ -190,6 +190,10 @@ export default function Login() {
                   className="input"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
+                  onBlur={(e) => {
+                    // Mark field as touched for validation styling
+                    e.currentTarget.classList.add('touched');
+                  }}
                   required={isSignUp && !success}
                 />
               </div>
@@ -202,6 +206,10 @@ export default function Login() {
                   className="input"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
+                  onBlur={(e) => {
+                    // Mark field as touched for validation styling
+                    e.currentTarget.classList.add('touched');
+                  }}
                   required={isSignUp && !success}
                 />
               </div>
@@ -216,6 +224,10 @@ export default function Login() {
               className="input"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={(e) => {
+                // Mark field as touched for validation styling
+                e.currentTarget.classList.add('touched');
+              }}
               required={!success}
             />
           </div>
@@ -228,6 +240,10 @@ export default function Login() {
               className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onBlur={(e) => {
+                // Mark field as touched for validation styling
+                e.currentTarget.classList.add('touched');
+              }}
               required={!success}
               minLength={success ? undefined : 6}
             />
