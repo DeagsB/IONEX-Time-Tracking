@@ -587,7 +587,18 @@ export default function EmployeeReports() {
                       <td style={{ textAlign: 'right', color: '#28a745' }}>
                         {formatCurrency(metrics.totalRevenue)}
                       </td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(metrics.averageRate)}</td>
+                      <td style={{ textAlign: 'right', color: '#dc3545' }}>
+                        {formatCurrency(metrics.totalCost)}
+                      </td>
+                      <td style={{ textAlign: 'right', color: metrics.netProfit >= 0 ? '#28a745' : '#dc3545' }}>
+                        {formatCurrency(metrics.netProfit)}
+                      </td>
+                      <td style={{ textAlign: 'right', color: metrics.profitMargin >= 0 ? '#28a745' : '#dc3545' }}>
+                        {formatPercentage(metrics.profitMargin)}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {formatCurrency(metrics.averageRate)}
+                      </td>
                       <td style={{ textAlign: 'right' }}>{metrics.serviceTicketCount}</td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ 
@@ -602,7 +613,7 @@ export default function EmployeeReports() {
                     {/* Expanded Details */}
                     {expandedEmployee === metrics.userId && (
                       <tr>
-                        <td colSpan={8} style={{ backgroundColor: 'var(--bg-secondary)', padding: '20px' }}>
+                        <td colSpan={11} style={{ backgroundColor: 'var(--bg-secondary)', padding: '20px' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                             {/* Rate Type Breakdown */}
                             <div>
