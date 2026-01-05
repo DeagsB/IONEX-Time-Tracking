@@ -82,6 +82,7 @@ export interface EmployeeMetrics {
 }
 
 export interface RateTypeBreakdown {
+  internalTime: { hours: number; revenue: number; cost: number; profit: number };
   shopTime: { hours: number; revenue: number; cost: number; profit: number };
   fieldTime: { hours: number; revenue: number; cost: number; profit: number };
   travelTime: { hours: number; revenue: number; cost: number; profit: number };
@@ -148,6 +149,7 @@ export function aggregateEmployeeMetrics(
       serviceTicketCount: 0,
       efficiency: 0,
       rateTypeBreakdown: {
+        internalTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
         shopTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
         fieldTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
         travelTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
@@ -311,6 +313,7 @@ export function calculateRateTypeBreakdown(
   employee?: EmployeeWithRates
 ): RateTypeBreakdown {
   const breakdown: RateTypeBreakdown = {
+    internalTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
     shopTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
     fieldTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
     travelTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
@@ -325,6 +328,7 @@ export function calculateRateTypeBreakdown(
     const internalRate = Number(employee?.internal_rate) || 0;
     const revenue = entry.billable ? hours * rate : hours * internalRate;
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+    const isInternal = !entry.billable;
 
     // Determine pay rate based on rate type
     let payRate = 0;

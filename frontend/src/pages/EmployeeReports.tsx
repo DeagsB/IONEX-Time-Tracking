@@ -637,6 +637,10 @@ export default function EmployeeReports() {
                               </h4>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                  <span>Internal Time</span>
+                                  <span>{formatHours(metrics.rateTypeBreakdown.internalTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.internalTime.revenue)})</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                   <span>Shop Time</span>
                                   <span>{formatHours(metrics.rateTypeBreakdown.shopTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.shopTime.revenue)})</span>
                                 </div>
@@ -837,6 +841,10 @@ export default function EmployeeReports() {
                     <div style={{ marginBottom: '16px' }}>
                       <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '600' }}>Hours by Rate Type</h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                          <span>Internal Time</span>
+                          <span>{formatHours(metrics.rateTypeBreakdown.internalTime.hours)}</span>
+                        </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                           <span>Shop Time</span>
                           <span>{formatHours(metrics.rateTypeBreakdown.shopTime.hours)}</span>
