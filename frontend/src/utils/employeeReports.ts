@@ -349,32 +349,41 @@ export function calculateRateTypeBreakdown(
     const cost = hours * payRate;
     const profit = revenue - cost;
 
-    if (rateType.includes('shop') && rateType.includes('overtime')) {
-      breakdown.shopOvertime.hours += hours;
-      breakdown.shopOvertime.revenue += revenue;
-      breakdown.shopOvertime.cost += cost;
-      breakdown.shopOvertime.profit += profit;
-    } else if (rateType.includes('field') && rateType.includes('overtime')) {
-      breakdown.fieldOvertime.hours += hours;
-      breakdown.fieldOvertime.revenue += revenue;
-      breakdown.fieldOvertime.cost += cost;
-      breakdown.fieldOvertime.profit += profit;
-    } else if (rateType.includes('field')) {
-      breakdown.fieldTime.hours += hours;
-      breakdown.fieldTime.revenue += revenue;
-      breakdown.fieldTime.cost += cost;
-      breakdown.fieldTime.profit += profit;
-    } else if (rateType.includes('travel')) {
-      breakdown.travelTime.hours += hours;
-      breakdown.travelTime.revenue += revenue;
-      breakdown.travelTime.cost += cost;
-      breakdown.travelTime.profit += profit;
+    // If internal (non-billable), add to internalTime breakdown
+    if (isInternal) {
+      breakdown.internalTime.hours += hours;
+      breakdown.internalTime.revenue += revenue;
+      breakdown.internalTime.cost += cost;
+      breakdown.internalTime.profit += profit;
     } else {
-      // Default to shop time
-      breakdown.shopTime.hours += hours;
-      breakdown.shopTime.revenue += revenue;
-      breakdown.shopTime.cost += cost;
-      breakdown.shopTime.profit += profit;
+      // Billable entries go to their respective rate types
+      if (rateType.includes('shop') && rateType.includes('overtime')) {
+        breakdown.shopOvertime.hours += hours;
+        breakdown.shopOvertime.revenue += revenue;
+        breakdown.shopOvertime.cost += cost;
+        breakdown.shopOvertime.profit += profit;
+      } else if (rateType.includes('field') && rateType.includes('overtime')) {
+        breakdown.fieldOvertime.hours += hours;
+        breakdown.fieldOvertime.revenue += revenue;
+        breakdown.fieldOvertime.cost += cost;
+        breakdown.fieldOvertime.profit += profit;
+      } else if (rateType.includes('field')) {
+        breakdown.fieldTime.hours += hours;
+        breakdown.fieldTime.revenue += revenue;
+        breakdown.fieldTime.cost += cost;
+        breakdown.fieldTime.profit += profit;
+      } else if (rateType.includes('travel')) {
+        breakdown.travelTime.hours += hours;
+        breakdown.travelTime.revenue += revenue;
+        breakdown.travelTime.cost += cost;
+        breakdown.travelTime.profit += profit;
+      } else {
+        // Default to shop time
+        breakdown.shopTime.hours += hours;
+        breakdown.shopTime.revenue += revenue;
+        breakdown.shopTime.cost += cost;
+        breakdown.shopTime.profit += profit;
+      }
     }
   });
 
