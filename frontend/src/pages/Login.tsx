@@ -139,6 +139,13 @@ export default function Login() {
             <img 
               src="/ionex-logo-removebg-preview.png" 
               alt="IONEX Logo" 
+              onError={(e) => {
+                console.error('Logo failed to load, trying fallback:', e.currentTarget.src);
+                // Fallback to original logo if new one fails
+                if (!e.currentTarget.src.includes('ionex-logo.png')) {
+                  e.currentTarget.src = '/ionex-logo.png';
+                }
+              }}
               style={{
                 maxWidth: '180px',
                 height: 'auto',
