@@ -77,13 +77,14 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
 
   const createProjectMutation = useMutation({
     mutationFn: async (projectName: string) => {
+      if (!user?.id) throw new Error('User not authenticated.');
       const projectData: any = {
         name: projectName,
         status: 'active',
         color: '#4ecdc4',
         is_demo: isDemoMode,
       };
-      return await projectsService.create(projectData);
+      return await projectsService.create(projectData, user.id);
     },
     onSuccess: (newProject) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
