@@ -29,10 +29,12 @@ export default function Employees() {
   const { data: employees, isLoading, error } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeesService.getAll(),
-    onError: (err) => {
-      console.error('Error fetching employees:', err);
-    },
   });
+
+  // Log errors separately
+  if (error) {
+    console.error('Error fetching employees:', error);
+  }
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -421,12 +423,12 @@ export default function Employees() {
             Error loading employees: {error instanceof Error ? error.message : 'Unknown error'}
           </div>
         )}
-        {!isLoading && !error && (!employees || employees.length === 0) && (
+        {!isLoading && !error && (!employees || (Array.isArray(employees) && employees.length === 0)) && (
           <div style={{ textAlign: 'center', padding: '20px' }}>
             No employees found. Click "Add Employee" to create one.
           </div>
         )}
-        {!isLoading && !error && employees && employees.length > 0 && (
+        {!isLoading && !error && employees && Array.isArray(employees) && employees.length > 0 && (
           <table className="table">
             <thead>
               <tr>
