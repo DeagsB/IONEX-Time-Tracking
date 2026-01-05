@@ -172,7 +172,18 @@ code {
   box-shadow: 0 0 0 3px var(--primary-light);
 }
 
-.input:invalid:not(:focus):not(:placeholder-shown) {
+/* Only show validation errors after user interaction or form submission */
+.input:invalid:not(:focus):not(:placeholder-shown):not(:user-invalid) {
+  border-color: var(--input-border);
+}
+
+/* Show validation errors only after the field has been touched/blurred */
+.input:invalid:not(:focus):not(:placeholder-shown):user-invalid {
+  border-color: var(--error-color);
+}
+
+/* For browsers that don't support :user-invalid, use form submission state */
+.form-submitted .input:invalid:not(:focus):not(:placeholder-shown) {
   border-color: var(--error-color);
 }
 

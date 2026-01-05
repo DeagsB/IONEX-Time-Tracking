@@ -13,6 +13,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formSubmitted, setFormSubmitted] = useState(false);
   const { login, signUp, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
@@ -38,6 +39,7 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormSubmitted(true);
     setError('');
     setSuccess('');
     setLoading(true);
@@ -172,7 +174,12 @@ export default function Login() {
           </div>
         )}
         
-        <form ref={formRef} onSubmit={handleSubmit} noValidate className={success ? 'form-success' : ''}>
+        <form 
+          ref={formRef} 
+          onSubmit={handleSubmit} 
+          noValidate 
+          className={`${success ? 'form-success' : ''} ${formSubmitted ? 'form-submitted' : ''}`}
+        >
           {isSignUp && (
             <>
               <div className="form-group">
@@ -275,6 +282,7 @@ export default function Login() {
               setIsSignUp(!isSignUp);
               setError('');
               setSuccess('');
+              setFormSubmitted(false);
               setEmail('');
               setPassword('');
               setFirstName('');
