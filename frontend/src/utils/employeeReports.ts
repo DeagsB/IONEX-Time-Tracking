@@ -185,14 +185,38 @@ export function aggregateEmployeeMetrics(
 
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
-    const rate = Number(entry.rate) || 0;
     totalHours += hours;
     // Explicitly check for billable - handle both boolean and string values
     // Also handle null/undefined as false
     const isBillable = entry.billable === true || entry.billable === 'true' || entry.billable === 1;
+    
     if (isBillable) {
       billableHours += hours;
-      totalRevenue += hours * rate;
+      // For billable entries, use employee's billable rates based on rate_type
+      const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+      let billableRate = 0;
+      
+      if (employee) {
+        if (rateType.includes('shop') && rateType.includes('overtime')) {
+          billableRate = Number(employee.shop_ot_rate) || 0;
+        } else if (rateType.includes('field') && rateType.includes('overtime')) {
+          billableRate = Number(employee.field_ot_rate) || 0;
+        } else if (rateType.includes('field')) {
+          billableRate = Number(employee.ft_rate) || 0;
+        } else if (rateType.includes('travel')) {
+          billableRate = Number(employee.tt_rate) || 0;
+        } else {
+          // Default to shop time rate (rt_rate)
+          billableRate = Number(employee.rt_rate) || 0;
+        }
+      }
+      
+      // Fallback to entry.rate if employee rates are not available
+      if (billableRate === 0) {
+        billableRate = Number(entry.rate) || 0;
+      }
+      
+      totalRevenue += hours * billableRate;
     } else {
       // Use internal rate for non-billable entries
       const internalRate = Number(employee?.internal_rate) || 0;
@@ -200,11 +224,20 @@ export function aggregateEmployeeMetrics(
     }
   });
 
-  console.log('Billable hours calculation result:', {
+  console.log('Billable hours and revenue calculation result:', {
     totalHours,
     billableHours,
     nonBillableHours: totalHours - billableHours,
-    entriesCount: entries.length
+    totalRevenue,
+    entriesCount: entries.length,
+    employeeRates: employee ? {
+      rt_rate: employee.rt_rate,
+      tt_rate: employee.tt_rate,
+      ft_rate: employee.ft_rate,
+      shop_ot_rate: employee.shop_ot_rate,
+      field_ot_rate: employee.field_ot_rate,
+      internal_rate: employee.internal_rate
+    } : 'No employee data'
   });
 
   const nonBillableHours = totalHours - billableHours;
