@@ -2122,7 +2122,7 @@ export default function WeekView() {
                   />
                   <span>Billable?</span>
                   <span style={{ fontSize: '12px', opacity: 0.7 }}>
-                    {newEntry.billable ? 'Yes' : 'No'}
+                    {newEntry.billable ? 'Yes' : 'Internal'}
                   </span>
                 </label>
               </div>
@@ -2383,7 +2383,7 @@ export default function WeekView() {
                   />
                   <span>Billable?</span>
                   <span style={{ fontSize: '12px', opacity: 0.7 }}>
-                    {editedEntry.billable ? 'Yes' : 'No'}
+                    {editedEntry.billable ? 'Yes' : 'Internal'}
                   </span>
                 </label>
               </div>

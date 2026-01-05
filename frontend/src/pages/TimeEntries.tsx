@@ -286,7 +286,7 @@ export default function TimeEntries() {
                   <td>{entry.hours}</td>
                   <td>${entry.rate?.toFixed(2)}</td>
                   <td>${((entry.hours || 0) * (entry.rate || 0)).toFixed(2)}</td>
-                  <td>{entry.billable ? 'Yes' : 'No'}</td>
+                  <td>{entry.billable ? 'Yes' : 'Internal'}</td>
                   <td>{entry.approved ? 'Approved' : 'Pending'}</td>
                   <td>
                     {!entry.approved && (
