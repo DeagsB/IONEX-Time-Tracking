@@ -276,8 +276,8 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Bug Report Modal */}
-      {showBugReportModal && (
+      {/* Bug Report Modal - Rendered via Portal */}
+      {showBugReportModal && modalRoot ? createPortal(
         <div
           style={{
             position: 'fixed',
