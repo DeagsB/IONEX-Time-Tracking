@@ -280,18 +280,24 @@ export const employeesService = {
       .from('employees')
       .select(`
         *,
-        user:users(id, email, first_name, last_name, archived)
+        user:users!employees_user_id_fkey(id, email, first_name, last_name, archived)
       `)
       .order('employee_id');
 
     // Filter out archived users if not including them
-    if (!includeArchived) {
-      query = query.or('user.archived.is.null,user.archived.eq.false');
-    }
-
+    // Note: We filter in the application layer if needed, as Supabase filtering on joined tables can be tricky
     const { data, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching employees:', error);
+      throw error;
+    }
+
+    // Filter out archived users in application layer if not including them
+    if (!includeArchived && data) {
+      return data.filter((emp: any) => !emp.user || !emp.user.archived);
+    }
+
     return data;
   },
 

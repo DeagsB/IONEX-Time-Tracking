@@ -26,9 +26,12 @@ export default function Employees() {
     field_ot_pay_rate: '45.00',
   });
 
-  const { data: employees } = useQuery({
+  const { data: employees, isLoading, error } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeesService.getAll(),
+    onError: (err) => {
+      console.error('Error fetching employees:', err);
+    },
   });
 
   const createMutation = useMutation({
@@ -410,19 +413,33 @@ export default function Employees() {
       )}
 
       <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Department</th>
-              <th>Position</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {employees?.map((employee: any) => (
+        {isLoading && (
+          <div style={{ textAlign: 'center', padding: '20px' }}>Loading employees...</div>
+        )}
+        {error && (
+          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--error-color)' }}>
+            Error loading employees: {error instanceof Error ? error.message : 'Unknown error'}
+          </div>
+        )}
+        {!isLoading && !error && (!employees || employees.length === 0) && (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            No employees found. Click "Add Employee" to create one.
+          </div>
+        )}
+        {!isLoading && !error && employees && employees.length > 0 && (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Department</th>
+                <th>Position</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((employee: any) => (
               <tr key={employee.id}>
                 <td>{employee.employee_id}</td>
                 <td>
