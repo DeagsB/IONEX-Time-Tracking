@@ -9,6 +9,7 @@ export default function Customers() {
   const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -44,6 +45,8 @@ export default function Customers() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       setShowForm(false);
+      setShowModal(false);
+      setEditingCustomer(null);
       resetForm();
     },
   });
@@ -61,6 +64,7 @@ export default function Customers() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setShowModal(false);
       setEditingCustomer(null);
       resetForm();
     },
@@ -116,7 +120,7 @@ export default function Customers() {
       location_code: customer.location_code || '',
       service_location: customer.service_location || '',
     });
-    setShowForm(true);
+    setShowModal(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -143,10 +147,54 @@ export default function Customers() {
         </button>
       </div>
 
-      {showForm && (
-        <div className="card" style={{ marginBottom: '20px' }}>
-          <h3>{editingCustomer ? 'Edit Customer' : 'New Customer'}</h3>
-          <form onSubmit={handleSubmit}>
+      {/* Modal for editing */}
+      {showModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+          onClick={() => {
+            setShowModal(false);
+            setEditingCustomer(null);
+            resetForm();
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '800px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              position: 'relative',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3>Edit Customer</h3>
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingCustomer(null);
+                  resetForm();
+                }}
+                style={{ padding: '5px 10px', fontSize: '14px' }}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label className="label">Name *</label>
               <input
@@ -308,8 +356,181 @@ export default function Customers() {
             </div>
 
 
+              <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+                Update Customer
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Form at top for creating new customers */}
+      {showForm && !editingCustomer && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <h3>New Customer</h3>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="label">Name *</label>
+              <input
+                type="text"
+                className="input"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Email</label>
+                <input
+                  type="email"
+                  className="input"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Phone</label>
+                <input
+                  type="tel"
+                  className="input"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Address</label>
+              <input
+                type="text"
+                className="input"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">City</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">State</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.state}
+                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">ZIP Code</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.zip_code}
+                  onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Country</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.country}
+                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Tax ID</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.tax_id}
+                  onChange={(e) => setFormData({ ...formData, tax_id: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Notes</label>
+              <textarea
+                className="input"
+                rows={3}
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              />
+            </div>
+
+            <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid var(--border-color)' }} />
+            <h4 style={{ marginBottom: '15px', color: 'var(--text-secondary)', fontSize: '14px', textTransform: 'uppercase' }}>
+              Service Ticket Information
+            </h4>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">PO Number</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.po_number}
+                  onChange={(e) => setFormData({ ...formData, po_number: e.target.value })}
+                  placeholder="Purchase Order Number"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Location Code</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.location_code}
+                  onChange={(e) => setFormData({ ...formData, location_code: e.target.value })}
+                  placeholder="e.g., LOC-001"
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Approver Name</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.approver_name}
+                  onChange={(e) => setFormData({ ...formData, approver_name: e.target.value })}
+                  placeholder="Approval contact name"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Service Location</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.service_location}
+                  onChange={(e) => setFormData({ ...formData, service_location: e.target.value })}
+                  placeholder="If different from billing address"
+                />
+              </div>
+            </div>
+
             <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-              {editingCustomer ? 'Update' : 'Create'} Customer
+              Create Customer
             </button>
           </form>
         </div>

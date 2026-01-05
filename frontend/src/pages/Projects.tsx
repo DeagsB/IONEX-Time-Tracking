@@ -9,6 +9,7 @@ export default function Projects() {
   const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [editingProject, setEditingProject] = useState<any>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -52,6 +53,8 @@ export default function Projects() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       setShowForm(false);
+      setShowModal(false);
+      setEditingProject(null);
       resetForm();
     },
   });
@@ -74,6 +77,7 @@ export default function Projects() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setShowModal(false);
       setEditingProject(null);
       resetForm();
     },
@@ -115,7 +119,7 @@ export default function Projects() {
       budget: project.budget?.toString() || '',
       color: project.color || '#4ecdc4',
     });
-    setShowForm(true);
+    setShowModal(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -142,10 +146,54 @@ export default function Projects() {
         </button>
       </div>
 
-      {showForm && (
-        <div className="card" style={{ marginBottom: '20px' }}>
-          <h3>{editingProject ? 'Edit Project' : 'New Project'}</h3>
-          <form onSubmit={handleSubmit}>
+      {/* Modal for editing */}
+      {showModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+          onClick={() => {
+            setShowModal(false);
+            setEditingProject(null);
+            resetForm();
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '800px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              position: 'relative',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3>Edit Project</h3>
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingProject(null);
+                  resetForm();
+                }}
+                style={{ padding: '5px 10px', fontSize: '14px' }}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Name</label>
@@ -270,12 +318,19 @@ export default function Projects() {
             </div>
 
 
-            <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
-              {editingProject ? 'Update' : 'Create'} Project
-            </button>
-          </form>
+              <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+                Update Project
+              </button>
+            </form>
+          </div>
         </div>
       )}
+
+      {/* Form at top for creating new projects */}
+      {showForm && !editingProject && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <h3>New Project</h3>
+          <form onSubmit={handleSubmit}>
 
       <div className="card">
         <table className="table">
