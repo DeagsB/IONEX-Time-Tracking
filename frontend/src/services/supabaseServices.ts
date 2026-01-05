@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabaseClient';
 
 export const timeEntriesService = {
   async getAll(isDemoMode?: boolean) {
+    // RLS policies automatically filter time entries:
+    // - Regular users can only see their own entries (user_id = auth.uid())
+    // - Admins can see all entries
     let query = supabase
       .from('time_entries')
       .select(`
