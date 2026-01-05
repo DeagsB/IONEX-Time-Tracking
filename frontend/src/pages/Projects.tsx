@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { projectsService, customersService } from '../services/supabaseServices';
+import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 
 export default function Projects() {
   const { user } = useAuth();
@@ -38,6 +38,36 @@ export default function Projects() {
     queryKey: ['customers', user?.id],
     queryFn: () => customersService.getAll(user?.id),
   });
+
+  // Fetch all time entries to calculate total hours per project
+  const { data: allTimeEntries } = useQuery({
+    queryKey: ['allTimeEntries'],
+    queryFn: () => timeEntriesService.getAll(isDemoMode),
+    enabled: !!user,
+  });
+
+  // Calculate total hours per project
+  const projectHours = useMemo(() => {
+    if (!allTimeEntries || !projects) return {};
+    
+    const hoursMap: Record<string, number> = {};
+    
+    allTimeEntries.forEach((entry: any) => {
+      if (entry.project_id && entry.hours) {
+        const projectId = entry.project_id;
+        hoursMap[projectId] = (hoursMap[projectId] || 0) + Number(entry.hours);
+      }
+    });
+    
+    return hoursMap;
+  }, [allTimeEntries, projects]);
+
+  // Format hours helper
+  const formatHours = (hours: number): string => {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${h}:${m.toString().padStart(2, '0')}`;
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -622,13 +652,14 @@ export default function Projects() {
               <th>Name</th>
               <th>Customer</th>
               <th>Status</th>
+              <th style={{ textAlign: 'right' }}>Total Hours</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {projects && projects.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '20px' }}>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
                   No projects found. Create your first project above.
                 </td>
               </tr>
@@ -653,6 +684,9 @@ export default function Projects() {
                 </td>
                 <td>{project.customer?.name || '-'}</td>
                 <td>{project.status}</td>
+                <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                  {formatHours(projectHours[project.id] || 0)}
+                </td>
                 <td>
                   {(user?.id === project.created_by || user?.role === 'ADMIN' || !project.created_by) && (
                     <>
