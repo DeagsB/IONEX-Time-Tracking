@@ -7,6 +7,7 @@ interface TimerContextType {
   currentEntry: { description: string; projectId?: string; projectName?: string } | null;
   startTimer: (description: string, projectId?: string) => void;
   stopTimer: () => void;
+  updateStartTime: (newStartTime: number) => void;
 }
 
 const TimerContext = createContext<TimerContextType | undefined>(undefined);
@@ -95,6 +96,15 @@ export const TimerProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     timerElapsedRef.current = 0;
   };
 
+  const updateStartTime = (newStartTime: number) => {
+    if (timerRunning && timerStartTimeRef.current) {
+      // When adjusting start time by dragging, we're changing when the current session started
+      // Reset elapsed to 0 so the timer calculates from the new start time
+      timerElapsedRef.current = 0;
+      timerStartTimeRef.current = newStartTime;
+    }
+  };
+
   return (
     <TimerContext.Provider
       value={{
@@ -104,6 +114,7 @@ export const TimerProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         currentEntry,
         startTimer,
         stopTimer,
+        updateStartTime,
       }}
     >
       {children}

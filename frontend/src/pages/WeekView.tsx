@@ -27,7 +27,7 @@ interface Project {
 
 export default function WeekView() {
   const { user } = useAuth();
-  const { timerRunning, timerStartTime, currentEntry } = useTimer();
+  const { timerRunning, timerStartTime, currentEntry, updateStartTime } = useTimer();
   const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -87,6 +87,13 @@ export default function WeekView() {
     originalHeight: number;
     originalEndTime: Date;
     previewHeight: number;
+  } | null>(null);
+
+  // Timer drag state (for adjusting start time)
+  const [draggingTimer, setDraggingTimer] = useState<{
+    startY: number;
+    originalStartTime: number;
+    dayContainerTop: number;
   } | null>(null);
 
   // Header visibility state (hide on scroll down, show on scroll up)
@@ -607,6 +614,65 @@ export default function WeekView() {
       previewHeight: entryStyle.height,
     });
   };
+
+  // Handle timer drag start (adjusting start time)
+  const handleTimerDragStart = (e: React.MouseEvent, dayContainer: HTMLElement) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (!timerStartTime) return;
+    
+    const rect = dayContainer.getBoundingClientRect();
+    setDraggingTimer({
+      startY: e.clientY,
+      originalStartTime: timerStartTime,
+      dayContainerTop: rect.top,
+    });
+  };
+
+  // Handle timer drag move and end
+  useEffect(() => {
+    if (!draggingTimer) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - draggingTimer.startY;
+      const minutesPerPixel = 60 / rowHeight;
+      const minutesDelta = deltaY * minutesPerPixel;
+      
+      // Calculate new start time
+      // Dragging down (positive deltaY) = earlier start time (subtract minutes)
+      // Dragging up (negative deltaY) = later start time (add minutes)
+      const newStartTime = new Date(draggingTimer.originalStartTime);
+      newStartTime.setMinutes(newStartTime.getMinutes() - minutesDelta);
+      
+      // Round to nearest 15-minute increment
+      const roundedMinutes = Math.round(newStartTime.getMinutes() / 15) * 15;
+      newStartTime.setMinutes(roundedMinutes);
+      newStartTime.setSeconds(0);
+      newStartTime.setMilliseconds(0);
+      
+      // Don't allow start time to be in the future
+      const now = Date.now();
+      if (newStartTime.getTime() > now) {
+        return;
+      }
+      
+      // Update the timer start time
+      updateStartTime(newStartTime.getTime());
+    };
+
+    const handleMouseUp = () => {
+      setDraggingTimer(null);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingTimer, rowHeight, updateStartTime]);
 
   // Handle drag move for resizing entry
   useEffect(() => {
@@ -1395,6 +1461,7 @@ export default function WeekView() {
             return (
               <div
                 key={dayIndex}
+                data-day-container
                 style={{
                   flex: 1,
                   minWidth: '150px',
@@ -1631,12 +1698,47 @@ export default function WeekView() {
                           boxShadow: '0 2px 8px rgba(255, 107, 107, 0.4)',
                           zIndex: 11,
                           border: '2px solid #ff5252',
-                          animation: 'pulse 2s ease-in-out infinite',
-                          pointerEvents: 'auto'
+                          animation: draggingTimer ? 'none' : 'pulse 2s ease-in-out infinite',
+                          pointerEvents: 'auto',
+                          cursor: draggingTimer ? 'grabbing' : 'default'
                         }}
                       >
+                        {/* Draggable handle at the top */}
+                        <div
+                          onMouseDown={(e) => {
+                            const dayContainer = e.currentTarget.closest('[data-day-container]') as HTMLElement;
+                            if (dayContainer) {
+                              handleTimerDragStart(e, dayContainer);
+                            }
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: '12px',
+                            cursor: 'grab',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                            borderTopLeftRadius: '4px',
+                            borderTopRightRadius: '4px',
+                            zIndex: 12
+                          }}
+                          title="Drag to adjust start time"
+                        >
+                          <div style={{ 
+                            width: '40px', 
+                            height: '3px', 
+                            backgroundColor: 'white', 
+                            borderRadius: '2px',
+                            opacity: 0.8
+                          }} />
+                        </div>
+                        
                         {/* Timer icon + Description (main text) */}
-                        <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                        <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', marginTop: '12px' }}>
                           <span style={{ fontSize: '10px' }}>⏱️</span>
                           {currentEntry?.description || 'Timer Running'}
               </div>
