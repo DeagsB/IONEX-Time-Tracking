@@ -143,8 +143,7 @@ export default function Login() {
                 maxWidth: '180px',
                 height: 'auto',
                 margin: '0 auto',
-                display: 'block',
-                mixBlendMode: theme === 'dark' ? 'lighten' : 'normal'
+                display: 'block'
               }}
             />
           </div>
