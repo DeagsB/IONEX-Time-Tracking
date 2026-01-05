@@ -36,7 +36,6 @@ interface EmployeeHours {
   fieldTime: number;
   fieldOvertime: number;
   totalHours: number;
-  billableHours: number;
   internalHours: number;
   entries: TimeEntry[];
 }
@@ -107,7 +106,6 @@ export default function Payroll() {
           fieldTime: 0,
           fieldOvertime: 0,
           totalHours: 0,
-          billableHours: 0,
           internalHours: 0,
           entries: [],
         });
@@ -117,9 +115,7 @@ export default function Payroll() {
       emp.entries.push(entry);
       const hours = Number(entry.hours) || 0;
       emp.totalHours += hours;
-      if (entry.billable) {
-        emp.billableHours += hours;
-      } else {
+      if (!entry.billable) {
         emp.internalHours += hours;
       }
 
@@ -189,10 +185,9 @@ export default function Payroll() {
         fieldTime: totals.fieldTime + emp.fieldTime,
         fieldOvertime: totals.fieldOvertime + emp.fieldOvertime,
         totalHours: totals.totalHours + emp.totalHours,
-        billableHours: totals.billableHours + emp.billableHours,
         internalHours: totals.internalHours + emp.internalHours,
       }),
-      { internalShopTime: 0, internalShopOvertime: 0, internalTravelTime: 0, internalFieldTime: 0, internalFieldOvertime: 0, shopTime: 0, shopOvertime: 0, travelTime: 0, fieldTime: 0, fieldOvertime: 0, totalHours: 0, billableHours: 0, internalHours: 0 }
+      { internalShopTime: 0, internalShopOvertime: 0, internalTravelTime: 0, internalFieldTime: 0, internalFieldOvertime: 0, shopTime: 0, shopOvertime: 0, travelTime: 0, fieldTime: 0, fieldOvertime: 0, totalHours: 0, internalHours: 0 }
     );
   }, [employeeHours]);
 
@@ -336,10 +331,6 @@ export default function Payroll() {
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Total Hours</div>
               <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)' }}>{grandTotals.totalHours.toFixed(2)}</div>
-            </div>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Billable Hours</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#28a745' }}>{grandTotals.billableHours.toFixed(2)}</div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Internal Hours</div>
