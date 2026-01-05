@@ -135,6 +135,18 @@ export default function Login() {
         border: '1px solid var(--border-color)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{ marginBottom: '20px' }}>
+            <img 
+              src="/ionex-logo.png" 
+              alt="IONEX Logo" 
+              style={{
+                maxWidth: '180px',
+                height: 'auto',
+                margin: '0 auto',
+                display: 'block'
+              }}
+            />
+          </div>
           <h1 style={{ 
             marginBottom: '8px', 
             fontSize: '28px',
