@@ -610,18 +610,13 @@ export const reportsService = {
 
   // Get all employees with their rates (excluding archived users by default)
   async getEmployeesWithRates(includeArchived: boolean = false) {
-    let query = supabase
+    const query = supabase
       .from('employees')
       .select(`
         *,
-        user:users(id, first_name, last_name, email, archived)
+        user:users!employees_user_id_fkey(id, first_name, last_name, email, archived)
       `)
       .order('employee_id');
-
-    // Filter out archived users if not including them
-    if (!includeArchived) {
-      query = query.or('user.archived.is.null,user.archived.eq.false');
-    }
 
     const { data, error } = await query;
 
@@ -629,23 +624,34 @@ export const reportsService = {
       console.error('Error fetching employees:', error);
       throw error;
     }
-    console.log('Fetched employees:', data?.length || 0);
+    
+    console.log('Fetched employees (before filtering):', data?.length || 0);
+    
+    // Filter out archived users in application layer if not including them
+    let filteredData = data || [];
+    if (!includeArchived && data) {
+      filteredData = data.filter((emp: any) => !emp.user || !emp.user.archived);
+    }
+    
+    console.log('Fetched employees (after filtering):', filteredData.length);
     
     // Debug: Log first employee to check pay rates
-    if (data && data.length > 0) {
+    if (filteredData && filteredData.length > 0) {
       console.log('Sample employee data:', {
-        id: data[0].id,
-        user_id: data[0].user_id,
-        employee_id: data[0].employee_id,
-        shop_pay_rate: data[0].shop_pay_rate,
-        field_pay_rate: data[0].field_pay_rate,
-        shop_ot_pay_rate: data[0].shop_ot_pay_rate,
-        field_ot_pay_rate: data[0].field_ot_pay_rate,
-        allKeys: Object.keys(data[0]),
+        id: filteredData[0].id,
+        user_id: filteredData[0].user_id,
+        employee_id: filteredData[0].employee_id,
+        shop_pay_rate: filteredData[0].shop_pay_rate,
+        field_pay_rate: filteredData[0].field_pay_rate,
+        shop_ot_pay_rate: filteredData[0].shop_ot_pay_rate,
+        field_ot_pay_rate: filteredData[0].field_ot_pay_rate,
+        hasUser: !!filteredData[0].user,
+        userArchived: filteredData[0].user?.archived,
+        allKeys: Object.keys(filteredData[0]),
       });
     }
     
-    return data || [];
+    return filteredData;
   },
 
   // Get time entries grouped by rate type for an employee
