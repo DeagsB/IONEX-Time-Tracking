@@ -102,26 +102,67 @@ export const timeEntriesService = {
 export const customersService = {
   async getAll(userId?: string) {
     // Get current user from auth
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const { data: { user: authUser } = { user: null } } = await supabase.auth.getUser();
     const currentUserId = userId || authUser?.id;
 
-    let query = supabase
-      .from('customers')
-      .select('*, projects(*), created_by') // Explicitly include created_by
-      .order('name');
-
-    // Filter: Show all public customers + private customers created by current user
-    // If no user is logged in, only show public customers
-    if (currentUserId) {
-      query = query.or(`is_private.eq.false,and(is_private.eq.true,created_by.eq.${currentUserId})`);
-    } else {
-      query = query.eq('is_private', false);
+    if (!currentUserId) {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*, projects(*), created_by')
+        .eq('is_private', false)
+        .order('name');
+      if (error) throw error;
+      return data;
     }
 
-    const { data, error } = await query;
+    // Get user role to determine filtering
+    let userRole: string | undefined;
+    const { data: userData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', currentUserId)
+      .single();
+    userRole = userData?.role;
+
+    // If user is ADMIN, show all customers
+    if (userRole === 'ADMIN') {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*, projects(*), created_by')
+        .order('name');
+      if (error) throw error;
+      return data;
+    }
+
+    // For regular users, show their own customers + assigned customers
+    // Get assigned customer IDs
+    const { data: assignments, error: assignmentsError } = await supabase
+      .from('customer_user_assignments')
+      .select('customer_id')
+      .eq('user_id', currentUserId);
+
+    if (assignmentsError) throw assignmentsError;
+
+    // Get customer IDs: own (created_by = currentUserId) + assigned
+    const assignedCustomerIds = assignments?.map(a => a.customer_id) || [];
+    
+    // Build query: own customers OR assigned customers
+    let query = supabase
+      .from('customers')
+      .select('*, projects(*), created_by');
+
+    if (assignedCustomerIds.length > 0) {
+      // Use OR to get own customers OR assigned customers
+      query = query.or(`created_by.eq.${currentUserId},id.in.(${assignedCustomerIds.join(',')})`);
+    } else {
+      // Only own customers if no assignments
+      query = query.eq('created_by', currentUserId);
+    }
+
+    const { data, error } = await query.order('name');
 
     if (error) throw error;
-    return data;
+    return data || [];
   },
 
   async getById(id: string) {
@@ -219,8 +260,8 @@ export const projectsService = {
       return data;
     }
 
-    // For regular users, only show projects assigned to them
-    // First, get assigned project IDs
+    // For regular users, show their own projects + assigned projects
+    // Get assigned project IDs
     const { data: assignments, error: assignmentsError } = await supabase
       .from('project_user_assignments')
       .select('project_id')
@@ -228,21 +269,26 @@ export const projectsService = {
 
     if (assignmentsError) throw assignmentsError;
 
-    // If no assignments, return empty array
-    if (!assignments || assignments.length === 0) {
-      return [];
-    }
-
-    // Get projects for assigned project IDs
-    const projectIds = assignments.map(a => a.project_id);
-    const { data, error } = await supabase
+    // Get project IDs: own (created_by = currentUserId) + assigned
+    const assignedProjectIds = assignments?.map(a => a.project_id) || [];
+    
+    // Build query: own projects OR assigned projects
+    let query = supabase
       .from('projects')
       .select(`
         *,
         customer:customers(*)
-      `)
-      .in('id', projectIds)
-      .order('name');
+      `);
+
+    if (assignedProjectIds.length > 0) {
+      // Use OR to get own projects OR assigned projects
+      query = query.or(`created_by.eq.${currentUserId},id.in.(${assignedProjectIds.join(',')})`);
+    } else {
+      // Only own projects if no assignments
+      query = query.eq('created_by', currentUserId);
+    }
+
+    const { data, error } = await query.order('name');
 
     if (error) throw error;
     return data || [];

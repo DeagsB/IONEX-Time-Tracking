@@ -103,9 +103,14 @@ export default function Sidebar() {
             Timer
           </SidebarLink>
           {user?.role !== 'ADMIN' && (
-            <SidebarLink to="/projects" active={isActive('/projects')}>
-              Projects
-            </SidebarLink>
+            <>
+              <SidebarLink to="/projects" active={isActive('/projects')}>
+                Projects
+              </SidebarLink>
+              <SidebarLink to="/customers" active={isActive('/customers')}>
+                Clients
+              </SidebarLink>
+            </>
           )}
         </div>
 

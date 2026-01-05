@@ -685,13 +685,13 @@ export default function Projects() {
               <th>Customer</th>
               <th>Status</th>
               <th style={{ textAlign: 'right' }}>Total Hours</th>
-              {user?.role === 'ADMIN' && <th>Actions</th>}
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {projects && projects.length === 0 && (
               <tr>
-                <td colSpan={user?.role === 'ADMIN' ? 6 : 5} style={{ textAlign: 'center', padding: '20px' }}>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
                   No projects found. Create your first project above.
                 </td>
               </tr>
@@ -719,28 +719,27 @@ export default function Projects() {
                 <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                   {formatHours(projectHours[project.id] || 0)}
                 </td>
-                {user?.role === 'ADMIN' && (
-                  <td>
-                    {(user?.id === project.created_by || user?.role === 'ADMIN' || !project.created_by) && (
-                      <>
-                        <button
-                          className="button button-secondary"
-                          style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                          onClick={() => handleEdit(project)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="button button-danger"
-                          style={{ padding: '5px 10px', fontSize: '12px' }}
-                          onClick={() => handleDelete(project.id)}
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )}
-                  </td>
-                )}
+                <td>
+                  {/* Allow users to edit/delete their own projects, or admins to edit/delete any */}
+                  {(user?.id === project.created_by || user?.role === 'ADMIN' || !project.created_by) && (
+                    <>
+                      <button
+                        className="button button-secondary"
+                        style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleEdit(project)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="button button-danger"
+                        style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleDelete(project.id)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
