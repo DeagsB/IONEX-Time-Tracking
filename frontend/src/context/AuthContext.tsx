@@ -183,7 +183,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const signUp = async (email: string, password: string, firstName: string, lastName: string): Promise<SignUpResult> => {
+  const signUp = async (email: string, password: string, firstName: string, lastName: string, department?: string): Promise<SignUpResult> => {
     if (DEV_MODE) {
       console.log('🔧 DEV MODE: SignUp bypassed');
       return {
@@ -201,6 +201,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         data: {
           first_name: firstName,
           last_name: lastName,
+          department: department || null,
         },
       },
     });

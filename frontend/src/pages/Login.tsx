@@ -10,6 +10,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [department, setDepartment] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,7 +47,7 @@ export default function Login() {
 
     try {
       if (isSignUp) {
-        const result = await signUp(email, password, firstName, lastName);
+        const result = await signUp(email, password, firstName, lastName, department);
         
         if (result.needsEmailConfirmation) {
           setSuccess(
@@ -70,6 +71,7 @@ export default function Login() {
         setPassword('');
         setFirstName('');
         setLastName('');
+        setDepartment('');
         setIsSignUp(false);
       } else {
         await login(email, password);
@@ -239,6 +241,25 @@ export default function Login() {
                   required={isSignUp && !success}
                 />
               </div>
+              
+              <div className="form-group">
+                <label className="label">Department</label>
+                <select
+                  name="department"
+                  className="input"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  onBlur={(e) => {
+                    // Mark field as touched for validation styling
+                    e.currentTarget.classList.add('touched');
+                  }}
+                  required={isSignUp && !success}
+                >
+                  <option value="">Select Department</option>
+                  <option value="Automation">Automation</option>
+                  <option value="Panel Shop">Panel Shop</option>
+                </select>
+              </div>
             </>
           )}
           
@@ -329,6 +350,7 @@ export default function Login() {
               setPassword('');
               setFirstName('');
               setLastName('');
+              setDepartment('');
             }}
             disabled={loading}
           >
