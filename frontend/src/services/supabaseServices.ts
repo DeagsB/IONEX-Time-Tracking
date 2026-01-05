@@ -991,3 +991,46 @@ export const serviceTicketExpensesService = {
     if (error) throw error;
   },
 };
+
+export const bugReportsService = {
+  async create(report: {
+    user_id?: string;
+    user_email?: string;
+    user_name?: string;
+    title: string;
+    description: string;
+    priority?: 'low' | 'medium' | 'high' | 'critical';
+  }) {
+    const { data, error } = await supabase
+      .from('bug_reports')
+      .insert({
+        user_id: report.user_id || null,
+        user_email: report.user_email || null,
+        user_name: report.user_name || null,
+        title: report.title,
+        description: report.description,
+        priority: report.priority || 'medium',
+        status: 'open',
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getAll(userId?: string) {
+    let query = supabase
+      .from('bug_reports')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+};
