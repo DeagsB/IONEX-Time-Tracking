@@ -102,6 +102,11 @@ export default function Sidebar() {
           <SidebarLink to="/calendar" active={isActive('/calendar')}>
             Timer
           </SidebarLink>
+          {user?.role !== 'ADMIN' && (
+            <SidebarLink to="/projects" active={isActive('/projects')}>
+              Projects
+            </SidebarLink>
+          )}
         </div>
 
         {user?.role === 'ADMIN' && (
@@ -131,32 +136,30 @@ export default function Sidebar() {
           </div>
         )}
 
-        <div style={{ marginBottom: '30px' }}>
-          <div style={{ 
-            fontSize: '11px', 
-            fontWeight: '600', 
-            textTransform: 'uppercase', 
-            letterSpacing: '1px',
-            color: 'var(--text-tertiary)',
-            marginBottom: '10px',
-            padding: '0 10px'
-          }}>
-            MANAGE
+        {user?.role === 'ADMIN' && (
+          <div style={{ marginBottom: '30px' }}>
+            <div style={{ 
+              fontSize: '11px', 
+              fontWeight: '600', 
+              textTransform: 'uppercase', 
+              letterSpacing: '1px',
+              color: 'var(--text-tertiary)',
+              marginBottom: '10px',
+              padding: '0 10px'
+            }}>
+              MANAGE
+            </div>
+            <SidebarLink to="/projects" active={isActive('/projects')}>
+              Projects
+            </SidebarLink>
+            <SidebarLink to="/customers" active={isActive('/customers')}>
+              Clients
+            </SidebarLink>
+            <SidebarLink to="/employees" active={isActive('/employees')}>
+              Members
+            </SidebarLink>
           </div>
-          <SidebarLink to="/projects" active={isActive('/projects')}>
-            Projects
-          </SidebarLink>
-          <SidebarLink to="/customers" active={isActive('/customers')}>
-            Clients
-          </SidebarLink>
-          {user?.role === 'ADMIN' && (
-            <>
-              <SidebarLink to="/employees" active={isActive('/employees')}>
-                Members
-              </SidebarLink>
-            </>
-          )}
-        </div>
+        )}
 
         {user?.role === 'ADMIN' && (
           <div style={{ marginBottom: '30px' }}>
