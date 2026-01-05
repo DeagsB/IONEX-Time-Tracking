@@ -155,9 +155,15 @@ export const customersService = {
   },
 
   async update(id: string, updates: any) {
+    // Get current user from auth
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    // Don't allow changing created_by field - preserve original creator
+    const { created_by, ...updateData } = updates;
+    
     const { data, error } = await supabase
       .from('customers')
-      .update(updates)
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();

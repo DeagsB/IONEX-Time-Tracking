@@ -49,6 +49,7 @@ export default function Customers() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      if (!user?.id) throw new Error('User not authenticated.');
       return await customersService.update(id, data);
     },
     onSuccess: () => {
