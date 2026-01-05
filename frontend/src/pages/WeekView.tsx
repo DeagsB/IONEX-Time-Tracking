@@ -1397,7 +1397,14 @@ export default function WeekView() {
                               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                                 {/* Description */}
                                 <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: '14px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                                  <div style={{ 
+                                    fontSize: '14px', 
+                                    color: 'var(--text-primary)', 
+                                    marginBottom: '4px',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}>
                                     {entry.description || 'Add description'}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
@@ -1722,7 +1729,14 @@ export default function WeekView() {
                       >
                         {/* Description - main text (if exists) */}
                         {entry.description && (
-                          <div style={{ fontWeight: '600', fontSize: '11px', marginBottom: '2px' }}>
+                          <div style={{ 
+                            fontWeight: '600', 
+                            fontSize: '11px', 
+                            marginBottom: '2px',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>
                             {entry.description}
                       </div>
                         )}
@@ -1856,9 +1870,25 @@ export default function WeekView() {
                         </div>
                         
                         {/* Timer icon + Description (main text) */}
-                        <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', marginTop: '12px' }}>
-                          <span style={{ fontSize: '10px' }}>⏱️</span>
-                          {currentEntry?.description || 'Timer Running'}
+                        <div style={{ 
+                          fontWeight: '600', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '4px', 
+                          fontSize: '11px', 
+                          marginTop: '12px',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          <span style={{ fontSize: '10px', flexShrink: 0 }}>⏱️</span>
+                          <span style={{ 
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {currentEntry?.description || 'Timer Running'}
+                          </span>
               </div>
                         
                         {/* Project name */}
