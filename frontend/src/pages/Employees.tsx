@@ -99,6 +99,17 @@ export default function Employees() {
     },
     onError: (error: any) => {
       console.error('Error updating employee:', error);
+      let errorMessage = error.message || 'Unknown error';
+      
+      // Provide helpful message if columns are missing
+      if (errorMessage.includes("Could not find") && errorMessage.includes("column")) {
+        errorMessage = `Database schema error: Missing required columns. Please run the migration 'migration_add_billable_rates.sql' in your Supabase SQL Editor. Error: ${errorMessage}`;
+      }
+      
+      alert(`Failed to update employee: ${errorMessage}`);
+    },
+    onError: (error: any) => {
+      console.error('Error updating employee:', error);
       alert(`Failed to update employee: ${error.message || 'Unknown error'}`);
     },
   });
@@ -476,22 +487,22 @@ export default function Employees() {
                   {employee.user ? (
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span>{`${employee.user.first_name} ${employee.user.last_name}`}</span>
-                        {employee.user.archived && (
-                          <span
-                            style={{
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              fontSize: '10px',
-                              backgroundColor: 'var(--warning-color)',
-                              color: 'white',
-                              fontWeight: '500',
-                            }}
-                            title="User is archived - data hidden from reports"
-                          >
-                            ARCHIVED
-                          </span>
-                        )}
+                      <span>{`${employee.user.first_name} ${employee.user.last_name}`}</span>
+                      {employee.user.archived && (
+                        <span
+                          style={{
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            backgroundColor: 'var(--warning-color)',
+                            color: 'white',
+                            fontWeight: '500',
+                          }}
+                          title="User is archived - data hidden from reports"
+                        >
+                          ARCHIVED
+                        </span>
+                      )}
                       </div>
                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                         {employee.user.email}
