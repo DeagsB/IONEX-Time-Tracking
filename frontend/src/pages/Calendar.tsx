@@ -32,8 +32,8 @@ export default function Calendar() {
   });
 
   const { data: timeEntries } = useQuery({
-    queryKey: ['timeEntries', 'calendar', currentDate.getMonth(), currentDate.getFullYear(), isDemoMode],
-    queryFn: () => timeEntriesService.getAll(isDemoMode),
+    queryKey: ['timeEntries', 'calendar', currentDate.getMonth(), currentDate.getFullYear(), isDemoMode, user?.id],
+    queryFn: () => timeEntriesService.getAll(isDemoMode, user?.id),
   });
 
 

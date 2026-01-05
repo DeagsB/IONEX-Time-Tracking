@@ -3,10 +3,10 @@ import { supabase } from '../lib/supabaseClient';
 // Service functions for interacting with Supabase tables
 
 export const timeEntriesService = {
-  async getAll(isDemoMode?: boolean) {
+  async getAll(isDemoMode?: boolean, userId?: string) {
     // RLS policies automatically filter time entries:
     // - Regular users can only see their own entries (user_id = auth.uid())
-    // - Admins can see all entries
+    // - Admins can see all entries (but we filter by userId in frontend for privacy)
     let query = supabase
       .from('time_entries')
       .select(`
@@ -26,6 +26,11 @@ export const timeEntriesService = {
     // Filter by demo mode if specified
     if (isDemoMode !== undefined) {
       query = query.eq('is_demo', isDemoMode);
+    }
+    
+    // Explicitly filter by user_id if provided (for privacy - even admins only see their own in calendar views)
+    if (userId) {
+      query = query.eq('user_id', userId);
     }
 
     const { data, error } = await query;

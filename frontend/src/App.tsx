@@ -98,14 +98,7 @@ function AppRoutes() {
         <Route path="payroll" element={<Payroll />} />
         <Route path="profile" element={<Profile />} />
         <Route path="settings" element={<Settings />} />
-        <Route
-          path="customers"
-          element={
-            <AdminRoute>
-              <Customers />
-            </AdminRoute>
-          }
-        />
+        <Route path="customers" element={<Customers />} />
         <Route
           path="employees"
           element={

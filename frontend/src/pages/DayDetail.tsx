@@ -45,11 +45,10 @@ export default function DayDetail() {
   });
 
   const { data: timeEntries } = useQuery({
-    queryKey: ['timeEntries', 'day', date],
+    queryKey: ['timeEntries', 'day', date, user?.id],
     queryFn: async () => {
-      // Fetch all entries and filter locally for now since we don't have a specific date endpoint yet
-      // In a real app, you'd add a date filter to the service
-      const entries = await timeEntriesService.getAll();
+      // Fetch entries filtered by user_id for privacy - even admins only see their own entries
+      const entries = await timeEntriesService.getAll(undefined, user?.id);
       return entries?.filter((entry: any) => entry.date === date);
     },
   });

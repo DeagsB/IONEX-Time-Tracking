@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTimer } from '../context/TimerContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -30,8 +30,14 @@ export default function WeekView() {
   const { timerRunning, timerStartTime, currentEntry } = useTimer();
   const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // Get viewUserId from query params (for admins viewing another employee's calendar)
+  const viewUserId = searchParams.get('viewUserId');
+  // Only allow admins to view other users' calendars
+  const effectiveUserId = (user?.role === 'ADMIN' && viewUserId) ? viewUserId : user?.id;
   const [currentProject, setCurrentProject] = useState<string>('Time Tracking Software');
   const [viewMode, setViewMode] = useState<'week' | 'calendar' | 'list' | 'timesheet'>('calendar');
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -146,10 +152,27 @@ export default function WeekView() {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
 
-  const { data: timeEntries, refetch: refetchTimeEntries } = useQuery({
-    queryKey: ['timeEntries', 'week', weekStart.toISOString(), isDemoMode],
+  // Fetch employee info if viewing another employee's calendar
+  const { data: viewedEmployee } = useQuery({
+    queryKey: ['employee', viewUserId],
     queryFn: async () => {
-      const allEntries = await timeEntriesService.getAll(isDemoMode);
+      if (!viewUserId || user?.role !== 'ADMIN') return null;
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .eq('id', viewUserId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!viewUserId && user?.role === 'ADMIN',
+  });
+
+  const { data: timeEntries, refetch: refetchTimeEntries } = useQuery({
+    queryKey: ['timeEntries', 'week', weekStart.toISOString(), isDemoMode, effectiveUserId],
+    queryFn: async () => {
+      // Filter by effectiveUserId (current user's ID, or viewUserId if admin is viewing another employee)
+      const allEntries = await timeEntriesService.getAll(isDemoMode, effectiveUserId);
       return allEntries?.filter((entry: any) => {
         const entryDate = new Date(entry.date + 'T00:00:00'); // Ensure local time comparison
         const weekStartDate = new Date(weekStart);
@@ -387,6 +410,12 @@ export default function WeekView() {
 
   // Handle clicking on a time slot division
   const handleSlotClick = (date: Date, hour: number, division: number) => {
+    // Prevent creating entries when viewing another employee's calendar
+    if (viewUserId && user?.role === 'ADMIN') {
+      alert('You cannot create entries for other employees. Switch to your own calendar to create entries.');
+      return;
+    }
+    
     const minutesPerDivision = 60 / divisionsPerHour;
     const startMinutes = division * minutesPerDivision;
     const endMinutes = (division + 1) * minutesPerDivision;
@@ -462,6 +491,11 @@ export default function WeekView() {
   // Handle clicking on an existing time entry to edit it
   const handleEntryClick = (entry: any, event: React.MouseEvent) => {
     event.stopPropagation();
+    // Prevent editing entries when viewing another employee's calendar
+    if (viewUserId && user?.role === 'ADMIN') {
+      alert('You cannot edit entries for other employees. Switch to your own calendar to edit entries.');
+      return;
+    }
     setEditingEntry(entry);
     
     // Parse the times for display
@@ -741,6 +775,40 @@ export default function WeekView() {
 
   return (
     <div style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Banner when viewing another employee's calendar */}
+      {viewUserId && user?.role === 'ADMIN' && viewedEmployee && (
+        <div style={{
+          backgroundColor: 'var(--warning-color)',
+          color: 'white',
+          padding: '12px 20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          fontSize: '14px',
+          fontWeight: '500'
+        }}>
+          <span>
+            Viewing calendar for: <strong>{viewedEmployee.first_name} {viewedEmployee.last_name}</strong> ({viewedEmployee.email})
+          </span>
+          <button
+            onClick={() => {
+              navigate('/calendar');
+            }}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: 'rgba(255, 255, 255, 0.2)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              borderRadius: '4px',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '13px'
+            }}
+          >
+            View My Calendar
+          </button>
+        </div>
+      )}
+      
       {/* Header */}
       <div style={{
         display: 'flex',
@@ -1596,7 +1664,7 @@ export default function WeekView() {
       )}
 
       {/* Time Entry Modal */}
-      {showTimeEntryModal && selectedSlot && (
+      {showTimeEntryModal && selectedSlot && !(viewUserId && user?.role === 'ADMIN') && (
         <div
           style={{
             position: 'fixed',
@@ -1850,7 +1918,7 @@ export default function WeekView() {
       )}
 
       {/* Edit Time Entry Modal */}
-      {showEditModal && editingEntry && (
+      {showEditModal && editingEntry && !(viewUserId && user?.role === 'ADMIN') && (
         <div
           style={{
             position: 'fixed',

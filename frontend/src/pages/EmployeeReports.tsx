@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { reportsService } from '../services/supabaseServices';
 import {
@@ -20,6 +21,7 @@ type ViewMode = 'table' | 'cards';
 
 export default function EmployeeReports() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [selectedPeriod, setSelectedPeriod] = useState('This Month');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
@@ -335,6 +337,23 @@ export default function EmployeeReports() {
               </option>
             ))}
           </select>
+          {selectedEmployeeId !== 'all' && (
+            <button
+              onClick={() => navigate(`/calendar?viewUserId=${selectedEmployeeId}`)}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: '1px solid var(--primary-color)',
+                backgroundColor: 'var(--primary-color)',
+                color: 'white',
+                fontSize: '13px',
+                cursor: 'pointer',
+                fontWeight: '500'
+              }}
+            >
+              View Calendar
+            </button>
+          )}
         </div>
 
         {/* View Toggle */}

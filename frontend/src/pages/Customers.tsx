@@ -121,27 +121,18 @@ export default function Customers() {
     }
   };
 
-  if (user?.role !== 'ADMIN') {
-    return (
-      <div>
-        <h2>Customers</h2>
-        <div className="card">
-          <p>You don't have permission to view this page.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2>Customers</h2>
-        <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingCustomer(null); resetForm(); }}>
-          {showForm ? 'Cancel' : 'Add Customer'}
-        </button>
+        {user?.role === 'ADMIN' && (
+          <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingCustomer(null); resetForm(); }}>
+            {showForm ? 'Cancel' : 'Add Customer'}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && user?.role === 'ADMIN' && (
         <div className="card" style={{ marginBottom: '20px' }}>
           <h3>{editingCustomer ? 'Edit Customer' : 'New Customer'}</h3>
           <form onSubmit={handleSubmit}>
@@ -321,14 +312,14 @@ export default function Customers() {
               <th>Phone</th>
               <th>City</th>
               <th>Projects</th>
-              <th>Actions</th>
+              {user?.role === 'ADMIN' && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {customers && customers.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
-                  No customers found. Create your first customer above.
+                <td colSpan={user?.role === 'ADMIN' ? 6 : 5} style={{ textAlign: 'center', padding: '20px' }}>
+                  {user?.role === 'ADMIN' ? 'No customers found. Create your first customer above.' : 'No customers found.'}
                 </td>
               </tr>
             )}
@@ -339,22 +330,24 @@ export default function Customers() {
                 <td>{customer.phone || '-'}</td>
                 <td>{customer.city || '-'}</td>
                 <td>{customer.projects?.length || 0}</td>
-                <td>
-                  <button
-                    className="button button-secondary"
-                    style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                    onClick={() => handleEdit(customer)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    className="button button-danger"
-                    style={{ padding: '5px 10px', fontSize: '12px' }}
-                    onClick={() => handleDelete(customer.id)}
-                  >
-                    Delete
-                  </button>
-                </td>
+                {user?.role === 'ADMIN' && (
+                  <td>
+                    <button
+                      className="button button-secondary"
+                      style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
+                      onClick={() => handleEdit(customer)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="button button-danger"
+                      style={{ padding: '5px 10px', fontSize: '12px' }}
+                      onClick={() => handleDelete(customer.id)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

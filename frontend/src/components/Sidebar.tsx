@@ -60,32 +60,30 @@ export default function Sidebar() {
           </SidebarLink>
         </div>
 
-        <div style={{ marginBottom: '30px' }}>
-          <div style={{ 
-            fontSize: '11px', 
-            fontWeight: '600', 
-            textTransform: 'uppercase', 
-            letterSpacing: '1px',
-            color: 'var(--text-tertiary)',
-            marginBottom: '10px',
-            padding: '0 10px'
-          }}>
-            ANALYZE
-          </div>
-          <SidebarLink to="/payroll" active={isActive('/payroll')}>
-            Payroll
-          </SidebarLink>
-          {user?.role === 'ADMIN' && (
+        {user?.role === 'ADMIN' && (
+          <div style={{ marginBottom: '30px' }}>
+            <div style={{ 
+              fontSize: '11px', 
+              fontWeight: '600', 
+              textTransform: 'uppercase', 
+              letterSpacing: '1px',
+              color: 'var(--text-tertiary)',
+              marginBottom: '10px',
+              padding: '0 10px'
+            }}>
+              ANALYZE
+            </div>
+            <SidebarLink to="/payroll" active={isActive('/payroll')}>
+              Payroll
+            </SidebarLink>
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
               Service Tickets
             </SidebarLink>
-          )}
-          {user?.role === 'ADMIN' && (
             <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
               Employee Reports
             </SidebarLink>
-          )}
-        </div>
+          </div>
+        )}
 
         <div style={{ marginBottom: '30px' }}>
           <div style={{ 

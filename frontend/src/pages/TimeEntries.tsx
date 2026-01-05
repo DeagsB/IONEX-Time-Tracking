@@ -22,8 +22,8 @@ export default function TimeEntries() {
   });
 
   const { data: timeEntries, isLoading: isLoadingEntries } = useQuery({
-    queryKey: ['timeEntries', isDemoMode],
-    queryFn: () => timeEntriesService.getAll(isDemoMode),
+    queryKey: ['timeEntries', isDemoMode, user?.id],
+    queryFn: () => timeEntriesService.getAll(isDemoMode, user?.id),
   });
 
   const { data: projects } = useQuery({
