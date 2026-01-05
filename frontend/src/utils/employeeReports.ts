@@ -227,8 +227,12 @@ export function aggregateEmployeeMetrics(
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
     
     // Determine pay rate based on rate type
+    // Panel Shop employees use shop_pay_rate for all rate types
+    const isPanelShop = employee?.department === 'Panel Shop';
     let payRate = 0;
-    if (rateType.includes('shop') && rateType.includes('overtime')) {
+    if (isPanelShop) {
+      payRate = Number(employee?.shop_pay_rate) || 0;
+    } else if (rateType.includes('shop') && rateType.includes('overtime')) {
       payRate = Number(employee?.shop_ot_pay_rate) || 0;
     } else if (rateType.includes('field') && rateType.includes('overtime')) {
       payRate = Number(employee?.field_ot_pay_rate) || 0;
@@ -331,8 +335,12 @@ export function calculateRateTypeBreakdown(
     const isInternal = !entry.billable;
 
     // Determine pay rate based on rate type
+    // Panel Shop employees use shop_pay_rate for all rate types
+    const isPanelShop = employee?.department === 'Panel Shop';
     let payRate = 0;
-    if (rateType.includes('shop') && rateType.includes('overtime')) {
+    if (isPanelShop) {
+      payRate = employee?.shop_pay_rate || 0;
+    } else if (rateType.includes('shop') && rateType.includes('overtime')) {
       payRate = employee?.shop_ot_pay_rate || 0;
     } else if (rateType.includes('field') && rateType.includes('overtime')) {
       payRate = employee?.field_ot_pay_rate || 0;
