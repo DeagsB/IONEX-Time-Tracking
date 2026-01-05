@@ -25,7 +25,6 @@ export default function Customers() {
     approver_name: '',
     location_code: '',
     service_location: '',
-    is_private: false,
   });
 
   const { data: customers } = useQuery({
@@ -35,9 +34,11 @@ export default function Customers() {
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
+      const { is_private, ...customerData } = data; // Remove is_private if present
       return await customersService.create({
-        ...data,
+        ...customerData,
         is_demo: isDemoMode, // Mark as demo customer if in demo mode
+        is_private: false, // Always set to false
       });
     },
     onSuccess: () => {
@@ -94,7 +95,6 @@ export default function Customers() {
       approver_name: '',
       location_code: '',
       service_location: '',
-      is_private: false,
     });
   };
 
@@ -115,7 +115,6 @@ export default function Customers() {
       approver_name: customer.approver_name || '',
       location_code: customer.location_code || '',
       service_location: customer.service_location || '',
-      is_private: customer.is_private || false,
     });
     setShowForm(true);
   };
@@ -310,18 +309,6 @@ export default function Customers() {
               </div>
             </div>
 
-            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input
-                type="checkbox"
-                id="is_private"
-                checked={formData.is_private}
-                onChange={(e) => setFormData({ ...formData, is_private: e.target.checked })}
-                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-              />
-              <label htmlFor="is_private" style={{ cursor: 'pointer', margin: 0 }}>
-                Make this client private (only visible to me)
-              </label>
-            </div>
 
             <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
               {editingCustomer ? 'Update' : 'Create'} Customer
@@ -352,24 +339,7 @@ export default function Customers() {
             )}
             {customers?.map((customer: any) => (
               <tr key={customer.id}>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>{customer.name}</span>
-                    {customer.is_private && (
-                      <span style={{
-                        fontSize: '10px',
-                        backgroundColor: 'var(--warning-color)',
-                        color: 'white',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        fontWeight: '600',
-                        textTransform: 'uppercase'
-                      }}>
-                        Private
-                      </span>
-                    )}
-                  </div>
-                </td>
+                <td>{customer.name}</td>
                 <td>{customer.email || '-'}</td>
                 <td>{customer.phone || '-'}</td>
                 <td>{customer.city || '-'}</td>

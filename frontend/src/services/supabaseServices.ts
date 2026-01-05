@@ -142,6 +142,7 @@ export const customersService = {
     const customerData = {
       ...customer,
       created_by: authUser?.id || null, // Set created_by to current user
+      is_private: false, // Always set to false (private option removed)
     };
 
     const { data, error } = await supabase
@@ -158,12 +159,16 @@ export const customersService = {
     // Get current user from auth
     const { data: { user: authUser } } = await supabase.auth.getUser();
     
-    // Don't allow changing created_by field - preserve original creator
-    const { created_by, ...updateData } = updates;
+    // Don't allow changing created_by or is_private fields
+    const { created_by, is_private, ...updateData } = updates;
+    const finalUpdates = {
+      ...updateData,
+      is_private: false, // Always set to false (private option removed)
+    };
     
     const { data, error } = await supabase
       .from('customers')
-      .update(updateData)
+      .update(finalUpdates)
       .eq('id', id)
       .select()
       .single();

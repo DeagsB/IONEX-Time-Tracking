@@ -20,7 +20,6 @@ export default function Projects() {
     end_date: '',
     budget: '',
     color: '#4ecdc4',
-    is_private: false,
   });
 
   const { data: projects } = useQuery({
@@ -45,7 +44,7 @@ export default function Projects() {
         end_date: data.end_date || null,
         budget: data.budget ? parseFloat(data.budget) : null,
         color: data.color || '#4ecdc4',
-        is_private: data.is_private || false,
+        is_private: false, // Always set to false
         is_demo: isDemoMode, // Mark as demo project if in demo mode
       };
       return await projectsService.create(projectData);
@@ -100,7 +99,6 @@ export default function Projects() {
       end_date: '',
       budget: '',
       color: '#4ecdc4',
-      is_private: false,
     });
   };
 
@@ -116,7 +114,6 @@ export default function Projects() {
       end_date: project.end_date ? new Date(project.end_date).toISOString().split('T')[0] : '',
       budget: project.budget?.toString() || '',
       color: project.color || '#4ecdc4',
-      is_private: project.is_private || false,
     });
     setShowForm(true);
   };
@@ -272,18 +269,6 @@ export default function Projects() {
               />
             </div>
 
-            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input
-                type="checkbox"
-                id="is_private"
-                checked={formData.is_private}
-                onChange={(e) => setFormData({ ...formData, is_private: e.target.checked })}
-                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-              />
-              <label htmlFor="is_private" style={{ cursor: 'pointer', margin: 0 }}>
-                Make this project private (only visible to me)
-              </label>
-            </div>
 
             <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
               {editingProject ? 'Update' : 'Create'} Project
