@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTimer } from '../context/TimerContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { timeEntriesService, projectsService } from '../services/supabaseServices';
+import { timeEntriesService, projectsService, employeesService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 
 interface TimeEntry {
@@ -63,7 +63,7 @@ export default function WeekView() {
     description: '',
     project_id: '',
     hours: 0.25,
-    billable: true,
+    billable: false, // Will be updated based on department
     rate_type: 'Shop Time',
   });
 
@@ -219,6 +219,29 @@ export default function WeekView() {
     queryFn: () => projectsService.getAll(user?.id),
   });
 
+  // Fetch current user's employee record to check department
+  const { data: currentEmployee } = useQuery({
+    queryKey: ['currentEmployee', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const employees = await employeesService.getAll();
+      return employees?.find((emp: any) => emp.user_id === user.id) || null;
+    },
+    enabled: !!user?.id,
+  });
+
+  const isPanelShop = currentEmployee?.department === 'Panel Shop';
+
+  // Update newEntry defaults when department is loaded
+  useEffect(() => {
+    if (currentEmployee !== undefined) {
+      setNewEntry(prev => ({
+        ...prev,
+        billable: !isPanelShop, // Panel Shop employees are not billable
+      }));
+    }
+  }, [isPanelShop, currentEmployee]);
+
   const createTimeEntryMutation = useMutation({
     mutationFn: async (data: any) => {
       console.log('Creating time entry:', data);
@@ -232,7 +255,7 @@ export default function WeekView() {
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       await refetchTimeEntries();
       setShowTimeEntryModal(false);
-      setNewEntry({ description: '', project_id: '', hours: 0.25, billable: true, rate_type: 'Shop Time' });
+      setNewEntry({ description: '', project_id: '', hours: 0.25, billable: !isPanelShop, rate_type: 'Shop Time' });
       setSelectedSlot(null);
     },
     onError: (error: any) => {
@@ -460,13 +483,13 @@ export default function WeekView() {
       startTime: `${startHour}:${startMin}`,
       endTime: `${endHour}:${endMin}`,
     });
-    setNewEntry({
-      description: '',
-      project_id: projects?.[0]?.id || '',
-      hours: minutesPerDivision / 60,
-      billable: true,
-      rate_type: 'Shop Time',
-    });
+      setNewEntry({
+        description: '',
+        project_id: projects?.[0]?.id || '',
+        hours: minutesPerDivision / 60,
+        billable: !isPanelShop, // Panel Shop employees are not billable
+        rate_type: 'Shop Time',
+      });
     setShowTimeEntryModal(true);
   };
 
@@ -502,8 +525,8 @@ export default function WeekView() {
       hours: newEntry.hours,
       rate: 0, // Default rate, can be updated later
       description: newEntry.description || '',
-      billable: newEntry.billable,
-      rate_type: newEntry.rate_type,
+      billable: isPanelShop ? false : newEntry.billable, // Panel Shop employees are never billable
+      rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type, // Panel Shop only has Shop Time
       is_demo: isDemoMode, // Mark as demo entry if in demo mode
     };
 
@@ -665,8 +688,8 @@ export default function WeekView() {
       end_time: endDate.toISOString(),
       hours: hours,
       date: dateStr,
-      billable: editedEntry.billable,
-      rate_type: editedEntry.rate_type,
+      billable: isPanelShop ? false : editedEntry.billable, // Panel Shop employees are never billable
+      rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type, // Panel Shop only has Shop Time
     };
     
     // Only include project_id if one is selected
@@ -2054,66 +2077,70 @@ export default function WeekView() {
                 </select>
               </div>
 
-              {/* Rate Type dropdown */}
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="label">Rate Type</label>
-                <select
-                  className="input"
-                  value={newEntry.rate_type}
-                  onChange={(e) => setNewEntry({ ...newEntry, rate_type: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  {!newEntry.billable && <option value="Internal">Internal</option>}
-                  <option value="Shop Time">Shop Time</option>
-                  <option value="Shop Overtime">Shop Overtime</option>
-                  <option value="Travel Time">Travel Time</option>
-                  <option value="Field Time">Field Time</option>
-                  <option value="Field Overtime">Field Overtime</option>
-                </select>
-              </div>
-
-              {/* Billable toggle */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '10px', 
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: 'var(--text-primary)'
-                }}>
-                <input
-                    type="checkbox"
-                    checked={newEntry.billable}
-                    onChange={(e) => {
-                      const isBillable = e.target.checked;
-                      // If unchecking billable, set rate_type to Internal
-                      // If checking billable and rate_type is Internal, set to Shop Time
-                      const newRateType = !isBillable 
-                        ? 'Internal' 
-                        : (newEntry.rate_type === 'Internal' ? 'Shop Time' : newEntry.rate_type);
-                      setNewEntry({ ...newEntry, billable: isBillable, rate_type: newRateType });
-                    }}
+              {/* Rate Type dropdown - hidden for Panel Shop */}
+              {!isPanelShop && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="label">Rate Type</label>
+                  <select
+                    className="input"
+                    value={newEntry.rate_type}
+                    onChange={(e) => setNewEntry({ ...newEntry, rate_type: e.target.value })}
                     style={{
-                      width: '18px',
-                      height: '18px',
-                      cursor: 'pointer',
-                      accentColor: '#dc2626'
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
                     }}
-                  />
-                  <span>Billable?</span>
-                  <span style={{ fontSize: '12px', opacity: 0.7 }}>
-                    {newEntry.billable ? 'Yes' : 'Internal'}
-                  </span>
-                </label>
-              </div>
+                  >
+                    {!newEntry.billable && <option value="Internal">Internal</option>}
+                    <option value="Shop Time">Shop Time</option>
+                    <option value="Shop Overtime">Shop Overtime</option>
+                    <option value="Travel Time">Travel Time</option>
+                    <option value="Field Time">Field Time</option>
+                    <option value="Field Overtime">Field Overtime</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Billable toggle - hidden for Panel Shop */}
+              {!isPanelShop && (
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px', 
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: 'var(--text-primary)'
+                  }}>
+                  <input
+                      type="checkbox"
+                      checked={newEntry.billable}
+                      onChange={(e) => {
+                        const isBillable = e.target.checked;
+                        // If unchecking billable, set rate_type to Internal
+                        // If checking billable and rate_type is Internal, set to Shop Time
+                        const newRateType = !isBillable 
+                          ? 'Internal' 
+                          : (newEntry.rate_type === 'Internal' ? 'Shop Time' : newEntry.rate_type);
+                        setNewEntry({ ...newEntry, billable: isBillable, rate_type: newRateType });
+                      }}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        cursor: 'pointer',
+                        accentColor: '#dc2626'
+                      }}
+                    />
+                    <span>Billable?</span>
+                    <span style={{ fontSize: '12px', opacity: 0.7 }}>
+                      {newEntry.billable ? 'Yes' : 'Internal'}
+                    </span>
+                  </label>
+                </div>
+              )}
 
               {/* Add button */}
               <button
@@ -2324,66 +2351,70 @@ export default function WeekView() {
                 </div>
               </div>
 
-              {/* Rate Type dropdown */}
-              <div style={{ marginBottom: '20px' }}>
-                <label className="label" style={{ marginBottom: '8px', display: 'block', fontSize: '14px' }}>Rate Type</label>
-                <select
-                  value={editedEntry.rate_type}
-                  onChange={(e) => setEditedEntry({ ...editedEntry, rate_type: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                  }}
-                >
-                  {!editedEntry.billable && <option value="Internal">Internal</option>}
-                  <option value="Shop Time">Shop Time</option>
-                  <option value="Shop Overtime">Shop Overtime</option>
-                  <option value="Travel Time">Travel Time</option>
-                  <option value="Field Time">Field Time</option>
-                  <option value="Field Overtime">Field Overtime</option>
-                </select>
-              </div>
-
-              {/* Billable toggle */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '10px', 
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                  color: 'var(--text-primary)'
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={editedEntry.billable}
-                    onChange={(e) => {
-                      const isBillable = e.target.checked;
-                      // If unchecking billable, set rate_type to Internal
-                      // If checking billable and rate_type is Internal, set to Shop Time
-                      const newRateType = !isBillable 
-                        ? 'Internal' 
-                        : (editedEntry.rate_type === 'Internal' ? 'Shop Time' : editedEntry.rate_type);
-                      setEditedEntry({ ...editedEntry, billable: isBillable, rate_type: newRateType });
-                    }}
+              {/* Rate Type dropdown - hidden for Panel Shop */}
+              {!isPanelShop && (
+                <div style={{ marginBottom: '20px' }}>
+                  <label className="label" style={{ marginBottom: '8px', display: 'block', fontSize: '14px' }}>Rate Type</label>
+                  <select
+                    value={editedEntry.rate_type}
+                    onChange={(e) => setEditedEntry({ ...editedEntry, rate_type: e.target.value })}
                     style={{
-                      width: '18px',
-                      height: '18px',
-                      cursor: 'pointer',
-                      accentColor: '#dc2626'
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
                     }}
-                  />
-                  <span>Billable?</span>
-                  <span style={{ fontSize: '12px', opacity: 0.7 }}>
-                    {editedEntry.billable ? 'Yes' : 'Internal'}
-                  </span>
-                </label>
-              </div>
+                  >
+                    {!editedEntry.billable && <option value="Internal">Internal</option>}
+                    <option value="Shop Time">Shop Time</option>
+                    <option value="Shop Overtime">Shop Overtime</option>
+                    <option value="Travel Time">Travel Time</option>
+                    <option value="Field Time">Field Time</option>
+                    <option value="Field Overtime">Field Overtime</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Billable toggle - hidden for Panel Shop */}
+              {!isPanelShop && (
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px', 
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                    color: 'var(--text-primary)'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={editedEntry.billable}
+                      onChange={(e) => {
+                        const isBillable = e.target.checked;
+                        // If unchecking billable, set rate_type to Internal
+                        // If checking billable and rate_type is Internal, set to Shop Time
+                        const newRateType = !isBillable 
+                          ? 'Internal' 
+                          : (editedEntry.rate_type === 'Internal' ? 'Shop Time' : editedEntry.rate_type);
+                        setEditedEntry({ ...editedEntry, billable: isBillable, rate_type: newRateType });
+                      }}
+                      style={{
+                        width: '18px',
+                        height: '18px',
+                        cursor: 'pointer',
+                        accentColor: '#dc2626'
+                      }}
+                    />
+                    <span>Billable?</span>
+                    <span style={{ fontSize: '12px', opacity: 0.7 }}>
+                      {editedEntry.billable ? 'Yes' : 'Internal'}
+                    </span>
+                  </label>
+                </div>
+              )}
 
               {/* Action buttons */}
               <div style={{ display: 'flex', gap: '10px' }}>
