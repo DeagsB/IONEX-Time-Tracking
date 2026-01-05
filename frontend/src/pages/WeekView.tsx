@@ -1142,7 +1142,7 @@ export default function WeekView() {
                             borderRadius: '4px',
                             backgroundColor: isSelectedWeek ? 'var(--primary-color)' : 'transparent',
                             color: isSelectedWeek ? 'white' : 'var(--text-primary)',
-                            border: isToday ? '2px solid #28a745' : 'none',
+                            border: isToday ? '2px solid #dc2626' : 'none',
                             fontWeight: isToday ? 'bold' : 'normal'
                           }}
                           onMouseEnter={(e) => {
@@ -1603,7 +1603,7 @@ export default function WeekView() {
                 <div style={{
                   height: '50px',
                   borderBottom: '1px solid var(--border-color)',
-                  backgroundColor: day.isToday ? '#c770f050' : 'var(--bg-secondary)',
+                  backgroundColor: day.isToday ? '#dc262650' : 'var(--bg-secondary)',
                   padding: '8px 12px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -1625,7 +1625,7 @@ export default function WeekView() {
                     <span style={{ 
                       fontSize: '18px', 
                       fontWeight: 'bold',
-                      color: day.isToday ? '#c770f0' : 'var(--text-primary)'
+                      color: day.isToday ? '#dc2626' : 'var(--text-primary)'
                     }}>
                       {day.displayDate}
                     </span>
