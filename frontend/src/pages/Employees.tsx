@@ -108,10 +108,6 @@ export default function Employees() {
       
       alert(`Failed to update employee: ${errorMessage}`);
     },
-    onError: (error: any) => {
-      console.error('Error updating employee:', error);
-      alert(`Failed to update employee: ${error.message || 'Unknown error'}`);
-    },
   });
 
   const deleteMutation = useMutation({
