@@ -561,7 +561,7 @@ export default function Projects() {
 
             <div className="form-group">
               <label className="label">Customer</label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <select
                   className="input"
                   value={formData.customer_id}
