@@ -446,23 +446,28 @@ export default function Employees() {
                 <td>{employee.employee_id}</td>
                 <td>
                   {employee.user ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>{`${employee.user.first_name} ${employee.user.last_name}`}</span>
-                      {employee.user.archived && (
-                        <span
-                          style={{
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            fontSize: '10px',
-                            backgroundColor: 'var(--warning-color)',
-                            color: 'white',
-                            fontWeight: '500',
-                          }}
-                          title="User is archived - data hidden from reports"
-                        >
-                          ARCHIVED
-                        </span>
-                      )}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span>{`${employee.user.first_name} ${employee.user.last_name}`}</span>
+                        {employee.user.archived && (
+                          <span
+                            style={{
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              backgroundColor: 'var(--warning-color)',
+                              color: 'white',
+                              fontWeight: '500',
+                            }}
+                            title="User is archived - data hidden from reports"
+                          >
+                            ARCHIVED
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {employee.user.email}
+                      </div>
                     </div>
                   ) : (
                     'Unlinked'

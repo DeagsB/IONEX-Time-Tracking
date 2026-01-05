@@ -64,6 +64,26 @@ export default function UserManagement() {
     });
   };
 
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return await usersService.deleteUser(userId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+
+  const handleDeleteUser = (userId: string, userName: string) => {
+    if (userId === user?.id) {
+      alert('You cannot delete your own account.');
+      return;
+    }
+    
+    if (window.confirm(`Are you sure you want to delete ${userName}? This will remove their user account but preserve their employee record and time entries. This action cannot be undone.`)) {
+      deleteUserMutation.mutate(userId);
+    }
+  };
+
   return (
     <div style={{ padding: '40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
@@ -164,12 +184,31 @@ export default function UserManagement() {
                     )}
                   </td>
                   <td>
-                    <span style={{ 
-                      fontSize: '12px',
-                      color: 'var(--text-secondary)'
-                    }}>
-                      {u.id === user?.id ? '(You)' : ''}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {u.id === user?.id && (
+                        <span style={{ 
+                          fontSize: '12px',
+                          color: 'var(--text-secondary)',
+                          marginRight: '8px'
+                        }}>
+                          (You)
+                        </span>
+                      )}
+                      {u.id !== user?.id && (
+                        <button
+                          className="button button-danger"
+                          style={{ 
+                            padding: '5px 10px', 
+                            fontSize: '12px',
+                            marginLeft: 'auto'
+                          }}
+                          onClick={() => handleDeleteUser(u.id, `${u.first_name} ${u.last_name}`)}
+                          disabled={deleteUserMutation.isPending}
+                        >
+                          {deleteUserMutation.isPending ? 'Deleting...' : 'Delete'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

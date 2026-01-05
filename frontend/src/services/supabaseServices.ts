@@ -537,6 +537,15 @@ export const usersService = {
     if (error) throw error;
     return data;
   },
+
+  async deleteUser(userId: string) {
+    // Call the database function to delete the user
+    // This will delete from auth.users (cascades to public.users)
+    // Employee records will be preserved with user_id set to NULL
+    const { error } = await supabase.rpc('delete_user', { user_uuid: userId });
+
+    if (error) throw error;
+  },
 };
 
 export const reportsService = {
