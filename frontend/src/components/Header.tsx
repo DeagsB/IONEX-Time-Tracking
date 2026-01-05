@@ -285,16 +285,6 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       zIndex: 100,
       boxShadow: 'var(--shadow-sm)',
     }}>
-      {/* Left side - Title */}
-      <div style={{ marginRight: '24px' }}>
-        <span style={{
-          fontSize: '16px',
-          fontWeight: 'bold',
-          color: 'var(--text-primary)',
-        }}>
-          IONEX Time Tracking
-        </span>
-      </div>
 
       {/* Center - Timer Input */}
       <div style={{ flex: 1, maxWidth: '600px', margin: '0 auto', position: 'relative' }}>
@@ -558,20 +548,6 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
           {timerRunning ? '⏹' : '▶'}
         </button>
 
-        <button
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '20px',
-            cursor: 'pointer',
-            color: 'var(--text-primary)',
-            padding: '5px',
-          }}
-          title="Add new entry"
-          onClick={() => navigate('/calendar')}
-        >
-          +
-        </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingLeft: '15px', borderLeft: '1px solid var(--border-color)' }}>
           <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
