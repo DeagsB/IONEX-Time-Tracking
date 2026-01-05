@@ -39,7 +39,7 @@ export default function WeekView() {
   // Only allow admins to view other users' calendars
   const effectiveUserId = (user?.role === 'ADMIN' && viewUserId) ? viewUserId : user?.id;
   const [currentProject, setCurrentProject] = useState<string>('Time Tracking Software');
-  const [viewMode, setViewMode] = useState<'week' | 'calendar' | 'list' | 'timesheet'>('calendar');
+  const [viewMode, setViewMode] = useState<'week' | 'list' | 'timesheet'>('week');
   const [currentTime, setCurrentTime] = useState(Date.now());
   
   // Zoom level: number of divisions per hour (2=halves, 4=quarters, 5=fifths, 6=sixths, etc.)
@@ -1239,30 +1239,16 @@ export default function WeekView() {
                 fontSize: '13px'
               }}
             >
-              Week view
-            </button>
-            <button
-              className="button"
-              style={{
-                backgroundColor: viewMode === 'calendar' ? '#c770f0' : 'transparent',
-                color: viewMode === 'calendar' ? 'white' : 'var(--text-primary)',
-                padding: '6px 12px',
-                fontSize: '13px'
-              }}
-            >
-              Calendar
+              Calendar View
             </button>
             <button
               className="button"
               onClick={() => setViewMode('list')}
               style={{
-                backgroundColor: 'transparent',
-                color: viewMode === 'list' ? '#28a745' : 'var(--text-primary)',
+                backgroundColor: viewMode === 'list' ? 'var(--primary-color)' : 'transparent',
+                color: viewMode === 'list' ? 'white' : 'var(--text-primary)',
                 padding: '6px 12px',
-                fontSize: '13px',
-                borderBottom: viewMode === 'list' ? '2px solid #28a745' : '2px solid transparent',
-                borderRadius: 0,
-                fontWeight: viewMode === 'list' ? '600' : '400'
+                fontSize: '13px'
               }}
             >
               List view
