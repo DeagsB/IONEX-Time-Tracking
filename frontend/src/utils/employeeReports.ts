@@ -290,9 +290,14 @@ export function aggregateEmployeeMetrics(
   // Total hours = billable + non-billable (for consistency)
   totalHours = billableHours + nonBillableHours;
 
-  // Total hours for ratio calculation should use rounded payroll hours
-  const actualTotalHours = roundedPayrollHours + internalTimeEntryHours;
-  const billableRatio = actualTotalHours > 0 ? (billableHours / actualTotalHours) * 100 : 0;
+  // Total hours for ratio calculation should use total payroll hours (sum of all rate types)
+  const totalPayrollHours = payrollHoursByRateType.shopTime + 
+                            payrollHoursByRateType.fieldTime + 
+                            payrollHoursByRateType.travelTime + 
+                            payrollHoursByRateType.shopOvertime + 
+                            payrollHoursByRateType.fieldOvertime + 
+                            payrollHoursByRateType.internal;
+  const billableRatio = totalPayrollHours > 0 ? (billableHours / totalPayrollHours) * 100 : 0;
   
   // Calculate total service ticket hours for average rate calculation
   const totalServiceTicketHours = serviceTicketHours && serviceTicketHours.length > 0
