@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
+import { reportsService } from '../services/supabaseServices';
 
 interface TimeEntry {
   id: string;
@@ -13,11 +14,18 @@ interface TimeEntry {
   rate_type?: string;
   billable: boolean;
   approved: boolean;
+  project_id?: string;
   user?: {
     id: string;
     first_name: string;
     last_name: string;
     email: string;
+  };
+  project?: {
+    id: string;
+    customer?: {
+      id: string;
+    };
   };
 }
 
@@ -66,7 +74,11 @@ export default function Payroll() {
         .from('time_entries')
         .select(`
           *,
-          user:users!time_entries_user_id_fkey(id, first_name, last_name, email)
+          user:users!time_entries_user_id_fkey(id, first_name, last_name, email),
+          project:projects!time_entries_project_id_fkey(
+            id,
+            customer:customers!projects_customer_id_fkey(id)
+          )
         `)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -83,12 +95,25 @@ export default function Payroll() {
     },
   });
 
+  // Fetch service ticket hours to adjust payroll hours dynamically
+  const { data: serviceTicketHours } = useQuery({
+    queryKey: ['serviceTicketHours', startDate, endDate, isDemoMode],
+    queryFn: async () => {
+      // Note: service_tickets table doesn't have is_demo, so we'll filter by user_id from time entries
+      const data = await reportsService.getServiceTicketHours(startDate, endDate);
+      return data || [];
+    },
+    enabled: !!timeEntries, // Only fetch if time entries are loaded
+  });
+
   // Group entries by employee and calculate totals by rate type
+  // Adjust hours based on service ticket edits (similar to employee reports)
   const employeeHours = useMemo(() => {
     if (!timeEntries) return [];
 
     const employeeMap = new Map<string, EmployeeHours>();
 
+    // First pass: Calculate actual payroll hours from time entries
     for (const entry of timeEntries) {
       const userId = entry.user_id;
       const userName = entry.user
@@ -173,16 +198,147 @@ export default function Payroll() {
       }
     }
 
-    // Round totals after summing all actual hours
+    // Second pass: Adjust hours based on service ticket edits
+    if (serviceTicketHours && serviceTicketHours.length > 0) {
+      // Group service ticket hours by user and rate type
+      const serviceHoursByUser = new Map<string, {
+        shopTime: number;
+        fieldTime: number;
+        travelTime: number;
+        shopOvertime: number;
+        fieldOvertime: number;
+      }>();
+
+      // Deduplicate service tickets by date + user_id + customer_id
+      const uniqueTicketMap = new Map<string, typeof serviceTicketHours[0]>();
+      serviceTicketHours.forEach(ticket => {
+        const key = `${ticket.date}-${ticket.user_id}-${ticket.customer_id || 'unassigned'}`;
+        const existing = uniqueTicketMap.get(key);
+        if (!existing || (ticket.is_edited && !existing.is_edited)) {
+          uniqueTicketMap.set(key, ticket);
+        }
+      });
+      const dedupedTickets = Array.from(uniqueTicketMap.values());
+
+      dedupedTickets.forEach(ticket => {
+        const userId = ticket.user_id;
+        if (!serviceHoursByUser.has(userId)) {
+          serviceHoursByUser.set(userId, {
+            shopTime: 0,
+            fieldTime: 0,
+            travelTime: 0,
+            shopOvertime: 0,
+            fieldOvertime: 0,
+          });
+        }
+
+        const userServiceHours = serviceHoursByUser.get(userId)!;
+
+        // If ticket has been edited, use edited_hours directly
+        if (ticket.is_edited && ticket.edited_hours) {
+          Object.entries(ticket.edited_hours).forEach(([rateTypeKey, hours]) => {
+            let hoursForRate = 0;
+            if (Array.isArray(hours)) {
+              hoursForRate = hours.reduce((sum, h) => sum + (h || 0), 0);
+            } else {
+              hoursForRate = hours as number;
+            }
+
+            const rateType = rateTypeKey.toLowerCase();
+            if (rateType.includes('shop') && rateType.includes('overtime')) {
+              userServiceHours.shopOvertime += hoursForRate;
+            } else if (rateType.includes('field') && rateType.includes('overtime')) {
+              userServiceHours.fieldOvertime += hoursForRate;
+            } else if (rateType.includes('field')) {
+              userServiceHours.fieldTime += hoursForRate;
+            } else if (rateType.includes('travel')) {
+              userServiceHours.travelTime += hoursForRate;
+            } else {
+              userServiceHours.shopTime += hoursForRate;
+            }
+          });
+        } else {
+          // Ticket not edited - use total_hours and distribute by matching entries
+          const ticketDate = ticket.date;
+          const ticketHours = Number(ticket.total_hours) || 0;
+          
+          // Find matching billable time entries for this ticket
+          const matchingEntries = timeEntries.filter(entry => {
+            if (entry.date !== ticketDate) return false;
+            if (!entry.billable) return false;
+            if (entry.user_id !== ticket.user_id) return false;
+            if (ticket.customer_id && entry.project?.customer?.id !== ticket.customer_id) return false;
+            if (ticket.project_id && entry.project_id !== ticket.project_id) return false;
+            return true;
+          });
+
+          if (matchingEntries.length > 0 && ticketHours > 0) {
+            const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+            if (totalEntryHours > 0) {
+              matchingEntries.forEach(entry => {
+                const entryHours = Number(entry.hours) || 0;
+                const proportion = entryHours / totalEntryHours;
+                const ticketHoursForThisRate = ticketHours * proportion;
+                const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+
+                if (rateType.includes('shop') && rateType.includes('overtime')) {
+                  userServiceHours.shopOvertime += ticketHoursForThisRate;
+                } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                  userServiceHours.fieldOvertime += ticketHoursForThisRate;
+                } else if (rateType.includes('field')) {
+                  userServiceHours.fieldTime += ticketHoursForThisRate;
+                } else if (rateType.includes('travel')) {
+                  userServiceHours.travelTime += ticketHoursForThisRate;
+                } else {
+                  userServiceHours.shopTime += ticketHoursForThisRate;
+                }
+              });
+            }
+          } else if (ticketHours > 0) {
+            // No matching entries but ticket has hours - default to shop time
+            userServiceHours.shopTime += ticketHours;
+          }
+        }
+      });
+
+      // Adjust employee hours based on service ticket hours
+      employeeMap.forEach((emp, userId) => {
+        const serviceHours = serviceHoursByUser.get(userId);
+        if (!serviceHours) return; // No service tickets for this employee
+
+        // For each billable rate type, if payroll > service ticket, move difference to internal
+        // If service ticket > payroll (minimums), don't deduct from internal
+        const unbilledShopTime = Math.max(0, emp.shopTime - serviceHours.shopTime);
+        const unbilledFieldTime = Math.max(0, emp.fieldTime - serviceHours.fieldTime);
+        const unbilledTravelTime = Math.max(0, emp.travelTime - serviceHours.travelTime);
+        const unbilledShopOT = Math.max(0, emp.shopOvertime - serviceHours.shopOvertime);
+        const unbilledFieldOT = Math.max(0, emp.fieldOvertime - serviceHours.fieldOvertime);
+
+        // Move unbilled work to internal
+        emp.internalShopTime += unbilledShopTime;
+        emp.internalFieldTime += unbilledFieldTime;
+        emp.internalTravelTime += unbilledTravelTime;
+        emp.internalShopOvertime += unbilledShopOT;
+        emp.internalFieldOvertime += unbilledFieldOT;
+
+        // Update billable hours to match service ticket hours (but don't go below 0)
+        emp.shopTime = Math.max(0, serviceHours.shopTime);
+        emp.fieldTime = Math.max(0, serviceHours.fieldTime);
+        emp.travelTime = Math.max(0, serviceHours.travelTime);
+        emp.shopOvertime = Math.max(0, serviceHours.shopOvertime);
+        emp.fieldOvertime = Math.max(0, serviceHours.fieldOvertime);
+
+        // Recalculate internal hours and total hours
+        emp.internalHours = emp.internalShopTime + emp.internalShopOvertime + 
+                           emp.internalTravelTime + emp.internalFieldTime + 
+                           emp.internalFieldOvertime;
+        emp.totalHours = emp.internalHours + emp.shopTime + emp.shopOvertime + 
+                        emp.travelTime + emp.fieldTime + emp.fieldOvertime;
+      });
+    }
+
+    // Round totals after summing all actual hours and adjustments
     const roundedEmployeeHours = Array.from(employeeMap.values()).map(emp => {
-      // Debug logging - show all entries and their hours
-      if (emp.shopTime > 0) {
-        const shopTimeEntries = emp.entries.filter(e => (e.rate_type || 'Shop Time') === 'Shop Time' && e.billable);
-        console.log(`[Payroll] Employee ${emp.name} - Shop Time entries:`, 
-          shopTimeEntries.map(e => ({ hours: e.hours, date: e.date })));
-        console.log(`[Payroll] Employee ${emp.name} - Shop Time: actual=${emp.shopTime.toFixed(4)}, rounded=${roundToQuarterHour(emp.shopTime).toFixed(2)}`);
-      }
-      
       return {
         ...emp,
         internalShopTime: roundToQuarterHour(emp.internalShopTime),
@@ -201,7 +357,7 @@ export default function Payroll() {
     });
 
     return roundedEmployeeHours.sort((a, b) => a.name.localeCompare(b.name));
-  }, [timeEntries]);
+  }, [timeEntries, serviceTicketHours]);
 
   // Calculate grand totals (already rounded from employeeHours)
   const grandTotals = useMemo(() => {
