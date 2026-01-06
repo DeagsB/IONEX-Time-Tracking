@@ -302,17 +302,26 @@ export default function Payroll() {
       });
 
       // Adjust employee hours based on service ticket hours
+      // IMPORTANT: Payroll should NEVER exceed actual hours worked from time entries
+      // Service ticket increases (like 4-hour minimums) are for billing only, not payroll
       employeeMap.forEach((emp, userId) => {
         const serviceHours = serviceHoursByUser.get(userId);
         if (!serviceHours) return; // No service tickets for this employee
 
+        // Store original actual payroll hours (from time entries)
+        const originalShopTime = emp.shopTime;
+        const originalFieldTime = emp.fieldTime;
+        const originalTravelTime = emp.travelTime;
+        const originalShopOT = emp.shopOvertime;
+        const originalFieldOT = emp.fieldOvertime;
+
         // For each billable rate type, if payroll > service ticket, move difference to internal
-        // If service ticket > payroll (minimums), don't deduct from internal
-        const unbilledShopTime = Math.max(0, emp.shopTime - serviceHours.shopTime);
-        const unbilledFieldTime = Math.max(0, emp.fieldTime - serviceHours.fieldTime);
-        const unbilledTravelTime = Math.max(0, emp.travelTime - serviceHours.travelTime);
-        const unbilledShopOT = Math.max(0, emp.shopOvertime - serviceHours.shopOvertime);
-        const unbilledFieldOT = Math.max(0, emp.fieldOvertime - serviceHours.fieldOvertime);
+        // If service ticket > payroll (minimums), keep payroll at actual worked hours (don't inflate)
+        const unbilledShopTime = Math.max(0, originalShopTime - serviceHours.shopTime);
+        const unbilledFieldTime = Math.max(0, originalFieldTime - serviceHours.fieldTime);
+        const unbilledTravelTime = Math.max(0, originalTravelTime - serviceHours.travelTime);
+        const unbilledShopOT = Math.max(0, originalShopOT - serviceHours.shopOvertime);
+        const unbilledFieldOT = Math.max(0, originalFieldOT - serviceHours.fieldOvertime);
 
         // Move unbilled work to internal
         emp.internalShopTime += unbilledShopTime;
@@ -321,14 +330,17 @@ export default function Payroll() {
         emp.internalShopOvertime += unbilledShopOT;
         emp.internalFieldOvertime += unbilledFieldOT;
 
-        // Update billable hours to match service ticket hours (but don't go below 0)
-        emp.shopTime = Math.max(0, serviceHours.shopTime);
-        emp.fieldTime = Math.max(0, serviceHours.fieldTime);
-        emp.travelTime = Math.max(0, serviceHours.travelTime);
-        emp.shopOvertime = Math.max(0, serviceHours.shopOvertime);
-        emp.fieldOvertime = Math.max(0, serviceHours.fieldOvertime);
+        // Update billable hours to match service ticket hours, 
+        // BUT cap at original actual hours (payroll can't exceed actual work)
+        // This means: billable = min(serviceTicketHours, actualWorkedHours)
+        emp.shopTime = Math.min(serviceHours.shopTime, originalShopTime);
+        emp.fieldTime = Math.min(serviceHours.fieldTime, originalFieldTime);
+        emp.travelTime = Math.min(serviceHours.travelTime, originalTravelTime);
+        emp.shopOvertime = Math.min(serviceHours.shopOvertime, originalShopOT);
+        emp.fieldOvertime = Math.min(serviceHours.fieldOvertime, originalFieldOT);
 
         // Recalculate internal hours and total hours
+        // Total hours should equal original total hours (payroll never changes from actual worked)
         emp.internalHours = emp.internalShopTime + emp.internalShopOvertime + 
                            emp.internalTravelTime + emp.internalFieldTime + 
                            emp.internalFieldOvertime;
