@@ -220,7 +220,7 @@ export function aggregateEmployeeMetrics(
     fieldOvertime: 0,
     internal: 0,
   };
-  
+
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
@@ -242,30 +242,39 @@ export function aggregateEmployeeMetrics(
   });
 
   // Calculate non-billable hours:
-  // 1. Start with actual internal time entries (non-billable work)
-  // 2. For each billable rate type, if payroll hours > service ticket hours, 
-  //    the difference is unbilled work that moves to non-billable
-  // 3. EXCEPTION: If service ticket hours > payroll hours (e.g., 4-hour minimum for 2-hour work),
-  //    DON'T deduct from non-billable - this is minimum billing, not actual work transfer
-  const internalTimeEntryHours = payrollHoursByRateType.internal;
+  // Non-billable = Rounded Payroll Hours - Service Ticket Hours (billed)
+  // This matches what appears on the Payroll report (rounded to 0.10)
   
-  // Calculate unbilled work for each billable rate type
+  // First, round each payroll rate type to 0.10 (matching Payroll page)
+  const roundedPayrollHours = {
+    shopTime: roundToQuarterHourForPayroll(payrollHoursByRateType.shopTime),
+    fieldTime: roundToQuarterHourForPayroll(payrollHoursByRateType.fieldTime),
+    travelTime: roundToQuarterHourForPayroll(payrollHoursByRateType.travelTime),
+    shopOvertime: roundToQuarterHourForPayroll(payrollHoursByRateType.shopOvertime),
+    fieldOvertime: roundToQuarterHourForPayroll(payrollHoursByRateType.fieldOvertime),
+    internal: roundToQuarterHourForPayroll(payrollHoursByRateType.internal),
+  };
+  
+  const internalTimeEntryHours = roundedPayrollHours.internal;
+  
+  // Calculate unbilled work for each billable rate type using ROUNDED payroll hours
   // Only add positive differences (work done but not billed)
   // Negative differences (billed more than worked, like minimums) don't affect non-billable
-  const unbilledShopTime = Math.max(0, payrollHoursByRateType.shopTime - rateTypeBreakdown.shopTime.hours);
-  const unbilledFieldTime = Math.max(0, payrollHoursByRateType.fieldTime - rateTypeBreakdown.fieldTime.hours);
-  const unbilledTravelTime = Math.max(0, payrollHoursByRateType.travelTime - rateTypeBreakdown.travelTime.hours);
-  const unbilledShopOT = Math.max(0, payrollHoursByRateType.shopOvertime - rateTypeBreakdown.shopOvertime.hours);
-  const unbilledFieldOT = Math.max(0, payrollHoursByRateType.fieldOvertime - rateTypeBreakdown.fieldOvertime.hours);
+  const unbilledShopTime = Math.max(0, roundedPayrollHours.shopTime - rateTypeBreakdown.shopTime.hours);
+  const unbilledFieldTime = Math.max(0, roundedPayrollHours.fieldTime - rateTypeBreakdown.fieldTime.hours);
+  const unbilledTravelTime = Math.max(0, roundedPayrollHours.travelTime - rateTypeBreakdown.travelTime.hours);
+  const unbilledShopOT = Math.max(0, roundedPayrollHours.shopOvertime - rateTypeBreakdown.shopOvertime.hours);
+  const unbilledFieldOT = Math.max(0, roundedPayrollHours.fieldOvertime - rateTypeBreakdown.fieldOvertime.hours);
   
   const totalUnbilledWork = unbilledShopTime + unbilledFieldTime + unbilledTravelTime + unbilledShopOT + unbilledFieldOT;
   
-  // Non-billable hours = internal time entries + unbilled work from billable rate types
+  // Non-billable hours = rounded internal time entries + unbilled work from billable rate types
   const nonBillableHours = internalTimeEntryHours + totalUnbilledWork;
   
   console.log('[Non-Billable Calculation]:', {
     internalTimeEntryHours,
-    payrollHours: payrollHoursByRateType,
+    rawPayrollHours: payrollHoursByRateType,
+    roundedPayrollHours,
     serviceTicketHours: {
       shopTime: rateTypeBreakdown.shopTime.hours,
       fieldTime: rateTypeBreakdown.fieldTime.hours,
@@ -287,16 +296,16 @@ export function aggregateEmployeeMetrics(
   // Update the rate type breakdown to reflect the non-billable hours (for display)
   rateTypeBreakdown.internalTime.hours = nonBillableHours;
 
-  // Total hours = billable + non-billable (for consistency)
+  // Total hours = billable + non-billable (based on rounded payroll, for consistency)
   totalHours = billableHours + nonBillableHours;
 
-  // Total hours for ratio calculation should use total payroll hours (sum of all rate types)
-  const totalPayrollHours = payrollHoursByRateType.shopTime + 
-                            payrollHoursByRateType.fieldTime + 
-                            payrollHoursByRateType.travelTime + 
-                            payrollHoursByRateType.shopOvertime + 
-                            payrollHoursByRateType.fieldOvertime + 
-                            payrollHoursByRateType.internal;
+  // Total payroll hours for ratio calculation (sum of rounded values)
+  const totalPayrollHours = roundedPayrollHours.shopTime + 
+                            roundedPayrollHours.fieldTime + 
+                            roundedPayrollHours.travelTime + 
+                            roundedPayrollHours.shopOvertime + 
+                            roundedPayrollHours.fieldOvertime + 
+                            roundedPayrollHours.internal;
   const billableRatio = totalPayrollHours > 0 ? (billableHours / totalPayrollHours) * 100 : 0;
   
   // Calculate total service ticket hours for average rate calculation
