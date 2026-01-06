@@ -664,12 +664,25 @@ export function calculateRateTypeBreakdown(
       fieldOvertime: 0,
     };
 
-    // Process each service ticket
-    console.log('[RateTypeBreakdown] Total service tickets to process:', serviceTicketHours.length);
-    console.log('[RateTypeBreakdown] All tickets:', serviceTicketHours.map(t => ({ id: t.id, date: t.date, user_id: t.user_id, is_edited: t.is_edited })));
+    // Deduplicate service tickets by date + user_id + customer_id
+    // Multiple records can exist for the same ticket (e.g., from multiple exports)
+    // We only want to count each unique ticket once
+    const uniqueTicketMap = new Map<string, typeof serviceTicketHours[0]>();
+    serviceTicketHours.forEach(ticket => {
+      const key = `${ticket.date}-${ticket.user_id}-${ticket.customer_id || 'unassigned'}`;
+      // Keep the one with is_edited=true if available, otherwise keep the first one
+      const existing = uniqueTicketMap.get(key);
+      if (!existing || (ticket.is_edited && !existing.is_edited)) {
+        uniqueTicketMap.set(key, ticket);
+      }
+    });
+    const dedupedTickets = Array.from(uniqueTicketMap.values());
     
-    serviceTicketHours.forEach((ticket, index) => {
-      console.log(`[RateTypeBreakdown] Processing ticket ${index + 1}/${serviceTicketHours.length}:`, {
+    console.log('[RateTypeBreakdown] After deduplication:', dedupedTickets.length, 'unique tickets (was', serviceTicketHours.length, ')');
+
+    // Process each service ticket
+    dedupedTickets.forEach((ticket, index) => {
+      console.log(`[RateTypeBreakdown] Processing ticket ${index + 1}/${dedupedTickets.length}:`, {
         id: ticket.id,
         ticket_user_id: ticket.user_id,
         userId,
