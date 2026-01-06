@@ -603,7 +603,7 @@ export default function EmployeeReports() {
                   onClick={() => handleSort('nonBillableHours')}
                   style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
                 >
-                  Internal {sortField === 'nonBillableHours' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  Non-Billable {sortField === 'nonBillableHours' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
                 <th 
                   onClick={() => handleSort('efficiency')}
