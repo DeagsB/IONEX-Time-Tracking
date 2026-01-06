@@ -894,9 +894,13 @@ export default function EmployeeReports() {
 
                 {/* Expandable Details */}
                 <button
-                  onClick={() => setExpandedEmployee(
-                    expandedEmployee === metrics.userId ? null : metrics.userId
-                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const currentUserId = metrics.userId;
+                    setExpandedEmployee((prev) => 
+                      prev === currentUserId ? null : currentUserId
+                    );
+                  }}
                   style={{
                     width: '100%',
                     padding: '8px',
