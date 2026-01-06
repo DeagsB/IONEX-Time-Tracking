@@ -238,7 +238,7 @@ export default function ServiceTickets() {
   };
 
   // Get ticket by ID from filtered tickets
-  const getTicketById = (id: string) => filteredTickets.find(t => t.id === id);
+  const getTicketById = (id: string) => filteredTickets.find(t => t.id === id) as ServiceTicket & { displayTicketNumber: string } | undefined;
 
   // Bulk export to Excel
   const handleBulkExportExcel = async () => {
@@ -423,7 +423,7 @@ export default function ServiceTickets() {
     try {
       const ticketsToAssign = Array.from(selectedTicketIds)
         .map(id => getTicketById(id))
-        .filter((t): t is ServiceTicket => {
+        .filter((t): t is ServiceTicket & { displayTicketNumber: string } => {
           if (!t) return false;
           const existing = existingTickets?.find(
             et => et.date === t.date && 
@@ -455,7 +455,7 @@ export default function ServiceTickets() {
     try {
       const ticketsToUnassign = Array.from(selectedTicketIds)
         .map(id => getTicketById(id))
-        .filter((t): t is ServiceTicket => {
+        .filter((t): t is ServiceTicket & { displayTicketNumber: string } => {
           if (!t) return false;
           const existing = existingTickets?.find(
             et => et.date === t.date && 
