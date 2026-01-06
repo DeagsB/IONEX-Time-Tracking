@@ -167,15 +167,19 @@ export default function EmployeeReports() {
     return metrics;
   }, [timeEntries, employees, loadingEntries, serviceTicketHours, loadingTicketHours]);
 
-  // Get unique departments from employees
+  // Get unique departments from employees, always include "Automation"
   const departments = useMemo(() => {
-    if (!employees) return [];
     const depts = new Set<string>();
-    employees.forEach((emp: any) => {
-      if (emp.department) {
-        depts.add(emp.department);
-      }
-    });
+    // Always include "Automation"
+    depts.add('Automation');
+    
+    if (employees) {
+      employees.forEach((emp: any) => {
+        if (emp.department) {
+          depts.add(emp.department);
+        }
+      });
+    }
     return Array.from(depts).sort();
   }, [employees]);
 
