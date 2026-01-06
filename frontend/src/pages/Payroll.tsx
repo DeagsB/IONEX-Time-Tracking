@@ -40,9 +40,9 @@ interface EmployeeHours {
   entries: TimeEntry[];
 }
 
-// Round UP to nearest 0.25 hour (never round down)
+// Round UP to nearest 0.10 hour (never round down)
 const roundToQuarterHour = (hours: number): number => {
-  return Math.ceil(hours * 4) / 4;
+  return Math.ceil(hours * 10) / 10;
 };
 
 export default function Payroll() {

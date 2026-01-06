@@ -205,12 +205,12 @@ export function aggregateEmployeeMetrics(
                  rateTypeBreakdown.fieldOvertime.revenue +
                  rateTypeBreakdown.internalTime.revenue;
 
-  // Helper function to round up to nearest 0.25 (for payroll hours calculation)
+  // Helper function to round up to nearest 0.10 (for payroll hours calculation)
   const roundToQuarterHourForPayroll = (hours: number): number => {
-    return Math.ceil(hours * 4) / 4;
+    return Math.ceil(hours * 10) / 10;
   };
 
-  // Calculate total payroll hours (rounded up to 0.25 for each rate type)
+  // Calculate total payroll hours (rounded up to 0.10 for each rate type)
   // This is what we actually pay the employee
   let totalPayrollHours = 0;
   entries.forEach(entry => {
@@ -218,7 +218,7 @@ export function aggregateEmployeeMetrics(
       totalPayrollHours += Number(entry.hours) || 0;
     }
   });
-  // Round the total payroll hours to nearest 0.25
+  // Round the total payroll hours to nearest 0.10
   const roundedPayrollHours = roundToQuarterHourForPayroll(totalPayrollHours);
 
   // Non-billable hours = Payroll hours paid - Service ticket hours billed
@@ -258,13 +258,13 @@ export function aggregateEmployeeMetrics(
   });
   const serviceTicketCount = ticketKeys.size;
 
-  // Helper function to round up to nearest 0.25 (matching Payroll page logic)
+  // Helper function to round up to nearest 0.10 (matching Payroll page logic)
   const roundToQuarterHour = (hours: number): number => {
-    return Math.ceil(hours * 4) / 4;
+    return Math.ceil(hours * 10) / 10;
   };
 
   // Calculate total cost based on payroll hours (time entry hours grouped by rate type)
-  // Hours are rounded up to nearest 0.25 to match Payroll page
+  // Hours are rounded up to nearest 0.10 to match Payroll page
   let totalCost = 0;
   
   // Debug: Log employee pay rates
@@ -344,7 +344,7 @@ export function aggregateEmployeeMetrics(
   });
   
   // Calculate cost using payroll hours grouped by rate type
-  // Round each rate type's hours UP to nearest 0.25 (matching Payroll page logic)
+  // Round each rate type's hours UP to nearest 0.10 (matching Payroll page logic)
   const isPanelShop = employee?.department === 'Panel Shop';
   
   // Shop Time cost (rounded)
@@ -781,7 +781,7 @@ export function calculateRateTypeBreakdown(
 // Total = billable + non-billable
 export function calculateProjectBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): ProjectBreakdown[] {
   const projectMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
-  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 4) / 4;
+  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 10) / 10;
   const userId = entries[0]?.user_id || '';
 
   // Create a map of service ticket hours by project
@@ -861,7 +861,7 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
 // Total = billable + non-billable
 export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): CustomerBreakdown[] {
   const customerMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
-  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 4) / 4;
+  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 10) / 10;
   const userId = entries[0]?.user_id || '';
 
   // Create a map of service ticket hours by customer
