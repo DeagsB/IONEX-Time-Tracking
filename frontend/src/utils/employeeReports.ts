@@ -211,10 +211,34 @@ export function aggregateEmployeeMetrics(
                  rateTypeBreakdown.fieldOvertime.revenue +
                  rateTypeBreakdown.internalTime.revenue;
 
-  // Non-billable hours come from internal time in the rate type breakdown
-  const nonBillableHours = rateTypeBreakdown.internalTime.hours;
-  // Total hours for ratio calculation should use actual hours worked (billable + internal from time entries)
-  const actualTotalHours = billableHours + nonBillableHours;
+  // Helper function to round up to nearest 0.25 (for payroll hours calculation)
+  const roundToQuarterHourForPayroll = (hours: number): number => {
+    return Math.ceil(hours * 4) / 4;
+  };
+
+  // Calculate total payroll hours (rounded up to 0.25 for each rate type)
+  // This is what we actually pay the employee
+  let totalPayrollHours = 0;
+  entries.forEach(entry => {
+    if (entry.billable) {
+      totalPayrollHours += Number(entry.hours) || 0;
+    }
+  });
+  // Round the total payroll hours to nearest 0.25
+  const roundedPayrollHours = roundToQuarterHourForPayroll(totalPayrollHours);
+
+  // Non-billable hours = Payroll hours paid - Service ticket hours billed
+  // This represents time paid but not billed to customer (e.g., rounding difference)
+  // If there's internal time entries, add those too
+  const internalTimeEntryHours = rateTypeBreakdown.internalTime.hours;
+  const roundingDifference = Math.max(0, roundedPayrollHours - billableHours);
+  const nonBillableHours = internalTimeEntryHours + roundingDifference;
+
+  // Update the rate type breakdown to reflect the non-billable hours (for display)
+  rateTypeBreakdown.internalTime.hours = nonBillableHours;
+
+  // Total hours for ratio calculation should use rounded payroll hours
+  const actualTotalHours = roundedPayrollHours + internalTimeEntryHours;
   const billableRatio = actualTotalHours > 0 ? (billableHours / actualTotalHours) * 100 : 0;
   
   // Calculate total service ticket hours for average rate calculation
