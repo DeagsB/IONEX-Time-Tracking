@@ -1270,13 +1270,14 @@ export default function ServiceTickets() {
         >
           <div
             style={{
-              backgroundColor: '#1a1a2e',
+              backgroundColor: 'var(--bg-primary)',
               borderRadius: '12px',
               maxWidth: '900px',
               width: '100%',
               maxHeight: '90vh',
               overflow: 'auto',
               boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+              border: '1px solid var(--border-color)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1288,28 +1289,28 @@ export default function ServiceTickets() {
                 background: transparent;
               }
               .service-ticket-textarea::-webkit-scrollbar-thumb {
-                background: rgba(199, 112, 240, 0.3);
+                background: var(--primary-light);
                 border-radius: 4px;
               }
               .service-ticket-textarea::-webkit-scrollbar-thumb:hover {
-                background: rgba(199, 112, 240, 0.5);
+                background: var(--primary-color);
               }
             `}</style>
             {/* Ticket Header */}
             <div
               style={{
                 padding: '24px',
-                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                borderBottom: '1px solid var(--border-color)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
               }}
             >
               <div>
-                <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#fff', margin: '0 0 8px 0' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 8px 0' }}>
                   SERVICE TICKET
                 </h2>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', margin: 0 }}>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
                   Ticket: {displayTicketNumber || 'Loading...'}
                 </p>
               </div>
@@ -1325,7 +1326,7 @@ export default function ServiceTickets() {
                   background: 'transparent',
                   border: 'none',
                   fontSize: '24px',
-                  color: 'rgba(255,255,255,0.6)',
+                  color: 'var(--text-secondary)',
                   cursor: 'pointer',
                   padding: '4px 8px',
                 }}
@@ -1340,10 +1341,10 @@ export default function ServiceTickets() {
                 const inputStyle: React.CSSProperties = {
                   width: '100%',
                   padding: '8px 12px',
-                  backgroundColor: 'rgba(255,255,255,0.1)',
-                  border: '1px solid rgba(255,255,255,0.2)',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
                   borderRadius: '6px',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   fontSize: '14px',
                   outline: 'none',
                 };
@@ -1351,22 +1352,23 @@ export default function ServiceTickets() {
                   display: 'block',
                   fontSize: '11px',
                   fontWeight: '600',
-                  color: 'rgba(255,255,255,0.5)',
+                  color: 'var(--text-secondary)',
                   marginBottom: '4px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
                 };
                 const sectionStyle: React.CSSProperties = {
-                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  backgroundColor: 'var(--bg-secondary)',
                   borderRadius: '8px',
                   padding: '16px',
                   marginBottom: '16px',
+                  border: '1px solid var(--border-color)',
                 };
                 const sectionTitleStyle: React.CSSProperties = {
                   fontSize: '12px',
                   fontWeight: '700',
                   textTransform: 'uppercase',
-                  color: '#c770f0',
+                  color: 'var(--primary-color)',
                   marginBottom: '16px',
                   letterSpacing: '1px',
                 };
@@ -1518,9 +1520,9 @@ export default function ServiceTickets() {
                         {isTicketEdited && (
                           <span style={{ 
                             fontSize: '11px', 
-                            color: '#c770f0', 
+                            color: 'var(--primary-color)', 
                             padding: '4px 8px', 
-                            backgroundColor: 'rgba(199, 112, 240, 0.2)', 
+                            backgroundColor: 'var(--primary-light)', 
                             borderRadius: '4px',
                             fontWeight: '600'
                           }}>
@@ -1528,7 +1530,7 @@ export default function ServiceTickets() {
                           </span>
                         )}
                       </div>
-                      <div style={{ color: '#fff', fontSize: '14px' }}>
+                      <div style={{ color: 'var(--text-primary)', fontSize: '14px' }}>
                         {Object.entries(selectedTicket.hoursByRateType)
                           .filter(([rateType, hours]) => hours > 0 || (editedHours[rateType] && (Array.isArray(editedHours[rateType]) ? editedHours[rateType].reduce((s,h) => s+h, 0) > 0 : (editedHours[rateType] as unknown as number) > 0)))
                           .sort(([rateTypeA], [rateTypeB]) => {
@@ -1569,9 +1571,9 @@ export default function ServiceTickets() {
                             }
                             
                             return (
-                              <div key={rateType} style={{ marginBottom: '20px', padding: '12px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '6px' }}>
+                              <div key={rateType} style={{ marginBottom: '20px', padding: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px' }}>
                                 <div style={{ marginBottom: '12px' }}>
-                                  <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', margin: 0 }}>
+                                  <h4 style={{ fontSize: '13px', fontWeight: '600', color: 'var(--primary-color)', margin: 0 }}>
                                     {rateType}
                                 </h4>
                                 </div>
@@ -1595,14 +1597,14 @@ export default function ServiceTickets() {
                                           overflowY: 'auto',
                                           overflowX: 'hidden',
                                           scrollbarWidth: 'thin',
-                                          scrollbarColor: 'rgba(199, 112, 240, 0.3) transparent',
+                                          scrollbarColor: 'var(--primary-light) transparent',
                                         }}
                                         className="service-ticket-textarea"
                                         placeholder="Enter description..."
                                       />
                                       <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                          <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Hours</label>
+                                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Hours</label>
                                           <input
                                             type="number"
                                             step="0.5"
@@ -1657,8 +1659,8 @@ export default function ServiceTickets() {
                                     }}
                                     style={{
                                       padding: '6px 12px',
-                                      backgroundColor: 'rgba(199, 112, 240, 0.2)',
-                                      color: '#c770f0',
+                                      backgroundColor: 'var(--primary-light)',
+                                      color: 'var(--primary-color)',
                                       border: '1px solid rgba(199, 112, 240, 0.3)',
                                       borderRadius: '4px',
                                       fontSize: '11px',
@@ -1730,7 +1732,7 @@ export default function ServiceTickets() {
                             }}
                             style={{
                               padding: '10px 20px',
-                              backgroundColor: '#c770f0',
+                              backgroundColor: 'var(--primary-color)',
                               color: 'white',
                               border: 'none',
                               borderRadius: '6px',
@@ -1785,8 +1787,8 @@ export default function ServiceTickets() {
                             }
                             return (
                               <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>{rateType}:</span>
-                                <span style={{ fontSize: '14px', color: '#fff', fontWeight: '700' }}>{displayHours.toFixed(2)}</span>
+                                <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>{rateType}:</span>
+                                <span style={{ fontSize: '14px', color: 'var(--text-primary)', fontWeight: '700' }}>{displayHours.toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -1797,12 +1799,12 @@ export default function ServiceTickets() {
                             alignItems: 'center',
                             gridColumn: 'span 3',
                             paddingTop: '12px',
-                            borderTop: '1px solid rgba(255,255,255,0.2)',
+                            borderTop: '1px solid var(--border-color)',
                             marginTop: '8px',
                           }}
                         >
-                          <span style={{ fontSize: '15px', color: '#fff', fontWeight: '700' }}>TOTAL HOURS:</span>
-                          <span style={{ fontSize: '18px', color: '#c770f0', fontWeight: '700' }}>
+                          <span style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>TOTAL HOURS:</span>
+                          <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: '700' }}>
                             {(() => {
                               const editedTotal = Object.values(editedHours).reduce((sum, hoursArray) => {
                                 if (Array.isArray(hoursArray)) {
@@ -1841,7 +1843,7 @@ export default function ServiceTickets() {
                             }}
                             style={{
                               padding: '6px 12px',
-                              backgroundColor: '#c770f0',
+                              backgroundColor: 'var(--primary-color)',
                               color: 'white',
                               border: 'none',
                               borderRadius: '6px',
@@ -1856,7 +1858,7 @@ export default function ServiceTickets() {
                       </div>
                       
                       {expenses.length === 0 && !editingExpense && (
-                        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', margin: 0 }}>
+                        <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
                           No expenses added yet.
                         </p>
                       )}
@@ -1875,8 +1877,8 @@ export default function ServiceTickets() {
                               <select
                                 style={{
                                   ...inputStyle,
-                                  backgroundColor: 'rgba(255,255,255,0.15)',
-                                  color: '#fff',
+                                  backgroundColor: 'var(--bg-tertiary)',
+                                  color: 'var(--text-primary)',
                                   cursor: 'pointer',
                                 }}
                                 value={editingExpense.expense_type}
@@ -1910,10 +1912,10 @@ export default function ServiceTickets() {
                                   });
                                 }}
                               >
-                                <option value="Travel" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Mileage</option>
-                                <option value="Subsistence" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Per Diem</option>
-                                <option value="Equipment" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Equipment Billout</option>
-                                <option value="Expenses" style={{ backgroundColor: '#1a1a2e', color: '#fff' }}>Other</option>
+                                <option value="Travel">Mileage</option>
+                                <option value="Subsistence">Per Diem</option>
+                                <option value="Equipment">Equipment Billout</option>
+                                <option value="Expenses">Other</option>
                               </select>
                             </div>
                             <div>
@@ -1973,8 +1975,8 @@ export default function ServiceTickets() {
                               style={{
                                 padding: '6px 12px',
                                 backgroundColor: 'transparent',
-                                color: 'rgba(255,255,255,0.7)',
-                                border: '1px solid rgba(255,255,255,0.2)',
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border-color)',
                                 borderRadius: '6px',
                                 fontSize: '12px',
                                 cursor: 'pointer',
@@ -2003,7 +2005,7 @@ export default function ServiceTickets() {
                               }}
                               style={{
                                 padding: '6px 12px',
-                                backgroundColor: '#c770f0',
+                                backgroundColor: 'var(--primary-color)',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
@@ -2027,19 +2029,19 @@ export default function ServiceTickets() {
                             gap: '12px',
                             alignItems: 'center',
                             padding: '10px',
-                            backgroundColor: 'rgba(255,255,255,0.03)',
+                            backgroundColor: 'var(--bg-tertiary)',
                             borderRadius: '6px',
                             marginBottom: '8px',
                             fontSize: '13px',
                           }}
                         >
                           <div>
-                            <span style={{ color: '#c770f0', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase' }}>
+                            <span style={{ color: 'var(--primary-color)', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase' }}>
                               {expense.expense_type}
                             </span>
-                            <div style={{ color: '#fff', marginTop: '2px' }}>
+                            <div style={{ color: 'var(--text-primary)', marginTop: '2px' }}>
                               {expense.description}
-                              {expense.unit && <span style={{ color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>({expense.unit})</span>}
+                              {expense.unit && <span style={{ color: 'var(--text-tertiary)', marginLeft: '4px' }}>({expense.unit})</span>}
                             </div>
                           </div>
                           <div style={{ textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>
@@ -2048,7 +2050,7 @@ export default function ServiceTickets() {
                           <div style={{ textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>
                             @ ${expense.rate.toFixed(2)}
                           </div>
-                          <div style={{ textAlign: 'right', color: '#fff', fontWeight: '700' }}>
+                          <div style={{ textAlign: 'right', color: 'var(--text-primary)', fontWeight: '700' }}>
                             ${(expense.quantity * expense.rate).toFixed(2)}
                           </div>
                           <div style={{ display: 'flex', gap: '6px' }}>
@@ -2057,8 +2059,8 @@ export default function ServiceTickets() {
                               style={{
                                 padding: '4px 8px',
                                 backgroundColor: 'transparent',
-                                color: 'rgba(255,255,255,0.7)',
-                                border: '1px solid rgba(255,255,255,0.2)',
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border-color)',
                                 borderRadius: '4px',
                                 fontSize: '11px',
                                 cursor: 'pointer',
@@ -2095,12 +2097,12 @@ export default function ServiceTickets() {
                             justifyContent: 'space-between',
                             alignItems: 'center',
                             paddingTop: '12px',
-                            borderTop: '1px solid rgba(255,255,255,0.2)',
+                            borderTop: '1px solid var(--border-color)',
                             marginTop: '8px',
                           }}
                         >
-                          <span style={{ fontSize: '15px', color: '#fff', fontWeight: '700' }}>TOTAL EXPENSES:</span>
-                          <span style={{ fontSize: '18px', color: '#c770f0', fontWeight: '700' }}>
+                          <span style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>TOTAL EXPENSES:</span>
+                          <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: '700' }}>
                             ${expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0).toFixed(2)}
                           </span>
                         </div>
