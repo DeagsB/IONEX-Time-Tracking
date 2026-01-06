@@ -1694,7 +1694,36 @@ export default function ServiceTickets() {
                         <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                           <button
                             onClick={async () => {
-                              if (!currentTicketRecordId) return;
+                              if (!currentTicketRecordId || !selectedTicket) return;
+                              
+                              // Calculate total hours and total amount from edited hours
+                              let totalEditedHours = 0;
+                              let totalAmount = 0;
+                              
+                              Object.entries(editedHours).forEach(([rateType, hoursArray]) => {
+                                if (Array.isArray(hoursArray)) {
+                                  const sumHours = hoursArray.reduce((sum, h) => sum + (h || 0), 0);
+                                  totalEditedHours += sumHours;
+                                  
+                                  // Calculate revenue based on rate type
+                                  const rateTypeLower = rateType.toLowerCase();
+                                  let billableRate = 0;
+                                  if (rateTypeLower.includes('shop') && rateTypeLower.includes('overtime')) {
+                                    billableRate = selectedTicket.rates.shop_ot || 0;
+                                  } else if (rateTypeLower.includes('field') && rateTypeLower.includes('overtime')) {
+                                    billableRate = selectedTicket.rates.field_ot || 0;
+                                  } else if (rateTypeLower.includes('field')) {
+                                    billableRate = selectedTicket.rates.ft || 0;
+                                  } else if (rateTypeLower.includes('travel')) {
+                                    billableRate = selectedTicket.rates.tt || 0;
+                                  } else {
+                                    billableRate = selectedTicket.rates.rt || 0;
+                                  }
+                                  totalAmount += sumHours * billableRate;
+                                }
+                              });
+                              // Round up hours to nearest 0.5
+                              totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
                               
                               const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
                               const { error } = await supabase
@@ -1703,6 +1732,8 @@ export default function ServiceTickets() {
                                   is_edited: true,
                                   edited_descriptions: editedDescriptions,
                                   edited_hours: editedHours,
+                                  total_hours: totalEditedHours,
+                                  total_amount: totalAmount,
                                 })
                                 .eq('id', currentTicketRecordId);
                               
