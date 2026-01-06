@@ -222,17 +222,22 @@ export default function EmployeeReports() {
 
   // Calculate totals
   const totals = useMemo(() => {
-    return sortedMetrics.reduce(
+    const result = sortedMetrics.reduce(
       (acc, m) => ({
-        totalHours: acc.totalHours + m.totalHours,
         billableHours: acc.billableHours + m.billableHours,
+        nonBillableHours: acc.nonBillableHours + m.nonBillableHours,
         totalRevenue: acc.totalRevenue + m.totalRevenue,
         totalCost: acc.totalCost + m.totalCost,
         netProfit: acc.netProfit + m.netProfit,
         serviceTicketCount: acc.serviceTicketCount + m.serviceTicketCount,
       }),
-      { totalHours: 0, billableHours: 0, totalRevenue: 0, totalCost: 0, netProfit: 0, serviceTicketCount: 0 }
+      { billableHours: 0, nonBillableHours: 0, totalRevenue: 0, totalCost: 0, netProfit: 0, serviceTicketCount: 0 }
     );
+    // Total hours = billable + non-billable (for consistency)
+    return {
+      ...result,
+      totalHours: result.billableHours + result.nonBillableHours,
+    };
   }, [sortedMetrics]);
 
   const handleSort = (field: keyof EmployeeMetrics) => {
@@ -504,7 +509,7 @@ export default function EmployeeReports() {
             Non-Billable Hours
           </div>
           <div style={{ fontSize: '24px', fontWeight: '600' }}>
-            {formatHoursDecimal(totals.totalHours - totals.billableHours)}
+            {formatHoursDecimal(totals.nonBillableHours)}
           </div>
         </div>
         <div className="card" style={{ padding: '16px' }}>
