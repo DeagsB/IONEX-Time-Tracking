@@ -1188,22 +1188,23 @@ export default function ServiceTickets() {
                           </button>
                         );
                       })()}
-                    <button
-                      className="button"
-                      onClick={() => {
-                        // TODO: Implement mark as invoiced functionality
-                        alert('Mark as invoiced functionality coming soon!');
-                      }}
-                      style={{
-                        padding: '6px 16px',
-                        fontSize: '13px',
-                        backgroundColor: '#4caf50',
-                        color: 'white',
-                        border: 'none',
-                      }}
-                    >
-                      Mark as Invoiced
-                    </button>
+                      <button
+                        className="button"
+                        onClick={() => {
+                          // TODO: Implement mark as invoiced functionality
+                          alert('Mark as invoiced functionality coming soon!');
+                        }}
+                        style={{
+                          padding: '6px 16px',
+                          fontSize: '13px',
+                          backgroundColor: '#4caf50',
+                          color: 'white',
+                          border: 'none',
+                        }}
+                      >
+                        Mark as Invoiced
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 );
