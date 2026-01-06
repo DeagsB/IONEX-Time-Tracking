@@ -1580,7 +1580,7 @@ export default function ServiceTickets() {
                                           <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Hours</label>
                                           <input
                                             type="number"
-                                            step="0.01"
+                                            step="0.5"
                                             min="0"
                                             value={editedHoursForType[index] || 0}
                                             onChange={(e) => {
