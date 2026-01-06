@@ -118,7 +118,8 @@ export default function Payroll() {
 
       const emp = employeeMap.get(userId)!;
       emp.entries.push(entry);
-      const hours = roundToQuarterHour(Number(entry.hours) || 0);
+      // Sum actual hours first (don't round individual entries)
+      const hours = Number(entry.hours) || 0;
       emp.totalHours += hours;
       if (!entry.billable) {
         emp.internalHours += hours;
@@ -172,10 +173,37 @@ export default function Payroll() {
       }
     }
 
-    return Array.from(employeeMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    // Round totals after summing all actual hours
+    const roundedEmployeeHours = Array.from(employeeMap.values()).map(emp => {
+      // Debug logging - show all entries and their hours
+      if (emp.shopTime > 0) {
+        const shopTimeEntries = emp.entries.filter(e => (e.rate_type || 'Shop Time') === 'Shop Time' && e.billable);
+        console.log(`[Payroll] Employee ${emp.name} - Shop Time entries:`, 
+          shopTimeEntries.map(e => ({ hours: e.hours, date: e.date })));
+        console.log(`[Payroll] Employee ${emp.name} - Shop Time: actual=${emp.shopTime.toFixed(4)}, rounded=${roundToQuarterHour(emp.shopTime).toFixed(2)}`);
+      }
+      
+      return {
+        ...emp,
+        internalShopTime: roundToQuarterHour(emp.internalShopTime),
+        internalShopOvertime: roundToQuarterHour(emp.internalShopOvertime),
+        internalTravelTime: roundToQuarterHour(emp.internalTravelTime),
+        internalFieldTime: roundToQuarterHour(emp.internalFieldTime),
+        internalFieldOvertime: roundToQuarterHour(emp.internalFieldOvertime),
+        shopTime: roundToQuarterHour(emp.shopTime),
+        shopOvertime: roundToQuarterHour(emp.shopOvertime),
+        travelTime: roundToQuarterHour(emp.travelTime),
+        fieldTime: roundToQuarterHour(emp.fieldTime),
+        fieldOvertime: roundToQuarterHour(emp.fieldOvertime),
+        totalHours: roundToQuarterHour(emp.totalHours),
+        internalHours: roundToQuarterHour(emp.internalHours),
+      };
+    });
+
+    return roundedEmployeeHours.sort((a, b) => a.name.localeCompare(b.name));
   }, [timeEntries]);
 
-  // Calculate grand totals
+  // Calculate grand totals (already rounded from employeeHours)
   const grandTotals = useMemo(() => {
     return employeeHours.reduce(
       (totals, emp) => ({
