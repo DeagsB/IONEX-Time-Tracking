@@ -14,7 +14,6 @@ import Customers from './pages/Customers';
 import Employees from './pages/Employees';
 import Payroll from './pages/Payroll';
 import Profile from './pages/Profile';
-import Settings from './pages/Settings';
 import ServiceTickets from './pages/ServiceTickets';
 import EmployeeReports from './pages/EmployeeReports';
 import UserArchive from './pages/UserArchive';
@@ -99,7 +98,6 @@ function AppRoutes() {
         <Route path="projects" element={<Projects />} />
         <Route path="payroll" element={<Payroll />} />
         <Route path="profile" element={<Profile />} />
-        <Route path="settings" element={<Settings />} />
         <Route path="customers" element={<Customers />} />
         <Route
           path="employees"
