@@ -872,7 +872,7 @@ export default function ServiceTickets() {
                   type="checkbox"
                   checked={approvedOnly}
                   onChange={(e) => setApprovedOnly(e.target.checked)}
-                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#c770f0' }}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary-color)' }}
                 />
                 <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Approved Only</span>
               </label>
@@ -953,23 +953,6 @@ export default function ServiceTickets() {
                 ✗ Unassign Ticket Numbers
               </button>
               <button
-                onClick={handleBulkExportExcel}
-                disabled={isBulkExporting}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#16a34a',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
-                  opacity: isBulkExporting ? 0.6 : 1,
-                }}
-              >
-                {isBulkExporting ? 'Exporting...' : '📊 Export All to Excel'}
-              </button>
-              <button
                 onClick={handleBulkExportPdf}
                 disabled={isBulkExporting}
                 style={{
@@ -1014,7 +997,7 @@ export default function ServiceTickets() {
                     type="checkbox"
                     checked={filteredTickets.length > 0 && selectedTicketIds.size === filteredTickets.length}
                     onChange={toggleSelectAll}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#c770f0' }}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary-color)' }}
                     title="Select all"
                   />
                 </th>
@@ -1153,7 +1136,7 @@ export default function ServiceTickets() {
                       type="checkbox"
                       checked={selectedTicketIds.has(ticket.id)}
                       onChange={() => toggleTicketSelection(ticket.id)}
-                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#c770f0' }}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary-color)' }}
                     />
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
@@ -2142,93 +2125,6 @@ export default function ServiceTickets() {
                   disabled={isExportingExcel || isExportingPdf}
                 >
                   Close
-                </button>
-                <button
-                  className="button button-primary"
-                  onClick={async () => {
-                    // Ensure expenses are loaded
-                    if (currentTicketRecordId && expenses.length === 0) {
-                      await loadExpenses(currentTicketRecordId);
-                    }
-                    // Create a modified ticket with the editable values and edited descriptions/hours
-                    const modifiedTicket: ServiceTicket = {
-                      ...selectedTicket,
-                      userName: editableTicket.techName,
-                      projectNumber: editableTicket.projectNumber,
-                      date: editableTicket.date,
-                      customerInfo: {
-                        ...selectedTicket.customerInfo,
-                        name: editableTicket.customerName,
-                        address: editableTicket.address,
-                        city: editableTicket.cityState.split(',')[0]?.trim() || '',
-                        state: editableTicket.cityState.split(',')[1]?.trim() || '',
-                        zip_code: editableTicket.zipCode,
-                        phone: editableTicket.phone,
-                        email: editableTicket.email,
-                        service_location: editableTicket.serviceLocation,
-                        location_code: editableTicket.locationCode,
-                        po_number: editableTicket.poNumber,
-                        approver_name: editableTicket.approverName,
-                      },
-                      // Apply edited hours if available (sum arrays to get totals)
-                      hoursByRateType: Object.keys(selectedTicket.hoursByRateType).reduce((acc, rateType) => {
-                        if (editedHours[rateType] !== undefined) {
-                          if (Array.isArray(editedHours[rateType])) {
-                            acc[rateType as keyof typeof acc] = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
-                          } else {
-                            acc[rateType as keyof typeof acc] = editedHours[rateType] as unknown as number;
-                          }
-                        } else {
-                          acc[rateType as keyof typeof acc] = selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType];
-                        }
-                        return acc;
-                      }, { ...selectedTicket.hoursByRateType }),
-                      // Create modified entries with edited descriptions
-                      entries: Object.entries(selectedTicket.hoursByRateType)
-                        .filter(([rateType]) => selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType] > 0)
-                        .flatMap(([rateType]) => {
-                          const editedDescs = editedDescriptions[rateType];
-                          if (editedDescs && editedDescs.length > 0) {
-                            // Use edited descriptions and hours
-                            const editedHoursForType = editedHours[rateType];
-                            const hoursArray = Array.isArray(editedHoursForType) 
-                              ? editedHoursForType 
-                              : editedHoursForType !== undefined 
-                                ? [editedHoursForType as unknown as number] 
-                                : [];
-                            
-                            return editedDescs.map((desc, idx) => ({
-                              ...selectedTicket.entries[0], // Use first entry as template
-                              id: `edited-${rateType}-${idx}`,
-                              description: desc,
-                              rate_type: rateType,
-                              hours: hoursArray[idx] !== undefined 
-                                ? hoursArray[idx] 
-                                : (hoursArray.length > 0 ? hoursArray[0] / editedDescs.length : 0),
-                            }));
-                          } else {
-                            // Use original entries for this rate type
-                            return selectedTicket.entries.filter(
-                              (e) => (e.rate_type || 'Shop Time') === rateType
-                            );
-                          }
-                        }),
-                    };
-                    // Recalculate total hours from edited hours
-                    modifiedTicket.totalHours = Object.values(modifiedTicket.hoursByRateType).reduce((sum, h) => sum + h, 0);
-                    await handleExportExcel(modifiedTicket);
-                    // Refresh the ticket list to show updated ticket number
-                    queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
-                    queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                  }}
-                  style={{ 
-                    padding: '10px 24px',
-                    backgroundColor: '#4caf50',
-                    borderColor: '#4caf50',
-                  }}
-                  disabled={isExportingExcel || isExportingPdf}
-                >
-                  {isExportingExcel ? 'Generating Excel...' : 'Export Excel'}
                 </button>
                 <button
                   className="button button-primary"
