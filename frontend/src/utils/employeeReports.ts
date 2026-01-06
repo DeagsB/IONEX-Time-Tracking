@@ -113,10 +113,21 @@ export interface TrendData {
   revenue: number;
 }
 
+// Service ticket hours interface
+export interface ServiceTicketHours {
+  id: string;
+  user_id: string;
+  date: string;
+  total_hours: number;
+  customer_id?: string;
+  project_id?: string;
+}
+
 // Aggregate metrics for a single employee from their time entries
 export function aggregateEmployeeMetrics(
   entries: TimeEntry[],
-  employee?: EmployeeWithRates
+  employee?: EmployeeWithRates,
+  serviceTicketHours?: ServiceTicketHours[]
 ): EmployeeMetrics {
   console.log('aggregateEmployeeMetrics called:', { entriesCount: entries?.length || 0, employee: employee?.user_id });
   
@@ -172,47 +183,137 @@ export function aggregateEmployeeMetrics(
   let billableHours = 0;
   let totalRevenue = 0;
 
+  // Calculate total hours and billable hours from time entries (for cost calculation)
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
     totalHours += hours;
     
     if (entry.billable) {
       billableHours += hours;
-      // For billable entries, use employee's billable rates based on rate_type
-      const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-      let billableRate = 0;
-      
-      if (employee) {
-        if (rateType.includes('shop') && rateType.includes('overtime')) {
-          billableRate = Number(employee.shop_ot_rate) || 0;
-        } else if (rateType.includes('field') && rateType.includes('overtime')) {
-          billableRate = Number(employee.field_ot_rate) || 0;
-        } else if (rateType.includes('field')) {
-          billableRate = Number(employee.ft_rate) || 0;
-        } else if (rateType.includes('travel')) {
-          billableRate = Number(employee.tt_rate) || 0;
-        } else {
-          // Default to shop time rate (rt_rate)
-          billableRate = Number(employee.rt_rate) || 0;
-        }
-      }
-      
-      // Fallback to entry.rate if employee rates are not available
-      if (billableRate === 0) {
-        billableRate = Number(entry.rate) || 0;
-      }
-      
-      totalRevenue += hours * billableRate;
-    } else {
-      // Use internal rate for non-billable entries
-      const internalRate = Number(employee?.internal_rate) || 0;
-      totalRevenue += hours * internalRate;
     }
   });
 
+  // Calculate revenue from service ticket hours (not time entry hours)
+  // Match service tickets to time entries to determine rate type distribution
+  if (serviceTicketHours && serviceTicketHours.length > 0) {
+    // Group service tickets by date-customer-user key
+    const ticketMap = new Map<string, { hours: number; customerId?: string; projectId?: string }>();
+    serviceTicketHours.forEach(ticket => {
+      if (ticket.user_id === userId) {
+        const key = `${ticket.date}-${ticket.customer_id || 'unassigned'}-${ticket.user_id}`;
+        const existing = ticketMap.get(key);
+        if (existing) {
+          existing.hours += Number(ticket.total_hours) || 0;
+        } else {
+          ticketMap.set(key, {
+            hours: Number(ticket.total_hours) || 0,
+            customerId: ticket.customer_id || undefined,
+            projectId: ticket.project_id || undefined,
+          });
+        }
+      }
+    });
+
+    // For each service ticket, calculate revenue based on ticket hours
+    ticketMap.forEach((ticketData, ticketKey) => {
+      const [ticketDate] = ticketKey.split('-');
+      const ticketHours = ticketData.hours;
+      
+      // Find matching billable time entries for this ticket
+      const matchingEntries = entries.filter(entry => {
+        if (entry.date !== ticketDate) return false;
+        if (!entry.billable) return false;
+        if (ticketData.customerId && entry.project?.customer?.id !== ticketData.customerId) return false;
+        if (ticketData.projectId && entry.project_id !== ticketData.projectId) return false;
+        return true;
+      });
+
+      if (matchingEntries.length > 0) {
+        // Calculate total hours from matching entries to get proportions
+        const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+        
+        if (totalEntryHours > 0) {
+          // Distribute ticket hours proportionally by rate type from entries
+          matchingEntries.forEach(entry => {
+            const entryHours = Number(entry.hours) || 0;
+            const proportion = entryHours / totalEntryHours;
+            const ticketHoursForThisRate = ticketHours * proportion;
+            
+            // Get billable rate for this rate type
+            const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+            let billableRate = 0;
+            
+            if (employee) {
+              if (rateType.includes('shop') && rateType.includes('overtime')) {
+                billableRate = Number(employee.shop_ot_rate) || 0;
+              } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                billableRate = Number(employee.field_ot_rate) || 0;
+              } else if (rateType.includes('field')) {
+                billableRate = Number(employee.ft_rate) || 0;
+              } else if (rateType.includes('travel')) {
+                billableRate = Number(employee.tt_rate) || 0;
+              } else {
+                billableRate = Number(employee.rt_rate) || 0;
+              }
+            }
+            
+            if (billableRate === 0) {
+              billableRate = Number(entry.rate) || 0;
+            }
+            
+            totalRevenue += ticketHoursForThisRate * billableRate;
+          });
+        }
+      } else {
+        // No matching entries found, use default shop time rate
+        const billableRate = Number(employee?.rt_rate) || 110;
+        totalRevenue += ticketHours * billableRate;
+      }
+    });
+  } else {
+    // Fallback to time entry hours if no service tickets exist
+    entries.forEach(entry => {
+      if (entry.billable) {
+        const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+        let billableRate = 0;
+        
+        if (employee) {
+          if (rateType.includes('shop') && rateType.includes('overtime')) {
+            billableRate = Number(employee.shop_ot_rate) || 0;
+          } else if (rateType.includes('field') && rateType.includes('overtime')) {
+            billableRate = Number(employee.field_ot_rate) || 0;
+          } else if (rateType.includes('field')) {
+            billableRate = Number(employee.ft_rate) || 0;
+          } else if (rateType.includes('travel')) {
+            billableRate = Number(employee.tt_rate) || 0;
+          } else {
+            billableRate = Number(employee.rt_rate) || 0;
+          }
+        }
+        
+        if (billableRate === 0) {
+          billableRate = Number(entry.rate) || 0;
+        }
+        
+        totalRevenue += Number(entry.hours) * billableRate;
+      } else {
+        const internalRate = Number(employee?.internal_rate) || 0;
+        totalRevenue += Number(entry.hours) * internalRate;
+      }
+    });
+  }
+
   const nonBillableHours = totalHours - billableHours;
   const billableRatio = totalHours > 0 ? (billableHours / totalHours) * 100 : 0;
-  const averageRate = billableHours > 0 ? totalRevenue / billableHours : 0;
+  
+  // Calculate total service ticket hours for average rate calculation
+  const totalServiceTicketHours = serviceTicketHours && serviceTicketHours.length > 0
+    ? serviceTicketHours
+        .filter(t => t.user_id === userId)
+        .reduce((sum, t) => sum + (Number(t.total_hours) || 0), 0)
+    : billableHours; // Fallback to billable hours if no service tickets
+  
+  const averageRate = totalServiceTicketHours > 0 ? totalRevenue / totalServiceTicketHours : 0;
   const efficiency = billableRatio; // Efficiency is same as billable ratio
 
   // Calculate service ticket count (unique date+customer combinations for billable entries)
@@ -228,7 +329,8 @@ export function aggregateEmployeeMetrics(
   // Rate type breakdown (includes cost and profit calculations)
   const rateTypeBreakdown = calculateRateTypeBreakdown(entries, employee);
 
-  // Calculate total cost based on pay rates
+  // Calculate total cost based on payroll hours (time entry hours grouped by rate type)
+  // This matches the Payroll page calculation logic
   let totalCost = 0;
   
   // Debug: Log employee pay rates
@@ -246,60 +348,114 @@ export function aggregateEmployeeMetrics(
     console.warn('No employee object provided for cost calculation, userId:', userId);
   }
   
+  // Group hours by rate type (matching Payroll page logic)
+  const hoursByRateType = {
+    'Shop Time': 0,
+    'Shop Overtime': 0,
+    'Travel Time': 0,
+    'Field Time': 0,
+    'Field Overtime': 0,
+    'Internal': 0,
+  };
+  
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
-    const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+    const rateType = entry.rate_type || 'Shop Time';
+    const isInternal = !entry.billable;
     
-    // Determine pay rate based on rate type
-    // Panel Shop employees default to shop_pay_rate, but admins can set additional rates
-    const isPanelShop = employee?.department === 'Panel Shop';
-    let payRate = 0;
-    if (isPanelShop) {
-      // For Panel Shop, check if admin has set specific rates, otherwise use shop_pay_rate
-      if (rateType.includes('shop') && rateType.includes('overtime')) {
-        payRate = Number(employee?.shop_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0;
-      } else if (rateType.includes('field') && rateType.includes('overtime')) {
-        payRate = Number(employee?.field_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0;
-      } else if (rateType.includes('field')) {
-        payRate = Number(employee?.field_pay_rate) || Number(employee?.shop_pay_rate) || 0;
-      } else if (rateType.includes('travel')) {
-        // Travel time is paid at shop rate
-        payRate = Number(employee?.shop_pay_rate) || 0;
-      } else {
-        // Default to shop time
-        payRate = Number(employee?.shop_pay_rate) || 0;
-      }
-    } else if (rateType.includes('shop') && rateType.includes('overtime')) {
-      payRate = Number(employee?.shop_ot_pay_rate) || 0;
-    } else if (rateType.includes('field') && rateType.includes('overtime')) {
-      payRate = Number(employee?.field_ot_pay_rate) || 0;
-    } else if (rateType.includes('field')) {
-      payRate = Number(employee?.field_pay_rate) || 0;
-    } else if (rateType.includes('travel')) {
-      // Travel time is paid at shop rate
-      payRate = Number(employee?.shop_pay_rate) || 0;
-    } else {
-      // Default to shop time
-      payRate = Number(employee?.shop_pay_rate) || 0;
-    }
-    
-    const entryCost = hours * payRate;
-    totalCost += entryCost;
-    
-    // Debug: Log cost calculation for first entry
-    if (totalCost === entryCost) {
-      console.log('First entry cost calculation:', {
-        rateType: entry.rate_type,
-        rateTypeLower: rateType,
-        hours,
-        payRate,
-        entryCost,
-        totalCost,
-      });
+    // Group hours by rate type (matching Payroll page grouping)
+    switch (rateType) {
+      case 'Shop Time':
+        if (isInternal) {
+          hoursByRateType['Internal'] += hours;
+        } else {
+          hoursByRateType['Shop Time'] += hours;
+        }
+        break;
+      case 'Shop Overtime':
+        if (isInternal) {
+          hoursByRateType['Internal'] += hours;
+        } else {
+          hoursByRateType['Shop Overtime'] += hours;
+        }
+        break;
+      case 'Travel Time':
+        if (isInternal) {
+          hoursByRateType['Internal'] += hours;
+        } else {
+          hoursByRateType['Travel Time'] += hours;
+        }
+        break;
+      case 'Field Time':
+        if (isInternal) {
+          hoursByRateType['Internal'] += hours;
+        } else {
+          hoursByRateType['Field Time'] += hours;
+        }
+        break;
+      case 'Field Overtime':
+        if (isInternal) {
+          hoursByRateType['Internal'] += hours;
+        } else {
+          hoursByRateType['Field Overtime'] += hours;
+        }
+        break;
+      default:
+        if (isInternal) {
+          hoursByRateType['Internal'] += hours;
+        } else {
+          hoursByRateType['Shop Time'] += hours;
+        }
     }
   });
   
-  console.log('Final totalCost:', totalCost, 'for userId:', userId, 'entries count:', entries.length);
+  // Calculate cost using payroll hours grouped by rate type
+  const isPanelShop = employee?.department === 'Panel Shop';
+  
+  // Shop Time cost
+  if (hoursByRateType['Shop Time'] > 0) {
+    const payRate = Number(employee?.shop_pay_rate) || 0;
+    totalCost += hoursByRateType['Shop Time'] * payRate;
+  }
+  
+  // Shop Overtime cost
+  if (hoursByRateType['Shop Overtime'] > 0) {
+    const payRate = isPanelShop 
+      ? (Number(employee?.shop_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0)
+      : (Number(employee?.shop_ot_pay_rate) || 0);
+    totalCost += hoursByRateType['Shop Overtime'] * payRate;
+  }
+  
+  // Travel Time cost (paid at shop rate)
+  if (hoursByRateType['Travel Time'] > 0) {
+    const payRate = Number(employee?.shop_pay_rate) || 0;
+    totalCost += hoursByRateType['Travel Time'] * payRate;
+  }
+  
+  // Field Time cost
+  if (hoursByRateType['Field Time'] > 0) {
+    const payRate = isPanelShop
+      ? (Number(employee?.field_pay_rate) || Number(employee?.shop_pay_rate) || 0)
+      : (Number(employee?.field_pay_rate) || 0);
+    totalCost += hoursByRateType['Field Time'] * payRate;
+  }
+  
+  // Field Overtime cost
+  if (hoursByRateType['Field Overtime'] > 0) {
+    const payRate = isPanelShop
+      ? (Number(employee?.field_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0)
+      : (Number(employee?.field_ot_pay_rate) || 0);
+    totalCost += hoursByRateType['Field Overtime'] * payRate;
+  }
+  
+  // Internal time cost (non-billable work)
+  if (hoursByRateType['Internal'] > 0) {
+    // Internal time is paid at shop rate (or use internal rate if different logic is needed)
+    const payRate = Number(employee?.shop_pay_rate) || 0;
+    totalCost += hoursByRateType['Internal'] * payRate;
+  }
+  
+  console.log('Final totalCost (using payroll hours):', totalCost, 'for userId:', userId, 'entries count:', entries.length, 'hoursByRateType:', hoursByRateType);
 
   // Calculate profit metrics
   const netProfit = totalRevenue - totalCost;
@@ -592,7 +748,8 @@ export function calculateEfficiency(entries: TimeEntry[]): {
 // Aggregate all employees from a set of entries
 export function aggregateAllEmployees(
   entries: TimeEntry[],
-  employees: EmployeeWithRates[]
+  employees: EmployeeWithRates[],
+  serviceTicketHours?: ServiceTicketHours[]
 ): EmployeeMetrics[] {
   console.log('aggregateAllEmployees called:', { 
     entriesCount: entries?.length || 0, 
@@ -607,7 +764,7 @@ export function aggregateAllEmployees(
   // If no entries, return all employees with zero metrics
   if (!entries || entries.length === 0) {
     console.log('No entries provided, returning metrics for all employees with zero hours');
-    return employees.map(employee => aggregateEmployeeMetrics([], employee));
+    return employees.map(employee => aggregateEmployeeMetrics([], employee, serviceTicketHours || []));
   }
   
   // Group entries by user_id
@@ -638,7 +795,9 @@ export function aggregateAllEmployees(
     const employee = employees.find(e => e.user_id === userId);
     console.log(`Processing entries for userId ${userId}, found employee:`, !!employee, 'entries count:', userEntries.length);
     if (employee) {
-      const metrics = aggregateEmployeeMetrics(userEntries, employee);
+      // Filter service ticket hours for this user
+      const userTicketHours = serviceTicketHours?.filter(t => t.user_id === userId) || [];
+      const metrics = aggregateEmployeeMetrics(userEntries, employee, userTicketHours);
       employeeMetrics.push(metrics);
     } else {
       console.warn(`No employee found for userId ${userId}, but has ${userEntries.length} entries`);
@@ -649,7 +808,8 @@ export function aggregateAllEmployees(
   employees.forEach(employee => {
     if (!entriesByUser.has(employee.user_id)) {
       console.log(`Adding employee with no entries: ${employee.user_id} (${employee.user?.first_name} ${employee.user?.last_name})`);
-      employeeMetrics.push(aggregateEmployeeMetrics([], employee));
+      const userTicketHours = serviceTicketHours?.filter(t => t.user_id === employee.user_id) || [];
+      employeeMetrics.push(aggregateEmployeeMetrics([], employee, userTicketHours));
     }
   });
 

@@ -25,6 +25,7 @@ export default function EmployeeReports() {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [selectedPeriod, setSelectedPeriod] = useState('This Month');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const [sortField, setSortField] = useState<keyof EmployeeMetrics>('totalHours');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -84,6 +85,28 @@ export default function EmployeeReports() {
     retry: 1,
   });
 
+  // Fetch service ticket hours for revenue calculation
+  const { data: serviceTicketHours, isLoading: loadingTicketHours } = useQuery({
+    queryKey: ['serviceTicketHours', startDate, endDate, selectedEmployeeId],
+    queryFn: async () => {
+      console.log('Query function called for service ticket hours:', { startDate, endDate, selectedEmployeeId });
+      try {
+        const result = await reportsService.getServiceTicketHours(
+          startDate,
+          endDate,
+          selectedEmployeeId !== 'all' ? selectedEmployeeId : undefined
+        );
+        console.log('Service ticket hours result:', result);
+        return result;
+      } catch (error) {
+        console.error('Query function error for service tickets:', error);
+        throw error;
+      }
+    },
+    enabled: user?.role === 'ADMIN' && !!startDate && !!endDate,
+    retry: 1,
+  });
+
   // Debug logging
   useMemo(() => {
     console.log('=== Employee Reports Debug ===');
@@ -124,22 +147,52 @@ export default function EmployeeReports() {
     }
     
     // If time entries are still loading, show employees with zero metrics
-    if (loadingEntries || !timeEntries) {
-      console.log('Time entries still loading or undefined, showing employees with zero metrics');
-      return employees.map((emp: any) => aggregateEmployeeMetrics([], emp));
+    if (loadingEntries || !timeEntries || loadingTicketHours) {
+      console.log('Time entries or service tickets still loading, showing employees with zero metrics');
+      return employees.map((emp: any) => aggregateEmployeeMetrics([], emp, []));
     }
     
-    console.log('Aggregating metrics:', { timeEntriesCount: timeEntries.length, employeesCount: employees.length });
-    const metrics = aggregateAllEmployees(timeEntries, employees);
+    console.log('Aggregating metrics:', { 
+      timeEntriesCount: timeEntries.length, 
+      employeesCount: employees.length,
+      serviceTicketHoursCount: serviceTicketHours?.length || 0
+    });
+    const metrics = aggregateAllEmployees(timeEntries, employees, serviceTicketHours || []);
     console.log('Aggregated metrics:', metrics);
     return metrics;
-  }, [timeEntries, employees, loadingEntries]);
+  }, [timeEntries, employees, loadingEntries, serviceTicketHours, loadingTicketHours]);
 
-  // Filter by selected employee if needed
+  // Get unique departments from employees
+  const departments = useMemo(() => {
+    if (!employees) return [];
+    const depts = new Set<string>();
+    employees.forEach((emp: any) => {
+      if (emp.department) {
+        depts.add(emp.department);
+      }
+    });
+    return Array.from(depts).sort();
+  }, [employees]);
+
+  // Filter by selected employee and department
   const filteredMetrics = useMemo(() => {
-    if (selectedEmployeeId === 'all') return employeeMetrics;
-    return employeeMetrics.filter(m => m.userId === selectedEmployeeId);
-  }, [employeeMetrics, selectedEmployeeId]);
+    let filtered = employeeMetrics;
+    
+    // Filter by employee
+    if (selectedEmployeeId !== 'all') {
+      filtered = filtered.filter(m => m.userId === selectedEmployeeId);
+    }
+    
+    // Filter by department
+    if (selectedDepartment !== 'all') {
+      filtered = filtered.filter(m => {
+        const employee = employees?.find((emp: any) => emp.user_id === m.userId);
+        return employee?.department === selectedDepartment;
+      });
+    }
+    
+    return filtered;
+  }, [employeeMetrics, selectedEmployeeId, selectedDepartment, employees]);
 
   // Sort metrics
   const sortedMetrics = useMemo(() => {
@@ -312,6 +365,31 @@ export default function EmployeeReports() {
               />
             </>
           )}
+        </div>
+
+        {/* Department Filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Department:</label>
+          <select
+            value={selectedDepartment}
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              fontSize: '13px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="all">All Departments</option>
+            {departments.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Employee Filter */}

@@ -769,6 +769,28 @@ export const reportsService = {
     return data;
   },
 
+  // Get service ticket hours for employees (for revenue calculation)
+  async getServiceTicketHours(startDate: string, endDate: string, userId?: string) {
+    let query = supabase
+      .from('service_tickets')
+      .select('id, user_id, date, total_hours, customer_id, project_id')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching service ticket hours:', error);
+      throw error;
+    }
+
+    return data || [];
+  },
+
   // Get project breakdown for an employee
   async getEmployeeProjectBreakdown(userId: string, startDate: string, endDate: string) {
     const { data, error } = await supabase

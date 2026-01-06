@@ -67,6 +67,11 @@ export default function ServiceTickets() {
     date: string;
   } | null>(null);
   
+  // Editable service descriptions and hours state
+  const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
+  const [editedHours, setEditedHours] = useState<Record<string, number>>({});
+  const [isTicketEdited, setIsTicketEdited] = useState(false);
+  
   // Generated ticket number for display
   const [displayTicketNumber, setDisplayTicketNumber] = useState<string>('');
   
@@ -1032,14 +1037,35 @@ export default function ServiceTickets() {
                   // Set display ticket number (will be XXX until exported)
                   setDisplayTicketNumber(ticket.displayTicketNumber);
 
-                  // Load expenses for this ticket
+                  // Load expenses and edited data for this ticket
                   try {
                     const ticketRecordId = await getOrCreateTicketRecord(ticket);
                     setCurrentTicketRecordId(ticketRecordId);
                     await loadExpenses(ticketRecordId);
+                    
+                    // Load edited descriptions and hours
+                    const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                    const { data: ticketRecord } = await supabase
+                      .from(tableName)
+                      .select('is_edited, edited_descriptions, edited_hours')
+                      .eq('id', ticketRecordId)
+                      .single();
+                    
+                    if (ticketRecord) {
+                      setIsTicketEdited(ticketRecord.is_edited || false);
+                      setEditedDescriptions((ticketRecord.edited_descriptions as Record<string, string[]>) || {});
+                      setEditedHours((ticketRecord.edited_hours as Record<string, number>) || {});
+                    } else {
+                      setIsTicketEdited(false);
+                      setEditedDescriptions({});
+                      setEditedHours({});
+                    }
                   } catch (error) {
-                    console.error('Error loading expenses:', error);
+                    console.error('Error loading ticket data:', error);
                     setExpenses([]);
+                    setIsTicketEdited(false);
+                    setEditedDescriptions({});
+                    setEditedHours({});
                   }
                 };
 
@@ -1145,7 +1171,13 @@ export default function ServiceTickets() {
             zIndex: 1000,
             padding: '20px',
           }}
-          onClick={() => { setSelectedTicket(null); setEditableTicket(null); }}
+          onClick={() => { 
+            setSelectedTicket(null); 
+            setEditableTicket(null);
+            setEditedDescriptions({});
+            setEditedHours({});
+            setIsTicketEdited(false);
+          }}
         >
           <div
             style={{
@@ -1178,7 +1210,13 @@ export default function ServiceTickets() {
                 </p>
               </div>
               <button
-                onClick={() => { setSelectedTicket(null); setEditableTicket(null); }}
+                onClick={() => { 
+                  setSelectedTicket(null); 
+                  setEditableTicket(null);
+                  setEditedDescriptions({});
+                  setEditedHours({});
+                  setIsTicketEdited(false);
+                }}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -1371,7 +1409,21 @@ export default function ServiceTickets() {
 
                     {/* Service Description Section */}
                     <div style={sectionStyle}>
-                      <h3 style={sectionTitleStyle}>Service Description</h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={sectionTitleStyle}>Service Description</h3>
+                        {isTicketEdited && (
+                          <span style={{ 
+                            fontSize: '11px', 
+                            color: '#c770f0', 
+                            padding: '4px 8px', 
+                            backgroundColor: 'rgba(199, 112, 240, 0.2)', 
+                            borderRadius: '4px',
+                            fontWeight: '600'
+                          }}>
+                            EDITED - Time entries won't update this ticket
+                          </span>
+                        )}
+                      </div>
                       <div style={{ color: '#fff', fontSize: '14px' }}>
                         {Object.entries(selectedTicket.hoursByRateType)
                           .filter(([rateType, hours]) => hours > 0)
@@ -1384,32 +1436,143 @@ export default function ServiceTickets() {
                             const entriesForType = selectedTicket.entries.filter(
                               (e) => (e.rate_type || 'Shop Time') === rateType
                             );
-                            const roundedTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
+                            const originalTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
+                            
+                            // Use edited data if available, otherwise use original
+                            const editedDescriptionsForType = editedDescriptions[rateType] || entriesForType.map(e => e.description || 'No description');
+                            const editedHoursForType = editedHours[rateType] !== undefined ? editedHours[rateType] : originalTotal;
+                            
                             return (
-                              <div key={rateType} style={{ marginBottom: '16px' }}>
-                                <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', marginBottom: '8px' }}>
-                                  {rateType} ({roundedTotal.toFixed(2)} hrs)
-                                </h4>
-                                <ul style={{ margin: 0, paddingLeft: '20px', color: 'rgba(255,255,255,0.8)' }}>
-                                  {entriesForType.map((entry) => (
-                                    <li key={entry.id} style={{ marginBottom: '4px', lineHeight: '1.5' }}>
-                                      {entry.description || 'No description'}
-                                      {entry.start_time && entry.end_time && (
-                                        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginLeft: '8px' }}>
-                                          ({new Date(entry.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
-                                          {new Date(entry.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })})
-                                        </span>
-                                      )}
-                                      <span style={{ fontWeight: '600', marginLeft: '8px', color: '#fff' }}>
-                                        {roundToHalfHour(entry.hours).toFixed(2)} hrs
-                                      </span>
-                                    </li>
+                              <div key={rateType} style={{ marginBottom: '20px', padding: '12px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                  <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', margin: 0 }}>
+                                    {rateType}
+                                  </h4>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <label style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>Hours:</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={editedHoursForType}
+                                      onChange={(e) => {
+                                        const newHours = parseFloat(e.target.value) || 0;
+                                        setEditedHours({ ...editedHours, [rateType]: newHours });
+                                        setIsTicketEdited(true);
+                                      }}
+                                      style={{
+                                        ...inputStyle,
+                                        width: '80px',
+                                        padding: '4px 8px',
+                                        textAlign: 'right',
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  {editedDescriptionsForType.map((desc, index) => (
+                                    <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                                      <textarea
+                                        value={desc}
+                                        onChange={(e) => {
+                                          const newDescs = [...editedDescriptionsForType];
+                                          newDescs[index] = e.target.value;
+                                          setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
+                                          setIsTicketEdited(true);
+                                        }}
+                                        style={{
+                                          ...inputStyle,
+                                          flex: 1,
+                                          minHeight: '60px',
+                                          resize: 'vertical',
+                                          fontFamily: 'inherit',
+                                        }}
+                                        placeholder="Enter description..."
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const newDescs = editedDescriptionsForType.filter((_, i) => i !== index);
+                                          setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
+                                          setIsTicketEdited(true);
+                                        }}
+                                        style={{
+                                          padding: '6px 12px',
+                                          backgroundColor: 'transparent',
+                                          color: '#ef5350',
+                                          border: '1px solid rgba(239, 83, 80, 0.3)',
+                                          borderRadius: '4px',
+                                          fontSize: '11px',
+                                          cursor: 'pointer',
+                                          whiteSpace: 'nowrap',
+                                        }}
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
                                   ))}
-                                </ul>
+                                  <button
+                                    onClick={() => {
+                                      const newDescs = [...editedDescriptionsForType, ''];
+                                      setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
+                                      setIsTicketEdited(true);
+                                    }}
+                                    style={{
+                                      padding: '6px 12px',
+                                      backgroundColor: 'rgba(199, 112, 240, 0.2)',
+                                      color: '#c770f0',
+                                      border: '1px solid rgba(199, 112, 240, 0.3)',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      cursor: 'pointer',
+                                      alignSelf: 'flex-start',
+                                    }}
+                                  >
+                                    + Add Description
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
                       </div>
+                      {isTicketEdited && (
+                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                          <button
+                            onClick={async () => {
+                              if (!currentTicketRecordId) return;
+                              
+                              const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                              const { error } = await supabase
+                                .from(tableName)
+                                .update({
+                                  is_edited: true,
+                                  edited_descriptions: editedDescriptions,
+                                  edited_hours: editedHours,
+                                })
+                                .eq('id', currentTicketRecordId);
+                              
+                              if (error) {
+                                console.error('Error saving edited ticket:', error);
+                                alert('Failed to save edited ticket data.');
+                              } else {
+                                alert('Service ticket descriptions and hours saved successfully. Time entry changes will no longer update this ticket.');
+                                queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                              }
+                            }}
+                            style={{
+                              padding: '10px 20px',
+                              backgroundColor: '#c770f0',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Save Edited Descriptions & Hours
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Hours Summary Section */}
@@ -1427,11 +1590,13 @@ export default function ServiceTickets() {
                             const entriesForType = selectedTicket.entries.filter(
                               (e) => (e.rate_type || 'Shop Time') === rateType
                             );
-                            const roundedTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
+                            const originalTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
+                            // Use edited hours if available
+                            const displayHours = editedHours[rateType] !== undefined ? editedHours[rateType] : originalTotal;
                             return (
                               <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>{rateType}:</span>
-                                <span style={{ fontSize: '14px', color: '#fff', fontWeight: '700' }}>{roundedTotal.toFixed(2)}</span>
+                                <span style={{ fontSize: '14px', color: '#fff', fontWeight: '700' }}>{displayHours.toFixed(2)}</span>
                               </div>
                             );
                           })}
@@ -1448,7 +1613,10 @@ export default function ServiceTickets() {
                         >
                           <span style={{ fontSize: '15px', color: '#fff', fontWeight: '700' }}>TOTAL HOURS:</span>
                           <span style={{ fontSize: '18px', color: '#c770f0', fontWeight: '700' }}>
-                            {selectedTicket.entries.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0).toFixed(2)}
+                            {Object.values(editedHours).reduce((sum, h) => sum + h, 0) > 0 
+                              ? Object.values(editedHours).reduce((sum, h) => sum + h, 0).toFixed(2)
+                              : selectedTicket.entries.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0).toFixed(2)
+                            }
                           </span>
                         </div>
                       </div>
@@ -1744,7 +1912,13 @@ export default function ServiceTickets() {
               <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                 <button
                   className="button button-secondary"
-                  onClick={() => { setSelectedTicket(null); setEditableTicket(null); }}
+                  onClick={() => { 
+                    setSelectedTicket(null); 
+                    setEditableTicket(null);
+                    setEditedDescriptions({});
+                    setEditedHours({});
+                    setIsTicketEdited(false);
+                  }}
                   style={{ padding: '10px 24px' }}
                   disabled={isExportingExcel || isExportingPdf}
                 >
@@ -1757,7 +1931,7 @@ export default function ServiceTickets() {
                     if (currentTicketRecordId && expenses.length === 0) {
                       await loadExpenses(currentTicketRecordId);
                     }
-                    // Create a modified ticket with the editable values
+                    // Create a modified ticket with the editable values and edited descriptions/hours
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,
                       userName: editableTicket.techName,
@@ -1777,7 +1951,39 @@ export default function ServiceTickets() {
                         po_number: editableTicket.poNumber,
                         approver_name: editableTicket.approverName,
                       },
+                      // Apply edited hours if available
+                      hoursByRateType: Object.keys(selectedTicket.hoursByRateType).reduce((acc, rateType) => {
+                        acc[rateType as keyof typeof acc] = editedHours[rateType] !== undefined 
+                          ? editedHours[rateType] 
+                          : selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType];
+                        return acc;
+                      }, { ...selectedTicket.hoursByRateType }),
+                      // Create modified entries with edited descriptions
+                      entries: Object.entries(selectedTicket.hoursByRateType)
+                        .filter(([rateType]) => selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType] > 0)
+                        .flatMap(([rateType]) => {
+                          const editedDescs = editedDescriptions[rateType];
+                          if (editedDescs && editedDescs.length > 0) {
+                            // Use edited descriptions
+                            return editedDescs.map((desc, idx) => ({
+                              ...selectedTicket.entries[0], // Use first entry as template
+                              id: `edited-${rateType}-${idx}`,
+                              description: desc,
+                              rate_type: rateType,
+                              hours: editedHours[rateType] !== undefined 
+                                ? editedHours[rateType] / editedDescs.length 
+                                : selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType] / editedDescs.length,
+                            }));
+                          } else {
+                            // Use original entries for this rate type
+                            return selectedTicket.entries.filter(
+                              (e) => (e.rate_type || 'Shop Time') === rateType
+                            );
+                          }
+                        }),
                     };
+                    // Recalculate total hours from edited hours
+                    modifiedTicket.totalHours = Object.values(modifiedTicket.hoursByRateType).reduce((sum, h) => sum + h, 0);
                     await handleExportExcel(modifiedTicket);
                     // Refresh the ticket list to show updated ticket number
                     queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
@@ -1799,7 +2005,7 @@ export default function ServiceTickets() {
                     if (currentTicketRecordId && expenses.length === 0) {
                       await loadExpenses(currentTicketRecordId);
                     }
-                    // Create a modified ticket with the editable values
+                    // Create a modified ticket with the editable values and edited descriptions/hours
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,
                       userName: editableTicket.techName,
@@ -1819,7 +2025,39 @@ export default function ServiceTickets() {
                         po_number: editableTicket.poNumber,
                         approver_name: editableTicket.approverName,
                       },
+                      // Apply edited hours if available
+                      hoursByRateType: Object.keys(selectedTicket.hoursByRateType).reduce((acc, rateType) => {
+                        acc[rateType as keyof typeof acc] = editedHours[rateType] !== undefined 
+                          ? editedHours[rateType] 
+                          : selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType];
+                        return acc;
+                      }, { ...selectedTicket.hoursByRateType }),
+                      // Create modified entries with edited descriptions
+                      entries: Object.entries(selectedTicket.hoursByRateType)
+                        .filter(([rateType]) => selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType] > 0)
+                        .flatMap(([rateType]) => {
+                          const editedDescs = editedDescriptions[rateType];
+                          if (editedDescs && editedDescs.length > 0) {
+                            // Use edited descriptions
+                            return editedDescs.map((desc, idx) => ({
+                              ...selectedTicket.entries[0], // Use first entry as template
+                              id: `edited-${rateType}-${idx}`,
+                              description: desc,
+                              rate_type: rateType,
+                              hours: editedHours[rateType] !== undefined 
+                                ? editedHours[rateType] / editedDescs.length 
+                                : selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType] / editedDescs.length,
+                            }));
+                          } else {
+                            // Use original entries for this rate type
+                            return selectedTicket.entries.filter(
+                              (e) => (e.rate_type || 'Shop Time') === rateType
+                            );
+                          }
+                        }),
                     };
+                    // Recalculate total hours from edited hours
+                    modifiedTicket.totalHours = Object.values(modifiedTicket.hoursByRateType).reduce((sum, h) => sum + h, 0);
                     await handleExportPdf(modifiedTicket);
                     // Refresh the ticket list to show updated ticket number
                     queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
