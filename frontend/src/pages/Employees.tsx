@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesService, usersService } from '../services/supabaseServices';
+import { useAuth } from '../context/AuthContext';
 
 export default function Employees() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [showForm, setShowForm] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<any>(null);
   const [formData, setFormData] = useState({
@@ -58,9 +61,16 @@ export default function Employees() {
         field_ot_rate: isPanelShop ? null : (data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00),
         internal_rate: data.internal_rate ? parseFloat(data.internal_rate) : 0.00,
         shop_pay_rate: shopPayRate,
-        field_pay_rate: isPanelShop ? shopPayRate : (data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00),
-        shop_ot_pay_rate: isPanelShop ? shopPayRate : (data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50),
-        field_ot_pay_rate: isPanelShop ? shopPayRate : (data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : 45.00),
+        // For Panel Shop: if admin, allow additional rates; otherwise use shopPayRate for all
+        field_pay_rate: isPanelShop 
+          ? (isAdmin && data.field_pay_rate ? parseFloat(data.field_pay_rate) : shopPayRate)
+          : (data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00),
+        shop_ot_pay_rate: isPanelShop 
+          ? (isAdmin && data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : shopPayRate)
+          : (data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50),
+        field_ot_pay_rate: isPanelShop 
+          ? (isAdmin && data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : shopPayRate)
+          : (data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : 45.00),
       };
       return await employeesService.create(employeeData);
     },
@@ -93,9 +103,16 @@ export default function Employees() {
         field_ot_rate: isPanelShop ? null : (data.field_ot_rate ? parseFloat(data.field_ot_rate) : 165.00),
         internal_rate: data.internal_rate ? parseFloat(data.internal_rate) : 0.00,
         shop_pay_rate: shopPayRate,
-        field_pay_rate: isPanelShop ? shopPayRate : (data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00),
-        shop_ot_pay_rate: isPanelShop ? shopPayRate : (data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50),
-        field_ot_pay_rate: isPanelShop ? shopPayRate : (data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : 45.00),
+        // For Panel Shop: if admin, allow additional rates; otherwise use shopPayRate for all
+        field_pay_rate: isPanelShop 
+          ? (isAdmin && data.field_pay_rate ? parseFloat(data.field_pay_rate) : shopPayRate)
+          : (data.field_pay_rate ? parseFloat(data.field_pay_rate) : 30.00),
+        shop_ot_pay_rate: isPanelShop 
+          ? (isAdmin && data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : shopPayRate)
+          : (data.shop_ot_pay_rate ? parseFloat(data.shop_ot_pay_rate) : 37.50),
+        field_ot_pay_rate: isPanelShop 
+          ? (isAdmin && data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : shopPayRate)
+          : (data.field_ot_pay_rate ? parseFloat(data.field_ot_pay_rate) : 45.00),
       };
       return await employeesService.update(id, employeeData);
     },
@@ -411,14 +428,16 @@ export default function Employees() {
             </h4>
             {formData.department === 'Panel Shop' ? (
               <p style={{ fontSize: '0.9em', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                Panel Shop employees only have a single shop pay rate
+                {isAdmin 
+                  ? 'Panel Shop employees default to a single shop pay rate. Admins can optionally add additional pay rates.'
+                  : 'Panel Shop employees only have a single shop pay rate'}
               </p>
             ) : (
               <p style={{ fontSize: '0.9em', color: 'var(--text-secondary)', marginBottom: '15px' }}>
                 Note: Travel time is paid at the Shop Rate
               </p>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: formData.department === 'Panel Shop' ? '1fr' : '1fr 1fr 1fr 1fr', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: formData.department === 'Panel Shop' && !isAdmin ? '1fr' : '1fr 1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Shop Pay Rate</label>
                 <div style={{ position: 'relative' }}>
@@ -434,7 +453,7 @@ export default function Employees() {
                   />
                 </div>
               </div>
-              {formData.department !== 'Panel Shop' && (
+              {(formData.department !== 'Panel Shop' || (formData.department === 'Panel Shop' && isAdmin)) && (
                 <>
                   <div className="form-group">
                     <label className="label">Field Pay Rate</label>

@@ -251,11 +251,24 @@ export function aggregateEmployeeMetrics(
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
     
     // Determine pay rate based on rate type
-    // Panel Shop employees use shop_pay_rate for all rate types
+    // Panel Shop employees default to shop_pay_rate, but admins can set additional rates
     const isPanelShop = employee?.department === 'Panel Shop';
     let payRate = 0;
     if (isPanelShop) {
-      payRate = Number(employee?.shop_pay_rate) || 0;
+      // For Panel Shop, check if admin has set specific rates, otherwise use shop_pay_rate
+      if (rateType.includes('shop') && rateType.includes('overtime')) {
+        payRate = Number(employee?.shop_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0;
+      } else if (rateType.includes('field') && rateType.includes('overtime')) {
+        payRate = Number(employee?.field_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0;
+      } else if (rateType.includes('field')) {
+        payRate = Number(employee?.field_pay_rate) || Number(employee?.shop_pay_rate) || 0;
+      } else if (rateType.includes('travel')) {
+        // Travel time is paid at shop rate
+        payRate = Number(employee?.shop_pay_rate) || 0;
+      } else {
+        // Default to shop time
+        payRate = Number(employee?.shop_pay_rate) || 0;
+      }
     } else if (rateType.includes('shop') && rateType.includes('overtime')) {
       payRate = Number(employee?.shop_ot_pay_rate) || 0;
     } else if (rateType.includes('field') && rateType.includes('overtime')) {
@@ -359,11 +372,24 @@ export function calculateRateTypeBreakdown(
     const isInternal = !entry.billable;
 
     // Determine pay rate based on rate type
-    // Panel Shop employees use shop_pay_rate for all rate types
+    // Panel Shop employees default to shop_pay_rate, but admins can set additional rates
     const isPanelShop = employee?.department === 'Panel Shop';
     let payRate = 0;
     if (isPanelShop) {
-      payRate = employee?.shop_pay_rate || 0;
+      // For Panel Shop, check if admin has set specific rates, otherwise use shop_pay_rate
+      if (rateType.includes('shop') && rateType.includes('overtime')) {
+        payRate = employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
+      } else if (rateType.includes('field') && rateType.includes('overtime')) {
+        payRate = employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
+      } else if (rateType.includes('field')) {
+        payRate = employee?.field_pay_rate || employee?.shop_pay_rate || 0;
+      } else if (rateType.includes('travel')) {
+        // Travel time is paid at shop rate
+        payRate = employee?.shop_pay_rate || 0;
+      } else {
+        // Default to shop time
+        payRate = employee?.shop_pay_rate || 0;
+      }
     } else if (rateType.includes('shop') && rateType.includes('overtime')) {
       payRate = employee?.shop_ot_pay_rate || 0;
     } else if (rateType.includes('field') && rateType.includes('overtime')) {
