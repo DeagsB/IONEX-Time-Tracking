@@ -222,7 +222,7 @@ export default function Sidebar() {
                   User Management
                 </SidebarLink>
                 <SidebarLink to="/bug-reports" active={isActive('/bug-reports')}>
-                  Bug Reports
+                  Feedback & Issues
                 </SidebarLink>
               </>
             )}

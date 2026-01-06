@@ -9,6 +9,9 @@ export default function BugReports() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all'); // all, bug, suggestion
+  const [sortBy, setSortBy] = useState<string>('date'); // date, priority, status, type
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [notes, setNotes] = useState('');
@@ -65,6 +68,21 @@ export default function BugReports() {
     updateMutation.mutate({ id: report.id, updates });
   };
 
+  // Helper function to determine if a report is a suggestion
+  const isSuggestion = (report: any) => {
+    return report.title?.startsWith('[Suggestion]');
+  };
+
+  // Helper function to get report type
+  const getReportType = (report: any) => {
+    return isSuggestion(report) ? 'suggestion' : 'bug';
+  };
+
+  // Helper function to get type color
+  const getTypeColor = (report: any) => {
+    return isSuggestion(report) ? '#10b981' : '#ef4444'; // Green for suggestions, red for bugs
+  };
+
   const filteredReports = bugReports?.filter((report: any) => {
     const matchesSearch = 
       report.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -74,8 +92,35 @@ export default function BugReports() {
     
     const matchesStatus = statusFilter === 'all' || report.status === statusFilter;
     const matchesPriority = priorityFilter === 'all' || report.priority === priorityFilter;
+    const matchesType = typeFilter === 'all' || getReportType(report) === typeFilter;
 
-    return matchesSearch && matchesStatus && matchesPriority;
+    return matchesSearch && matchesStatus && matchesPriority && matchesType;
+  });
+
+  // Sort filtered reports
+  const sortedReports = [...(filteredReports || [])].sort((a: any, b: any) => {
+    let comparison = 0;
+    
+    switch (sortBy) {
+      case 'date':
+        comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        break;
+      case 'priority':
+        const priorityOrder: { [key: string]: number } = { critical: 4, high: 3, medium: 2, low: 1 };
+        comparison = (priorityOrder[a.priority] || 0) - (priorityOrder[b.priority] || 0);
+        break;
+      case 'status':
+        const statusOrder: { [key: string]: number } = { open: 1, in_progress: 2, resolved: 3, closed: 4 };
+        comparison = (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0);
+        break;
+      case 'type':
+        comparison = getReportType(a).localeCompare(getReportType(b));
+        break;
+      default:
+        comparison = 0;
+    }
+    
+    return sortOrder === 'asc' ? comparison : -comparison;
   });
 
   const handleStatusChange = (id: string, newStatus: string) => {
@@ -116,11 +161,11 @@ export default function BugReports() {
   return (
     <div style={{ padding: '40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-        <h1>Bug Reports</h1>
+        <h1>Feedback & Issues</h1>
       </div>
 
       <div className="card" style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
           <input
             type="text"
             className="input"
@@ -128,6 +173,15 @@ export default function BugReports() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          <select
+            className="input"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            <option value="all">All Types</option>
+            <option value="bug">Bugs</option>
+            <option value="suggestion">Suggestions</option>
+          </select>
           <select
             className="input"
             value={statusFilter}
@@ -152,13 +206,35 @@ export default function BugReports() {
           </select>
         </div>
 
+        <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', alignItems: 'center' }}>
+          <label style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Sort by:</label>
+          <select
+            className="input"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            style={{ width: '150px' }}
+          >
+            <option value="date">Date</option>
+            <option value="priority">Priority</option>
+            <option value="status">Status</option>
+            <option value="type">Type</option>
+          </select>
+          <button
+            className="button button-secondary"
+            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+            style={{ padding: '8px 12px', fontSize: '14px' }}
+          >
+            {sortOrder === 'asc' ? '↑ Ascending' : '↓ Descending'}
+          </button>
+        </div>
+
         {isLoading ? (
-          <div style={{ textAlign: 'center', padding: '40px' }}>Loading bug reports...</div>
+          <div style={{ textAlign: 'center', padding: '40px' }}>Loading feedback...</div>
         ) : (
           <table className="table">
             <thead>
               <tr>
-                <th>ID</th>
+                <th>Type</th>
                 <th>Title</th>
                 <th>User</th>
                 <th>Priority</th>
@@ -168,20 +244,40 @@ export default function BugReports() {
               </tr>
             </thead>
             <tbody>
-              {filteredReports && filteredReports.length === 0 && (
+              {sortedReports && sortedReports.length === 0 && (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: '20px' }}>
-                    No bug reports found.
+                    No feedback found.
                   </td>
                 </tr>
               )}
-              {filteredReports?.map((report: any) => (
-                <tr key={report.id}>
-                  <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                    {report.id.substring(0, 8)}...
+              {sortedReports?.map((report: any) => {
+                const reportType = getReportType(report);
+                const typeColor = getTypeColor(report);
+                const displayTitle = report.title?.replace(/^\[Suggestion\]\s*/, '') || report.title;
+                
+                return (
+                <tr 
+                  key={report.id}
+                  style={{
+                    borderLeft: `4px solid ${typeColor}`,
+                  }}
+                >
+                  <td>
+                    <span style={{
+                      backgroundColor: typeColor,
+                      color: 'white',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase',
+                    }}>
+                      {reportType === 'suggestion' ? '💡' : '🐛'} {reportType}
+                    </span>
                   </td>
                   <td>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{report.title}</div>
+                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{displayTitle}</div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {report.description}
                     </div>
@@ -276,7 +372,8 @@ export default function BugReports() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         )}
@@ -332,7 +429,22 @@ export default function BugReports() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2>Bug Report Details</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <h2>Feedback Details</h2>
+                {selectedReport && (
+                  <span style={{
+                    backgroundColor: getTypeColor(selectedReport),
+                    color: 'white',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                  }}>
+                    {isSuggestion(selectedReport) ? '💡 Suggestion' : '🐛 Bug'}
+                  </span>
+                )}
+              </div>
               <button
                 className="button button-secondary"
                 onClick={() => {
@@ -353,9 +465,10 @@ export default function BugReports() {
                   padding: '10px', 
                   backgroundColor: 'var(--bg-secondary)', 
                   borderRadius: '4px',
-                  fontWeight: '500'
+                  fontWeight: '500',
+                  borderLeft: `4px solid ${getTypeColor(selectedReport)}`
                 }}>
-                  {selectedReport.title}
+                  {selectedReport.title?.replace(/^\[Suggestion\]\s*/, '') || selectedReport.title}
                 </div>
               </div>
 
@@ -444,7 +557,7 @@ export default function BugReports() {
                   rows={4}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add notes about this bug report..."
+                  placeholder="Add notes about this feedback..."
                   style={{ width: '100%', resize: 'none' }}
                 />
               </div>
@@ -486,7 +599,7 @@ export default function BugReports() {
                   onClick={() => handleMarkClosed(selectedReport)}
                   disabled={updateMutation.isPending}
                 >
-                  {updateMutation.isPending ? 'Saving...' : 'Close Bug Report'}
+                  {updateMutation.isPending ? 'Saving...' : 'Close'}
                 </button>
               )}
               <button
