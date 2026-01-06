@@ -842,12 +842,11 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
   // Convert to ProjectBreakdown format
   const result: ProjectBreakdown[] = Array.from(projectMap.entries()).map(([projectId, data]) => {
     const projectName = entries.find(e => (e.project_id || 'no-project') === projectId)?.project?.name || '(No Project)';
-    // Total hours = billable (from service tickets) + non-billable (rounded payroll)
-    const totalHours = data.billableHours + data.nonBillableHours;
+    // Hours displayed = billable hours from service tickets only
     return {
       projectId,
       projectName,
-      hours: totalHours,
+      hours: data.billableHours,
       revenue: data.revenue,
       billableHours: data.billableHours,
     };
@@ -922,12 +921,11 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
   // Convert to CustomerBreakdown format
   const result: CustomerBreakdown[] = Array.from(customerMap.entries()).map(([customerId, data]) => {
     const customerName = entries.find(e => (e.project?.customer?.id || 'no-customer') === customerId)?.project?.customer?.name || '(No Customer)';
-    // Total hours = billable (from service tickets) + non-billable (rounded payroll)
-    const totalHours = data.billableHours + data.nonBillableHours;
+    // Hours displayed = billable hours from service tickets only
     return {
       customerId,
       customerName,
-      hours: totalHours,
+      hours: data.billableHours,
       revenue: data.revenue,
       billableHours: data.billableHours,
     };
