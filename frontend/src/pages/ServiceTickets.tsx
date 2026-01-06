@@ -1511,9 +1511,6 @@ export default function ServiceTickets() {
                             const entriesForType = selectedTicket.entries.filter(
                               (e) => (e.rate_type || 'Shop Time') === rateType
                             );
-                            // Sum actual hours first, then round the total up to nearest 0.5
-                            const actualTotal = entriesForType.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-                            const originalTotal = roundToHalfHour(actualTotal);
                             
                             // Use edited data if available, otherwise use original
                             const editedDescriptionsForType = editedDescriptions[rateType] || entriesForType.map(e => e.description || 'No description');
@@ -1530,17 +1527,23 @@ export default function ServiceTickets() {
                                 editedHoursForType = editedDescriptionsForType.map(() => hoursPerDesc);
                               }
                             } else {
-                              // No edited hours, distribute original total evenly
-                              const hoursPerDesc = editedDescriptionsForType.length > 0 ? originalTotal / editedDescriptionsForType.length : 0;
-                              editedHoursForType = editedDescriptionsForType.map(() => hoursPerDesc);
-                            }
-                            
-                            // Ensure arrays have same length
-                            while (editedHoursForType.length < editedDescriptionsForType.length) {
-                              editedHoursForType.push(0);
-                            }
-                            while (editedHoursForType.length > editedDescriptionsForType.length) {
-                              editedHoursForType.pop();
+                              // No edited hours, use actual hours from entries (not rounded, not distributed)
+                              // This preserves the exact hours from each entry so they stay consistent when reopening
+                              editedHoursForType = entriesForType.map(e => Number(e.hours) || 0);
+                              
+                              // Ensure arrays have same length as descriptions
+                              // If more descriptions than entries, pad with zeros
+                              while (editedHoursForType.length < editedDescriptionsForType.length) {
+                                editedHoursForType.push(0);
+                              }
+                              // If fewer descriptions than entries, sum extra entries into the last description
+                              if (editedHoursForType.length > editedDescriptionsForType.length) {
+                                const extraHours = editedHoursForType.slice(editedDescriptionsForType.length).reduce((sum, h) => sum + h, 0);
+                                editedHoursForType = editedHoursForType.slice(0, editedDescriptionsForType.length);
+                                if (editedHoursForType.length > 0) {
+                                  editedHoursForType[editedHoursForType.length - 1] += extraHours;
+                                }
+                              }
                             }
                             
                             return (
