@@ -181,15 +181,9 @@ export function aggregateEmployeeMetrics(
   console.log('Processing entries for userId:', userId, 'entry count:', entries.length);
 
   // Calculate totals
-  let totalHours = 0;
+  let totalHours = 0; // Will be calculated as billable + non-billable
   let billableHours = 0; // Will be overwritten from rateTypeBreakdown
   let totalRevenue = 0; // Will be overwritten from rateTypeBreakdown
-
-  // Calculate total hours from time entries (for cost calculation and total hours display)
-  entries.forEach(entry => {
-    const hours = Number(entry.hours) || 0;
-    totalHours += hours;
-  });
 
   // Rate type breakdown (includes cost and profit calculations)
   // Calculate this FIRST so we can use it for billable hours and revenue
@@ -236,6 +230,9 @@ export function aggregateEmployeeMetrics(
 
   // Update the rate type breakdown to reflect the non-billable hours (for display)
   rateTypeBreakdown.internalTime.hours = nonBillableHours;
+
+  // Total hours = billable + non-billable (for consistency)
+  totalHours = billableHours + nonBillableHours;
 
   // Total hours for ratio calculation should use rounded payroll hours
   const actualTotalHours = roundedPayrollHours + internalTimeEntryHours;
@@ -408,10 +405,10 @@ export function aggregateEmployeeMetrics(
   const profitPerHour = totalHours > 0 ? netProfit / totalHours : 0;
 
   // Project breakdown
-  const projectBreakdown = calculateProjectBreakdown(entries, employee);
+  const projectBreakdown = calculateProjectBreakdown(entries, employee, serviceTicketHours);
 
   // Customer breakdown
-  const customerBreakdown = calculateCustomerBreakdown(entries, employee);
+  const customerBreakdown = calculateCustomerBreakdown(entries, employee, serviceTicketHours);
 
   // Trends
   const trends = calculateTrends(entries);
@@ -780,46 +777,77 @@ export function calculateRateTypeBreakdown(
 }
 
 // Calculate breakdown by project
-// Hours should use rounded payroll hours (rounded to 0.25) to match cost calculation
-export function calculateProjectBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates): ProjectBreakdown[] {
-  const projectMap = new Map<string, { hours: number; revenue: number; billableHours: number; rawHours: number }>();
+// Hours: billable = service ticket hours, non-billable = payroll hours (rounded)
+// Total = billable + non-billable
+export function calculateProjectBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): ProjectBreakdown[] {
+  const projectMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
   const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 4) / 4;
+  const userId = entries[0]?.user_id || '';
 
+  // Create a map of service ticket hours by project
+  const ticketHoursByProject = new Map<string, number>();
+  if (serviceTicketHours) {
+    serviceTicketHours.forEach(ticket => {
+      if (ticket.user_id === userId && ticket.project_id) {
+        const existing = ticketHoursByProject.get(ticket.project_id) || 0;
+        ticketHoursByProject.set(ticket.project_id, existing + (Number(ticket.total_hours) || 0));
+      }
+    });
+  }
+
+  // First pass: sum actual billable and non-billable hours per project
   entries.forEach(entry => {
     const projectId = entry.project_id || 'no-project';
-    const projectName = entry.project?.name || '(No Project)';
     const rawHours = Number(entry.hours) || 0;
-    // Round hours to nearest 0.25 (matching payroll calculation)
-    const hours = roundToQuarterHour(rawHours);
-    const rate = Number(entry.rate) || 0;
-    // Use internal rate for non-billable entries
-    const internalRate = Number(employee?.internal_rate) || 0;
-    const revenue = entry.billable ? hours * rate : hours * internalRate;
-    const billableHours = entry.billable ? hours : 0;
 
     if (!projectMap.has(projectId)) {
       projectMap.set(projectId, {
-        hours: 0,
-        revenue: 0,
         billableHours: 0,
-        rawHours: 0,
+        nonBillableHours: 0,
+        revenue: 0,
       });
     }
 
     const project = projectMap.get(projectId)!;
-    project.hours += hours;
-    project.revenue += revenue;
-    project.billableHours += billableHours;
-    project.rawHours += rawHours;
+    
+    if (entry.billable) {
+      // Sum actual billable hours (will be replaced with service ticket hours if available)
+      project.billableHours += rawHours;
+    } else {
+      // For non-billable entries, sum actual hours (will be rounded later)
+      project.nonBillableHours += rawHours;
+    }
+  });
+
+  // Second pass: replace billable hours with service ticket hours, round non-billable, and calculate revenue
+  projectMap.forEach((data, projectId) => {
+    // Replace billable hours with service ticket hours if available
+    const ticketHours = ticketHoursByProject.get(projectId) || 0;
+    if (ticketHours > 0) {
+      data.billableHours = ticketHours;
+    }
+    
+    // Round non-billable hours
+    data.nonBillableHours = roundToQuarterHour(data.nonBillableHours);
+    
+    // Calculate revenue: use service ticket hours for billable, rounded hours for non-billable
+    const billableRate = entries.find(e => 
+      (e.project_id || 'no-project') === projectId && e.billable
+    )?.rate || 0;
+    const internalRate = Number(employee?.internal_rate) || 0;
+    
+    data.revenue = (data.billableHours * Number(billableRate)) + (data.nonBillableHours * internalRate);
   });
 
   // Convert to ProjectBreakdown format
   const result: ProjectBreakdown[] = Array.from(projectMap.entries()).map(([projectId, data]) => {
     const projectName = entries.find(e => (e.project_id || 'no-project') === projectId)?.project?.name || '(No Project)';
+    // Total hours = billable (from service tickets) + non-billable (rounded payroll)
+    const totalHours = data.billableHours + data.nonBillableHours;
     return {
       projectId,
       projectName,
-      hours: data.hours,
+      hours: totalHours,
       revenue: data.revenue,
       billableHours: data.billableHours,
     };
@@ -829,46 +857,77 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
 }
 
 // Calculate breakdown by customer
-// Hours should use rounded payroll hours (rounded to 0.25) to match cost calculation
-export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates): CustomerBreakdown[] {
-  const customerMap = new Map<string, { hours: number; revenue: number; billableHours: number; rawHours: number }>();
+// Hours: billable = service ticket hours, non-billable = payroll hours (rounded)
+// Total = billable + non-billable
+export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): CustomerBreakdown[] {
+  const customerMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
   const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 4) / 4;
+  const userId = entries[0]?.user_id || '';
 
+  // Create a map of service ticket hours by customer
+  const ticketHoursByCustomer = new Map<string, number>();
+  if (serviceTicketHours) {
+    serviceTicketHours.forEach(ticket => {
+      if (ticket.user_id === userId && ticket.customer_id) {
+        const existing = ticketHoursByCustomer.get(ticket.customer_id) || 0;
+        ticketHoursByCustomer.set(ticket.customer_id, existing + (Number(ticket.total_hours) || 0));
+      }
+    });
+  }
+
+  // First pass: sum actual billable and non-billable hours per customer
   entries.forEach(entry => {
     const customerId = entry.project?.customer?.id || 'no-customer';
-    const customerName = entry.project?.customer?.name || '(No Customer)';
     const rawHours = Number(entry.hours) || 0;
-    // Round hours to nearest 0.25 (matching payroll calculation)
-    const hours = roundToQuarterHour(rawHours);
-    const rate = Number(entry.rate) || 0;
-    // Use internal rate for non-billable entries
-    const internalRate = Number(employee?.internal_rate) || 0;
-    const revenue = entry.billable ? hours * rate : hours * internalRate;
-    const billableHours = entry.billable ? hours : 0;
 
     if (!customerMap.has(customerId)) {
       customerMap.set(customerId, {
-        hours: 0,
-        revenue: 0,
         billableHours: 0,
-        rawHours: 0,
+        nonBillableHours: 0,
+        revenue: 0,
       });
     }
 
     const customer = customerMap.get(customerId)!;
-    customer.hours += hours;
-    customer.revenue += revenue;
-    customer.billableHours += billableHours;
-    customer.rawHours += rawHours;
+    
+    if (entry.billable) {
+      // Sum actual billable hours (will be replaced with service ticket hours if available)
+      customer.billableHours += rawHours;
+    } else {
+      // For non-billable entries, sum actual hours (will be rounded later)
+      customer.nonBillableHours += rawHours;
+    }
+  });
+
+  // Second pass: replace billable hours with service ticket hours, round non-billable, and calculate revenue
+  customerMap.forEach((data, customerId) => {
+    // Replace billable hours with service ticket hours if available
+    const ticketHours = ticketHoursByCustomer.get(customerId) || 0;
+    if (ticketHours > 0) {
+      data.billableHours = ticketHours;
+    }
+    
+    // Round non-billable hours
+    data.nonBillableHours = roundToQuarterHour(data.nonBillableHours);
+    
+    // Calculate revenue: use service ticket hours for billable, rounded hours for non-billable
+    const billableRate = entries.find(e => 
+      (e.project?.customer?.id || 'no-customer') === customerId && e.billable
+    )?.rate || 0;
+    const internalRate = Number(employee?.internal_rate) || 0;
+    
+    data.revenue = (data.billableHours * Number(billableRate)) + (data.nonBillableHours * internalRate);
   });
 
   // Convert to CustomerBreakdown format
   const result: CustomerBreakdown[] = Array.from(customerMap.entries()).map(([customerId, data]) => {
     const customerName = entries.find(e => (e.project?.customer?.id || 'no-customer') === customerId)?.project?.customer?.name || '(No Customer)';
+    // Total hours = billable (from service tickets) + non-billable (rounded payroll)
+    const totalHours = data.billableHours + data.nonBillableHours;
     return {
       customerId,
       customerName,
-      hours: data.hours,
+      hours: totalHours,
       revenue: data.revenue,
       billableHours: data.billableHours,
     };
