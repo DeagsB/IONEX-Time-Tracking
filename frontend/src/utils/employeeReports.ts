@@ -305,7 +305,7 @@ export function aggregateEmployeeMetrics(
       case 'Shop Time':
         if (isInternal) {
           hoursByRateType['Internal'] += hours;
-        } else {
+    } else {
           hoursByRateType['Shop Time'] += hours;
         }
         break;
@@ -468,15 +468,15 @@ export function calculateRateTypeBreakdown(
   // Helper function to get pay rate for a rate type
   const getPayRate = (rateType: string): number => {
     if (isPanelShop) {
-      if (rateType.includes('shop') && rateType.includes('overtime')) {
+    if (rateType.includes('shop') && rateType.includes('overtime')) {
         return employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
-      } else if (rateType.includes('field') && rateType.includes('overtime')) {
+    } else if (rateType.includes('field') && rateType.includes('overtime')) {
         return employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
-      } else if (rateType.includes('field')) {
+    } else if (rateType.includes('field')) {
         return employee?.field_pay_rate || employee?.shop_pay_rate || 0;
-      } else if (rateType.includes('travel')) {
+    } else if (rateType.includes('travel')) {
         return employee?.shop_pay_rate || 0;
-      } else {
+    } else {
         return employee?.shop_pay_rate || 0;
       }
     } else if (rateType.includes('shop') && rateType.includes('overtime')) {
@@ -780,13 +780,17 @@ export function calculateRateTypeBreakdown(
 }
 
 // Calculate breakdown by project
+// Hours should use rounded payroll hours (rounded to 0.25) to match cost calculation
 export function calculateProjectBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates): ProjectBreakdown[] {
-  const projectMap = new Map<string, ProjectBreakdown>();
+  const projectMap = new Map<string, { hours: number; revenue: number; billableHours: number; rawHours: number }>();
+  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 4) / 4;
 
   entries.forEach(entry => {
     const projectId = entry.project_id || 'no-project';
     const projectName = entry.project?.name || '(No Project)';
-    const hours = Number(entry.hours) || 0;
+    const rawHours = Number(entry.hours) || 0;
+    // Round hours to nearest 0.25 (matching payroll calculation)
+    const hours = roundToQuarterHour(rawHours);
     const rate = Number(entry.rate) || 0;
     // Use internal rate for non-billable entries
     const internalRate = Number(employee?.internal_rate) || 0;
@@ -795,11 +799,10 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
 
     if (!projectMap.has(projectId)) {
       projectMap.set(projectId, {
-        projectId,
-        projectName,
         hours: 0,
         revenue: 0,
         billableHours: 0,
+        rawHours: 0,
       });
     }
 
@@ -807,19 +810,36 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
     project.hours += hours;
     project.revenue += revenue;
     project.billableHours += billableHours;
+    project.rawHours += rawHours;
   });
 
-  return Array.from(projectMap.values()).sort((a, b) => b.hours - a.hours);
+  // Convert to ProjectBreakdown format
+  const result: ProjectBreakdown[] = Array.from(projectMap.entries()).map(([projectId, data]) => {
+    const projectName = entries.find(e => (e.project_id || 'no-project') === projectId)?.project?.name || '(No Project)';
+    return {
+      projectId,
+      projectName,
+      hours: data.hours,
+      revenue: data.revenue,
+      billableHours: data.billableHours,
+    };
+  });
+
+  return result.sort((a, b) => b.hours - a.hours);
 }
 
 // Calculate breakdown by customer
+// Hours should use rounded payroll hours (rounded to 0.25) to match cost calculation
 export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates): CustomerBreakdown[] {
-  const customerMap = new Map<string, CustomerBreakdown>();
+  const customerMap = new Map<string, { hours: number; revenue: number; billableHours: number; rawHours: number }>();
+  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 4) / 4;
 
   entries.forEach(entry => {
     const customerId = entry.project?.customer?.id || 'no-customer';
     const customerName = entry.project?.customer?.name || '(No Customer)';
-    const hours = Number(entry.hours) || 0;
+    const rawHours = Number(entry.hours) || 0;
+    // Round hours to nearest 0.25 (matching payroll calculation)
+    const hours = roundToQuarterHour(rawHours);
     const rate = Number(entry.rate) || 0;
     // Use internal rate for non-billable entries
     const internalRate = Number(employee?.internal_rate) || 0;
@@ -828,11 +848,10 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
 
     if (!customerMap.has(customerId)) {
       customerMap.set(customerId, {
-        customerId,
-        customerName,
         hours: 0,
         revenue: 0,
         billableHours: 0,
+        rawHours: 0,
       });
     }
 
@@ -840,9 +859,22 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
     customer.hours += hours;
     customer.revenue += revenue;
     customer.billableHours += billableHours;
+    customer.rawHours += rawHours;
   });
 
-  return Array.from(customerMap.values()).sort((a, b) => b.hours - a.hours);
+  // Convert to CustomerBreakdown format
+  const result: CustomerBreakdown[] = Array.from(customerMap.entries()).map(([customerId, data]) => {
+    const customerName = entries.find(e => (e.project?.customer?.id || 'no-customer') === customerId)?.project?.customer?.name || '(No Customer)';
+    return {
+      customerId,
+      customerName,
+      hours: data.hours,
+      revenue: data.revenue,
+      billableHours: data.billableHours,
+    };
+  });
+
+  return result.sort((a, b) => b.hours - a.hours);
 }
 
 // Calculate trends over time (daily aggregation)

@@ -19,6 +19,11 @@ import {
 
 type ViewMode = 'table' | 'cards';
 
+// Format hours as decimal (e.g., 8.25 instead of 8:15)
+const formatHoursDecimal = (hours: number): string => {
+  return hours.toFixed(2);
+};
+
 export default function EmployeeReports() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -479,7 +484,7 @@ export default function EmployeeReports() {
             Total Hours
           </div>
           <div style={{ fontSize: '24px', fontWeight: '600' }}>
-            {formatHours(totals.totalHours)}
+            {formatHoursDecimal(totals.totalHours)}
           </div>
         </div>
         <div className="card" style={{ padding: '16px' }}>
@@ -487,15 +492,15 @@ export default function EmployeeReports() {
             Billable Hours
           </div>
           <div style={{ fontSize: '24px', fontWeight: '600' }}>
-            {formatHours(totals.billableHours)}
+            {formatHoursDecimal(totals.billableHours)}
           </div>
         </div>
         <div className="card" style={{ padding: '16px' }}>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
-            Internal Hours
+            Non-Billable Hours
           </div>
           <div style={{ fontSize: '24px', fontWeight: '600' }}>
-            {formatHours(totals.totalHours - totals.billableHours)}
+            {formatHoursDecimal(totals.totalHours - totals.billableHours)}
           </div>
         </div>
         <div className="card" style={{ padding: '16px' }}>
@@ -661,9 +666,9 @@ export default function EmployeeReports() {
                           </div>
                         )}
                       </td>
-                      <td style={{ textAlign: 'right' }}>{formatHours(metrics.totalHours)}</td>
-                      <td style={{ textAlign: 'right' }}>{formatHours(metrics.billableHours)}</td>
-                      <td style={{ textAlign: 'right' }}>{formatHours(metrics.nonBillableHours)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatHoursDecimal(metrics.totalHours)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatHoursDecimal(metrics.billableHours)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatHoursDecimal(metrics.nonBillableHours)}</td>
                       <td style={{ textAlign: 'right' }}>
                         <span style={{
                           padding: '4px 8px',
@@ -716,27 +721,27 @@ export default function EmployeeReports() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                   <span>Non-Billable Hours</span>
-                                  <span>{formatHours(metrics.rateTypeBreakdown.internalTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.internalTime.revenue)})</span>
+                                  <span>{formatHoursDecimal(metrics.rateTypeBreakdown.internalTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.internalTime.revenue)})</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                   <span>Shop Time</span>
-                                  <span>{formatHours(metrics.rateTypeBreakdown.shopTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.shopTime.revenue)})</span>
+                                  <span>{formatHoursDecimal(metrics.rateTypeBreakdown.shopTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.shopTime.revenue)})</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                   <span>Field Time</span>
-                                  <span>{formatHours(metrics.rateTypeBreakdown.fieldTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.fieldTime.revenue)})</span>
+                                  <span>{formatHoursDecimal(metrics.rateTypeBreakdown.fieldTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.fieldTime.revenue)})</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                   <span>Travel Time</span>
-                                  <span>{formatHours(metrics.rateTypeBreakdown.travelTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.travelTime.revenue)})</span>
+                                  <span>{formatHoursDecimal(metrics.rateTypeBreakdown.travelTime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.travelTime.revenue)})</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                   <span>Shop Overtime</span>
-                                  <span>{formatHours(metrics.rateTypeBreakdown.shopOvertime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.shopOvertime.revenue)})</span>
+                                  <span>{formatHoursDecimal(metrics.rateTypeBreakdown.shopOvertime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.shopOvertime.revenue)})</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                                   <span>Field Overtime</span>
-                                  <span>{formatHours(metrics.rateTypeBreakdown.fieldOvertime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.fieldOvertime.revenue)})</span>
+                                  <span>{formatHoursDecimal(metrics.rateTypeBreakdown.fieldOvertime.hours)} ({formatCurrency(metrics.rateTypeBreakdown.fieldOvertime.revenue)})</span>
                                 </div>
                               </div>
                             </div>
@@ -752,7 +757,7 @@ export default function EmployeeReports() {
                                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}>
                                       {proj.projectName}
                                     </span>
-                                    <span>{formatHours(proj.hours)} ({formatCurrency(proj.revenue)})</span>
+                                    <span>{formatHoursDecimal(proj.hours)} ({formatCurrency(proj.revenue)})</span>
                                   </div>
                                 ))}
                                 {metrics.projectBreakdown.length === 0 && (
@@ -772,7 +777,7 @@ export default function EmployeeReports() {
                                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}>
                                       {cust.customerName}
                                     </span>
-                                    <span>{formatHours(cust.hours)} ({formatCurrency(cust.revenue)})</span>
+                                    <span>{formatHoursDecimal(cust.hours)} ({formatCurrency(cust.revenue)})</span>
                                   </div>
                                 ))}
                                 {metrics.customerBreakdown.length === 0 && (
@@ -841,15 +846,15 @@ export default function EmployeeReports() {
                 }}>
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Total Hours</div>
-                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatHours(metrics.totalHours)}</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatHoursDecimal(metrics.totalHours)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Billable</div>
-                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatHours(metrics.billableHours)}</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatHoursDecimal(metrics.billableHours)}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Internal</div>
-                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatHours(metrics.nonBillableHours)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Non-Billable</div>
+                    <div style={{ fontSize: '18px', fontWeight: '600' }}>{formatHoursDecimal(metrics.nonBillableHours)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Revenue</div>
@@ -921,27 +926,27 @@ export default function EmployeeReports() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                           <span>Non-Billable Hours</span>
-                          <span>{formatHours(metrics.rateTypeBreakdown.internalTime.hours)}</span>
+                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.internalTime.hours)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                           <span>Shop Time</span>
-                          <span>{formatHours(metrics.rateTypeBreakdown.shopTime.hours)}</span>
+                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.shopTime.hours)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                           <span>Field Time</span>
-                          <span>{formatHours(metrics.rateTypeBreakdown.fieldTime.hours)}</span>
+                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.fieldTime.hours)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                           <span>Travel Time</span>
-                          <span>{formatHours(metrics.rateTypeBreakdown.travelTime.hours)}</span>
+                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.travelTime.hours)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                           <span>Shop Overtime</span>
-                          <span>{formatHours(metrics.rateTypeBreakdown.shopOvertime.hours)}</span>
+                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.shopOvertime.hours)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                           <span>Field Overtime</span>
-                          <span>{formatHours(metrics.rateTypeBreakdown.fieldOvertime.hours)}</span>
+                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.fieldOvertime.hours)}</span>
                         </div>
                       </div>
                     </div>
@@ -956,7 +961,7 @@ export default function EmployeeReports() {
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
                                 {proj.projectName}
                               </span>
-                              <span>{formatHours(proj.hours)}</span>
+                              <span>{formatHoursDecimal(proj.hours)}</span>
                             </div>
                           ))}
                         </div>
