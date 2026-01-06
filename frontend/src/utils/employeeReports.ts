@@ -327,7 +327,7 @@ export function aggregateEmployeeMetrics(
   const serviceTicketCount = ticketKeys.size;
 
   // Rate type breakdown (includes cost and profit calculations)
-  const rateTypeBreakdown = calculateRateTypeBreakdown(entries, employee);
+  const rateTypeBreakdown = calculateRateTypeBreakdown(entries, employee, serviceTicketHours);
 
   // Calculate total cost based on payroll hours (time entry hours grouped by rate type)
   // This matches the Payroll page calculation logic
@@ -507,7 +507,8 @@ export function aggregateEmployeeMetrics(
 // Calculate breakdown by rate type (includes cost and profit)
 export function calculateRateTypeBreakdown(
   entries: TimeEntry[],
-  employee?: EmployeeWithRates
+  employee?: EmployeeWithRates,
+  serviceTicketHours?: ServiceTicketHours[]
 ): RateTypeBreakdown {
   const breakdown: RateTypeBreakdown = {
     internalTime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
@@ -518,88 +519,264 @@ export function calculateRateTypeBreakdown(
     fieldOvertime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
   };
 
-  entries.forEach(entry => {
-    const hours = Number(entry.hours) || 0;
-    const rate = Number(entry.rate) || 0;
-    // Use internal rate for non-billable entries, otherwise use the entry rate
-    const internalRate = Number(employee?.internal_rate) || 0;
-    const revenue = entry.billable ? hours * rate : hours * internalRate;
-    const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-    const isInternal = !entry.billable;
+  const userId = entries[0]?.user_id || employee?.user_id || '';
 
-    // Determine pay rate based on rate type
-    // Panel Shop employees default to shop_pay_rate, but admins can set additional rates
-    const isPanelShop = employee?.department === 'Panel Shop';
-    let payRate = 0;
-    if (isPanelShop) {
-      // For Panel Shop, check if admin has set specific rates, otherwise use shop_pay_rate
-      if (rateType.includes('shop') && rateType.includes('overtime')) {
-        payRate = employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
+  // Calculate Internal Time from time entries (payroll hours)
+  entries.forEach(entry => {
+    if (!entry.billable) {
+      const hours = Number(entry.hours) || 0;
+      const rate = Number(entry.rate) || 0;
+      const internalRate = Number(employee?.internal_rate) || 0;
+      const revenue = hours * internalRate;
+      const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+      
+      // Determine pay rate based on rate type
+      const isPanelShop = employee?.department === 'Panel Shop';
+      let payRate = 0;
+      if (isPanelShop) {
+        if (rateType.includes('shop') && rateType.includes('overtime')) {
+          payRate = employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
+        } else if (rateType.includes('field') && rateType.includes('overtime')) {
+          payRate = employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
+        } else if (rateType.includes('field')) {
+          payRate = employee?.field_pay_rate || employee?.shop_pay_rate || 0;
+        } else if (rateType.includes('travel')) {
+          payRate = employee?.shop_pay_rate || 0;
+        } else {
+          payRate = employee?.shop_pay_rate || 0;
+        }
+      } else if (rateType.includes('shop') && rateType.includes('overtime')) {
+        payRate = employee?.shop_ot_pay_rate || 0;
       } else if (rateType.includes('field') && rateType.includes('overtime')) {
-        payRate = employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
+        payRate = employee?.field_ot_pay_rate || 0;
       } else if (rateType.includes('field')) {
-        payRate = employee?.field_pay_rate || employee?.shop_pay_rate || 0;
+        payRate = employee?.field_pay_rate || 0;
       } else if (rateType.includes('travel')) {
-        // Travel time is paid at shop rate
         payRate = employee?.shop_pay_rate || 0;
       } else {
-        // Default to shop time
         payRate = employee?.shop_pay_rate || 0;
       }
-    } else if (rateType.includes('shop') && rateType.includes('overtime')) {
-      payRate = employee?.shop_ot_pay_rate || 0;
-    } else if (rateType.includes('field') && rateType.includes('overtime')) {
-      payRate = employee?.field_ot_pay_rate || 0;
-    } else if (rateType.includes('field')) {
-      payRate = employee?.field_pay_rate || 0;
-    } else if (rateType.includes('travel')) {
-      // Travel time is paid at shop rate
-      payRate = employee?.shop_pay_rate || 0;
-    } else {
-      // Default to shop time
-      payRate = employee?.shop_pay_rate || 0;
-    }
 
-    const cost = hours * payRate;
-    const profit = revenue - cost;
+      const cost = hours * payRate;
+      const profit = revenue - cost;
 
-    // If internal (non-billable), add to internalTime breakdown
-    if (isInternal) {
       breakdown.internalTime.hours += hours;
       breakdown.internalTime.revenue += revenue;
       breakdown.internalTime.cost += cost;
       breakdown.internalTime.profit += profit;
-    } else {
-      // Billable entries go to their respective rate types
-      if (rateType.includes('shop') && rateType.includes('overtime')) {
-        breakdown.shopOvertime.hours += hours;
-        breakdown.shopOvertime.revenue += revenue;
-        breakdown.shopOvertime.cost += cost;
-        breakdown.shopOvertime.profit += profit;
-      } else if (rateType.includes('field') && rateType.includes('overtime')) {
-        breakdown.fieldOvertime.hours += hours;
-        breakdown.fieldOvertime.revenue += revenue;
-        breakdown.fieldOvertime.cost += cost;
-        breakdown.fieldOvertime.profit += profit;
-      } else if (rateType.includes('field')) {
-        breakdown.fieldTime.hours += hours;
-        breakdown.fieldTime.revenue += revenue;
-        breakdown.fieldTime.cost += cost;
-        breakdown.fieldTime.profit += profit;
-      } else if (rateType.includes('travel')) {
-        breakdown.travelTime.hours += hours;
-        breakdown.travelTime.revenue += revenue;
-        breakdown.travelTime.cost += cost;
-        breakdown.travelTime.profit += profit;
+    }
+  });
+
+  // Calculate billable rate types from service ticket hours (distributed proportionally by rate type)
+  if (serviceTicketHours && serviceTicketHours.length > 0) {
+    // Group service tickets by date-customer-user key
+    const ticketMap = new Map<string, { hours: number; customerId?: string; projectId?: string }>();
+    serviceTicketHours.forEach(ticket => {
+      if (ticket.user_id === userId) {
+        const key = `${ticket.date}-${ticket.customer_id || 'unassigned'}-${ticket.user_id}`;
+        const existing = ticketMap.get(key);
+        if (existing) {
+          existing.hours += Number(ticket.total_hours) || 0;
+        } else {
+          ticketMap.set(key, {
+            hours: Number(ticket.total_hours) || 0,
+            customerId: ticket.customer_id || undefined,
+            projectId: ticket.project_id || undefined,
+          });
+        }
+      }
+    });
+
+    // For each service ticket, distribute hours proportionally by rate type from matching entries
+    ticketMap.forEach((ticketData, ticketKey) => {
+      const [ticketDate] = ticketKey.split('-');
+      const ticketHours = ticketData.hours;
+      
+      // Find matching billable time entries for this ticket
+      const matchingEntries = entries.filter(entry => {
+        if (entry.date !== ticketDate) return false;
+        if (!entry.billable) return false;
+        if (ticketData.customerId && entry.project?.customer?.id !== ticketData.customerId) return false;
+        if (ticketData.projectId && entry.project_id !== ticketData.projectId) return false;
+        return true;
+      });
+
+      if (matchingEntries.length > 0) {
+        // Calculate total hours from matching entries to get proportions
+        const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+        
+        if (totalEntryHours > 0) {
+          // Distribute ticket hours proportionally by rate type from entries
+          matchingEntries.forEach(entry => {
+            const entryHours = Number(entry.hours) || 0;
+            const proportion = entryHours / totalEntryHours;
+            const ticketHoursForThisRate = ticketHours * proportion;
+            
+            const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+            
+            // Get billable rate for this rate type
+            let billableRate = 0;
+            if (employee) {
+              if (rateType.includes('shop') && rateType.includes('overtime')) {
+                billableRate = Number(employee.shop_ot_rate) || 0;
+              } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                billableRate = Number(employee.field_ot_rate) || 0;
+              } else if (rateType.includes('field')) {
+                billableRate = Number(employee.ft_rate) || 0;
+              } else if (rateType.includes('travel')) {
+                billableRate = Number(employee.tt_rate) || 0;
+              } else {
+                billableRate = Number(employee.rt_rate) || 0;
+              }
+            }
+            
+            if (billableRate === 0) {
+              billableRate = Number(entry.rate) || 0;
+            }
+            
+            // Determine pay rate based on rate type
+            const isPanelShop = employee?.department === 'Panel Shop';
+            let payRate = 0;
+            if (isPanelShop) {
+              if (rateType.includes('shop') && rateType.includes('overtime')) {
+                payRate = employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
+              } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                payRate = employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
+              } else if (rateType.includes('field')) {
+                payRate = employee?.field_pay_rate || employee?.shop_pay_rate || 0;
+              } else if (rateType.includes('travel')) {
+                payRate = employee?.shop_pay_rate || 0;
+              } else {
+                payRate = employee?.shop_pay_rate || 0;
+              }
+            } else if (rateType.includes('shop') && rateType.includes('overtime')) {
+              payRate = employee?.shop_ot_pay_rate || 0;
+            } else if (rateType.includes('field') && rateType.includes('overtime')) {
+              payRate = employee?.field_ot_pay_rate || 0;
+            } else if (rateType.includes('field')) {
+              payRate = employee?.field_pay_rate || 0;
+            } else if (rateType.includes('travel')) {
+              payRate = employee?.shop_pay_rate || 0;
+            } else {
+              payRate = employee?.shop_pay_rate || 0;
+            }
+
+            const revenue = ticketHoursForThisRate * billableRate;
+            const cost = ticketHoursForThisRate * payRate;
+            const profit = revenue - cost;
+
+            // Add to appropriate rate type breakdown
+            if (rateType.includes('shop') && rateType.includes('overtime')) {
+              breakdown.shopOvertime.hours += ticketHoursForThisRate;
+              breakdown.shopOvertime.revenue += revenue;
+              breakdown.shopOvertime.cost += cost;
+              breakdown.shopOvertime.profit += profit;
+            } else if (rateType.includes('field') && rateType.includes('overtime')) {
+              breakdown.fieldOvertime.hours += ticketHoursForThisRate;
+              breakdown.fieldOvertime.revenue += revenue;
+              breakdown.fieldOvertime.cost += cost;
+              breakdown.fieldOvertime.profit += profit;
+            } else if (rateType.includes('field')) {
+              breakdown.fieldTime.hours += ticketHoursForThisRate;
+              breakdown.fieldTime.revenue += revenue;
+              breakdown.fieldTime.cost += cost;
+              breakdown.fieldTime.profit += profit;
+            } else if (rateType.includes('travel')) {
+              breakdown.travelTime.hours += ticketHoursForThisRate;
+              breakdown.travelTime.revenue += revenue;
+              breakdown.travelTime.cost += cost;
+              breakdown.travelTime.profit += profit;
+            } else {
+              breakdown.shopTime.hours += ticketHoursForThisRate;
+              breakdown.shopTime.revenue += revenue;
+              breakdown.shopTime.cost += cost;
+              breakdown.shopTime.profit += profit;
+            }
+          });
+        }
       } else {
-        // Default to shop time
-        breakdown.shopTime.hours += hours;
+        // No matching entries found, use default shop time rate
+        const billableRate = Number(employee?.rt_rate) || 110;
+        const payRate = Number(employee?.shop_pay_rate) || 0;
+        const revenue = ticketHours * billableRate;
+        const cost = ticketHours * payRate;
+        const profit = revenue - cost;
+        
+        breakdown.shopTime.hours += ticketHours;
         breakdown.shopTime.revenue += revenue;
         breakdown.shopTime.cost += cost;
         breakdown.shopTime.profit += profit;
       }
-    }
-  });
+    });
+  } else {
+    // Fallback to time entry hours if no service tickets exist (for billable entries only)
+    entries.forEach(entry => {
+      if (entry.billable) {
+        const hours = Number(entry.hours) || 0;
+        const rate = Number(entry.rate) || 0;
+        const revenue = hours * rate;
+        const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+
+        // Determine pay rate based on rate type
+        const isPanelShop = employee?.department === 'Panel Shop';
+        let payRate = 0;
+        if (isPanelShop) {
+          if (rateType.includes('shop') && rateType.includes('overtime')) {
+            payRate = employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
+          } else if (rateType.includes('field') && rateType.includes('overtime')) {
+            payRate = employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
+          } else if (rateType.includes('field')) {
+            payRate = employee?.field_pay_rate || employee?.shop_pay_rate || 0;
+          } else if (rateType.includes('travel')) {
+            payRate = employee?.shop_pay_rate || 0;
+          } else {
+            payRate = employee?.shop_pay_rate || 0;
+          }
+        } else if (rateType.includes('shop') && rateType.includes('overtime')) {
+          payRate = employee?.shop_ot_pay_rate || 0;
+        } else if (rateType.includes('field') && rateType.includes('overtime')) {
+          payRate = employee?.field_ot_pay_rate || 0;
+        } else if (rateType.includes('field')) {
+          payRate = employee?.field_pay_rate || 0;
+        } else if (rateType.includes('travel')) {
+          payRate = employee?.shop_pay_rate || 0;
+        } else {
+          payRate = employee?.shop_pay_rate || 0;
+        }
+
+        const cost = hours * payRate;
+        const profit = revenue - cost;
+
+        // Billable entries go to their respective rate types
+        if (rateType.includes('shop') && rateType.includes('overtime')) {
+          breakdown.shopOvertime.hours += hours;
+          breakdown.shopOvertime.revenue += revenue;
+          breakdown.shopOvertime.cost += cost;
+          breakdown.shopOvertime.profit += profit;
+        } else if (rateType.includes('field') && rateType.includes('overtime')) {
+          breakdown.fieldOvertime.hours += hours;
+          breakdown.fieldOvertime.revenue += revenue;
+          breakdown.fieldOvertime.cost += cost;
+          breakdown.fieldOvertime.profit += profit;
+        } else if (rateType.includes('field')) {
+          breakdown.fieldTime.hours += hours;
+          breakdown.fieldTime.revenue += revenue;
+          breakdown.fieldTime.cost += cost;
+          breakdown.fieldTime.profit += profit;
+        } else if (rateType.includes('travel')) {
+          breakdown.travelTime.hours += hours;
+          breakdown.travelTime.revenue += revenue;
+          breakdown.travelTime.cost += cost;
+          breakdown.travelTime.profit += profit;
+        } else {
+          breakdown.shopTime.hours += hours;
+          breakdown.shopTime.revenue += revenue;
+          breakdown.shopTime.cost += cost;
+          breakdown.shopTime.profit += profit;
+        }
+      }
+    });
+  }
 
   return breakdown;
 }
