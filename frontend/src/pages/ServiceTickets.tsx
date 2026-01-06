@@ -101,52 +101,14 @@ export default function ServiceTickets() {
         console.log('[DEBUG] Demo mode export - Existing tickets count:', existingTickets?.length || 0, 'Found existing record:', !!existingRecord);
       }
       
-      let ticketNumber: string;
-      
-      if (existingRecord?.ticket_number) {
-        // Use existing ticket number
-        ticketNumber = existingRecord.ticket_number;
-      } else {
-        // Check if this is a demo ticket
-        const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
-        
-        // Generate a new ticket number (demo tickets start at 001)
-        ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
-        
-        // Calculate totals for recording
-        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
-        const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-        const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-        const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-        const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
-        const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
-        const otAmount = shopOtAmount + fieldOtAmount;
-        const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-        
-        // Save the ticket record to the database
-        // createTicketRecord will handle duplicate key errors by returning existing record
-        const year = new Date().getFullYear() % 100;
-        const sequenceMatch = ticketNumber.match(/\d{3}$/);
-        const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-        
-        const savedRecord = await serviceTicketsService.createTicketRecord({
-          ticketNumber,
-          employeeInitials: ticket.userInitials,
-          year,
-          sequenceNumber,
-          date: ticket.date,
-          customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-          userId: ticket.userId,
-          projectId: ticket.projectId,
-          totalHours: ticket.totalHours,
-          totalAmount,
-          isDemo: isDemoTicket,
-        });
-        
-        // Use the ticket number from the saved record (in case it was an existing one)
-        ticketNumber = savedRecord.ticket_number;
+      // Only use existing ticket number - don't auto-assign
+      if (!existingRecord?.ticket_number) {
+        alert('This ticket does not have a ticket number assigned. Please assign a ticket number before exporting.');
+        setIsExportingPdf(false);
+        return;
       }
       
+      const ticketNumber = existingRecord.ticket_number;
       const ticketWithNumber = { ...ticket, ticketNumber };
       // Load expenses for PDF export if needed
       let ticketExpenses = expenses;
@@ -199,67 +161,13 @@ export default function ServiceTickets() {
         console.log('[DEBUG] Demo mode export - Existing tickets count:', existingTickets?.length || 0, 'Found existing record:', !!existingRecord);
       }
       
-      let ticketNumber: string;
-      
-      if (existingRecord?.ticket_number) {
-        // Use existing ticket number
-        ticketNumber = existingRecord.ticket_number;
-      } else {
-        // Check if this is a demo ticket - use demo mode context instead of checking entries
-        // This ensures consistency - if we're in demo mode, all tickets are demo tickets
-        const isDemoTicket = isDemoMode || ticket.entries.every(entry => entry.is_demo === true);
-        
-        // Generate a new ticket number only when exporting (demo tickets start at 001)
-        // Add a small delay to ensure any pending deletions complete
-        if (isDemoTicket) {
-          // Verify demo table is empty before generating number
-          const { data: verifyEmpty } = await supabase
-            .from('service_tickets_demo')
-            .select('sequence_number')
-            .eq('employee_initials', ticket.userInitials.toUpperCase())
-            .eq('year', new Date().getFullYear() % 100)
-            .order('sequence_number', { ascending: false })
-            .limit(1);
-          
-          if (verifyEmpty && verifyEmpty.length === 0) {
-            // Table is empty, will start at 001
-            console.log('[DEBUG] Demo table is empty, ticket number will start at 001');
-          }
-        }
-        
-        ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
-        
-        // Calculate totals for recording
-        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
-        const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-        const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-        const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-        const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
-        const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
-        const otAmount = shopOtAmount + fieldOtAmount;
-        const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-        
-        // Save the ticket record to the database
-        const year = new Date().getFullYear() % 100;
-        const sequenceMatch = ticketNumber.match(/\d{3}$/);
-        const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-        
-        await serviceTicketsService.createTicketRecord({
-          ticketNumber,
-          employeeInitials: ticket.userInitials,
-          year,
-          sequenceNumber,
-          date: ticket.date,
-          customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-          userId: ticket.userId,
-          projectId: ticket.projectId,
-          totalHours: ticket.totalHours,
-          totalAmount,
-          isDemo: isDemoTicket,
-        });
+      // Only use existing ticket number - don't auto-assign
+      if (!existingRecord?.ticket_number) {
+        alert('This ticket does not have a ticket number assigned. Please assign a ticket number before exporting.');
+        return;
       }
       
-      // Create a copy of the ticket with the ticket number
+      const ticketNumber = existingRecord.ticket_number;
       const ticketWithNumber = { ...ticket, ticketNumber };
       
       // Load expenses for this ticket if not already loaded
@@ -358,66 +266,14 @@ export default function ServiceTickets() {
           let ticketNumber: string;
           let ticketRecordId: string | undefined;
           
-          if (existingRecord?.ticket_number) {
+          // Only use existing ticket number - don't auto-assign
+          if (!existingRecord?.ticket_number) {
+            console.warn(`Skipping ticket ${ticket.id} - no ticket number assigned`);
+            continue; // Skip this ticket
+          }
+          
             ticketNumber = existingRecord.ticket_number;
             ticketRecordId = existingRecord.id;
-          } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
-            ticketNumber = ticket.displayTicketNumber;
-          } else {
-            // Check if this is a demo ticket
-            const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:315',message:'Excel: Generating new ticket number',data:{isDemoTicket,userInitials:ticket.userInitials},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
-            
-            // Generate a new ticket number (demo tickets start at 001)
-            ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
-            
-            // Save the ticket record
-            const year = new Date().getFullYear() % 100;
-            const sequenceMatch = ticketNumber.match(/\d{3}$/);
-            const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-            
-            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
-            const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-            const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-            const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-            const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
-            const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
-            const otAmount = shopOtAmount + fieldOtAmount;
-            const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:331',message:'Excel: Creating ticket record',data:{ticketNumber,year,sequenceNumber,totalAmount},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
-            // #endregion
-            
-            const newRecord = await serviceTicketsService.createTicketRecord({
-              ticketNumber,
-              employeeInitials: ticket.userInitials,
-              year,
-              sequenceNumber,
-              date: ticket.date,
-              customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-              userId: ticket.userId,
-              projectId: ticket.projectId,
-              totalHours: ticket.totalHours,
-              totalAmount,
-              isDemo: isDemoTicket,
-            });
-            
-            // Use the ticket number from the saved record (in case it was an existing one)
-            ticketNumber = newRecord.ticket_number;
-            
-            // Add the newly created/existing ticket to our list so subsequent tickets can see it
-            updatedTicketsList.push({
-              id: newRecord.id,
-              ticket_number: ticketNumber,
-              date: ticket.date,
-              user_id: ticket.userId,
-              customer_id: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-            } as NonNullable<typeof existingTickets>[0]);
-            
-            ticketRecordId = newRecord.id;
-          }
           
           const ticketWithNumber = { ...ticket, ticketNumber };
           // #region agent log
@@ -469,6 +325,163 @@ export default function ServiceTickets() {
     }
   };
 
+  // Assign ticket number to a single ticket
+  const handleAssignTicketNumber = async (ticket: ServiceTicket) => {
+    try {
+      // Find or create ticket record
+      const existing = existingTickets?.find(
+            et => et.date === ticket.date && 
+                  et.user_id === ticket.userId && 
+                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+          );
+          
+      let ticketRecordId: string;
+      if (existing) {
+        if (existing.ticket_number) {
+          alert('This ticket already has a ticket number assigned.');
+          return;
+        }
+        ticketRecordId = existing.id;
+          } else {
+        // Create ticket record first (with a temporary ticket number, then we'll assign the real one)
+            const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
+            const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+            const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+            const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+            const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
+            const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
+            const otAmount = shopOtAmount + fieldOtAmount;
+            const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+            
+        // Generate ticket number first, then create record with it (we'll update it to the correct one)
+        const year = new Date().getFullYear() % 100;
+        const tempTicketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
+        const sequenceMatch = tempTicketNumber.match(/\d{3}$/);
+        const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+        
+        const record = await serviceTicketsService.createTicketRecord({
+          ticketNumber: tempTicketNumber,
+              employeeInitials: ticket.userInitials,
+              year,
+              sequenceNumber,
+              date: ticket.date,
+              customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+              userId: ticket.userId,
+              projectId: ticket.projectId,
+              totalHours: ticket.totalHours,
+              totalAmount,
+              isDemo: isDemoTicket,
+            });
+        ticketRecordId = record.id;
+      }
+
+      // Assign ticket number (get next available)
+      const ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoMode);
+      await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoMode);
+
+      // Refresh the tickets list
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+      
+      alert('Ticket number assigned successfully!');
+    } catch (error) {
+      console.error('Error assigning ticket number:', error);
+      alert('Failed to assign ticket number. Please try again.');
+    }
+  };
+
+  // Unassign ticket number from a single ticket
+  const handleUnassignTicketNumber = async (ticket: ServiceTicket) => {
+    try {
+      const existing = existingTickets?.find(
+        et => et.date === ticket.date && 
+              et.user_id === ticket.userId && 
+              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+      );
+
+      if (!existing || !existing.ticket_number) {
+        alert('This ticket does not have a ticket number assigned.');
+        return;
+      }
+
+      await serviceTicketsService.updateTicketNumber(existing.id, null, isDemoMode);
+
+      // Refresh the tickets list
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+      
+      alert('Ticket number unassigned successfully!');
+    } catch (error) {
+      console.error('Error unassigning ticket number:', error);
+      alert('Failed to unassign ticket number. Please try again.');
+    }
+  };
+
+  // Bulk assign ticket numbers
+  const handleBulkAssignTicketNumbers = async () => {
+    try {
+      const ticketsToAssign = Array.from(selectedTicketIds)
+        .map(id => getTicketById(id))
+        .filter((t): t is ServiceTicket => {
+          if (!t) return false;
+          const existing = existingTickets?.find(
+            et => et.date === t.date && 
+                  et.user_id === t.userId && 
+                  (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
+          );
+          return !existing?.ticket_number; // Only tickets without ticket numbers
+        });
+
+      if (ticketsToAssign.length === 0) {
+        alert('No tickets selected or all selected tickets already have ticket numbers.');
+        return;
+      }
+
+      for (const ticket of ticketsToAssign) {
+        await handleAssignTicketNumber(ticket);
+      }
+
+      setSelectedTicketIds(new Set());
+      alert(`Successfully assigned ticket numbers to ${ticketsToAssign.length} ticket(s)!`);
+    } catch (error) {
+      console.error('Error in bulk assign:', error);
+      alert('Error during bulk assignment. Some tickets may have been assigned.');
+    }
+  };
+
+  // Bulk unassign ticket numbers
+  const handleBulkUnassignTicketNumbers = async () => {
+    try {
+      const ticketsToUnassign = Array.from(selectedTicketIds)
+        .map(id => getTicketById(id))
+        .filter((t): t is ServiceTicket => {
+          if (!t) return false;
+          const existing = existingTickets?.find(
+            et => et.date === t.date && 
+                  et.user_id === t.userId && 
+                  (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
+          );
+          return existing?.ticket_number !== undefined && existing.ticket_number !== null;
+        });
+
+      if (ticketsToUnassign.length === 0) {
+        alert('No tickets selected or selected tickets do not have ticket numbers assigned.');
+        return;
+      }
+
+      for (const ticket of ticketsToUnassign) {
+        await handleUnassignTicketNumber(ticket);
+      }
+
+      setSelectedTicketIds(new Set());
+      alert(`Successfully unassigned ticket numbers from ${ticketsToUnassign.length} ticket(s)!`);
+    } catch (error) {
+      console.error('Error in bulk unassign:', error);
+      alert('Error during bulk unassignment. Some tickets may have been unassigned.');
+    }
+  };
+
   // Bulk export to PDF
   const handleBulkExportPdf = async () => {
     setIsBulkExporting(true);
@@ -489,60 +502,14 @@ export default function ServiceTickets() {
           let ticketNumber: string;
           let ticketRecordId: string | undefined;
           
-          if (existingRecord?.ticket_number) {
-            ticketNumber = existingRecord.ticket_number;
-            ticketRecordId = existingRecord.id;
-          } else if (ticket.displayTicketNumber && !ticket.displayTicketNumber.includes('XXX')) {
-            ticketNumber = ticket.displayTicketNumber;
-          } else {
-            // Check if this is a demo ticket
-            const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
-            
-            // Generate a new ticket number (demo tickets start at 001)
-            ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
-            
-            // Save the ticket record
-            const year = new Date().getFullYear() % 100;
-            const sequenceMatch = ticketNumber.match(/\d{3}$/);
-            const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-            
-            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
-            const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-            const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-            const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-            const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
-            const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
-            const otAmount = shopOtAmount + fieldOtAmount;
-            const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-            
-            const newRecord = await serviceTicketsService.createTicketRecord({
-              ticketNumber,
-              employeeInitials: ticket.userInitials,
-              year,
-              sequenceNumber,
-              date: ticket.date,
-              customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-              userId: ticket.userId,
-              projectId: ticket.projectId,
-              totalHours: ticket.totalHours,
-              totalAmount,
-              isDemo: isDemoTicket,
-            });
-            
-            // Use the ticket number from the saved record (in case it was an existing one)
-            ticketNumber = newRecord.ticket_number;
-            
-            // Add the newly created/existing ticket to our list so subsequent tickets can see it
-            updatedTicketsList.push({
-              id: newRecord.id,
-              ticket_number: ticketNumber,
-              date: ticket.date,
-              user_id: ticket.userId,
-              customer_id: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-            } as NonNullable<typeof existingTickets>[0]);
-            
-            ticketRecordId = newRecord.id;
+          // Only use existing ticket number - don't auto-assign
+          if (!existingRecord?.ticket_number) {
+            console.warn(`Skipping ticket ${ticket.id} - no ticket number assigned`);
+            continue; // Skip this ticket
           }
+          
+          ticketNumber = existingRecord.ticket_number;
+          ticketRecordId = existingRecord.id;
           
           const ticketWithNumber = { ...ticket, ticketNumber };
           // Load expenses for bulk export
@@ -911,6 +878,40 @@ export default function ServiceTickets() {
             </span>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
+                onClick={handleBulkAssignTicketNumbers}
+                disabled={isBulkExporting}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                  opacity: isBulkExporting ? 0.6 : 1,
+                }}
+              >
+                ✓ Assign Ticket Numbers
+              </button>
+              <button
+                onClick={handleBulkUnassignTicketNumbers}
+                disabled={isBulkExporting}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f59e0b',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                  opacity: isBulkExporting ? 0.6 : 1,
+                }}
+              >
+                ✗ Unassign Ticket Numbers
+              </button>
+              <button
                 onClick={handleBulkExportExcel}
                 disabled={isBulkExporting}
                 style={{
@@ -1144,6 +1145,49 @@ export default function ServiceTickets() {
                     {ticket.hoursByRateType['Field Overtime'].toFixed(1)}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
+                      {(() => {
+                        const existing = existingTickets?.find(
+                          et => et.date === ticket.date && 
+                                et.user_id === ticket.userId && 
+                                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+                        );
+                        const hasTicketNumber = existing?.ticket_number;
+                        
+                        return hasTicketNumber ? (
+                          <button
+                            className="button button-secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnassignTicketNumber(ticket);
+                            }}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              minWidth: 'auto',
+                            }}
+                            title="Unassign ticket number"
+                          >
+                            ✗
+                          </button>
+                        ) : (
+                          <button
+                            className="button button-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAssignTicketNumber(ticket);
+                            }}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              minWidth: 'auto',
+                            }}
+                            title="Assign ticket number"
+                          >
+                            ✓
+                          </button>
+                        );
+                      })()}
                     <button
                       className="button"
                       onClick={() => {
@@ -1440,7 +1484,7 @@ export default function ServiceTickets() {
                     {/* Service Description Section */}
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={sectionTitleStyle}>Service Description</h3>
+                      <h3 style={sectionTitleStyle}>Service Description</h3>
                         {isTicketEdited && (
                           <span style={{ 
                             fontSize: '11px', 
@@ -1466,7 +1510,9 @@ export default function ServiceTickets() {
                             const entriesForType = selectedTicket.entries.filter(
                               (e) => (e.rate_type || 'Shop Time') === rateType
                             );
-                            const originalTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
+                            // Sum actual hours first, then round the total up to nearest 0.5
+                            const actualTotal = entriesForType.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+                            const originalTotal = roundToHalfHour(actualTotal);
                             
                             // Use edited data if available, otherwise use original
                             const editedDescriptionsForType = editedDescriptions[rateType] || entriesForType.map(e => e.description || 'No description');
@@ -1501,7 +1547,7 @@ export default function ServiceTickets() {
                                 <div style={{ marginBottom: '12px' }}>
                                   <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', margin: 0 }}>
                                     {rateType}
-                                  </h4>
+                                </h4>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                   {editedDescriptionsForType.map((desc, index) => (
@@ -1546,7 +1592,7 @@ export default function ServiceTickets() {
                                               ...inputStyle,
                                               width: '70px',
                                               padding: '4px 8px',
-                                              textAlign: 'right',
+                                              textAlign: 'left',
                                             }}
                                           />
                                         </div>
@@ -1657,14 +1703,17 @@ export default function ServiceTickets() {
                             const entriesForType = selectedTicket.entries.filter(
                               (e) => (e.rate_type || 'Shop Time') === rateType
                             );
-                            const originalTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
-                            // Use edited hours if available (sum array if it's an array)
+                            // Sum actual hours first, then round the total up to nearest 0.5
+                            const actualTotal = entriesForType.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+                            const originalTotal = roundToHalfHour(actualTotal);
+                            // Use edited hours if available (sum array if it's an array), then round to nearest 0.5
                             let displayHours = originalTotal;
                             if (editedHours[rateType] !== undefined) {
                               if (Array.isArray(editedHours[rateType])) {
-                                displayHours = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
+                                const editedTotal = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
+                                displayHours = roundToHalfHour(editedTotal);
                               } else {
-                                displayHours = editedHours[rateType] as unknown as number;
+                                displayHours = roundToHalfHour(editedHours[rateType] as unknown as number);
                               }
                             }
                             return (
@@ -1695,9 +1744,13 @@ export default function ServiceTickets() {
                                   return sum + (hoursArray as unknown as number || 0);
                                 }
                               }, 0);
-                              return editedTotal > 0 
-                                ? editedTotal.toFixed(2)
-                                : selectedTicket.entries.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0).toFixed(2);
+                              if (editedTotal > 0) {
+                                return roundToHalfHour(editedTotal).toFixed(2);
+                              } else {
+                                // Sum actual hours first, then round the total up to nearest 0.5
+                                const actualTotal = selectedTicket.entries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+                                return roundToHalfHour(actualTotal).toFixed(2);
+                              }
                             })()}
                           </span>
                         </div>

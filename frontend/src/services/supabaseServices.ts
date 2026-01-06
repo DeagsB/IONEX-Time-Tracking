@@ -1045,6 +1045,43 @@ export const serviceTicketsService = {
 
     throw new Error(`Failed to create ticket record after ${maxAttempts} attempts. Unable to find available ticket number.`);
   },
+
+  /**
+   * Update ticket number for an existing service ticket record
+   * @param ticketId - The ID of the ticket record to update
+   * @param ticketNumber - The new ticket number (or null to unassign)
+   * @param isDemo - If true, updates the demo table; otherwise updates the regular table
+   */
+  async updateTicketNumber(ticketId: string, ticketNumber: string | null, isDemo: boolean = false): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    const updateData: any = {};
+    
+    if (ticketNumber === null) {
+      // Unassign ticket number
+      updateData.ticket_number = null;
+      updateData.sequence_number = null;
+      updateData.year = null;
+    } else {
+      // Assign ticket number
+      updateData.ticket_number = ticketNumber;
+      const year = new Date().getFullYear() % 100;
+      const sequenceMatch = ticketNumber.match(/\d{3}$/);
+      const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : null;
+      updateData.year = year;
+      updateData.sequence_number = sequenceNumber;
+    }
+    
+    const { error } = await supabase
+      .from(tableName)
+      .update(updateData)
+      .eq('id', ticketId);
+    
+    if (error) {
+      console.error('Error updating ticket number:', error);
+      throw error;
+    }
+  },
 };
 
 export const serviceTicketExpensesService = {
