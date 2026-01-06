@@ -1098,29 +1098,21 @@ export default function ServiceTickets() {
                       const loadedDescriptions = (ticketRecord.edited_descriptions as Record<string, string[]>) || {};
                       setEditedDescriptions(loadedDescriptions);
                       
-                      // Convert old format (Record<string, number>) to new format (Record<string, number[]>)
+                      // Load edited hours directly from DB - don't modify them at load time
+                      // Length alignment is done at render time
                       const loadedHours = (ticketRecord.edited_hours as Record<string, number | number[]>) || {};
                       const convertedHours: Record<string, number[]> = {};
                       
                       Object.keys(loadedHours).forEach(rateType => {
                         const hours = loadedHours[rateType];
-                        const descriptions = loadedDescriptions[rateType] || [];
                         
                         if (Array.isArray(hours)) {
-                          // Ensure hours array matches descriptions array length
-                          const alignedHours: number[] = [...hours];
-                          while (alignedHours.length < descriptions.length) {
-                            alignedHours.push(0);
-                          }
-                          while (alignedHours.length > descriptions.length) {
-                            alignedHours.pop();
-                          }
-                          convertedHours[rateType] = alignedHours;
+                          // Use array directly as saved
+                          convertedHours[rateType] = [...hours];
                         } else {
-                          // Old format: distribute evenly across descriptions
-                          const totalHours = hours as number;
-                          const hoursPerDesc = descriptions.length > 0 ? totalHours / descriptions.length : 0;
-                          convertedHours[rateType] = descriptions.map(() => hoursPerDesc);
+                          // Old format: single number - store as single-element array
+                          // (render will handle distribution if needed)
+                          convertedHours[rateType] = [hours as number];
                         }
                       });
                       
@@ -1555,7 +1547,7 @@ export default function ServiceTickets() {
                       </div>
                       <div style={{ color: '#fff', fontSize: '14px' }}>
                         {Object.entries(selectedTicket.hoursByRateType)
-                          .filter(([rateType, hours]) => hours > 0)
+                          .filter(([rateType, hours]) => hours > 0 || (editedHours[rateType] && (Array.isArray(editedHours[rateType]) ? editedHours[rateType].reduce((s,h) => s+h, 0) > 0 : (editedHours[rateType] as unknown as number) > 0)))
                           .sort(([rateTypeA], [rateTypeB]) => {
                             const orderA = getRateTypeSortOrder(rateTypeA);
                             const orderB = getRateTypeSortOrder(rateTypeB);
@@ -1569,35 +1561,28 @@ export default function ServiceTickets() {
                             // Use edited data if available, otherwise use original
                             const editedDescriptionsForType = editedDescriptions[rateType] || entriesForType.map(e => e.description || 'No description');
                             
-                            // Convert old format (number) to new format (number[]) or use existing array
+                            // Use editedHours state directly when available (already loaded from DB)
+                            // Only fall back to entries if editedHours is completely empty
                             let editedHoursForType: number[];
-                            if (editedHours[rateType] !== undefined) {
-                              if (Array.isArray(editedHours[rateType])) {
-                                editedHoursForType = editedHours[rateType];
-                              } else {
-                                // Old format: single number, distribute evenly across descriptions
-                                const totalHours = editedHours[rateType] as unknown as number;
-                                const hoursPerDesc = editedDescriptionsForType.length > 0 ? totalHours / editedDescriptionsForType.length : 0;
-                                editedHoursForType = editedDescriptionsForType.map(() => hoursPerDesc);
-                              }
+                            if (editedHours[rateType] !== undefined && Array.isArray(editedHours[rateType])) {
+                              // Use the state directly - this is what was loaded or edited
+                              editedHoursForType = [...editedHours[rateType]];
+                            } else if (editedHours[rateType] !== undefined) {
+                              // Old format: single number, distribute evenly across descriptions
+                              const totalHours = editedHours[rateType] as unknown as number;
+                              const hoursPerDesc = editedDescriptionsForType.length > 0 ? totalHours / editedDescriptionsForType.length : 0;
+                              editedHoursForType = editedDescriptionsForType.map(() => hoursPerDesc);
                             } else {
-                              // No edited hours, use actual hours from entries (not rounded, not distributed)
-                              // This preserves the exact hours from each entry so they stay consistent when reopening
+                              // No edited hours in state, use actual hours from entries
                               editedHoursForType = entriesForType.map(e => Number(e.hours) || 0);
-                              
-                              // Ensure arrays have same length as descriptions
-                              // If more descriptions than entries, pad with zeros
-                              while (editedHoursForType.length < editedDescriptionsForType.length) {
-                                editedHoursForType.push(0);
-                              }
-                              // If fewer descriptions than entries, sum extra entries into the last description
-                              if (editedHoursForType.length > editedDescriptionsForType.length) {
-                                const extraHours = editedHoursForType.slice(editedDescriptionsForType.length).reduce((sum, h) => sum + h, 0);
-                                editedHoursForType = editedHoursForType.slice(0, editedDescriptionsForType.length);
-                                if (editedHoursForType.length > 0) {
-                                  editedHoursForType[editedHoursForType.length - 1] += extraHours;
-                                }
-                              }
+                            }
+                            
+                            // Ensure arrays have same length as descriptions
+                            while (editedHoursForType.length < editedDescriptionsForType.length) {
+                              editedHoursForType.push(0);
+                            }
+                            while (editedHoursForType.length > editedDescriptionsForType.length) {
+                              editedHoursForType.pop();
                             }
                             
                             return (
@@ -1751,21 +1736,24 @@ export default function ServiceTickets() {
                       <h3 style={sectionTitleStyle}>Hours Summary</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                         {Object.entries(selectedTicket.hoursByRateType)
-                          .filter(([rateType, hours]) => hours > 0)
+                          .filter(([rateType, hours]) => {
+                            // Show if original hours > 0 OR if there are edited hours for this type
+                            const editedHoursForType = editedHours[rateType];
+                            const editedTotal = editedHoursForType 
+                              ? (Array.isArray(editedHoursForType) 
+                                  ? editedHoursForType.reduce((s, h) => s + (h || 0), 0) 
+                                  : (editedHoursForType as unknown as number))
+                              : 0;
+                            return hours > 0 || editedTotal > 0;
+                          })
                           .sort(([rateTypeA], [rateTypeB]) => {
                             const orderA = getRateTypeSortOrder(rateTypeA);
                             const orderB = getRateTypeSortOrder(rateTypeB);
                             return orderA - orderB;
                           })
-                          .map(([rateType, hours]) => {
-                            const entriesForType = selectedTicket.entries.filter(
-                              (e) => (e.rate_type || 'Shop Time') === rateType
-                            );
-                            // Sum actual hours first, then round the total up to nearest 0.5
-                            const actualTotal = entriesForType.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-                            const originalTotal = roundToHalfHour(actualTotal);
-                            // Use edited hours if available (sum array if it's an array), then round to nearest 0.5
-                            let displayHours = originalTotal;
+                          .map(([rateType]) => {
+                            // Calculate display hours from editedHours state or fallback to entries
+                            let displayHours: number;
                             if (editedHours[rateType] !== undefined) {
                               if (Array.isArray(editedHours[rateType])) {
                                 const editedTotal = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
@@ -1773,6 +1761,13 @@ export default function ServiceTickets() {
                               } else {
                                 displayHours = roundToHalfHour(editedHours[rateType] as unknown as number);
                               }
+                            } else {
+                              // No edited hours, use actual from entries
+                              const entriesForType = selectedTicket.entries.filter(
+                                (e) => (e.rate_type || 'Shop Time') === rateType
+                              );
+                              const actualTotal = entriesForType.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+                              displayHours = roundToHalfHour(actualTotal);
                             }
                             return (
                               <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
