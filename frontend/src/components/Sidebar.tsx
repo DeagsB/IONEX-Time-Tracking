@@ -41,24 +41,13 @@ export default function Sidebar() {
 
     setIsSubmittingBug(true);
     try {
-      // Auto-generate title as a summary from description (first sentence or first 80 chars)
       const description = bugReportDescription.trim();
-      // Try to get first sentence (ending with . ! or ?)
-      const firstSentenceMatch = description.match(/^[^.!?]+[.!?]/);
-      let title = firstSentenceMatch 
-        ? firstSentenceMatch[0].trim()
-        : description.split('\n')[0].trim();
-      
-      // Limit to 80 characters for a concise summary
-      if (title.length > 80) {
-        title = title.substring(0, 77) + '...';
-      }
 
       await bugReportsService.create({
         user_id: user?.id,
         user_email: user?.email,
         user_name: `${user?.firstName} ${user?.lastName}`,
-        title: title || 'Bug Report',
+        title: '', // No title, just description
         description: description,
         priority: 'medium',
       });
@@ -82,24 +71,13 @@ export default function Sidebar() {
 
     setIsSubmittingSuggestion(true);
     try {
-      // Auto-generate title as a summary from description (first sentence or first 80 chars)
       const description = suggestionDescription.trim();
-      // Try to get first sentence (ending with . ! or ?)
-      const firstSentenceMatch = description.match(/^[^.!?]+[.!?]/);
-      let title = firstSentenceMatch 
-        ? firstSentenceMatch[0].trim()
-        : description.split('\n')[0].trim();
-      
-      // Limit to 80 characters for a concise summary
-      if (title.length > 80) {
-        title = title.substring(0, 77) + '...';
-      }
 
       await bugReportsService.create({
         user_id: user?.id,
         user_email: user?.email,
         user_name: `${user?.firstName} ${user?.lastName}`,
-        title: `[Suggestion] ${title || 'Improvement Suggestion'}`,
+        title: '[Suggestion]', // Just mark as suggestion, no title
         description: description,
         priority: 'low', // Suggestions are lower priority than bugs
       });

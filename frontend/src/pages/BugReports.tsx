@@ -69,7 +69,7 @@ export default function BugReports() {
 
   // Helper function to determine if a report is a suggestion
   const isSuggestion = (report: any) => {
-    return report.title?.startsWith('[Suggestion]');
+    return report.title === '[Suggestion]' || report.title?.startsWith('[Suggestion]');
   };
 
   // Helper function to get report type
@@ -84,7 +84,6 @@ export default function BugReports() {
 
   const filteredReports = bugReports?.filter((report: any) => {
     const matchesSearch = 
-      report.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.user_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.user_name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -153,7 +152,7 @@ export default function BugReports() {
           <input
             type="text"
             className="input"
-            placeholder="Search by title, description, or user..."
+            placeholder="Search by description or user..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -207,7 +206,7 @@ export default function BugReports() {
             <thead>
               <tr>
                 <th>Type</th>
-                <th>Summary</th>
+                <th>Description</th>
                 <th>User</th>
                 <th>Status</th>
                 <th>Created</th>
@@ -225,7 +224,6 @@ export default function BugReports() {
               {sortedReports?.map((report: any) => {
                 const reportType = getReportType(report);
                 const typeColor = getTypeColor(report);
-                const displayTitle = report.title?.replace(/^\[Suggestion\]\s*/, '') || report.title;
                 
                 return (
                 <tr 
@@ -248,9 +246,8 @@ export default function BugReports() {
                     </span>
                   </td>
                   <td>
-                    <div style={{ fontWeight: '500', marginBottom: '4px', fontSize: '14px' }}>{displayTitle}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {report.description}
+                    <div style={{ fontSize: '14px', color: 'var(--text-primary)', maxWidth: '500px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {report.description || 'No description'}
                     </div>
                   </td>
                   <td>
@@ -417,19 +414,6 @@ export default function BugReports() {
             </div>
 
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ marginBottom: '15px' }}>
-                <label className="label">Title</label>
-                <div style={{ 
-                  padding: '10px', 
-                  backgroundColor: 'var(--bg-secondary)', 
-                  borderRadius: '4px',
-                  fontWeight: '500',
-                  borderLeft: `4px solid ${getTypeColor(selectedReport)}`
-                }}>
-                  {selectedReport.title?.replace(/^\[Suggestion\]\s*/, '') || selectedReport.title}
-                </div>
-              </div>
-
               <div style={{ marginBottom: '15px' }}>
                 <label className="label">Description</label>
                 <div style={{ 
