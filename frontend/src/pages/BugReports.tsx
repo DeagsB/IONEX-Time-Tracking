@@ -50,6 +50,10 @@ export default function BugReports() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bugReports'] });
     },
+    onError: (error: any) => {
+      console.error('Error deleting feedback:', error);
+      alert(`Failed to delete: ${error.message || 'Unknown error'}`);
+    },
   });
 
   const handleMarkResolved = (report: any) => {
