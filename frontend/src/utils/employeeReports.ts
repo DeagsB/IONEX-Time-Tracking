@@ -305,8 +305,11 @@ export function aggregateEmployeeMetrics(
     });
   }
 
-  const nonBillableHours = totalHours - billableHours;
-  const billableRatio = totalHours > 0 ? (billableHours / totalHours) * 100 : 0;
+  // Non-billable hours come from internal time in the rate type breakdown
+  const nonBillableHours = rateTypeBreakdown.internalTime.hours;
+  // Total hours for ratio calculation should use actual hours worked (billable + internal from time entries)
+  const actualTotalHours = billableHours + nonBillableHours;
+  const billableRatio = actualTotalHours > 0 ? (billableHours / actualTotalHours) * 100 : 0;
   
   // Calculate total service ticket hours for average rate calculation
   const totalServiceTicketHours = serviceTicketHours && serviceTicketHours.length > 0
@@ -331,8 +334,29 @@ export function aggregateEmployeeMetrics(
   // Rate type breakdown (includes cost and profit calculations)
   const rateTypeBreakdown = calculateRateTypeBreakdown(entries, employee, serviceTicketHours);
 
+  // Billable hours should come from service ticket hours (via rateTypeBreakdown), not time entries
+  // This ensures billable hours match what's on the service tickets
+  billableHours = rateTypeBreakdown.shopTime.hours + 
+                  rateTypeBreakdown.fieldTime.hours + 
+                  rateTypeBreakdown.travelTime.hours + 
+                  rateTypeBreakdown.shopOvertime.hours + 
+                  rateTypeBreakdown.fieldOvertime.hours;
+
+  // Revenue is the sum of all billable rate type revenues from service tickets
+  totalRevenue = rateTypeBreakdown.shopTime.revenue + 
+                 rateTypeBreakdown.fieldTime.revenue + 
+                 rateTypeBreakdown.travelTime.revenue + 
+                 rateTypeBreakdown.shopOvertime.revenue + 
+                 rateTypeBreakdown.fieldOvertime.revenue +
+                 rateTypeBreakdown.internalTime.revenue;
+
+  // Helper function to round up to nearest 0.25 (matching Payroll page logic)
+  const roundToQuarterHour = (hours: number): number => {
+    return Math.ceil(hours * 4) / 4;
+  };
+
   // Calculate total cost based on payroll hours (time entry hours grouped by rate type)
-  // This matches the Payroll page calculation logic
+  // Hours are rounded up to nearest 0.25 to match Payroll page
   let totalCost = 0;
   
   // Debug: Log employee pay rates
@@ -412,52 +436,58 @@ export function aggregateEmployeeMetrics(
   });
   
   // Calculate cost using payroll hours grouped by rate type
+  // Round each rate type's hours UP to nearest 0.25 (matching Payroll page logic)
   const isPanelShop = employee?.department === 'Panel Shop';
   
-  // Shop Time cost
+  // Shop Time cost (rounded)
   if (hoursByRateType['Shop Time'] > 0) {
     const payRate = Number(employee?.shop_pay_rate) || 0;
-    totalCost += hoursByRateType['Shop Time'] * payRate;
+    const roundedHours = roundToQuarterHour(hoursByRateType['Shop Time']);
+    totalCost += roundedHours * payRate;
   }
   
-  // Shop Overtime cost
+  // Shop Overtime cost (rounded)
   if (hoursByRateType['Shop Overtime'] > 0) {
     const payRate = isPanelShop 
       ? (Number(employee?.shop_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0)
       : (Number(employee?.shop_ot_pay_rate) || 0);
-    totalCost += hoursByRateType['Shop Overtime'] * payRate;
+    const roundedHours = roundToQuarterHour(hoursByRateType['Shop Overtime']);
+    totalCost += roundedHours * payRate;
   }
   
-  // Travel Time cost (paid at shop rate)
+  // Travel Time cost (rounded, paid at shop rate)
   if (hoursByRateType['Travel Time'] > 0) {
     const payRate = Number(employee?.shop_pay_rate) || 0;
-    totalCost += hoursByRateType['Travel Time'] * payRate;
+    const roundedHours = roundToQuarterHour(hoursByRateType['Travel Time']);
+    totalCost += roundedHours * payRate;
   }
   
-  // Field Time cost
+  // Field Time cost (rounded)
   if (hoursByRateType['Field Time'] > 0) {
     const payRate = isPanelShop
       ? (Number(employee?.field_pay_rate) || Number(employee?.shop_pay_rate) || 0)
       : (Number(employee?.field_pay_rate) || 0);
-    totalCost += hoursByRateType['Field Time'] * payRate;
+    const roundedHours = roundToQuarterHour(hoursByRateType['Field Time']);
+    totalCost += roundedHours * payRate;
   }
   
-  // Field Overtime cost
+  // Field Overtime cost (rounded)
   if (hoursByRateType['Field Overtime'] > 0) {
     const payRate = isPanelShop
       ? (Number(employee?.field_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0)
       : (Number(employee?.field_ot_pay_rate) || 0);
-    totalCost += hoursByRateType['Field Overtime'] * payRate;
+    const roundedHours = roundToQuarterHour(hoursByRateType['Field Overtime']);
+    totalCost += roundedHours * payRate;
   }
   
-  // Internal time cost (non-billable work)
+  // Internal time cost (rounded, paid at shop rate)
   if (hoursByRateType['Internal'] > 0) {
-    // Internal time is paid at shop rate (or use internal rate if different logic is needed)
     const payRate = Number(employee?.shop_pay_rate) || 0;
-    totalCost += hoursByRateType['Internal'] * payRate;
+    const roundedHours = roundToQuarterHour(hoursByRateType['Internal']);
+    totalCost += roundedHours * payRate;
   }
   
-  console.log('Final totalCost (using payroll hours):', totalCost, 'for userId:', userId, 'entries count:', entries.length, 'hoursByRateType:', hoursByRateType);
+  console.log('Final totalCost (using rounded payroll hours):', totalCost, 'for userId:', userId, 'hoursByRateType:', hoursByRateType);
 
   // Calculate profit metrics
   const netProfit = totalRevenue - totalCost;
