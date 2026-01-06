@@ -121,6 +121,8 @@ export interface ServiceTicketHours {
   total_hours: number;
   customer_id?: string;
   project_id?: string;
+  is_edited?: boolean;
+  edited_hours?: Record<string, number | number[]>;
 }
 
 // Aggregate metrics for a single employee from their time entries
@@ -567,30 +569,229 @@ export function calculateRateTypeBreakdown(
     }
   });
 
-  // Calculate billable rate types from service ticket hours (distributed proportionally by rate type)
+  // Calculate billable rate types from service ticket hours
   if (serviceTicketHours && serviceTicketHours.length > 0) {
-    // Group service tickets by date-customer-user key
-    const ticketMap = new Map<string, { hours: number; customerId?: string; projectId?: string }>();
+    // Process each service ticket
     serviceTicketHours.forEach(ticket => {
-      if (ticket.user_id === userId) {
-        const key = `${ticket.date}-${ticket.customer_id || 'unassigned'}-${ticket.user_id}`;
-        const existing = ticketMap.get(key);
-        if (existing) {
-          existing.hours += Number(ticket.total_hours) || 0;
+      if (ticket.user_id !== userId) return;
+      
+      // If ticket has been edited, use edited_hours directly
+      if (ticket.is_edited && ticket.edited_hours) {
+        const editedHours = ticket.edited_hours;
+        
+        // Process each rate type from edited hours
+        Object.keys(editedHours).forEach(rateTypeKey => {
+          const hours = editedHours[rateTypeKey];
+          let totalHoursForRate = 0;
+          
+          // Sum hours if it's an array, otherwise use the number directly
+          if (Array.isArray(hours)) {
+            totalHoursForRate = hours.reduce((sum, h) => sum + (h || 0), 0);
+          } else {
+            totalHoursForRate = hours as number;
+          }
+          
+          if (totalHoursForRate > 0) {
+            const rateType = rateTypeKey.toLowerCase();
+            
+            // Get billable rate for this rate type
+            let billableRate = 0;
+            if (employee) {
+              if (rateType.includes('shop') && rateType.includes('overtime')) {
+                billableRate = Number(employee.shop_ot_rate) || 0;
+              } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                billableRate = Number(employee.field_ot_rate) || 0;
+              } else if (rateType.includes('field')) {
+                billableRate = Number(employee.ft_rate) || 0;
+              } else if (rateType.includes('travel')) {
+                billableRate = Number(employee.tt_rate) || 0;
+              } else {
+                billableRate = Number(employee.rt_rate) || 0;
+              }
+            }
+            
+            // Determine pay rate based on rate type
+            const isPanelShop = employee?.department === 'Panel Shop';
+            let payRate = 0;
+            if (isPanelShop) {
+              if (rateType.includes('shop') && rateType.includes('overtime')) {
+                payRate = employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
+              } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                payRate = employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
+              } else if (rateType.includes('field')) {
+                payRate = employee?.field_pay_rate || employee?.shop_pay_rate || 0;
+              } else if (rateType.includes('travel')) {
+                payRate = employee?.shop_pay_rate || 0;
+              } else {
+                payRate = employee?.shop_pay_rate || 0;
+              }
+            } else if (rateType.includes('shop') && rateType.includes('overtime')) {
+              payRate = employee?.shop_ot_pay_rate || 0;
+            } else if (rateType.includes('field') && rateType.includes('overtime')) {
+              payRate = employee?.field_ot_pay_rate || 0;
+            } else if (rateType.includes('field')) {
+              payRate = employee?.field_pay_rate || 0;
+            } else if (rateType.includes('travel')) {
+              payRate = employee?.shop_pay_rate || 0;
+            } else {
+              payRate = employee?.shop_pay_rate || 0;
+            }
+
+            const revenue = totalHoursForRate * billableRate;
+            const cost = totalHoursForRate * payRate;
+            const profit = revenue - cost;
+
+            // Add to appropriate rate type breakdown
+            if (rateType.includes('shop') && rateType.includes('overtime')) {
+              breakdown.shopOvertime.hours += totalHoursForRate;
+              breakdown.shopOvertime.revenue += revenue;
+              breakdown.shopOvertime.cost += cost;
+              breakdown.shopOvertime.profit += profit;
+            } else if (rateType.includes('field') && rateType.includes('overtime')) {
+              breakdown.fieldOvertime.hours += totalHoursForRate;
+              breakdown.fieldOvertime.revenue += revenue;
+              breakdown.fieldOvertime.cost += cost;
+              breakdown.fieldOvertime.profit += profit;
+            } else if (rateType.includes('field')) {
+              breakdown.fieldTime.hours += totalHoursForRate;
+              breakdown.fieldTime.revenue += revenue;
+              breakdown.fieldTime.cost += cost;
+              breakdown.fieldTime.profit += profit;
+            } else if (rateType.includes('travel')) {
+              breakdown.travelTime.hours += totalHoursForRate;
+              breakdown.travelTime.revenue += revenue;
+              breakdown.travelTime.cost += cost;
+              breakdown.travelTime.profit += profit;
+            } else {
+              breakdown.shopTime.hours += totalHoursForRate;
+              breakdown.shopTime.revenue += revenue;
+              breakdown.shopTime.cost += cost;
+              breakdown.shopTime.profit += profit;
+            }
+          }
+        });
+      } else {
+        // Ticket not edited, distribute total_hours proportionally by rate type from matching entries
+        const ticketDate = ticket.date;
+        const ticketHours = Number(ticket.total_hours) || 0;
+        
+        // Find matching billable time entries for this ticket
+        const matchingEntries = entries.filter(entry => {
+          if (entry.date !== ticketDate) return false;
+          if (!entry.billable) return false;
+          if (ticket.customer_id && entry.project?.customer?.id !== ticket.customer_id) return false;
+          if (ticket.project_id && entry.project_id !== ticket.project_id) return false;
+          return true;
+        });
+
+        if (matchingEntries.length > 0) {
+          // Calculate total hours from matching entries to get proportions
+          const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+          
+          if (totalEntryHours > 0) {
+            // Distribute ticket hours proportionally by rate type from entries
+            matchingEntries.forEach(entry => {
+              const entryHours = Number(entry.hours) || 0;
+              const proportion = entryHours / totalEntryHours;
+              const ticketHoursForThisRate = ticketHours * proportion;
+              
+              const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+              
+              // Get billable rate for this rate type
+              let billableRate = 0;
+              if (employee) {
+                if (rateType.includes('shop') && rateType.includes('overtime')) {
+                  billableRate = Number(employee.shop_ot_rate) || 0;
+                } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                  billableRate = Number(employee.field_ot_rate) || 0;
+                } else if (rateType.includes('field')) {
+                  billableRate = Number(employee.ft_rate) || 0;
+                } else if (rateType.includes('travel')) {
+                  billableRate = Number(employee.tt_rate) || 0;
+                } else {
+                  billableRate = Number(employee.rt_rate) || 0;
+                }
+              }
+              
+              if (billableRate === 0) {
+                billableRate = Number(entry.rate) || 0;
+              }
+              
+              // Determine pay rate based on rate type
+              const isPanelShop = employee?.department === 'Panel Shop';
+              let payRate = 0;
+              if (isPanelShop) {
+                if (rateType.includes('shop') && rateType.includes('overtime')) {
+                  payRate = employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
+                } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                  payRate = employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
+                } else if (rateType.includes('field')) {
+                  payRate = employee?.field_pay_rate || employee?.shop_pay_rate || 0;
+                } else if (rateType.includes('travel')) {
+                  payRate = employee?.shop_pay_rate || 0;
+                } else {
+                  payRate = employee?.shop_pay_rate || 0;
+                }
+              } else if (rateType.includes('shop') && rateType.includes('overtime')) {
+                payRate = employee?.shop_ot_pay_rate || 0;
+              } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                payRate = employee?.field_ot_pay_rate || 0;
+              } else if (rateType.includes('field')) {
+                payRate = employee?.field_pay_rate || 0;
+              } else if (rateType.includes('travel')) {
+                payRate = employee?.shop_pay_rate || 0;
+              } else {
+                payRate = employee?.shop_pay_rate || 0;
+              }
+
+              const revenue = ticketHoursForThisRate * billableRate;
+              const cost = ticketHoursForThisRate * payRate;
+              const profit = revenue - cost;
+
+              // Add to appropriate rate type breakdown
+              if (rateType.includes('shop') && rateType.includes('overtime')) {
+                breakdown.shopOvertime.hours += ticketHoursForThisRate;
+                breakdown.shopOvertime.revenue += revenue;
+                breakdown.shopOvertime.cost += cost;
+                breakdown.shopOvertime.profit += profit;
+              } else if (rateType.includes('field') && rateType.includes('overtime')) {
+                breakdown.fieldOvertime.hours += ticketHoursForThisRate;
+                breakdown.fieldOvertime.revenue += revenue;
+                breakdown.fieldOvertime.cost += cost;
+                breakdown.fieldOvertime.profit += profit;
+              } else if (rateType.includes('field')) {
+                breakdown.fieldTime.hours += ticketHoursForThisRate;
+                breakdown.fieldTime.revenue += revenue;
+                breakdown.fieldTime.cost += cost;
+                breakdown.fieldTime.profit += profit;
+              } else if (rateType.includes('travel')) {
+                breakdown.travelTime.hours += ticketHoursForThisRate;
+                breakdown.travelTime.revenue += revenue;
+                breakdown.travelTime.cost += cost;
+                breakdown.travelTime.profit += profit;
+              } else {
+                breakdown.shopTime.hours += ticketHoursForThisRate;
+                breakdown.shopTime.revenue += revenue;
+                breakdown.shopTime.cost += cost;
+                breakdown.shopTime.profit += profit;
+              }
+            });
+          }
         } else {
-          ticketMap.set(key, {
-            hours: Number(ticket.total_hours) || 0,
-            customerId: ticket.customer_id || undefined,
-            projectId: ticket.project_id || undefined,
-          });
+          // No matching entries found, use default shop time rate
+          const billableRate = Number(employee?.rt_rate) || 110;
+          const payRate = Number(employee?.shop_pay_rate) || 0;
+          const revenue = ticketHours * billableRate;
+          const cost = ticketHours * payRate;
+          const profit = revenue - cost;
+          
+          breakdown.shopTime.hours += ticketHours;
+          breakdown.shopTime.revenue += revenue;
+          breakdown.shopTime.cost += cost;
+          breakdown.shopTime.profit += profit;
         }
       }
     });
-
-    // For each service ticket, distribute hours proportionally by rate type from matching entries
-    ticketMap.forEach((ticketData, ticketKey) => {
-      const [ticketDate] = ticketKey.split('-');
-      const ticketHours = ticketData.hours;
       
       // Find matching billable time entries for this ticket
       const matchingEntries = entries.filter(entry => {
