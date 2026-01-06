@@ -69,7 +69,7 @@ export default function ServiceTickets() {
   
   // Editable service descriptions and hours state
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
-  const [editedHours, setEditedHours] = useState<Record<string, number>>({});
+  const [editedHours, setEditedHours] = useState<Record<string, number[]>>({});
   const [isTicketEdited, setIsTicketEdited] = useState(false);
   
   // Generated ticket number for display
@@ -1054,7 +1054,22 @@ export default function ServiceTickets() {
                     if (ticketRecord) {
                       setIsTicketEdited(ticketRecord.is_edited || false);
                       setEditedDescriptions((ticketRecord.edited_descriptions as Record<string, string[]>) || {});
-                      setEditedHours((ticketRecord.edited_hours as Record<string, number>) || {});
+                      
+                      // Convert old format (Record<string, number>) to new format (Record<string, number[]>)
+                      const loadedHours = (ticketRecord.edited_hours as Record<string, number | number[]>) || {};
+                      const convertedHours: Record<string, number[]> = {};
+                      
+                      Object.keys(loadedHours).forEach(rateType => {
+                        const hours = loadedHours[rateType];
+                        if (Array.isArray(hours)) {
+                          convertedHours[rateType] = hours;
+                        } else {
+                          // Old format: convert to array (will be distributed when descriptions are loaded)
+                          convertedHours[rateType] = [hours as number];
+                        }
+                      });
+                      
+                      setEditedHours(convertedHours);
                     } else {
                       setIsTicketEdited(false);
                       setEditedDescriptions({});
@@ -1191,6 +1206,21 @@ export default function ServiceTickets() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
+            <style>{`
+              .service-ticket-textarea::-webkit-scrollbar {
+                width: 8px;
+              }
+              .service-ticket-textarea::-webkit-scrollbar-track {
+                background: transparent;
+              }
+              .service-ticket-textarea::-webkit-scrollbar-thumb {
+                background: rgba(199, 112, 240, 0.3);
+                border-radius: 4px;
+              }
+              .service-ticket-textarea::-webkit-scrollbar-thumb:hover {
+                background: rgba(199, 112, 240, 0.5);
+              }
+            `}</style>
             {/* Ticket Header */}
             <div
               style={{
@@ -1440,34 +1470,38 @@ export default function ServiceTickets() {
                             
                             // Use edited data if available, otherwise use original
                             const editedDescriptionsForType = editedDescriptions[rateType] || entriesForType.map(e => e.description || 'No description');
-                            const editedHoursForType = editedHours[rateType] !== undefined ? editedHours[rateType] : originalTotal;
+                            
+                            // Convert old format (number) to new format (number[]) or use existing array
+                            let editedHoursForType: number[];
+                            if (editedHours[rateType] !== undefined) {
+                              if (Array.isArray(editedHours[rateType])) {
+                                editedHoursForType = editedHours[rateType];
+                              } else {
+                                // Old format: single number, distribute evenly across descriptions
+                                const totalHours = editedHours[rateType] as unknown as number;
+                                const hoursPerDesc = editedDescriptionsForType.length > 0 ? totalHours / editedDescriptionsForType.length : 0;
+                                editedHoursForType = editedDescriptionsForType.map(() => hoursPerDesc);
+                              }
+                            } else {
+                              // No edited hours, distribute original total evenly
+                              const hoursPerDesc = editedDescriptionsForType.length > 0 ? originalTotal / editedDescriptionsForType.length : 0;
+                              editedHoursForType = editedDescriptionsForType.map(() => hoursPerDesc);
+                            }
+                            
+                            // Ensure arrays have same length
+                            while (editedHoursForType.length < editedDescriptionsForType.length) {
+                              editedHoursForType.push(0);
+                            }
+                            while (editedHoursForType.length > editedDescriptionsForType.length) {
+                              editedHoursForType.pop();
+                            }
                             
                             return (
                               <div key={rateType} style={{ marginBottom: '20px', padding: '12px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '6px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <div style={{ marginBottom: '12px' }}>
                                   <h4 style={{ fontSize: '13px', fontWeight: '600', color: '#c770f0', margin: 0 }}>
                                     {rateType}
                                   </h4>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <label style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>Hours:</label>
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
-                                      value={editedHoursForType}
-                                      onChange={(e) => {
-                                        const newHours = parseFloat(e.target.value) || 0;
-                                        setEditedHours({ ...editedHours, [rateType]: newHours });
-                                        setIsTicketEdited(true);
-                                      }}
-                                      style={{
-                                        ...inputStyle,
-                                        width: '80px',
-                                        padding: '4px 8px',
-                                        textAlign: 'right',
-                                      }}
-                                    />
-                                  </div>
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                   {editedDescriptionsForType.map((desc, index) => (
@@ -1486,34 +1520,67 @@ export default function ServiceTickets() {
                                           minHeight: '60px',
                                           resize: 'vertical',
                                           fontFamily: 'inherit',
+                                          overflowY: 'auto',
+                                          overflowX: 'hidden',
+                                          scrollbarWidth: 'thin',
+                                          scrollbarColor: 'rgba(199, 112, 240, 0.3) transparent',
                                         }}
+                                        className="service-ticket-textarea"
                                         placeholder="Enter description..."
                                       />
-                                      <button
-                                        onClick={() => {
-                                          const newDescs = editedDescriptionsForType.filter((_, i) => i !== index);
-                                          setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
-                                          setIsTicketEdited(true);
-                                        }}
-                                        style={{
-                                          padding: '6px 12px',
-                                          backgroundColor: 'transparent',
-                                          color: '#ef5350',
-                                          border: '1px solid rgba(239, 83, 80, 0.3)',
-                                          borderRadius: '4px',
-                                          fontSize: '11px',
-                                          cursor: 'pointer',
-                                          whiteSpace: 'nowrap',
-                                        }}
-                                      >
-                                        Remove
-                                      </button>
+                                      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                          <label style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap' }}>Hours</label>
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={editedHoursForType[index] || 0}
+                                            onChange={(e) => {
+                                              const newHours = [...editedHoursForType];
+                                              newHours[index] = parseFloat(e.target.value) || 0;
+                                              setEditedHours({ ...editedHours, [rateType]: newHours });
+                                              setIsTicketEdited(true);
+                                            }}
+                                            style={{
+                                              ...inputStyle,
+                                              width: '70px',
+                                              padding: '4px 8px',
+                                              textAlign: 'right',
+                                            }}
+                                          />
+                                        </div>
+                                        <button
+                                          onClick={() => {
+                                            const newDescs = editedDescriptionsForType.filter((_, i) => i !== index);
+                                            const newHours = editedHoursForType.filter((_, i) => i !== index);
+                                            setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
+                                            setEditedHours({ ...editedHours, [rateType]: newHours });
+                                            setIsTicketEdited(true);
+                                          }}
+                                          style={{
+                                            padding: '6px 12px',
+                                            backgroundColor: 'transparent',
+                                            color: '#ef5350',
+                                            border: '1px solid rgba(239, 83, 80, 0.3)',
+                                            borderRadius: '4px',
+                                            fontSize: '11px',
+                                            cursor: 'pointer',
+                                            whiteSpace: 'nowrap',
+                                            alignSelf: 'flex-end',
+                                          }}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
                                     </div>
                                   ))}
                                   <button
                                     onClick={() => {
                                       const newDescs = [...editedDescriptionsForType, ''];
+                                      const newHours = [...editedHoursForType, 0];
                                       setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
+                                      setEditedHours({ ...editedHours, [rateType]: newHours });
                                       setIsTicketEdited(true);
                                     }}
                                     style={{
@@ -1591,8 +1658,15 @@ export default function ServiceTickets() {
                               (e) => (e.rate_type || 'Shop Time') === rateType
                             );
                             const originalTotal = entriesForType.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0);
-                            // Use edited hours if available
-                            const displayHours = editedHours[rateType] !== undefined ? editedHours[rateType] : originalTotal;
+                            // Use edited hours if available (sum array if it's an array)
+                            let displayHours = originalTotal;
+                            if (editedHours[rateType] !== undefined) {
+                              if (Array.isArray(editedHours[rateType])) {
+                                displayHours = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
+                              } else {
+                                displayHours = editedHours[rateType] as unknown as number;
+                              }
+                            }
                             return (
                               <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '500' }}>{rateType}:</span>
@@ -1951,11 +2025,17 @@ export default function ServiceTickets() {
                         po_number: editableTicket.poNumber,
                         approver_name: editableTicket.approverName,
                       },
-                      // Apply edited hours if available
+                      // Apply edited hours if available (sum arrays to get totals)
                       hoursByRateType: Object.keys(selectedTicket.hoursByRateType).reduce((acc, rateType) => {
-                        acc[rateType as keyof typeof acc] = editedHours[rateType] !== undefined 
-                          ? editedHours[rateType] 
-                          : selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType];
+                        if (editedHours[rateType] !== undefined) {
+                          if (Array.isArray(editedHours[rateType])) {
+                            acc[rateType as keyof typeof acc] = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
+                          } else {
+                            acc[rateType as keyof typeof acc] = editedHours[rateType] as unknown as number;
+                          }
+                        } else {
+                          acc[rateType as keyof typeof acc] = selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType];
+                        }
                         return acc;
                       }, { ...selectedTicket.hoursByRateType }),
                       // Create modified entries with edited descriptions
@@ -1964,15 +2044,22 @@ export default function ServiceTickets() {
                         .flatMap(([rateType]) => {
                           const editedDescs = editedDescriptions[rateType];
                           if (editedDescs && editedDescs.length > 0) {
-                            // Use edited descriptions
+                            // Use edited descriptions and hours
+                            const editedHoursForType = editedHours[rateType];
+                            const hoursArray = Array.isArray(editedHoursForType) 
+                              ? editedHoursForType 
+                              : editedHoursForType !== undefined 
+                                ? [editedHoursForType as unknown as number] 
+                                : [];
+                            
                             return editedDescs.map((desc, idx) => ({
                               ...selectedTicket.entries[0], // Use first entry as template
                               id: `edited-${rateType}-${idx}`,
                               description: desc,
                               rate_type: rateType,
-                              hours: editedHours[rateType] !== undefined 
-                                ? editedHours[rateType] / editedDescs.length 
-                                : selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType] / editedDescs.length,
+                              hours: hoursArray[idx] !== undefined 
+                                ? hoursArray[idx] 
+                                : (hoursArray.length > 0 ? hoursArray[0] / editedDescs.length : 0),
                             }));
                           } else {
                             // Use original entries for this rate type
@@ -2025,11 +2112,17 @@ export default function ServiceTickets() {
                         po_number: editableTicket.poNumber,
                         approver_name: editableTicket.approverName,
                       },
-                      // Apply edited hours if available
+                      // Apply edited hours if available (sum arrays to get totals)
                       hoursByRateType: Object.keys(selectedTicket.hoursByRateType).reduce((acc, rateType) => {
-                        acc[rateType as keyof typeof acc] = editedHours[rateType] !== undefined 
-                          ? editedHours[rateType] 
-                          : selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType];
+                        if (editedHours[rateType] !== undefined) {
+                          if (Array.isArray(editedHours[rateType])) {
+                            acc[rateType as keyof typeof acc] = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
+                          } else {
+                            acc[rateType as keyof typeof acc] = editedHours[rateType] as unknown as number;
+                          }
+                        } else {
+                          acc[rateType as keyof typeof acc] = selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType];
+                        }
                         return acc;
                       }, { ...selectedTicket.hoursByRateType }),
                       // Create modified entries with edited descriptions
@@ -2038,15 +2131,22 @@ export default function ServiceTickets() {
                         .flatMap(([rateType]) => {
                           const editedDescs = editedDescriptions[rateType];
                           if (editedDescs && editedDescs.length > 0) {
-                            // Use edited descriptions
+                            // Use edited descriptions and hours
+                            const editedHoursForType = editedHours[rateType];
+                            const hoursArray = Array.isArray(editedHoursForType) 
+                              ? editedHoursForType 
+                              : editedHoursForType !== undefined 
+                                ? [editedHoursForType as unknown as number] 
+                                : [];
+                            
                             return editedDescs.map((desc, idx) => ({
                               ...selectedTicket.entries[0], // Use first entry as template
                               id: `edited-${rateType}-${idx}`,
                               description: desc,
                               rate_type: rateType,
-                              hours: editedHours[rateType] !== undefined 
-                                ? editedHours[rateType] / editedDescs.length 
-                                : selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType] / editedDescs.length,
+                              hours: hoursArray[idx] !== undefined 
+                                ? hoursArray[idx] 
+                                : (hoursArray.length > 0 ? hoursArray[0] / editedDescs.length : 0),
                             }));
                           } else {
                             // Use original entries for this rate type

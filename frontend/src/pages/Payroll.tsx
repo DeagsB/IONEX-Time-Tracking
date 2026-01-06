@@ -40,6 +40,11 @@ interface EmployeeHours {
   entries: TimeEntry[];
 }
 
+// Round UP to nearest 0.25 hour (never round down)
+const roundToQuarterHour = (hours: number): number => {
+  return Math.ceil(hours * 4) / 4;
+};
+
 export default function Payroll() {
   const { user } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -113,7 +118,7 @@ export default function Payroll() {
 
       const emp = employeeMap.get(userId)!;
       emp.entries.push(entry);
-      const hours = Number(entry.hours) || 0;
+      const hours = roundToQuarterHour(Number(entry.hours) || 0);
       emp.totalHours += hours;
       if (!entry.billable) {
         emp.internalHours += hours;
