@@ -1687,10 +1687,18 @@ export default function ServiceTickets() {
                         >
                           <span style={{ fontSize: '15px', color: '#fff', fontWeight: '700' }}>TOTAL HOURS:</span>
                           <span style={{ fontSize: '18px', color: '#c770f0', fontWeight: '700' }}>
-                            {Object.values(editedHours).reduce((sum, h) => sum + h, 0) > 0 
-                              ? Object.values(editedHours).reduce((sum, h) => sum + h, 0).toFixed(2)
-                              : selectedTicket.entries.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0).toFixed(2)
-                            }
+                            {(() => {
+                              const editedTotal = Object.values(editedHours).reduce((sum, hoursArray) => {
+                                if (Array.isArray(hoursArray)) {
+                                  return sum + hoursArray.reduce((arrSum, h) => arrSum + (h || 0), 0);
+                                } else {
+                                  return sum + (hoursArray as unknown as number || 0);
+                                }
+                              }, 0);
+                              return editedTotal > 0 
+                                ? editedTotal.toFixed(2)
+                                : selectedTicket.entries.reduce((sum, e) => sum + roundToHalfHour(e.hours), 0).toFixed(2);
+                            })()}
                           </span>
                         </div>
                       </div>
