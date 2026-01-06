@@ -1234,22 +1234,22 @@ export default function ServiceTickets() {
                           </button>
                         );
                       })()}
-                      <button
-                        className="button"
-                        onClick={() => {
-                          // TODO: Implement mark as invoiced functionality
-                          alert('Mark as invoiced functionality coming soon!');
-                        }}
-                        style={{
-                          padding: '6px 16px',
-                          fontSize: '13px',
-                          backgroundColor: '#4caf50',
-                          color: 'white',
-                          border: 'none',
-                        }}
-                      >
-                        Mark as Invoiced
-                      </button>
+                    <button
+                      className="button"
+                      onClick={() => {
+                        // TODO: Implement mark as invoiced functionality
+                        alert('Mark as invoiced functionality coming soon!');
+                      }}
+                      style={{
+                        padding: '6px 16px',
+                        fontSize: '13px',
+                        backgroundColor: '#4caf50',
+                        color: 'white',
+                        border: 'none',
+                      }}
+                    >
+                      Mark as Invoiced
+                    </button>
                     </div>
                   </td>
                 </tr>
@@ -1607,7 +1607,7 @@ export default function ServiceTickets() {
                                           ...inputStyle,
                                           flex: 1,
                                           minHeight: '60px',
-                                          resize: 'vertical',
+                                          resize: 'none',
                                           fontFamily: 'inherit',
                                           overflowY: 'auto',
                                           overflowX: 'hidden',
@@ -1763,9 +1763,9 @@ export default function ServiceTickets() {
                               }
                             } else {
                               // No edited hours, use actual from entries
-                              const entriesForType = selectedTicket.entries.filter(
-                                (e) => (e.rate_type || 'Shop Time') === rateType
-                              );
+                            const entriesForType = selectedTicket.entries.filter(
+                              (e) => (e.rate_type || 'Shop Time') === rateType
+                            );
                               const actualTotal = entriesForType.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
                               displayHours = roundToHalfHour(actualTotal);
                             }

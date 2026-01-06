@@ -429,7 +429,7 @@ export default function BugReports() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Add notes about this bug report..."
-                  style={{ width: '100%', resize: 'vertical' }}
+                  style={{ width: '100%', resize: 'none' }}
                 />
               </div>
             </div>

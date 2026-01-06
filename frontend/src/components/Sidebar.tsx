@@ -355,7 +355,7 @@ export default function Sidebar() {
                 placeholder="Please describe the bug or problem you encountered..."
                 disabled={isSubmittingBug}
                 autoFocus
-                style={{ width: '100%', resize: 'vertical' }}
+                style={{ width: '100%', resize: 'none' }}
               />
             </div>
 

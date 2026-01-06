@@ -1999,7 +1999,7 @@ export default function WeekView() {
                     borderRadius: '6px',
                     color: 'var(--text-primary)',
                   fontSize: '14px',
-                  resize: 'vertical',
+                  resize: 'none',
                   }}
                 />
 
