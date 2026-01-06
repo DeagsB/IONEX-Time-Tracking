@@ -652,6 +652,8 @@ export function calculateRateTypeBreakdown(
 
   // STEP 3: Calculate HOURS and REVENUE from service tickets
   // Hours displayed and revenue are based on service ticket hours
+  console.log('[RateTypeBreakdown] Service tickets received:', serviceTicketHours?.length || 0, 'userId:', userId);
+  
   if (serviceTicketHours && serviceTicketHours.length > 0) {
     // Track service ticket hours by rate type for revenue calculation
     const serviceHoursByRateType: Record<string, number> = {
@@ -664,10 +666,23 @@ export function calculateRateTypeBreakdown(
 
     // Process each service ticket
     serviceTicketHours.forEach(ticket => {
-      if (ticket.user_id !== userId) return;
+      console.log('[RateTypeBreakdown] Processing ticket:', {
+        ticket_user_id: ticket.user_id,
+        userId,
+        total_hours: ticket.total_hours,
+        is_edited: ticket.is_edited,
+        edited_hours: ticket.edited_hours,
+        date: ticket.date
+      });
+      
+      if (ticket.user_id !== userId) {
+        console.log('[RateTypeBreakdown] Skipping ticket - user_id mismatch');
+        return;
+      }
       
       // If ticket has been edited, use edited_hours directly
       if (ticket.is_edited && ticket.edited_hours) {
+        console.log('[RateTypeBreakdown] Using edited_hours:', ticket.edited_hours);
         const editedHours = ticket.edited_hours;
         
         // Process each rate type from edited hours
@@ -700,6 +715,7 @@ export function calculateRateTypeBreakdown(
         });
       } else {
         // Ticket not edited, distribute total_hours proportionally by rate type from matching entries
+        console.log('[RateTypeBreakdown] Ticket not edited, using total_hours:', ticket.total_hours);
         const ticketDate = ticket.date;
         const ticketHours = Number(ticket.total_hours) || 0;
         
@@ -712,9 +728,12 @@ export function calculateRateTypeBreakdown(
           return true;
         });
 
+        console.log('[RateTypeBreakdown] Matching entries for ticket:', matchingEntries.length, 'ticketHours:', ticketHours);
+
         if (matchingEntries.length > 0) {
           // Calculate total hours from matching entries to get proportions
           const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+          console.log('[RateTypeBreakdown] totalEntryHours from matching entries:', totalEntryHours);
           
           if (totalEntryHours > 0) {
             // Distribute ticket hours proportionally by rate type from entries
@@ -723,6 +742,7 @@ export function calculateRateTypeBreakdown(
               const proportion = entryHours / totalEntryHours;
               const ticketHoursForThisRate = ticketHours * proportion;
               const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+              console.log('[RateTypeBreakdown] Entry proportion:', { entryHours, proportion, ticketHoursForThisRate, rateType });
 
               if (rateType.includes('shop') && rateType.includes('overtime')) {
                 serviceHoursByRateType.shopOvertime += ticketHoursForThisRate;
@@ -743,6 +763,9 @@ export function calculateRateTypeBreakdown(
         }
       }
     });
+
+    console.log('[RateTypeBreakdown] Final serviceHoursByRateType:', serviceHoursByRateType);
+    console.log('[RateTypeBreakdown] Final payrollCostsByRateType:', payrollCostsByRateType);
 
     // Now combine: hours and revenue from service tickets, cost from payroll
     // Shop Time
