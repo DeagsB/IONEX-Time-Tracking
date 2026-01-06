@@ -43,6 +43,15 @@ export default function BugReports() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await bugReportsService.delete(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bugReports'] });
+    },
+  });
+
   const handleMarkResolved = (report: any) => {
     const updates: any = {
       status: 'resolved',
@@ -297,7 +306,7 @@ export default function BugReports() {
                             border: 'none'
                           }}
                           onClick={() => {
-                            if (window.confirm('Mark this bug as resolved?')) {
+                            if (window.confirm('Mark this as resolved?')) {
                               handleMarkResolved(report);
                             }
                           }}
@@ -316,7 +325,7 @@ export default function BugReports() {
                             border: 'none'
                           }}
                           onClick={() => {
-                            if (window.confirm('Close this bug report?')) {
+                            if (window.confirm('Close this feedback?')) {
                               handleMarkClosed(report);
                             }
                           }}
@@ -324,6 +333,25 @@ export default function BugReports() {
                           Close
                         </button>
                       )}
+                      <button
+                        className="button"
+                        style={{ 
+                          padding: '4px 8px', 
+                          fontSize: '12px',
+                          backgroundColor: 'var(--error-color)',
+                          color: 'white',
+                          border: 'none'
+                        }}
+                        onClick={() => {
+                          const reportType = getReportType(report);
+                          if (window.confirm(`Are you sure you want to delete this ${reportType}? This action cannot be undone.`)) {
+                            deleteMutation.mutate(report.id);
+                          }
+                        }}
+                        disabled={deleteMutation.isPending}
+                      >
+                        {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                      </button>
                     </div>
                   </td>
                 </tr>
