@@ -572,23 +572,64 @@ export default function ServiceTickets() {
   });
 
   // Group entries into tickets (with employee rates)
-  const tickets = useMemo(() => {
-    if (!billableEntries) return [];
-    return groupEntriesIntoTickets(billableEntries, employees);
-  }, [billableEntries, employees]);
-
-  // Fetch existing ticket numbers for display (from appropriate table based on demo mode)
+  // Fetch existing ticket numbers and edited hours for display (from appropriate table based on demo mode)
   const { data: existingTickets } = useQuery({
     queryKey: ['existingServiceTickets', isDemoMode],
     queryFn: async () => {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
       const { data, error } = await supabase
         .from(tableName)
-        .select('id, ticket_number, date, user_id, customer_id');
+        .select('id, ticket_number, date, user_id, customer_id, is_edited, edited_hours');
       if (error) throw error;
       return data;
     },
   });
+
+  const tickets = useMemo(() => {
+    if (!billableEntries) return [];
+    const baseTickets = groupEntriesIntoTickets(billableEntries, employees);
+    
+    // Merge edited hours from database into tickets
+    if (existingTickets && existingTickets.length > 0) {
+      return baseTickets.map(ticket => {
+        // Find matching ticket record in database
+        const ticketRecord = existingTickets.find(
+          et => et.date === ticket.date && 
+                et.user_id === ticket.userId && 
+                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+        );
+        
+        // If ticket has been edited, use edited hours instead of original
+        if (ticketRecord?.is_edited && ticketRecord.edited_hours) {
+          const editedHours = ticketRecord.edited_hours as Record<string, number | number[]>;
+          const updatedHoursByRateType = { ...ticket.hoursByRateType };
+          
+          // Sum edited hours for each rate type
+          Object.keys(editedHours).forEach(rateType => {
+            const hours = editedHours[rateType];
+            if (Array.isArray(hours)) {
+              updatedHoursByRateType[rateType as keyof typeof updatedHoursByRateType] = hours.reduce((sum, h) => sum + (h || 0), 0);
+            } else {
+              updatedHoursByRateType[rateType as keyof typeof updatedHoursByRateType] = hours as number;
+            }
+          });
+          
+          // Recalculate total hours
+          const totalHours = Object.values(updatedHoursByRateType).reduce((sum, h) => sum + h, 0);
+          
+          return {
+            ...ticket,
+            hoursByRateType: updatedHoursByRateType,
+            totalHours,
+          };
+        }
+        
+        return ticket;
+      });
+    }
+    
+    return baseTickets;
+  }, [billableEntries, employees, existingTickets]);
 
   // Expense mutations
   const createExpenseMutation = useMutation({
