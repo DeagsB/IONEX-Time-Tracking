@@ -8,9 +8,8 @@ export default function BugReports() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all'); // all, bug, suggestion
-  const [sortBy, setSortBy] = useState<string>('date'); // date, priority, status, type
+  const [sortBy, setSortBy] = useState<string>('date'); // date, status, type
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -91,10 +90,9 @@ export default function BugReports() {
       report.user_name?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || report.status === statusFilter;
-    const matchesPriority = priorityFilter === 'all' || report.priority === priorityFilter;
     const matchesType = typeFilter === 'all' || getReportType(report) === typeFilter;
 
-    return matchesSearch && matchesStatus && matchesPriority && matchesType;
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   // Sort filtered reports
@@ -104,10 +102,6 @@ export default function BugReports() {
     switch (sortBy) {
       case 'date':
         comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        break;
-      case 'priority':
-        const priorityOrder: { [key: string]: number } = { critical: 4, high: 3, medium: 2, low: 1 };
-        comparison = (priorityOrder[a.priority] || 0) - (priorityOrder[b.priority] || 0);
         break;
       case 'status':
         const statusOrder: { [key: string]: number } = { open: 1, in_progress: 2, resolved: 3, closed: 4 };
@@ -148,16 +142,6 @@ export default function BugReports() {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'var(--error-color)';
-      case 'high': return '#ff6b6b';
-      case 'medium': return 'var(--warning-color)';
-      case 'low': return 'var(--info-color)';
-      default: return 'var(--text-secondary)';
-    }
-  };
-
   return (
     <div style={{ padding: '40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
@@ -165,7 +149,7 @@ export default function BugReports() {
       </div>
 
       <div className="card" style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '15px', marginBottom: '20px' }}>
           <input
             type="text"
             className="input"
@@ -193,17 +177,6 @@ export default function BugReports() {
             <option value="resolved">Resolved</option>
             <option value="closed">Closed</option>
           </select>
-          <select
-            className="input"
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-          >
-            <option value="all">All Priorities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
         </div>
 
         <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', alignItems: 'center' }}>
@@ -215,7 +188,6 @@ export default function BugReports() {
             style={{ width: '150px' }}
           >
             <option value="date">Date</option>
-            <option value="priority">Priority</option>
             <option value="status">Status</option>
             <option value="type">Type</option>
           </select>
@@ -235,9 +207,8 @@ export default function BugReports() {
             <thead>
               <tr>
                 <th>Type</th>
-                <th>Title</th>
+                <th>Summary</th>
                 <th>User</th>
-                <th>Priority</th>
                 <th>Status</th>
                 <th>Created</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -246,7 +217,7 @@ export default function BugReports() {
             <tbody>
               {sortedReports && sortedReports.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '20px' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
                     No feedback found.
                   </td>
                 </tr>
@@ -277,8 +248,8 @@ export default function BugReports() {
                     </span>
                   </td>
                   <td>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>{displayTitle}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontWeight: '500', marginBottom: '4px', fontSize: '14px' }}>{displayTitle}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {report.description}
                     </div>
                   </td>
@@ -287,19 +258,6 @@ export default function BugReports() {
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                       {report.user_email || '-'}
                     </div>
-                  </td>
-                  <td>
-                    <span style={{
-                      backgroundColor: getPriorityColor(report.priority),
-                      color: 'white',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      fontWeight: 'bold',
-                      textTransform: 'uppercase',
-                    }}>
-                      {report.priority}
-                    </span>
                   </td>
                   <td>
                     <select
@@ -486,38 +444,20 @@ export default function BugReports() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+              <div style={{ marginBottom: '15px' }}>
+                <label className="label">Status</label>
                 <div>
-                  <label className="label">Priority</label>
-                  <div>
-                    <span style={{
-                      backgroundColor: getPriorityColor(selectedReport.priority),
-                      color: 'white',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      textTransform: 'uppercase',
-                    }}>
-                      {selectedReport.priority}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <label className="label">Status</label>
-                  <div>
-                    <span style={{
-                      backgroundColor: getStatusColor(selectedReport.status),
-                      color: 'white',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      textTransform: 'uppercase',
-                    }}>
-                      {selectedReport.status}
-                    </span>
-                  </div>
+                  <span style={{
+                    backgroundColor: getStatusColor(selectedReport.status),
+                    color: 'white',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                  }}>
+                    {selectedReport.status}
+                  </span>
                 </div>
               </div>
 

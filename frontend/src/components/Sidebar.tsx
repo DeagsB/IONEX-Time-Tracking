@@ -41,10 +41,18 @@ export default function Sidebar() {
 
     setIsSubmittingBug(true);
     try {
-      // Auto-generate title from first line or first 50 characters
+      // Auto-generate title as a summary from description (first sentence or first 80 chars)
       const description = bugReportDescription.trim();
-      const firstLine = description.split('\n')[0];
-      const title = firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
+      // Try to get first sentence (ending with . ! or ?)
+      const firstSentenceMatch = description.match(/^[^.!?]+[.!?]/);
+      let title = firstSentenceMatch 
+        ? firstSentenceMatch[0].trim()
+        : description.split('\n')[0].trim();
+      
+      // Limit to 80 characters for a concise summary
+      if (title.length > 80) {
+        title = title.substring(0, 77) + '...';
+      }
 
       await bugReportsService.create({
         user_id: user?.id,
@@ -74,10 +82,18 @@ export default function Sidebar() {
 
     setIsSubmittingSuggestion(true);
     try {
-      // Auto-generate title from first line or first 50 characters
+      // Auto-generate title as a summary from description (first sentence or first 80 chars)
       const description = suggestionDescription.trim();
-      const firstLine = description.split('\n')[0];
-      const title = firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
+      // Try to get first sentence (ending with . ! or ?)
+      const firstSentenceMatch = description.match(/^[^.!?]+[.!?]/);
+      let title = firstSentenceMatch 
+        ? firstSentenceMatch[0].trim()
+        : description.split('\n')[0].trim();
+      
+      // Limit to 80 characters for a concise summary
+      if (title.length > 80) {
+        title = title.substring(0, 77) + '...';
+      }
 
       await bugReportsService.create({
         user_id: user?.id,
