@@ -665,8 +665,12 @@ export function calculateRateTypeBreakdown(
     };
 
     // Process each service ticket
-    serviceTicketHours.forEach(ticket => {
-      console.log('[RateTypeBreakdown] Processing ticket:', {
+    console.log('[RateTypeBreakdown] Total service tickets to process:', serviceTicketHours.length);
+    console.log('[RateTypeBreakdown] All tickets:', serviceTicketHours.map(t => ({ id: t.id, date: t.date, user_id: t.user_id, is_edited: t.is_edited })));
+    
+    serviceTicketHours.forEach((ticket, index) => {
+      console.log(`[RateTypeBreakdown] Processing ticket ${index + 1}/${serviceTicketHours.length}:`, {
+        id: ticket.id,
         ticket_user_id: ticket.user_id,
         userId,
         total_hours: ticket.total_hours,
@@ -697,6 +701,8 @@ export function calculateRateTypeBreakdown(
             totalHoursForRate = hours as number;
           }
           
+          console.log(`[RateTypeBreakdown] Rate type "${rateTypeKey}" has totalHoursForRate: ${totalHoursForRate}`);
+          
           if (totalHoursForRate > 0) {
             const rateType = rateTypeKey.toLowerCase();
             
@@ -713,6 +719,7 @@ export function calculateRateTypeBreakdown(
             }
           }
         });
+        console.log('[RateTypeBreakdown] After this ticket, serviceHoursByRateType:', { ...serviceHoursByRateType });
       } else {
         // Ticket not edited - use actual time entry hours directly (not the stale total_hours from DB)
         // The service ticket's total_hours can be stale if time entries were modified after ticket creation
