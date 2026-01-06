@@ -12,6 +12,7 @@ export default function BugReports() {
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [notes, setNotes] = useState('');
+  const [modalMouseDownPos, setModalMouseDownPos] = useState<{ x: number; y: number } | null>(null);
 
   // Redirect if not global admin
   if (!user?.global_admin) {
@@ -297,10 +298,25 @@ export default function BugReports() {
             zIndex: 9999,
             padding: '20px',
           }}
-          onClick={() => {
-            setShowDetailsModal(false);
-            setSelectedReport(null);
-            setNotes('');
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setModalMouseDownPos({ x: e.clientX, y: e.clientY });
+            }
+          }}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && modalMouseDownPos) {
+              const moved = Math.abs(e.clientX - modalMouseDownPos.x) > 5 || Math.abs(e.clientY - modalMouseDownPos.y) > 5;
+              if (!moved) {
+                setShowDetailsModal(false);
+                setSelectedReport(null);
+                setNotes('');
+              }
+              setModalMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
           }}
         >
           <div

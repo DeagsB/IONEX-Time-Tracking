@@ -79,6 +79,9 @@ export default function WeekView() {
     billable: true,
     rate_type: 'Shop Time',
   });
+  
+  // Track mouse position for modal drag detection
+  const [modalMouseDownPos, setModalMouseDownPos] = useState<{ x: number; y: number } | null>(null);
 
   // Drag resize state
   const [draggingEntry, setDraggingEntry] = useState<{
@@ -1951,7 +1954,24 @@ export default function WeekView() {
             justifyContent: 'center',
             zIndex: 1000,
           }}
-          onClick={() => setShowTimeEntryModal(false)}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setModalMouseDownPos({ x: e.clientX, y: e.clientY });
+            }
+          }}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && modalMouseDownPos) {
+              const moved = Math.abs(e.clientX - modalMouseDownPos.x) > 5 || Math.abs(e.clientY - modalMouseDownPos.y) > 5;
+              if (!moved) {
+                setShowTimeEntryModal(false);
+              }
+              setModalMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
         >
           <div
             className="card"
@@ -2181,7 +2201,24 @@ export default function WeekView() {
             justifyContent: 'center',
             zIndex: 1000,
           }}
-          onClick={() => setShowEditModal(false)}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setModalMouseDownPos({ x: e.clientX, y: e.clientY });
+            }
+          }}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && modalMouseDownPos) {
+              const moved = Math.abs(e.clientX - modalMouseDownPos.x) > 5 || Math.abs(e.clientY - modalMouseDownPos.y) > 5;
+              if (!moved) {
+                setShowEditModal(false);
+              }
+              setModalMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
         >
           <div
             style={{

@@ -12,6 +12,7 @@ export default function Projects() {
   const [showModal, setShowModal] = useState(false);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [editingProject, setEditingProject] = useState<any>(null);
+  const [modalMouseDownPos, setModalMouseDownPos] = useState<{ x: number; y: number } | null>(null);
   const [newCustomerData, setNewCustomerData] = useState({
     name: '',
     email: '',
@@ -249,10 +250,25 @@ export default function Projects() {
             zIndex: 1000,
             padding: '20px',
           }}
-          onClick={() => {
-            setShowModal(false);
-            setEditingProject(null);
-            resetForm();
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setModalMouseDownPos({ x: e.clientX, y: e.clientY });
+            }
+          }}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && modalMouseDownPos) {
+              const moved = Math.abs(e.clientX - modalMouseDownPos.x) > 5 || Math.abs(e.clientY - modalMouseDownPos.y) > 5;
+              if (!moved) {
+                setShowModal(false);
+                setEditingProject(null);
+                resetForm();
+              }
+              setModalMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
           }}
         >
           <div
@@ -440,9 +456,24 @@ export default function Projects() {
             zIndex: 1000,
             padding: '20px',
           }}
-          onClick={() => {
-            setShowCustomerModal(false);
-            setNewCustomerData({ name: '', email: '', phone: '' });
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setModalMouseDownPos({ x: e.clientX, y: e.clientY });
+            }
+          }}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && modalMouseDownPos) {
+              const moved = Math.abs(e.clientX - modalMouseDownPos.x) > 5 || Math.abs(e.clientY - modalMouseDownPos.y) > 5;
+              if (!moved) {
+                setShowCustomerModal(false);
+                setNewCustomerData({ name: '', email: '', phone: '' });
+              }
+              setModalMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
           }}
         >
           <div

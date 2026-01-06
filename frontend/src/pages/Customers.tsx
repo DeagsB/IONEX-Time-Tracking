@@ -11,6 +11,7 @@ export default function Customers() {
   const [showForm, setShowForm] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
+  const [modalMouseDownPos, setModalMouseDownPos] = useState<{ x: number; y: number } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -163,10 +164,25 @@ export default function Customers() {
             zIndex: 1000,
             padding: '20px',
           }}
-          onClick={() => {
-            setShowModal(false);
-            setEditingCustomer(null);
-            resetForm();
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setModalMouseDownPos({ x: e.clientX, y: e.clientY });
+            }
+          }}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && modalMouseDownPos) {
+              const moved = Math.abs(e.clientX - modalMouseDownPos.x) > 5 || Math.abs(e.clientY - modalMouseDownPos.y) > 5;
+              if (!moved) {
+                setShowModal(false);
+                setEditingCustomer(null);
+                resetForm();
+              }
+              setModalMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
           }}
         >
           <div

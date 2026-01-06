@@ -18,6 +18,7 @@ export default function Sidebar() {
   const [suggestionDescription, setSuggestionDescription] = useState('');
   const [isSubmittingSuggestion, setIsSubmittingSuggestion] = useState(false);
   const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
+  const [mouseDownPos, setMouseDownPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     setModalRoot(document.body);
@@ -372,15 +373,26 @@ export default function Sidebar() {
             padding: '20px',
             userSelect: 'none',
           }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!isSubmittingBug) {
-              setShowBugReportModal(false);
-              setBugReportDescription('');
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setMouseDownPos({ x: e.clientX, y: e.clientY });
             }
           }}
-          onMouseDown={(e) => e.preventDefault()}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && mouseDownPos) {
+              const moved = Math.abs(e.clientX - mouseDownPos.x) > 5 || Math.abs(e.clientY - mouseDownPos.y) > 5;
+              if (!moved && !isSubmittingBug) {
+                setShowBugReportModal(false);
+                setBugReportDescription('');
+              }
+              setMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => {
+            // Only handle click if mouse didn't move (handled by onMouseUp)
+            e.preventDefault();
+            e.stopPropagation();
+          }}
         >
           <div
             className="card"
@@ -473,15 +485,26 @@ export default function Sidebar() {
             padding: '20px',
             userSelect: 'none',
           }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (!isSubmittingSuggestion) {
-              setShowSuggestionModal(false);
-              setSuggestionDescription('');
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setMouseDownPos({ x: e.clientX, y: e.clientY });
             }
           }}
-          onMouseDown={(e) => e.preventDefault()}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && mouseDownPos) {
+              const moved = Math.abs(e.clientX - mouseDownPos.x) > 5 || Math.abs(e.clientY - mouseDownPos.y) > 5;
+              if (!moved && !isSubmittingSuggestion) {
+                setShowSuggestionModal(false);
+                setSuggestionDescription('');
+              }
+              setMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => {
+            // Only handle click if mouse didn't move (handled by onMouseUp)
+            e.preventDefault();
+            e.stopPropagation();
+          }}
         >
           <div
             className="card"
