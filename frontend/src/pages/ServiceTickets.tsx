@@ -1095,7 +1095,8 @@ export default function ServiceTickets() {
                     
                     if (ticketRecord) {
                       setIsTicketEdited(ticketRecord.is_edited || false);
-                      setEditedDescriptions((ticketRecord.edited_descriptions as Record<string, string[]>) || {});
+                      const loadedDescriptions = (ticketRecord.edited_descriptions as Record<string, string[]>) || {};
+                      setEditedDescriptions(loadedDescriptions);
                       
                       // Convert old format (Record<string, number>) to new format (Record<string, number[]>)
                       const loadedHours = (ticketRecord.edited_hours as Record<string, number | number[]>) || {};
@@ -1103,11 +1104,23 @@ export default function ServiceTickets() {
                       
                       Object.keys(loadedHours).forEach(rateType => {
                         const hours = loadedHours[rateType];
+                        const descriptions = loadedDescriptions[rateType] || [];
+                        
                         if (Array.isArray(hours)) {
-                          convertedHours[rateType] = hours;
+                          // Ensure hours array matches descriptions array length
+                          const alignedHours: number[] = [...hours];
+                          while (alignedHours.length < descriptions.length) {
+                            alignedHours.push(0);
+                          }
+                          while (alignedHours.length > descriptions.length) {
+                            alignedHours.pop();
+                          }
+                          convertedHours[rateType] = alignedHours;
                         } else {
-                          // Old format: convert to array (will be distributed when descriptions are loaded)
-                          convertedHours[rateType] = [hours as number];
+                          // Old format: distribute evenly across descriptions
+                          const totalHours = hours as number;
+                          const hoursPerDesc = descriptions.length > 0 ? totalHours / descriptions.length : 0;
+                          convertedHours[rateType] = descriptions.map(() => hoursPerDesc);
                         }
                       });
                       
