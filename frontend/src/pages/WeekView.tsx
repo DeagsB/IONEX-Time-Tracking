@@ -63,7 +63,7 @@ export default function WeekView() {
     description: '',
     project_id: '',
     hours: 0.25,
-    billable: false, // Will be updated based on department
+    billable: true, // Default to billable (will be updated based on department if Panel Shop)
     rate_type: 'Shop Time',
   });
 
