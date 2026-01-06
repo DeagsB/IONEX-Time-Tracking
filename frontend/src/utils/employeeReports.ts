@@ -119,6 +119,7 @@ export interface ServiceTicketHours {
   user_id: string;
   date: string;
   total_hours: number;
+  total_amount?: number;
   customer_id?: string;
   project_id?: string;
   is_edited?: boolean;
@@ -784,9 +785,10 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
   const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 10) / 10;
   const userId = entries[0]?.user_id || '';
 
-  // Create a map of service ticket hours by project
+  // Create a map of service ticket hours and amounts by project
   // Use edited_hours if available, otherwise use total_hours
   const ticketHoursByProject = new Map<string, number>();
+  const ticketAmountsByProject = new Map<string, number>();
   if (serviceTicketHours) {
     serviceTicketHours.forEach(ticket => {
       if (ticket.user_id === userId && ticket.project_id) {
@@ -806,8 +808,13 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
           ticketHours = Number(ticket.total_hours) || 0;
         }
         
-        const existing = ticketHoursByProject.get(ticket.project_id) || 0;
-        ticketHoursByProject.set(ticket.project_id, existing + ticketHours);
+        const existingHours = ticketHoursByProject.get(ticket.project_id) || 0;
+        ticketHoursByProject.set(ticket.project_id, existingHours + ticketHours);
+        
+        // Track total_amount from service tickets
+        const ticketAmount = Number(ticket.total_amount) || 0;
+        const existingAmount = ticketAmountsByProject.get(ticket.project_id) || 0;
+        ticketAmountsByProject.set(ticket.project_id, existingAmount + ticketAmount);
       }
     });
   }
@@ -843,13 +850,13 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
     // Round non-billable hours
     data.nonBillableHours = roundToQuarterHour(data.nonBillableHours);
     
-    // Calculate revenue: use service ticket hours for billable, rounded hours for non-billable
-    const billableRate = entries.find(e => 
-      (e.project_id || 'no-project') === projectId && e.billable
-    )?.rate || 0;
+    // Revenue: use total_amount from service tickets for billable, calculate from hours for non-billable
+    const ticketAmount = ticketAmountsByProject.get(projectId) || 0;
     const internalRate = Number(employee?.internal_rate) || 0;
     
-    data.revenue = (data.billableHours * Number(billableRate)) + (data.nonBillableHours * internalRate);
+    // Billable revenue comes from service ticket total_amount
+    // Non-billable revenue is calculated from rounded hours
+    data.revenue = ticketAmount + (data.nonBillableHours * internalRate);
   });
 
   // Convert to ProjectBreakdown format
@@ -876,9 +883,10 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
   const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 10) / 10;
   const userId = entries[0]?.user_id || '';
 
-  // Create a map of service ticket hours by customer
+  // Create a map of service ticket hours and amounts by customer
   // Use edited_hours if available, otherwise use total_hours
   const ticketHoursByCustomer = new Map<string, number>();
+  const ticketAmountsByCustomer = new Map<string, number>();
   if (serviceTicketHours) {
     serviceTicketHours.forEach(ticket => {
       if (ticket.user_id === userId && ticket.customer_id) {
@@ -898,8 +906,13 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
           ticketHours = Number(ticket.total_hours) || 0;
         }
         
-        const existing = ticketHoursByCustomer.get(ticket.customer_id) || 0;
-        ticketHoursByCustomer.set(ticket.customer_id, existing + ticketHours);
+        const existingHours = ticketHoursByCustomer.get(ticket.customer_id) || 0;
+        ticketHoursByCustomer.set(ticket.customer_id, existingHours + ticketHours);
+        
+        // Track total_amount from service tickets
+        const ticketAmount = Number(ticket.total_amount) || 0;
+        const existingAmount = ticketAmountsByCustomer.get(ticket.customer_id) || 0;
+        ticketAmountsByCustomer.set(ticket.customer_id, existingAmount + ticketAmount);
       }
     });
   }
@@ -935,13 +948,13 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
     // Round non-billable hours
     data.nonBillableHours = roundToQuarterHour(data.nonBillableHours);
     
-    // Calculate revenue: use service ticket hours for billable, rounded hours for non-billable
-    const billableRate = entries.find(e => 
-      (e.project?.customer?.id || 'no-customer') === customerId && e.billable
-    )?.rate || 0;
+    // Revenue: use total_amount from service tickets for billable, calculate from hours for non-billable
+    const ticketAmount = ticketAmountsByCustomer.get(customerId) || 0;
     const internalRate = Number(employee?.internal_rate) || 0;
     
-    data.revenue = (data.billableHours * Number(billableRate)) + (data.nonBillableHours * internalRate);
+    // Billable revenue comes from service ticket total_amount
+    // Non-billable revenue is calculated from rounded hours
+    data.revenue = ticketAmount + (data.nonBillableHours * internalRate);
   });
 
   // Convert to CustomerBreakdown format
