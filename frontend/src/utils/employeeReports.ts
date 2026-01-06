@@ -714,10 +714,10 @@ export function calculateRateTypeBreakdown(
           }
         });
       } else {
-        // Ticket not edited, distribute total_hours proportionally by rate type from matching entries
-        console.log('[RateTypeBreakdown] Ticket not edited, using total_hours:', ticket.total_hours);
+        // Ticket not edited - use actual time entry hours directly (not the stale total_hours from DB)
+        // The service ticket's total_hours can be stale if time entries were modified after ticket creation
+        console.log('[RateTypeBreakdown] Ticket not edited, ignoring stale total_hours:', ticket.total_hours);
         const ticketDate = ticket.date;
-        const ticketHours = Number(ticket.total_hours) || 0;
         
         // Find matching billable time entries for this ticket
         const matchingEntries = entries.filter(entry => {
@@ -728,39 +728,29 @@ export function calculateRateTypeBreakdown(
           return true;
         });
 
-        console.log('[RateTypeBreakdown] Matching entries for ticket:', matchingEntries.length, 'ticketHours:', ticketHours);
+        console.log('[RateTypeBreakdown] Matching entries for ticket:', matchingEntries.length);
 
         if (matchingEntries.length > 0) {
-          // Calculate total hours from matching entries to get proportions
-          const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-          console.log('[RateTypeBreakdown] totalEntryHours from matching entries:', totalEntryHours);
-          
-          if (totalEntryHours > 0) {
-            // Distribute ticket hours proportionally by rate type from entries
-            matchingEntries.forEach(entry => {
-              const entryHours = Number(entry.hours) || 0;
-              const proportion = entryHours / totalEntryHours;
-              const ticketHoursForThisRate = ticketHours * proportion;
-              const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-              console.log('[RateTypeBreakdown] Entry proportion:', { entryHours, proportion, ticketHoursForThisRate, rateType });
+          // Use actual entry hours directly by rate type
+          matchingEntries.forEach(entry => {
+            const entryHours = Number(entry.hours) || 0;
+            const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+            console.log('[RateTypeBreakdown] Using actual entry hours:', { entryHours, rateType });
 
-              if (rateType.includes('shop') && rateType.includes('overtime')) {
-                serviceHoursByRateType.shopOvertime += ticketHoursForThisRate;
-              } else if (rateType.includes('field') && rateType.includes('overtime')) {
-                serviceHoursByRateType.fieldOvertime += ticketHoursForThisRate;
-              } else if (rateType.includes('field')) {
-                serviceHoursByRateType.fieldTime += ticketHoursForThisRate;
-              } else if (rateType.includes('travel')) {
-                serviceHoursByRateType.travelTime += ticketHoursForThisRate;
-              } else {
-                serviceHoursByRateType.shopTime += ticketHoursForThisRate;
-              }
-            });
-          }
-        } else {
-          // No matching entries found, default to shop time
-          serviceHoursByRateType.shopTime += ticketHours;
+            if (rateType.includes('shop') && rateType.includes('overtime')) {
+              serviceHoursByRateType.shopOvertime += entryHours;
+            } else if (rateType.includes('field') && rateType.includes('overtime')) {
+              serviceHoursByRateType.fieldOvertime += entryHours;
+            } else if (rateType.includes('field')) {
+              serviceHoursByRateType.fieldTime += entryHours;
+            } else if (rateType.includes('travel')) {
+              serviceHoursByRateType.travelTime += entryHours;
+            } else {
+              serviceHoursByRateType.shopTime += entryHours;
+            }
+          });
         }
+        // If no matching entries, hours stay at 0 (which is correct - no billable hours for this ticket)
       }
     });
 
