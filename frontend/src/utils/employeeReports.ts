@@ -198,7 +198,7 @@ export function aggregateEmployeeMetrics(
                   rateTypeBreakdown.shopOvertime.hours + 
                   rateTypeBreakdown.fieldOvertime.hours;
 
-  // Revenue is the sum of all billable rate type revenues from service tickets
+  // Revenue is the sum of all billable rate type revenues (hours × rate)
   totalRevenue = rateTypeBreakdown.shopTime.revenue + 
                  rateTypeBreakdown.fieldTime.revenue + 
                  rateTypeBreakdown.travelTime.revenue + 
@@ -211,23 +211,78 @@ export function aggregateEmployeeMetrics(
     return Math.ceil(hours * 10) / 10;
   };
 
-  // Calculate total payroll hours (rounded up to 0.10 for each rate type)
-  // This is what we actually pay the employee
-  let totalPayrollHours = 0;
+  // Calculate payroll hours by rate type (actual hours worked from time entries)
+  const payrollHoursByRateType = {
+    shopTime: 0,
+    fieldTime: 0,
+    travelTime: 0,
+    shopOvertime: 0,
+    fieldOvertime: 0,
+    internal: 0,
+  };
+  
   entries.forEach(entry => {
-    if (entry.billable) {
-      totalPayrollHours += Number(entry.hours) || 0;
+    const hours = Number(entry.hours) || 0;
+    const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+    const isInternal = !entry.billable;
+    
+    if (isInternal) {
+      payrollHoursByRateType.internal += hours;
+    } else if (rateType.includes('shop') && rateType.includes('overtime')) {
+      payrollHoursByRateType.shopOvertime += hours;
+    } else if (rateType.includes('field') && rateType.includes('overtime')) {
+      payrollHoursByRateType.fieldOvertime += hours;
+    } else if (rateType.includes('field')) {
+      payrollHoursByRateType.fieldTime += hours;
+    } else if (rateType.includes('travel')) {
+      payrollHoursByRateType.travelTime += hours;
+    } else {
+      payrollHoursByRateType.shopTime += hours;
     }
   });
-  // Round the total payroll hours to nearest 0.10
-  const roundedPayrollHours = roundToQuarterHourForPayroll(totalPayrollHours);
 
-  // Non-billable hours = Payroll hours paid - Service ticket hours billed
-  // This represents time paid but not billed to customer (e.g., rounding difference)
-  // If there's internal time entries, add those too
-  const internalTimeEntryHours = rateTypeBreakdown.internalTime.hours;
-  const roundingDifference = Math.max(0, roundedPayrollHours - billableHours);
-  const nonBillableHours = internalTimeEntryHours + roundingDifference;
+  // Calculate non-billable hours:
+  // 1. Start with actual internal time entries (non-billable work)
+  // 2. For each billable rate type, if payroll hours > service ticket hours, 
+  //    the difference is unbilled work that moves to non-billable
+  // 3. EXCEPTION: If service ticket hours > payroll hours (e.g., 4-hour minimum for 2-hour work),
+  //    DON'T deduct from non-billable - this is minimum billing, not actual work transfer
+  const internalTimeEntryHours = payrollHoursByRateType.internal;
+  
+  // Calculate unbilled work for each billable rate type
+  // Only add positive differences (work done but not billed)
+  // Negative differences (billed more than worked, like minimums) don't affect non-billable
+  const unbilledShopTime = Math.max(0, payrollHoursByRateType.shopTime - rateTypeBreakdown.shopTime.hours);
+  const unbilledFieldTime = Math.max(0, payrollHoursByRateType.fieldTime - rateTypeBreakdown.fieldTime.hours);
+  const unbilledTravelTime = Math.max(0, payrollHoursByRateType.travelTime - rateTypeBreakdown.travelTime.hours);
+  const unbilledShopOT = Math.max(0, payrollHoursByRateType.shopOvertime - rateTypeBreakdown.shopOvertime.hours);
+  const unbilledFieldOT = Math.max(0, payrollHoursByRateType.fieldOvertime - rateTypeBreakdown.fieldOvertime.hours);
+  
+  const totalUnbilledWork = unbilledShopTime + unbilledFieldTime + unbilledTravelTime + unbilledShopOT + unbilledFieldOT;
+  
+  // Non-billable hours = internal time entries + unbilled work from billable rate types
+  const nonBillableHours = internalTimeEntryHours + totalUnbilledWork;
+  
+  console.log('[Non-Billable Calculation]:', {
+    internalTimeEntryHours,
+    payrollHours: payrollHoursByRateType,
+    serviceTicketHours: {
+      shopTime: rateTypeBreakdown.shopTime.hours,
+      fieldTime: rateTypeBreakdown.fieldTime.hours,
+      travelTime: rateTypeBreakdown.travelTime.hours,
+      shopOvertime: rateTypeBreakdown.shopOvertime.hours,
+      fieldOvertime: rateTypeBreakdown.fieldOvertime.hours,
+    },
+    unbilled: {
+      shopTime: unbilledShopTime,
+      fieldTime: unbilledFieldTime,
+      travelTime: unbilledTravelTime,
+      shopOT: unbilledShopOT,
+      fieldOT: unbilledFieldOT,
+    },
+    totalUnbilledWork,
+    nonBillableHours,
+  });
 
   // Update the rate type breakdown to reflect the non-billable hours (for display)
   rateTypeBreakdown.internalTime.hours = nonBillableHours;
@@ -790,41 +845,84 @@ export function calculateRateTypeBreakdown(
 // Calculate breakdown by project
 // Hours: billable = service ticket hours, non-billable = payroll hours (rounded)
 // Total = billable + non-billable
+// Revenue = billable hours × rate (calculated, not from total_amount)
 export function calculateProjectBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): ProjectBreakdown[] {
   const projectMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
   const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 10) / 10;
   const userId = entries[0]?.user_id || '';
 
-  // Create a map of service ticket hours and amounts by project
-  // Use edited_hours if available, otherwise use total_hours
+  // Helper function to get billable rate for a rate type
+  const getBillableRate = (rateType: string): number => {
+    if (employee) {
+      const rt = rateType.toLowerCase();
+      if (rt.includes('shop') && rt.includes('overtime')) {
+        return Number(employee.shop_ot_rate) || 0;
+      } else if (rt.includes('field') && rt.includes('overtime')) {
+        return Number(employee.field_ot_rate) || 0;
+      } else if (rt.includes('field')) {
+        return Number(employee.ft_rate) || 0;
+      } else if (rt.includes('travel')) {
+        return Number(employee.tt_rate) || 0;
+      } else {
+        return Number(employee.rt_rate) || 0;
+      }
+    }
+    return 0;
+  };
+
+  // Create a map of service ticket hours by project, broken down by rate type
+  // Use edited_hours if available, otherwise use total_hours and distribute by entry rate types
   const ticketHoursByProject = new Map<string, number>();
-  const ticketAmountsByProject = new Map<string, number>();
+  const ticketRevenueByProject = new Map<string, number>();
+  
   if (serviceTicketHours) {
     serviceTicketHours.forEach(ticket => {
       if (ticket.user_id === userId && ticket.project_id) {
         let ticketHours = 0;
+        let ticketRevenue = 0;
         
-        // If ticket has been edited, sum the edited_hours
+        // If ticket has been edited, sum the edited_hours and calculate revenue per rate type
         if (ticket.is_edited && ticket.edited_hours) {
-          Object.values(ticket.edited_hours).forEach(hours => {
+          Object.entries(ticket.edited_hours).forEach(([rateType, hours]) => {
+            let hoursForRate = 0;
             if (Array.isArray(hours)) {
-              ticketHours += hours.reduce((sum, h) => sum + (h || 0), 0);
+              hoursForRate = hours.reduce((sum, h) => sum + (h || 0), 0);
             } else {
-              ticketHours += hours as number;
+              hoursForRate = hours as number;
             }
+            ticketHours += hoursForRate;
+            // Calculate revenue as hours × rate for this rate type
+            ticketRevenue += hoursForRate * getBillableRate(rateType);
           });
         } else {
-          // Use total_hours if not edited
+          // Use total_hours if not edited - need to find rate type from matching entries
           ticketHours = Number(ticket.total_hours) || 0;
+          // Find matching entries to determine rate type distribution
+          const matchingEntries = entries.filter(e => 
+            e.billable && 
+            e.project_id === ticket.project_id && 
+            e.date === ticket.date
+          );
+          const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+          
+          if (totalEntryHours > 0) {
+            matchingEntries.forEach(entry => {
+              const proportion = (Number(entry.hours) || 0) / totalEntryHours;
+              const proportionalHours = ticketHours * proportion;
+              const rateType = entry.rate_type || 'Shop Time';
+              ticketRevenue += proportionalHours * getBillableRate(rateType);
+            });
+          } else {
+            // Default to shop rate if no matching entries
+            ticketRevenue = ticketHours * getBillableRate('Shop Time');
+          }
         }
         
         const existingHours = ticketHoursByProject.get(ticket.project_id) || 0;
         ticketHoursByProject.set(ticket.project_id, existingHours + ticketHours);
         
-        // Track total_amount from service tickets
-        const ticketAmount = Number(ticket.total_amount) || 0;
-        const existingAmount = ticketAmountsByProject.get(ticket.project_id) || 0;
-        ticketAmountsByProject.set(ticket.project_id, existingAmount + ticketAmount);
+        const existingRevenue = ticketRevenueByProject.get(ticket.project_id) || 0;
+        ticketRevenueByProject.set(ticket.project_id, existingRevenue + ticketRevenue);
       }
     });
   }
@@ -860,13 +958,13 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
     // Round non-billable hours
     data.nonBillableHours = roundToQuarterHour(data.nonBillableHours);
     
-    // Revenue: use total_amount from service tickets for billable, calculate from hours for non-billable
-    const ticketAmount = ticketAmountsByProject.get(projectId) || 0;
+    // Revenue: billable revenue = hours × rate (from service tickets), non-billable = hours × internal rate
+    const ticketRevenue = ticketRevenueByProject.get(projectId) || 0;
     const internalRate = Number(employee?.internal_rate) || 0;
     
-    // Billable revenue comes from service ticket total_amount
-    // Non-billable revenue is calculated from rounded hours
-    data.revenue = ticketAmount + (data.nonBillableHours * internalRate);
+    // Billable revenue comes from calculated hours × rate
+    // Non-billable revenue is calculated from rounded hours × internal rate
+    data.revenue = ticketRevenue + (data.nonBillableHours * internalRate);
   });
 
   // Convert to ProjectBreakdown format
@@ -888,41 +986,83 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
 // Calculate breakdown by customer
 // Hours: billable = service ticket hours, non-billable = payroll hours (rounded)
 // Total = billable + non-billable
+// Revenue = billable hours × rate (calculated, not from total_amount)
 export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): CustomerBreakdown[] {
   const customerMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
   const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 10) / 10;
   const userId = entries[0]?.user_id || '';
 
-  // Create a map of service ticket hours and amounts by customer
-  // Use edited_hours if available, otherwise use total_hours
+  // Helper function to get billable rate for a rate type
+  const getBillableRate = (rateType: string): number => {
+    if (employee) {
+      const rt = rateType.toLowerCase();
+      if (rt.includes('shop') && rt.includes('overtime')) {
+        return Number(employee.shop_ot_rate) || 0;
+      } else if (rt.includes('field') && rt.includes('overtime')) {
+        return Number(employee.field_ot_rate) || 0;
+      } else if (rt.includes('field')) {
+        return Number(employee.ft_rate) || 0;
+      } else if (rt.includes('travel')) {
+        return Number(employee.tt_rate) || 0;
+      } else {
+        return Number(employee.rt_rate) || 0;
+      }
+    }
+    return 0;
+  };
+
+  // Create a map of service ticket hours by customer, calculating revenue from hours × rate
   const ticketHoursByCustomer = new Map<string, number>();
-  const ticketAmountsByCustomer = new Map<string, number>();
+  const ticketRevenueByCustomer = new Map<string, number>();
+  
   if (serviceTicketHours) {
     serviceTicketHours.forEach(ticket => {
       if (ticket.user_id === userId && ticket.customer_id) {
         let ticketHours = 0;
+        let ticketRevenue = 0;
         
-        // If ticket has been edited, sum the edited_hours
+        // If ticket has been edited, sum the edited_hours and calculate revenue per rate type
         if (ticket.is_edited && ticket.edited_hours) {
-          Object.values(ticket.edited_hours).forEach(hours => {
+          Object.entries(ticket.edited_hours).forEach(([rateType, hours]) => {
+            let hoursForRate = 0;
             if (Array.isArray(hours)) {
-              ticketHours += hours.reduce((sum, h) => sum + (h || 0), 0);
+              hoursForRate = hours.reduce((sum, h) => sum + (h || 0), 0);
             } else {
-              ticketHours += hours as number;
+              hoursForRate = hours as number;
             }
+            ticketHours += hoursForRate;
+            // Calculate revenue as hours × rate for this rate type
+            ticketRevenue += hoursForRate * getBillableRate(rateType);
           });
         } else {
-          // Use total_hours if not edited
+          // Use total_hours if not edited - need to find rate type from matching entries
           ticketHours = Number(ticket.total_hours) || 0;
+          // Find matching entries to determine rate type distribution
+          const matchingEntries = entries.filter(e => 
+            e.billable && 
+            e.project?.customer?.id === ticket.customer_id && 
+            e.date === ticket.date
+          );
+          const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+          
+          if (totalEntryHours > 0) {
+            matchingEntries.forEach(entry => {
+              const proportion = (Number(entry.hours) || 0) / totalEntryHours;
+              const proportionalHours = ticketHours * proportion;
+              const rateType = entry.rate_type || 'Shop Time';
+              ticketRevenue += proportionalHours * getBillableRate(rateType);
+            });
+          } else {
+            // Default to shop rate if no matching entries
+            ticketRevenue = ticketHours * getBillableRate('Shop Time');
+          }
         }
         
         const existingHours = ticketHoursByCustomer.get(ticket.customer_id) || 0;
         ticketHoursByCustomer.set(ticket.customer_id, existingHours + ticketHours);
         
-        // Track total_amount from service tickets
-        const ticketAmount = Number(ticket.total_amount) || 0;
-        const existingAmount = ticketAmountsByCustomer.get(ticket.customer_id) || 0;
-        ticketAmountsByCustomer.set(ticket.customer_id, existingAmount + ticketAmount);
+        const existingRevenue = ticketRevenueByCustomer.get(ticket.customer_id) || 0;
+        ticketRevenueByCustomer.set(ticket.customer_id, existingRevenue + ticketRevenue);
       }
     });
   }
@@ -958,13 +1098,13 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
     // Round non-billable hours
     data.nonBillableHours = roundToQuarterHour(data.nonBillableHours);
     
-    // Revenue: use total_amount from service tickets for billable, calculate from hours for non-billable
-    const ticketAmount = ticketAmountsByCustomer.get(customerId) || 0;
+    // Revenue: billable revenue = hours × rate (from service tickets), non-billable = hours × internal rate
+    const ticketRevenue = ticketRevenueByCustomer.get(customerId) || 0;
     const internalRate = Number(employee?.internal_rate) || 0;
     
-    // Billable revenue comes from service ticket total_amount
-    // Non-billable revenue is calculated from rounded hours
-    data.revenue = ticketAmount + (data.nonBillableHours * internalRate);
+    // Billable revenue comes from calculated hours × rate
+    // Non-billable revenue is calculated from rounded hours × internal rate
+    data.revenue = ticketRevenue + (data.nonBillableHours * internalRate);
   });
 
   // Convert to CustomerBreakdown format
