@@ -14,6 +14,9 @@ export default function Sidebar() {
   const [showBugReportModal, setShowBugReportModal] = useState(false);
   const [bugReportDescription, setBugReportDescription] = useState('');
   const [isSubmittingBug, setIsSubmittingBug] = useState(false);
+  const [showSuggestionModal, setShowSuggestionModal] = useState(false);
+  const [suggestionDescription, setSuggestionDescription] = useState('');
+  const [isSubmittingSuggestion, setIsSubmittingSuggestion] = useState(false);
   const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -59,6 +62,39 @@ export default function Sidebar() {
       alert(`Failed to submit bug report: ${error.message || 'Unknown error'}`);
     } finally {
       setIsSubmittingBug(false);
+    }
+  };
+
+  const handleSubmitSuggestion = async () => {
+    if (!suggestionDescription.trim()) {
+      alert('Please describe your suggestion.');
+      return;
+    }
+
+    setIsSubmittingSuggestion(true);
+    try {
+      // Auto-generate title from first line or first 50 characters
+      const description = suggestionDescription.trim();
+      const firstLine = description.split('\n')[0];
+      const title = firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
+
+      await bugReportsService.create({
+        user_id: user?.id,
+        user_email: user?.email,
+        user_name: `${user?.firstName} ${user?.lastName}`,
+        title: `[Suggestion] ${title || 'Improvement Suggestion'}`,
+        description: description,
+        priority: 'low', // Suggestions are lower priority than bugs
+      });
+      
+      alert('Suggestion submitted successfully! Thank you for your feedback.');
+      setSuggestionDescription('');
+      setShowSuggestionModal(false);
+    } catch (error: any) {
+      console.error('Error submitting suggestion:', error);
+      alert(`Failed to submit suggestion: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsSubmittingSuggestion(false);
     }
   };
 
@@ -201,7 +237,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Report Bug and Sign Out Buttons at Bottom */}
+      {/* Suggest, Report Bug and Sign Out Buttons at Bottom */}
       <div style={{
         position: 'absolute',
         bottom: '24px',
@@ -209,6 +245,44 @@ export default function Sidebar() {
         right: '0',
         padding: '0 15px'
       }}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setShowSuggestionModal(true);
+          }}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            backgroundColor: 'transparent',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            color: 'var(--text-primary)',
+            fontSize: '14px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            marginBottom: '10px',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+            e.currentTarget.style.borderColor = '#10b981';
+            e.currentTarget.style.color = '#10b981';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.borderColor = 'var(--border-color)';
+            e.currentTarget.style.color = 'var(--text-primary)';
+          }}
+        >
+          <span>💡</span>
+          <span>Suggest Improvement</span>
+        </button>
         <button
           type="button"
           onClick={(e) => {
@@ -375,6 +449,108 @@ export default function Sidebar() {
                 disabled={isSubmittingBug || !bugReportDescription.trim()}
               >
                 {isSubmittingBug ? 'Submitting...' : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        modalRoot
+      )}
+
+      {/* Suggestion Modal - Rendered via Portal */}
+      {showSuggestionModal && modalRoot && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+            userSelect: 'none',
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isSubmittingSuggestion) {
+              setShowSuggestionModal(false);
+              setSuggestionDescription('');
+            }
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              position: 'relative',
+              zIndex: 10000,
+              userSelect: 'text',
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3>💡 Suggest an Improvement</h3>
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  if (!isSubmittingSuggestion) {
+                    setShowSuggestionModal(false);
+                    setSuggestionDescription('');
+                  }
+                }}
+                disabled={isSubmittingSuggestion}
+                style={{ padding: '5px 10px', fontSize: '14px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              <label className="label">Describe your suggestion</label>
+              <textarea
+                className="input"
+                rows={10}
+                value={suggestionDescription}
+                onChange={(e) => setSuggestionDescription(e.target.value)}
+                placeholder="Share your idea for improving the application..."
+                disabled={isSubmittingSuggestion}
+                autoFocus
+                style={{ width: '100%', resize: 'none' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                className="button button-secondary"
+                onClick={() => {
+                  if (!isSubmittingSuggestion) {
+                    setShowSuggestionModal(false);
+                    setSuggestionDescription('');
+                  }
+                }}
+                disabled={isSubmittingSuggestion}
+              >
+                Cancel
+              </button>
+              <button
+                className="button button-primary"
+                onClick={handleSubmitSuggestion}
+                disabled={isSubmittingSuggestion || !suggestionDescription.trim()}
+                style={{ backgroundColor: '#10b981' }}
+              >
+                {isSubmittingSuggestion ? 'Submitting...' : 'Submit'}
               </button>
             </div>
           </div>
