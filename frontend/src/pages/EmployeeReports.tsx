@@ -959,23 +959,28 @@ export default function EmployeeReports() {
                             { label: 'Travel Time', data: metrics.rateTypeBreakdown.travelTime },
                             { label: 'Shop OT', data: metrics.rateTypeBreakdown.shopOvertime },
                             { label: 'Field OT', data: metrics.rateTypeBreakdown.fieldOvertime },
-                          ].filter(row => row.data.hours > 0).map((row, idx) => (
-                            <tr key={row.label} style={{ 
-                              backgroundColor: idx % 2 === 1 ? 'var(--bg-secondary)' : 'transparent'
-                            }}>
-                              <td style={{ padding: '4px 8px 4px 0' }}>{row.label}</td>
-                              <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatHoursDecimal(row.data.hours)}</td>
-                              <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatCurrency(row.data.revenue)}</td>
-                              <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatCurrency(row.data.cost)}</td>
-                              <td style={{ 
-                                textAlign: 'right', 
-                                padding: '4px 0 4px 8px',
-                                color: row.data.profit >= 0 ? '#10b981' : '#ef4444'
+                          ].filter(row => row.data.hours > 0).map((row, idx) => {
+                            const isNonBillable = row.label === 'Non-Billable';
+                            return (
+                              <tr key={row.label} style={{ 
+                                backgroundColor: idx % 2 === 1 ? 'var(--bg-secondary)' : 'transparent'
                               }}>
-                                {formatCurrency(row.data.profit)}
-                              </td>
-                            </tr>
-                          ))}
+                                <td style={{ padding: '4px 8px 4px 0' }}>{row.label}</td>
+                                <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatHoursDecimal(row.data.hours)}</td>
+                                <td style={{ textAlign: 'right', padding: '4px 8px', color: isNonBillable ? 'var(--text-secondary)' : undefined }}>
+                                  {isNonBillable ? formatCurrency(0) : formatCurrency(row.data.revenue)}
+                                </td>
+                                <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatCurrency(row.data.cost)}</td>
+                                <td style={{ 
+                                  textAlign: 'right', 
+                                  padding: '4px 0 4px 8px',
+                                  color: row.data.profit >= 0 ? '#10b981' : '#ef4444'
+                                }}>
+                                  {formatCurrency(row.data.profit)}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                         <tfoot>
                           <tr style={{ borderTop: '1px solid var(--border-color)', fontWeight: '600' }}>
@@ -992,7 +997,7 @@ export default function EmployeeReports() {
                             </td>
                             <td style={{ textAlign: 'right', padding: '4px 8px' }}>
                               {formatCurrency(
-                                metrics.rateTypeBreakdown.internalTime.revenue +
+                                // Non-billable hours are never billed, so exclude internalTime.revenue
                                 metrics.rateTypeBreakdown.shopTime.revenue +
                                 metrics.rateTypeBreakdown.fieldTime.revenue +
                                 metrics.rateTypeBreakdown.travelTime.revenue +
