@@ -933,35 +933,107 @@ export default function EmployeeReports() {
                 {/* Expanded Content */}
                 {expandedEmployee === metrics.userId && (
                   <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                    {/* Rate Type Breakdown */}
+                    {/* Rate Type Breakdown - Table Grid */}
                     <div style={{ marginBottom: '16px' }}>
                       <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '600' }}>Hours by Rate Type</h4>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                          <span>Non-Billable Hours</span>
-                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.internalTime.hours)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                          <span>Shop Time</span>
-                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.shopTime.hours)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                          <span>Field Time</span>
-                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.fieldTime.hours)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                          <span>Travel Time</span>
-                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.travelTime.hours)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                          <span>Shop Overtime</span>
-                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.shopOvertime.hours)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                          <span>Field Overtime</span>
-                          <span>{formatHoursDecimal(metrics.rateTypeBreakdown.fieldOvertime.hours)}</span>
-                        </div>
-                      </div>
+                      <table style={{ 
+                        width: '100%', 
+                        borderCollapse: 'collapse', 
+                        fontSize: '11px',
+                        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace'
+                      }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <th style={{ textAlign: 'left', padding: '4px 8px 4px 0', fontWeight: '600', color: 'var(--text-secondary)' }}>Type</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: '600', color: 'var(--text-secondary)' }}>Hours</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: '600', color: 'var(--text-secondary)' }}>Billed</th>
+                            <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: '600', color: 'var(--text-secondary)' }}>Cost</th>
+                            <th style={{ textAlign: 'right', padding: '4px 0 4px 8px', fontWeight: '600', color: 'var(--text-secondary)' }}>Margin</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { label: 'Non-Billable', data: metrics.rateTypeBreakdown.internalTime },
+                            { label: 'Shop Time', data: metrics.rateTypeBreakdown.shopTime },
+                            { label: 'Field Time', data: metrics.rateTypeBreakdown.fieldTime },
+                            { label: 'Travel Time', data: metrics.rateTypeBreakdown.travelTime },
+                            { label: 'Shop OT', data: metrics.rateTypeBreakdown.shopOvertime },
+                            { label: 'Field OT', data: metrics.rateTypeBreakdown.fieldOvertime },
+                          ].filter(row => row.data.hours > 0).map((row, idx) => (
+                            <tr key={row.label} style={{ 
+                              backgroundColor: idx % 2 === 1 ? 'var(--bg-secondary)' : 'transparent'
+                            }}>
+                              <td style={{ padding: '4px 8px 4px 0' }}>{row.label}</td>
+                              <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatHoursDecimal(row.data.hours)}</td>
+                              <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatCurrency(row.data.revenue)}</td>
+                              <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatCurrency(row.data.cost)}</td>
+                              <td style={{ 
+                                textAlign: 'right', 
+                                padding: '4px 0 4px 8px',
+                                color: row.data.profit >= 0 ? '#10b981' : '#ef4444'
+                              }}>
+                                {formatCurrency(row.data.profit)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ borderTop: '1px solid var(--border-color)', fontWeight: '600' }}>
+                            <td style={{ padding: '4px 8px 4px 0' }}>Total</td>
+                            <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                              {formatHoursDecimal(
+                                metrics.rateTypeBreakdown.internalTime.hours +
+                                metrics.rateTypeBreakdown.shopTime.hours +
+                                metrics.rateTypeBreakdown.fieldTime.hours +
+                                metrics.rateTypeBreakdown.travelTime.hours +
+                                metrics.rateTypeBreakdown.shopOvertime.hours +
+                                metrics.rateTypeBreakdown.fieldOvertime.hours
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                              {formatCurrency(
+                                metrics.rateTypeBreakdown.internalTime.revenue +
+                                metrics.rateTypeBreakdown.shopTime.revenue +
+                                metrics.rateTypeBreakdown.fieldTime.revenue +
+                                metrics.rateTypeBreakdown.travelTime.revenue +
+                                metrics.rateTypeBreakdown.shopOvertime.revenue +
+                                metrics.rateTypeBreakdown.fieldOvertime.revenue
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                              {formatCurrency(
+                                metrics.rateTypeBreakdown.internalTime.cost +
+                                metrics.rateTypeBreakdown.shopTime.cost +
+                                metrics.rateTypeBreakdown.fieldTime.cost +
+                                metrics.rateTypeBreakdown.travelTime.cost +
+                                metrics.rateTypeBreakdown.shopOvertime.cost +
+                                metrics.rateTypeBreakdown.fieldOvertime.cost
+                              )}
+                            </td>
+                            <td style={{ 
+                              textAlign: 'right', 
+                              padding: '4px 0 4px 8px',
+                              color: (
+                                metrics.rateTypeBreakdown.internalTime.profit +
+                                metrics.rateTypeBreakdown.shopTime.profit +
+                                metrics.rateTypeBreakdown.fieldTime.profit +
+                                metrics.rateTypeBreakdown.travelTime.profit +
+                                metrics.rateTypeBreakdown.shopOvertime.profit +
+                                metrics.rateTypeBreakdown.fieldOvertime.profit
+                              ) >= 0 ? '#10b981' : '#ef4444'
+                            }}>
+                              {formatCurrency(
+                                metrics.rateTypeBreakdown.internalTime.profit +
+                                metrics.rateTypeBreakdown.shopTime.profit +
+                                metrics.rateTypeBreakdown.fieldTime.profit +
+                                metrics.rateTypeBreakdown.travelTime.profit +
+                                metrics.rateTypeBreakdown.shopOvertime.profit +
+                                metrics.rateTypeBreakdown.fieldOvertime.profit
+                              )}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
 
                     {/* Top Projects */}
