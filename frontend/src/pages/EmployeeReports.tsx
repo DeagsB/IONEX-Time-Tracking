@@ -967,8 +967,8 @@ export default function EmployeeReports() {
                               }}>
                                 <td style={{ padding: '4px 8px 4px 0' }}>{row.label}</td>
                                 <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatHoursDecimal(row.data.hours)}</td>
-                                <td style={{ textAlign: 'right', padding: '4px 8px', color: isNonBillable ? 'var(--text-secondary)' : undefined }}>
-                                  {isNonBillable ? formatCurrency(0) : formatCurrency(row.data.revenue)}
+                                <td style={{ textAlign: 'right', padding: '4px 8px', color: isNonBillable ? '#ef4444' : undefined }}>
+                                  {formatCurrency(row.data.revenue)}
                                 </td>
                                 <td style={{ textAlign: 'right', padding: '4px 8px' }}>{formatCurrency(row.data.cost)}</td>
                                 <td style={{ 
