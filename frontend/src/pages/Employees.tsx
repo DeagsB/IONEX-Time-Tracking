@@ -322,8 +322,8 @@ export default function Employees() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Regular Time (RT)</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '12px', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1' }}>$</span>
                   <input
                     type="number"
                     step="0.01"
@@ -337,8 +337,8 @@ export default function Employees() {
               </div>
               <div className="form-group">
                 <label className="label">Travel Time (TT)</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '12px', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1' }}>$</span>
                   <input
                     type="number"
                     step="0.01"
@@ -352,8 +352,8 @@ export default function Employees() {
               </div>
               <div className="form-group">
                 <label className="label">Field Time (FT)</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '12px', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1' }}>$</span>
                   <input
                     type="number"
                     step="0.01"
@@ -389,8 +389,8 @@ export default function Employees() {
             <div style={{ display: 'grid', gridTemplateColumns: formData.department === 'Panel Shop' && !isAdmin ? '1fr 1fr' : '1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Shop Pay Rate</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '12px', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1' }}>$</span>
                   <input
                     type="number"
                     step="0.01"
@@ -421,8 +421,8 @@ export default function Employees() {
               )}
               <div className="form-group">
                 <label className="label">Internal Rate</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '12px', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1' }}>$</span>
                   <input
                     type="number"
                     step="0.01"
