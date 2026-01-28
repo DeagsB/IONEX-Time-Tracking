@@ -902,6 +902,7 @@ export const serviceTicketsService = {
   /**
    * Get the next available ticket number for an employee
    * Format: {initials}_{YY}{sequence} e.g., "DB_25001"
+   * This function finds the first available sequence number, including gaps from unassigned tickets
    * @param userInitials - Employee initials
    * @param isDemo - If true, queries the demo table; otherwise queries the regular table
    */
@@ -909,27 +910,39 @@ export const serviceTicketsService = {
     const year = new Date().getFullYear() % 100; // Get last 2 digits of year
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     
-    // Find the highest sequence number for this employee this year
+    // Get all used sequence numbers for this employee this year (excluding nulls from unassigned tickets)
     const { data, error } = await supabase
       .from(tableName)
       .select('sequence_number')
       .eq('employee_initials', userInitials.toUpperCase())
       .eq('year', year)
-      .order('sequence_number', { ascending: false })
-      .limit(1);
+      .not('sequence_number', 'is', null)
+      .order('sequence_number', { ascending: true });
 
     if (error) {
       console.error(`[getNextTicketNumber] Error querying ${tableName}:`, error);
       throw error;
     }
 
-    // If no records found, start at 001
-    // If records found, increment from the highest
-    const nextSequence = data && data.length > 0 ? data[0].sequence_number + 1 : 1;
+    let nextSequence = 1;
+    
+    if (data && data.length > 0) {
+      // Build a set of used sequence numbers
+      const usedSequences = new Set(data.map(d => d.sequence_number));
+      
+      // Find the first available sequence number (fill gaps from unassigned tickets)
+      nextSequence = 1;
+      while (usedSequences.has(nextSequence)) {
+        nextSequence++;
+      }
+      
+      console.log(`[getNextTicketNumber] ${isDemo ? 'DEMO' : 'REGULAR'} - Table: ${tableName}, Used sequences: [${Array.from(usedSequences).sort((a, b) => a - b).join(', ')}], Next available: ${nextSequence}`);
+    } else {
+      console.log(`[getNextTicketNumber] ${isDemo ? 'DEMO' : 'REGULAR'} - Table: ${tableName}, No existing tickets, starting at 1`);
+    }
+    
     const paddedSequence = String(nextSequence).padStart(3, '0');
     const ticketNumber = `${userInitials.toUpperCase()}_${year}${paddedSequence}`;
-    
-    console.log(`[getNextTicketNumber] ${isDemo ? 'DEMO' : 'REGULAR'} - Table: ${tableName}, Found ${data?.length || 0} tickets, Highest sequence: ${data?.[0]?.sequence_number || 'none'}, Next sequence: ${nextSequence}, Ticket: ${ticketNumber}`);
     
     // For demo mode, if we found tickets but they shouldn't exist (table should be wiped),
     // log a warning but still proceed
