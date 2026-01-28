@@ -985,7 +985,7 @@ export default function ServiceTickets() {
                 disabled={isBulkExporting}
                 style={{
                   padding: '8px 16px',
-                  backgroundColor: '#10b981',
+                  backgroundColor: '#4caf50',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -995,7 +995,7 @@ export default function ServiceTickets() {
                   opacity: isBulkExporting ? 0.6 : 1,
                 }}
               >
-                ✓ Assign Ticket Numbers
+                ✓ Approve Selected
               </button>
               <button
                 onClick={handleBulkUnassignTicketNumbers}
@@ -1012,7 +1012,7 @@ export default function ServiceTickets() {
                   opacity: isBulkExporting ? 0.6 : 1,
                 }}
               >
-                ✗ Unassign Ticket Numbers
+                ✗ Unapprove Selected
               </button>
               <button
                 onClick={handleBulkExportPdf}
@@ -1256,66 +1256,51 @@ export default function ServiceTickets() {
                     {ticket.hoursByRateType['Field Overtime'].toFixed(1)}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center' }}>
-                      {(() => {
-                        const existing = existingTickets?.find(
-                          et => et.date === ticket.date && 
-                                et.user_id === ticket.userId && 
-                                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-                        );
-                        const hasTicketNumber = existing?.ticket_number;
-                        
-                        return hasTicketNumber ? (
-                          <button
-                            className="button button-secondary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUnassignTicketNumber(ticket);
-                            }}
-                            style={{
-                              padding: '4px 8px',
-                              fontSize: '11px',
-                              minWidth: 'auto',
-                            }}
-                            title="Unassign ticket number"
-                          >
-                            ✗
-                          </button>
-                        ) : (
-                          <button
-                            className="button button-primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAssignTicketNumber(ticket);
-                            }}
-                            style={{
-                              padding: '4px 8px',
-                              fontSize: '11px',
-                              minWidth: 'auto',
-                            }}
-                            title="Assign ticket number"
-                          >
-                            ✓
-                          </button>
-                        );
-                      })()}
-                    <button
-                      className="button"
-                      onClick={() => {
-                        // TODO: Implement mark as invoiced functionality
-                        alert('Mark as invoiced functionality coming soon!');
-                      }}
-                      style={{
-                        padding: '6px 16px',
-                        fontSize: '13px',
-                        backgroundColor: '#4caf50',
-                        color: 'white',
-                        border: 'none',
-                      }}
-                    >
-                      Mark as Invoiced
-                    </button>
-                    </div>
+                    {(() => {
+                      const existing = existingTickets?.find(
+                        et => et.date === ticket.date && 
+                              et.user_id === ticket.userId && 
+                              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+                      );
+                      const hasTicketNumber = existing?.ticket_number;
+                      
+                      return hasTicketNumber ? (
+                        <button
+                          className="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUnassignTicketNumber(ticket);
+                          }}
+                          style={{
+                            padding: '6px 16px',
+                            fontSize: '13px',
+                            backgroundColor: '#4caf50',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                          title="Click to unapprove"
+                        >
+                          ✓ Approved
+                        </button>
+                      ) : (
+                        <button
+                          className="button button-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAssignTicketNumber(ticket);
+                          }}
+                          style={{
+                            padding: '6px 16px',
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                          }}
+                          title="Approve and assign ticket number"
+                        >
+                          Approve
+                        </button>
+                      );
+                    })()}
                   </td>
                 </tr>
                 );
