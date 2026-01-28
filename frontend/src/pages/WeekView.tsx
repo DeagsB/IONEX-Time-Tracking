@@ -500,6 +500,12 @@ export default function WeekView() {
   const handleSubmitTimeEntry = async () => {
     if (!selectedSlot) return;
     
+    // Validate hours are within reasonable range (0 to 24)
+    if (newEntry.hours <= 0 || newEntry.hours > 24) {
+      alert('Hours must be between 0 and 24');
+      return;
+    }
+    
     // Format date in local timezone (YYYY-MM-DD)
     const year = selectedSlot.date.getFullYear();
     const month = String(selectedSlot.date.getMonth() + 1).padStart(2, '0');
@@ -624,6 +630,17 @@ export default function WeekView() {
   // Handle saving edited time entry
   const handleSaveEdit = () => {
     if (!editingEntry) return;
+    
+    // Parse times to calculate hours for validation
+    const [startH, startM] = editedEntry.start_time.split(':').map(Number);
+    const [endH, endM] = editedEntry.end_time.split(':').map(Number);
+    const calculatedHours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+    
+    // Validate hours are within reasonable range (0 to 24)
+    if (calculatedHours <= 0 || calculatedHours > 24) {
+      alert('Hours must be between 0 and 24');
+      return;
+    }
     
     // Check if this is a running timer (no id)
     if (editingEntry.isRunningTimer || !editingEntry.id) {
@@ -2047,7 +2064,9 @@ export default function WeekView() {
                     // Calculate hours
                     const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
                     const [endH, endM] = e.target.value.split(':').map(Number);
-                    const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+                    let hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+                    // Ensure hours are within valid range (0 to 24)
+                    hours = Math.max(0, Math.min(24, hours));
                     setNewEntry({ ...newEntry, hours });
                   }}
                   style={{
