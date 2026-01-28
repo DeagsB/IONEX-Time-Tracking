@@ -867,6 +867,11 @@ export const serviceTicketsService = {
           id,
           name,
           project_number,
+          shop_junior_rate,
+          shop_senior_rate,
+          ft_junior_rate,
+          ft_senior_rate,
+          travel_rate,
           customer:customers!projects_customer_id_fkey(*)
         )
       `)

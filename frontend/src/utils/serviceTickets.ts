@@ -66,6 +66,12 @@ export interface TimeEntryWithRelations {
     id: string;
     name: string;
     project_number?: string;
+    // Project-specific rate overrides (per Junior/Senior employee status)
+    shop_junior_rate?: number;
+    shop_senior_rate?: number;
+    ft_junior_rate?: number;
+    ft_senior_rate?: number;
+    travel_rate?: number;
     customer?: {
       id: string;
       name: string;
@@ -92,6 +98,7 @@ export interface EmployeeWithRates {
   id: string;
   user_id: string;
   department?: string;
+  position?: string; // 'Junior' or 'Senior' - used for project rate overrides
   rt_rate?: number;
   tt_rate?: number;
   ft_rate?: number;
@@ -123,6 +130,7 @@ export function groupEntriesIntoTickets(
   // Create a map of user_id to employee rates for quick lookup
   const employeeRatesMap = new Map<string, { rt: number; tt: number; ft: number; shop_ot: number; field_ot: number }>();
   const employeeDepartmentMap = new Map<string, string>();
+  const employeePositionMap = new Map<string, string>();
   if (employees) {
     for (const emp of employees) {
       employeeRatesMap.set(emp.user_id, {
@@ -134,6 +142,9 @@ export function groupEntriesIntoTickets(
       });
       if (emp.department) {
         employeeDepartmentMap.set(emp.user_id, emp.department);
+      }
+      if (emp.position) {
+        employeePositionMap.set(emp.user_id, emp.position);
       }
     }
   }
@@ -203,7 +214,33 @@ export function groupEntriesIntoTickets(
       const initials = (firstName.charAt(0) + lastName.charAt(0)).toUpperCase() || 'XX';
       
       // Get employee-specific rates or use defaults
-      const employeeRates = employeeRatesMap.get(userId) || DEFAULT_RATES;
+      let employeeRates = employeeRatesMap.get(userId) || { ...DEFAULT_RATES };
+      
+      // Check for project-specific rate overrides
+      // These override employee rates based on Junior/Senior status
+      if (entry.project) {
+        const employeePosition = employeePositionMap.get(userId) || 'Junior'; // Default to Junior if not specified
+        const isSenior = employeePosition.toLowerCase() === 'senior';
+        
+        // Apply project rates if they exist
+        const project = entry.project;
+        const projectRates = { ...employeeRates };
+        
+        if (isSenior) {
+          // Senior employee rates
+          if (project.shop_senior_rate != null) projectRates.rt = project.shop_senior_rate;
+          if (project.ft_senior_rate != null) projectRates.ft = project.ft_senior_rate;
+        } else {
+          // Junior employee rates
+          if (project.shop_junior_rate != null) projectRates.rt = project.shop_junior_rate;
+          if (project.ft_junior_rate != null) projectRates.ft = project.ft_junior_rate;
+        }
+        
+        // Travel rate is the same regardless of Junior/Senior
+        if (project.travel_rate != null) projectRates.tt = project.travel_rate;
+        
+        employeeRates = projectRates;
+      }
       
       ticket = {
         id: ticketKey,
