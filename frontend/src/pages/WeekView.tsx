@@ -1837,11 +1837,18 @@ export default function WeekView() {
                   {/* Running timer indicator */}
                   {timerRunning && timerStartTime && day.isToday && (() => {
                     const startDate = new Date(timerStartTime);
-                    const startHour = startDate.getHours();
-                    const startMin = startDate.getMinutes();
-                    const startMinutes = startHour * 60 + startMin;
-
                     const now = new Date(currentTime);
+                    
+                    // Check if timer started on a previous day (midnight rollover)
+                    const timerStartDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const startedOnPreviousDay = timerStartDay < today;
+                    
+                    // If timer started on previous day, show it starting from midnight (00:00)
+                    const displayStartHour = startedOnPreviousDay ? 0 : startDate.getHours();
+                    const displayStartMin = startedOnPreviousDay ? 0 : startDate.getMinutes();
+                    const startMinutes = displayStartHour * 60 + displayStartMin;
+
                     const endHour = now.getHours();
                     const endMin = now.getMinutes();
                     const endMinutes = endHour * 60 + endMin;
@@ -1942,7 +1949,8 @@ export default function WeekView() {
                         {/* Time range (only if there's space) */}
                         {height > 45 && (
                           <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.8 }}>
-                            {String(startHour).padStart(2, '0')}:{String(startMin).padStart(2, '0')} - Now
+                            {startedOnPreviousDay ? '(prev day) ' : ''}
+                            {String(displayStartHour).padStart(2, '0')}:{String(displayStartMin).padStart(2, '0')} - Now
                           </div>
                         )}
                       </div>
