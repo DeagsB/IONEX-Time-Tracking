@@ -1642,7 +1642,7 @@ export default function ServiceTickets() {
                               display: 'grid', 
                               gridTemplateColumns: '1fr 55px 55px 55px 55px 55px 40px',
                               gap: '8px',
-                              alignItems: 'start',
+                              alignItems: 'center',
                               padding: '8px',
                               backgroundColor: 'var(--bg-tertiary)',
                               borderRadius: '6px'
@@ -1663,7 +1663,7 @@ export default function ServiceTickets() {
                               style={{
                                 ...inputStyle,
                                 minHeight: '60px',
-                                resize: 'vertical',
+                                resize: 'none',
                                 fontFamily: 'inherit',
                                 fontSize: '13px',
                               }}
