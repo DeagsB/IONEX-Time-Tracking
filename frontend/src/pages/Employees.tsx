@@ -282,12 +282,25 @@ export default function Employees() {
               </div>
               <div className="form-group">
                 <label className="label">Position</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.position}
-                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                />
+                {formData.department === 'Automation' ? (
+                  <select
+                    className="input"
+                    value={formData.position}
+                    onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                  >
+                    <option value="">Select Position</option>
+                    <option value="Senior">Senior</option>
+                    <option value="Junior">Junior</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    className="input"
+                    value={formData.position}
+                    onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                    placeholder="Enter position"
+                  />
+                )}
               </div>
               <div className="form-group">
                 <label className="label">Status</label>

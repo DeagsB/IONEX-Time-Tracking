@@ -18,6 +18,9 @@ build/
 *.sqlite
 *.sqlite3
 
+# Supabase backups (local dumps)
+backups/
+
 # IDE
 .vscode/
 .idea/
