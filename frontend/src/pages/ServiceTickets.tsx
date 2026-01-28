@@ -67,10 +67,23 @@ export default function ServiceTickets() {
     date: string;
   } | null>(null);
   
-  // Editable service descriptions and hours state
+  // Editable service descriptions and hours state - new row-based format
+  // Each row has a description and hours for each rate type (ST/TT/FT/SO/FO)
+  interface ServiceRow {
+    id: string;
+    description: string;
+    st: number;  // Shop Time
+    tt: number;  // Travel Time
+    ft: number;  // Field Time
+    so: number;  // Shop Overtime
+    fo: number;  // Field Overtime
+  }
+  const [serviceRows, setServiceRows] = useState<ServiceRow[]>([]);
+  const [isTicketEdited, setIsTicketEdited] = useState(false);
+  
+  // Legacy state for backward compatibility (used in some exports)
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
   const [editedHours, setEditedHours] = useState<Record<string, number[]>>({});
-  const [isTicketEdited, setIsTicketEdited] = useState(false);
   
   // Generated ticket number for display
   const [displayTicketNumber, setDisplayTicketNumber] = useState<string>('');
@@ -82,6 +95,70 @@ export default function ServiceTickets() {
   // Round to nearest 0.5 hour (always round up)
   const roundToHalfHour = (hours: number): number => {
     return Math.ceil(hours * 2) / 2;
+  };
+
+  // Convert time entries to service rows (description + 5 hour columns)
+  const entriesToServiceRows = (entries: ServiceTicket['entries']): ServiceRow[] => {
+    return entries.map((entry, index) => {
+      const rateType = entry.rate_type || 'Shop Time';
+      const hours = Number(entry.hours) || 0;
+      return {
+        id: entry.id || `entry-${index}`,
+        description: entry.description || '',
+        st: rateType === 'Shop Time' ? hours : 0,
+        tt: rateType === 'Travel Time' ? hours : 0,
+        ft: rateType === 'Field Time' ? hours : 0,
+        so: rateType === 'Shop Overtime' ? hours : 0,
+        fo: rateType === 'Field Overtime' ? hours : 0,
+      };
+    });
+  };
+
+  // Convert service rows to legacy format for database storage
+  const serviceRowsToLegacyFormat = (rows: ServiceRow[]): { descriptions: Record<string, string[]>, hours: Record<string, number[]> } => {
+    const descriptions: Record<string, string[]> = {};
+    const hours: Record<string, number[]> = {};
+    
+    // Process each row and aggregate by rate type
+    rows.forEach(row => {
+      // Add to Shop Time if has hours
+      if (row.st > 0) {
+        if (!descriptions['Shop Time']) descriptions['Shop Time'] = [];
+        if (!hours['Shop Time']) hours['Shop Time'] = [];
+        descriptions['Shop Time'].push(row.description);
+        hours['Shop Time'].push(row.st);
+      }
+      // Add to Travel Time if has hours
+      if (row.tt > 0) {
+        if (!descriptions['Travel Time']) descriptions['Travel Time'] = [];
+        if (!hours['Travel Time']) hours['Travel Time'] = [];
+        descriptions['Travel Time'].push(row.description);
+        hours['Travel Time'].push(row.tt);
+      }
+      // Add to Field Time if has hours
+      if (row.ft > 0) {
+        if (!descriptions['Field Time']) descriptions['Field Time'] = [];
+        if (!hours['Field Time']) hours['Field Time'] = [];
+        descriptions['Field Time'].push(row.description);
+        hours['Field Time'].push(row.ft);
+      }
+      // Add to Shop Overtime if has hours
+      if (row.so > 0) {
+        if (!descriptions['Shop Overtime']) descriptions['Shop Overtime'] = [];
+        if (!hours['Shop Overtime']) hours['Shop Overtime'] = [];
+        descriptions['Shop Overtime'].push(row.description);
+        hours['Shop Overtime'].push(row.so);
+      }
+      // Add to Field Overtime if has hours
+      if (row.fo > 0) {
+        if (!descriptions['Field Overtime']) descriptions['Field Overtime'] = [];
+        if (!hours['Field Overtime']) hours['Field Overtime'] = [];
+        descriptions['Field Overtime'].push(row.description);
+        hours['Field Overtime'].push(row.fo);
+      }
+    });
+    
+    return { descriptions, hours };
   };
 
   // Handler for exporting ticket as PDF
@@ -1061,32 +1138,51 @@ export default function ServiceTickets() {
                       .eq('id', ticketRecordId)
                       .single();
                     
-                    if (ticketRecord) {
-                      setIsTicketEdited(ticketRecord.is_edited || false);
+                    if (ticketRecord && ticketRecord.is_edited) {
+                      setIsTicketEdited(true);
                       const loadedDescriptions = (ticketRecord.edited_descriptions as Record<string, string[]>) || {};
-                      setEditedDescriptions(loadedDescriptions);
-                      
-                      // Load edited hours directly from DB - don't modify them at load time
-                      // Length alignment is done at render time
                       const loadedHours = (ticketRecord.edited_hours as Record<string, number | number[]>) || {};
-                      const convertedHours: Record<string, number[]> = {};
                       
-                      Object.keys(loadedHours).forEach(rateType => {
-                        const hours = loadedHours[rateType];
+                      // Convert legacy format to service rows
+                      // Collect all unique descriptions and their hours across rate types
+                      const rowMap = new Map<string, ServiceRow>();
+                      let rowIndex = 0;
+                      
+                      Object.keys(loadedDescriptions).forEach(rateType => {
+                        const descs = loadedDescriptions[rateType] || [];
+                        const hrs = loadedHours[rateType];
+                        const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
                         
-                        if (Array.isArray(hours)) {
-                          // Use array directly as saved
-                          convertedHours[rateType] = [...hours];
-                        } else {
-                          // Old format: single number - store as single-element array
-                          // (render will handle distribution if needed)
-                          convertedHours[rateType] = [hours as number];
-                        }
+                        descs.forEach((desc, i) => {
+                          const hours = hoursArray[i] || 0;
+                          // Use description as key for grouping (or create unique row)
+                          const key = `${desc}-${rowIndex++}`;
+                          const row: ServiceRow = {
+                            id: key,
+                            description: desc,
+                            st: rateType === 'Shop Time' ? hours : 0,
+                            tt: rateType === 'Travel Time' ? hours : 0,
+                            ft: rateType === 'Field Time' ? hours : 0,
+                            so: rateType === 'Shop Overtime' ? hours : 0,
+                            fo: rateType === 'Field Overtime' ? hours : 0,
+                          };
+                          rowMap.set(key, row);
+                        });
                       });
                       
-                      setEditedHours(convertedHours);
+                      setServiceRows(Array.from(rowMap.values()));
+                      setEditedDescriptions(loadedDescriptions);
+                      setEditedHours(
+                        Object.keys(loadedHours).reduce((acc, rateType) => {
+                          const hrs = loadedHours[rateType];
+                          acc[rateType] = Array.isArray(hrs) ? hrs : [hrs as number];
+                          return acc;
+                        }, {} as Record<string, number[]>)
+                      );
                     } else {
                       setIsTicketEdited(false);
+                      // Initialize service rows from time entries
+                      setServiceRows(entriesToServiceRows(ticket.entries));
                       setEditedDescriptions({});
                       setEditedHours({});
                     }
@@ -1094,6 +1190,7 @@ export default function ServiceTickets() {
                     console.error('Error loading ticket data:', error);
                     setExpenses([]);
                     setIsTicketEdited(false);
+                    setServiceRows(entriesToServiceRows(ticket.entries));
                     setEditedDescriptions({});
                     setEditedHours({});
                   }
@@ -1248,6 +1345,7 @@ export default function ServiceTickets() {
           onClick={() => { 
             setSelectedTicket(null); 
             setEditableTicket(null);
+            setServiceRows([]);
             setEditedDescriptions({});
             setEditedHours({});
             setIsTicketEdited(false);
@@ -1303,6 +1401,7 @@ export default function ServiceTickets() {
                 onClick={() => { 
                   setSelectedTicket(null); 
                   setEditableTicket(null);
+                  setServiceRows([]);
                   setEditedDescriptions({});
                   setEditedHours({});
                   setIsTicketEdited(false);
@@ -1498,10 +1597,10 @@ export default function ServiceTickets() {
                       </div>
                     </div>
 
-                    {/* Service Description Section */}
+                    {/* Service Description Section - Row-based with 5 hour columns */}
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                      <h3 style={sectionTitleStyle}>Service Description</h3>
+                        <h3 style={sectionTitleStyle}>Service Description</h3>
                         {isTicketEdited && (
                           <span style={{ 
                             fontSize: '11px', 
@@ -1515,183 +1614,270 @@ export default function ServiceTickets() {
                           </span>
                         )}
                       </div>
-                      <div style={{ color: 'var(--text-primary)', fontSize: '14px' }}>
-                        {Object.entries(selectedTicket.hoursByRateType)
-                          .filter(([rateType, hours]) => hours > 0 || (editedHours[rateType] && (Array.isArray(editedHours[rateType]) ? editedHours[rateType].reduce((s,h) => s+h, 0) > 0 : (editedHours[rateType] as unknown as number) > 0)))
-                          .sort(([rateTypeA], [rateTypeB]) => {
-                            const orderA = getRateTypeSortOrder(rateTypeA);
-                            const orderB = getRateTypeSortOrder(rateTypeB);
-                            return orderA - orderB;
-                          })
-                          .map(([rateType, hours]) => {
-                            const entriesForType = selectedTicket.entries.filter(
-                              (e) => (e.rate_type || 'Shop Time') === rateType
-                            );
-                            
-                            // Use edited data if available, otherwise use original
-                            const editedDescriptionsForType = editedDescriptions[rateType] || entriesForType.map(e => e.description || 'No description');
-                            
-                            // Use editedHours state directly when available (already loaded from DB)
-                            // Only fall back to entries if editedHours is completely empty
-                            let editedHoursForType: number[];
-                            if (editedHours[rateType] !== undefined && Array.isArray(editedHours[rateType])) {
-                              // Use the state directly - this is what was loaded or edited
-                              editedHoursForType = [...editedHours[rateType]];
-                            } else if (editedHours[rateType] !== undefined) {
-                              // Old format: single number, distribute evenly across descriptions
-                              const totalHours = editedHours[rateType] as unknown as number;
-                              const hoursPerDesc = editedDescriptionsForType.length > 0 ? totalHours / editedDescriptionsForType.length : 0;
-                              editedHoursForType = editedDescriptionsForType.map(() => hoursPerDesc);
-                            } else {
-                              // No edited hours in state, use actual hours from entries
-                              editedHoursForType = entriesForType.map(e => Number(e.hours) || 0);
-                            }
-                            
-                            // Ensure arrays have same length as descriptions
-                            while (editedHoursForType.length < editedDescriptionsForType.length) {
-                              editedHoursForType.push(0);
-                            }
-                            while (editedHoursForType.length > editedDescriptionsForType.length) {
-                              editedHoursForType.pop();
-                            }
-                            
-                            return (
-                              <div key={rateType} style={{ marginBottom: '20px', padding: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px' }}>
-                                <div style={{ marginBottom: '12px' }}>
-                                  <h4 style={{ fontSize: '13px', fontWeight: '600', color: 'var(--primary-color)', margin: 0 }}>
-                                    {rateType}
-                                </h4>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                  {editedDescriptionsForType.map((desc, index) => (
-                                    <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                                      <textarea
-                                        value={desc}
-                                        onChange={(e) => {
-                                          const newDescs = [...editedDescriptionsForType];
-                                          newDescs[index] = e.target.value;
-                                          setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
-                                          setIsTicketEdited(true);
-                                        }}
-                                        style={{
-                                          ...inputStyle,
-                                          flex: 1,
-                                          minHeight: '60px',
-                                          resize: 'none',
-                                          fontFamily: 'inherit',
-                                          overflowY: 'auto',
-                                          overflowX: 'hidden',
-                                          scrollbarWidth: 'thin',
-                                          scrollbarColor: 'var(--primary-light) transparent',
-                                        }}
-                                        className="service-ticket-textarea"
-                                        placeholder="Enter description..."
-                                      />
-                                      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                          <label style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Hours</label>
-                                          <input
-                                            type="number"
-                                            step="0.5"
-                                            min="0"
-                                            value={editedHoursForType[index] || 0}
-                                            onChange={(e) => {
-                                              const newHours = [...editedHoursForType];
-                                              newHours[index] = parseFloat(e.target.value) || 0;
-                                              setEditedHours({ ...editedHours, [rateType]: newHours });
-                                              setIsTicketEdited(true);
-                                            }}
-                                            style={{
-                                              ...inputStyle,
-                                              width: '70px',
-                                              padding: '4px 8px',
-                                              textAlign: 'left',
-                                            }}
-                                          />
-                                        </div>
-                                        <button
-                                          onClick={() => {
-                                            const newDescs = editedDescriptionsForType.filter((_, i) => i !== index);
-                                            const newHours = editedHoursForType.filter((_, i) => i !== index);
-                                            setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
-                                            setEditedHours({ ...editedHours, [rateType]: newHours });
-                                            setIsTicketEdited(true);
-                                          }}
-                                          style={{
-                                            padding: '6px 12px',
-                                            backgroundColor: 'transparent',
-                                            color: '#ef5350',
-                                            border: '1px solid rgba(239, 83, 80, 0.3)',
-                                            borderRadius: '4px',
-                                            fontSize: '11px',
-                                            cursor: 'pointer',
-                                            whiteSpace: 'nowrap',
-                                            alignSelf: 'flex-end',
-                                          }}
-                                        >
-                                          Remove
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
-                                  <button
-                                    onClick={() => {
-                                      const newDescs = [...editedDescriptionsForType, ''];
-                                      const newHours = [...editedHoursForType, 0];
-                                      setEditedDescriptions({ ...editedDescriptions, [rateType]: newDescs });
-                                      setEditedHours({ ...editedHours, [rateType]: newHours });
-                                      setIsTicketEdited(true);
-                                    }}
-                                    style={{
-                                      padding: '6px 12px',
-                                      backgroundColor: 'var(--primary-light)',
-                                      color: 'var(--primary-color)',
-                                      border: '1px solid rgba(199, 112, 240, 0.3)',
-                                      borderRadius: '4px',
-                                      fontSize: '11px',
-                                      cursor: 'pointer',
-                                      alignSelf: 'flex-start',
-                                    }}
-                                  >
-                                    + Add Description
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
+                      
+                      {/* Column Headers */}
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: '1fr 55px 55px 55px 55px 55px 40px',
+                        gap: '8px',
+                        marginBottom: '8px',
+                        paddingBottom: '8px',
+                        borderBottom: '1px solid var(--border-color)'
+                      }}>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>Description</span>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'center' }}>ST</span>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'center' }}>TT</span>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'center' }}>FT</span>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: '#ff9800', textAlign: 'center' }}>SO</span>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: '#ff9800', textAlign: 'center' }}>FO</span>
+                        <span></span>
                       </div>
+                      
+                      {/* Service Rows */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {serviceRows.map((row, index) => (
+                          <div 
+                            key={row.id} 
+                            style={{ 
+                              display: 'grid', 
+                              gridTemplateColumns: '1fr 55px 55px 55px 55px 55px 40px',
+                              gap: '8px',
+                              alignItems: 'start',
+                              padding: '8px',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              borderRadius: '6px'
+                            }}
+                          >
+                            <textarea
+                              value={row.description}
+                              onChange={(e) => {
+                                const newRows = [...serviceRows];
+                                newRows[index] = { ...row, description: e.target.value };
+                                setServiceRows(newRows);
+                                setIsTicketEdited(true);
+                                // Update legacy format
+                                const legacy = serviceRowsToLegacyFormat(newRows);
+                                setEditedDescriptions(legacy.descriptions);
+                                setEditedHours(legacy.hours);
+                              }}
+                              style={{
+                                ...inputStyle,
+                                minHeight: '60px',
+                                resize: 'vertical',
+                                fontFamily: 'inherit',
+                                fontSize: '13px',
+                              }}
+                              placeholder="Enter description..."
+                            />
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              value={row.st || ''}
+                              onChange={(e) => {
+                                const newRows = [...serviceRows];
+                                newRows[index] = { ...row, st: parseFloat(e.target.value) || 0 };
+                                setServiceRows(newRows);
+                                setIsTicketEdited(true);
+                                const legacy = serviceRowsToLegacyFormat(newRows);
+                                setEditedDescriptions(legacy.descriptions);
+                                setEditedHours(legacy.hours);
+                              }}
+                              style={{
+                                ...inputStyle,
+                                padding: '6px 4px',
+                                textAlign: 'center',
+                                fontSize: '13px',
+                              }}
+                              title="Shop Time"
+                            />
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              value={row.tt || ''}
+                              onChange={(e) => {
+                                const newRows = [...serviceRows];
+                                newRows[index] = { ...row, tt: parseFloat(e.target.value) || 0 };
+                                setServiceRows(newRows);
+                                setIsTicketEdited(true);
+                                const legacy = serviceRowsToLegacyFormat(newRows);
+                                setEditedDescriptions(legacy.descriptions);
+                                setEditedHours(legacy.hours);
+                              }}
+                              style={{
+                                ...inputStyle,
+                                padding: '6px 4px',
+                                textAlign: 'center',
+                                fontSize: '13px',
+                              }}
+                              title="Travel Time"
+                            />
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              value={row.ft || ''}
+                              onChange={(e) => {
+                                const newRows = [...serviceRows];
+                                newRows[index] = { ...row, ft: parseFloat(e.target.value) || 0 };
+                                setServiceRows(newRows);
+                                setIsTicketEdited(true);
+                                const legacy = serviceRowsToLegacyFormat(newRows);
+                                setEditedDescriptions(legacy.descriptions);
+                                setEditedHours(legacy.hours);
+                              }}
+                              style={{
+                                ...inputStyle,
+                                padding: '6px 4px',
+                                textAlign: 'center',
+                                fontSize: '13px',
+                              }}
+                              title="Field Time"
+                            />
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              value={row.so || ''}
+                              onChange={(e) => {
+                                const newRows = [...serviceRows];
+                                newRows[index] = { ...row, so: parseFloat(e.target.value) || 0 };
+                                setServiceRows(newRows);
+                                setIsTicketEdited(true);
+                                const legacy = serviceRowsToLegacyFormat(newRows);
+                                setEditedDescriptions(legacy.descriptions);
+                                setEditedHours(legacy.hours);
+                              }}
+                              style={{
+                                ...inputStyle,
+                                padding: '6px 4px',
+                                textAlign: 'center',
+                                fontSize: '13px',
+                                backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                              }}
+                              title="Shop Overtime"
+                            />
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              value={row.fo || ''}
+                              onChange={(e) => {
+                                const newRows = [...serviceRows];
+                                newRows[index] = { ...row, fo: parseFloat(e.target.value) || 0 };
+                                setServiceRows(newRows);
+                                setIsTicketEdited(true);
+                                const legacy = serviceRowsToLegacyFormat(newRows);
+                                setEditedDescriptions(legacy.descriptions);
+                                setEditedHours(legacy.hours);
+                              }}
+                              style={{
+                                ...inputStyle,
+                                padding: '6px 4px',
+                                textAlign: 'center',
+                                fontSize: '13px',
+                                backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                              }}
+                              title="Field Overtime"
+                            />
+                            <button
+                              onClick={() => {
+                                const newRows = serviceRows.filter((_, i) => i !== index);
+                                setServiceRows(newRows);
+                                setIsTicketEdited(true);
+                                const legacy = serviceRowsToLegacyFormat(newRows);
+                                setEditedDescriptions(legacy.descriptions);
+                                setEditedHours(legacy.hours);
+                              }}
+                              style={{
+                                padding: '4px 8px',
+                                backgroundColor: 'transparent',
+                                color: '#ef5350',
+                                border: '1px solid rgba(239, 83, 80, 0.3)',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                                alignSelf: 'center',
+                              }}
+                              title="Remove row"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                        
+                        {/* Add Row Button */}
+                        <button
+                          onClick={() => {
+                            const newRow: ServiceRow = {
+                              id: `new-${Date.now()}`,
+                              description: '',
+                              st: 0,
+                              tt: 0,
+                              ft: 0,
+                              so: 0,
+                              fo: 0,
+                            };
+                            const newRows = [...serviceRows, newRow];
+                            setServiceRows(newRows);
+                            setIsTicketEdited(true);
+                          }}
+                          style={{
+                            padding: '8px 16px',
+                            backgroundColor: 'var(--primary-light)',
+                            color: 'var(--primary-color)',
+                            border: '1px solid rgba(199, 112, 240, 0.3)',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            alignSelf: 'flex-start',
+                          }}
+                        >
+                          + Add Row
+                        </button>
+                        
+                        {/* Legend */}
+                        <div style={{ 
+                          marginTop: '12px', 
+                          fontSize: '10px', 
+                          color: 'var(--text-tertiary)',
+                          display: 'flex',
+                          gap: '16px',
+                          flexWrap: 'wrap'
+                        }}>
+                          <span>ST = Shop Time</span>
+                          <span>TT = Travel Time</span>
+                          <span>FT = Field Time</span>
+                          <span style={{ color: '#ff9800' }}>SO = Shop Overtime</span>
+                          <span style={{ color: '#ff9800' }}>FO = Field Overtime</span>
+                        </div>
+                      </div>
+                      
+                      {/* Save Button */}
                       {isTicketEdited && (
                         <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                           <button
                             onClick={async () => {
                               if (!currentTicketRecordId || !selectedTicket) return;
                               
-                              // Calculate total hours and total amount from edited hours
+                              // Convert service rows to legacy format for storage
+                              const legacy = serviceRowsToLegacyFormat(serviceRows);
+                              
+                              // Calculate total hours and total amount
                               let totalEditedHours = 0;
                               let totalAmount = 0;
                               
-                              Object.entries(editedHours).forEach(([rateType, hoursArray]) => {
-                                if (Array.isArray(hoursArray)) {
-                                  const sumHours = hoursArray.reduce((sum, h) => sum + (h || 0), 0);
-                                  totalEditedHours += sumHours;
-                                  
-                                  // Calculate revenue based on rate type
-                                  const rateTypeLower = rateType.toLowerCase();
-                                  let billableRate = 0;
-                                  if (rateTypeLower.includes('shop') && rateTypeLower.includes('overtime')) {
-                                    billableRate = selectedTicket.rates.shop_ot || 0;
-                                  } else if (rateTypeLower.includes('field') && rateTypeLower.includes('overtime')) {
-                                    billableRate = selectedTicket.rates.field_ot || 0;
-                                  } else if (rateTypeLower.includes('field')) {
-                                    billableRate = selectedTicket.rates.ft || 0;
-                                  } else if (rateTypeLower.includes('travel')) {
-                                    billableRate = selectedTicket.rates.tt || 0;
-                                  } else {
-                                    billableRate = selectedTicket.rates.rt || 0;
-                                  }
-                                  totalAmount += sumHours * billableRate;
-                                }
+                              serviceRows.forEach(row => {
+                                totalEditedHours += row.st + row.tt + row.ft + row.so + row.fo;
+                                totalAmount += row.st * (selectedTicket.rates.rt || 0);
+                                totalAmount += row.tt * (selectedTicket.rates.tt || 0);
+                                totalAmount += row.ft * (selectedTicket.rates.ft || 0);
+                                totalAmount += row.so * (selectedTicket.rates.shop_ot || 0);
+                                totalAmount += row.fo * (selectedTicket.rates.field_ot || 0);
                               });
+                              
                               // Round up hours to nearest 0.5
                               totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
                               
@@ -1700,8 +1886,8 @@ export default function ServiceTickets() {
                                 .from(tableName)
                                 .update({
                                   is_edited: true,
-                                  edited_descriptions: editedDescriptions,
-                                  edited_hours: editedHours,
+                                  edited_descriptions: legacy.descriptions,
+                                  edited_hours: legacy.hours,
                                   total_hours: totalEditedHours,
                                   total_amount: totalAmount,
                                 })
@@ -1711,7 +1897,7 @@ export default function ServiceTickets() {
                                 console.error('Error saving edited ticket:', error);
                                 alert('Failed to save edited ticket data.');
                               } else {
-                                alert('Service ticket descriptions and hours saved successfully. Time entry changes will no longer update this ticket.');
+                                alert('Service ticket saved successfully.');
                                 queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                               }
                             }}
@@ -1726,7 +1912,7 @@ export default function ServiceTickets() {
                               cursor: 'pointer',
                             }}
                           >
-                            Save Edited Descriptions & Hours
+                            Save Service Ticket
                           </button>
                         </div>
                       )}
@@ -1736,47 +1922,39 @@ export default function ServiceTickets() {
                     <div style={sectionStyle}>
                       <h3 style={sectionTitleStyle}>Hours Summary</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                        {Object.entries(selectedTicket.hoursByRateType)
-                          .filter(([rateType, hours]) => {
-                            // Show if original hours > 0 OR if there are edited hours for this type
-                            const editedHoursForType = editedHours[rateType];
-                            const editedTotal = editedHoursForType 
-                              ? (Array.isArray(editedHoursForType) 
-                                  ? editedHoursForType.reduce((s, h) => s + (h || 0), 0) 
-                                  : (editedHoursForType as unknown as number))
-                              : 0;
-                            return hours > 0 || editedTotal > 0;
-                          })
-                          .sort(([rateTypeA], [rateTypeB]) => {
-                            const orderA = getRateTypeSortOrder(rateTypeA);
-                            const orderB = getRateTypeSortOrder(rateTypeB);
-                            return orderA - orderB;
-                          })
-                          .map(([rateType]) => {
-                            // Calculate display hours from editedHours state or fallback to entries
-                            let displayHours: number;
-                            if (editedHours[rateType] !== undefined) {
-                              if (Array.isArray(editedHours[rateType])) {
-                                const editedTotal = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
-                                displayHours = roundToHalfHour(editedTotal);
-                              } else {
-                                displayHours = roundToHalfHour(editedHours[rateType] as unknown as number);
-                              }
-                            } else {
-                              // No edited hours, use actual from entries
-                            const entriesForType = selectedTicket.entries.filter(
-                              (e) => (e.rate_type || 'Shop Time') === rateType
-                            );
-                              const actualTotal = entriesForType.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-                              displayHours = roundToHalfHour(actualTotal);
-                            }
-                            return (
-                              <div key={rateType} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>{rateType}:</span>
-                                <span style={{ fontSize: '14px', color: 'var(--text-primary)', fontWeight: '700' }}>{displayHours.toFixed(2)}</span>
-                              </div>
-                            );
-                          })}
+                        {(() => {
+                          // Calculate totals from serviceRows
+                          const totals = {
+                            st: serviceRows.reduce((sum, r) => sum + (r.st || 0), 0),
+                            tt: serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0),
+                            ft: serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0),
+                            so: serviceRows.reduce((sum, r) => sum + (r.so || 0), 0),
+                            fo: serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0),
+                          };
+                          
+                          const rateTypes = [
+                            { key: 'st', label: 'Shop Time', value: totals.st },
+                            { key: 'tt', label: 'Travel Time', value: totals.tt },
+                            { key: 'ft', label: 'Field Time', value: totals.ft },
+                            { key: 'so', label: 'Shop Overtime', value: totals.so },
+                            { key: 'fo', label: 'Field Overtime', value: totals.fo },
+                          ].filter(rt => rt.value > 0);
+                          
+                          return rateTypes.map(rt => (
+                            <div key={rt.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ 
+                                fontSize: '13px', 
+                                color: rt.key === 'so' || rt.key === 'fo' ? '#ff9800' : 'var(--text-secondary)', 
+                                fontWeight: '500' 
+                              }}>
+                                {rt.label}:
+                              </span>
+                              <span style={{ fontSize: '14px', color: 'var(--text-primary)', fontWeight: '700' }}>
+                                {roundToHalfHour(rt.value).toFixed(2)}
+                              </span>
+                            </div>
+                          ));
+                        })()}
                         <div
                           style={{
                             display: 'flex',
@@ -1791,20 +1969,9 @@ export default function ServiceTickets() {
                           <span style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>TOTAL HOURS:</span>
                           <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: '700' }}>
                             {(() => {
-                              const editedTotal = Object.values(editedHours).reduce((sum, hoursArray) => {
-                                if (Array.isArray(hoursArray)) {
-                                  return sum + hoursArray.reduce((arrSum, h) => arrSum + (h || 0), 0);
-                                } else {
-                                  return sum + (hoursArray as unknown as number || 0);
-                                }
-                              }, 0);
-                              if (editedTotal > 0) {
-                                return roundToHalfHour(editedTotal).toFixed(2);
-                              } else {
-                                // Sum actual hours first, then round the total up to nearest 0.5
-                                const actualTotal = selectedTicket.entries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-                                return roundToHalfHour(actualTotal).toFixed(2);
-                              }
+                              const total = serviceRows.reduce((sum, r) => 
+                                sum + (r.st || 0) + (r.tt || 0) + (r.ft || 0) + (r.so || 0) + (r.fo || 0), 0);
+                              return roundToHalfHour(total).toFixed(2);
                             })()}
                           </span>
                         </div>
@@ -2104,6 +2271,7 @@ export default function ServiceTickets() {
                   onClick={() => { 
                     setSelectedTicket(null); 
                     setEditableTicket(null);
+                    setServiceRows([]);
                     setEditedDescriptions({});
                     setEditedHours({});
                     setIsTicketEdited(false);
@@ -2120,7 +2288,39 @@ export default function ServiceTickets() {
                     if (currentTicketRecordId && expenses.length === 0) {
                       await loadExpenses(currentTicketRecordId);
                     }
-                    // Create a modified ticket with the editable values and edited descriptions/hours
+                    
+                    // Calculate hours totals from serviceRows
+                    const hoursTotals = {
+                      'Shop Time': serviceRows.reduce((sum, r) => sum + (r.st || 0), 0),
+                      'Travel Time': serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0),
+                      'Field Time': serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0),
+                      'Shop Overtime': serviceRows.reduce((sum, r) => sum + (r.so || 0), 0),
+                      'Field Overtime': serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0),
+                    };
+                    
+                    // Convert serviceRows to entries for export
+                    // Each row with hours in a column becomes an entry with that rate type
+                    const exportEntries: typeof selectedTicket.entries = [];
+                    serviceRows.forEach((row, idx) => {
+                      const template = selectedTicket.entries[0] || { id: '', date: selectedTicket.date, user_id: selectedTicket.userId };
+                      if (row.st > 0) {
+                        exportEntries.push({ ...template, id: `export-st-${idx}`, description: row.description, hours: row.st, rate_type: 'Shop Time' });
+                      }
+                      if (row.tt > 0) {
+                        exportEntries.push({ ...template, id: `export-tt-${idx}`, description: row.description, hours: row.tt, rate_type: 'Travel Time' });
+                      }
+                      if (row.ft > 0) {
+                        exportEntries.push({ ...template, id: `export-ft-${idx}`, description: row.description, hours: row.ft, rate_type: 'Field Time' });
+                      }
+                      if (row.so > 0) {
+                        exportEntries.push({ ...template, id: `export-so-${idx}`, description: row.description, hours: row.so, rate_type: 'Shop Overtime' });
+                      }
+                      if (row.fo > 0) {
+                        exportEntries.push({ ...template, id: `export-fo-${idx}`, description: row.description, hours: row.fo, rate_type: 'Field Overtime' });
+                      }
+                    });
+                    
+                    // Create a modified ticket with the editable values and serviceRows data
                     const modifiedTicket: ServiceTicket = {
                       ...selectedTicket,
                       userName: editableTicket.techName,
@@ -2140,52 +2340,11 @@ export default function ServiceTickets() {
                         po_number: editableTicket.poNumber,
                         approver_name: editableTicket.approverName,
                       },
-                      // Apply edited hours if available (sum arrays to get totals)
-                      hoursByRateType: Object.keys(selectedTicket.hoursByRateType).reduce((acc, rateType) => {
-                        if (editedHours[rateType] !== undefined) {
-                          if (Array.isArray(editedHours[rateType])) {
-                            acc[rateType as keyof typeof acc] = editedHours[rateType].reduce((sum, h) => sum + (h || 0), 0);
-                          } else {
-                            acc[rateType as keyof typeof acc] = editedHours[rateType] as unknown as number;
-                          }
-                        } else {
-                          acc[rateType as keyof typeof acc] = selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType];
-                        }
-                        return acc;
-                      }, { ...selectedTicket.hoursByRateType }),
-                      // Create modified entries with edited descriptions
-                      entries: Object.entries(selectedTicket.hoursByRateType)
-                        .filter(([rateType]) => selectedTicket.hoursByRateType[rateType as keyof typeof selectedTicket.hoursByRateType] > 0)
-                        .flatMap(([rateType]) => {
-                          const editedDescs = editedDescriptions[rateType];
-                          if (editedDescs && editedDescs.length > 0) {
-                            // Use edited descriptions and hours
-                            const editedHoursForType = editedHours[rateType];
-                            const hoursArray = Array.isArray(editedHoursForType) 
-                              ? editedHoursForType 
-                              : editedHoursForType !== undefined 
-                                ? [editedHoursForType as unknown as number] 
-                                : [];
-                            
-                            return editedDescs.map((desc, idx) => ({
-                              ...selectedTicket.entries[0], // Use first entry as template
-                              id: `edited-${rateType}-${idx}`,
-                              description: desc,
-                              rate_type: rateType,
-                              hours: hoursArray[idx] !== undefined 
-                                ? hoursArray[idx] 
-                                : (hoursArray.length > 0 ? hoursArray[0] / editedDescs.length : 0),
-                            }));
-                          } else {
-                            // Use original entries for this rate type
-                            return selectedTicket.entries.filter(
-                              (e) => (e.rate_type || 'Shop Time') === rateType
-                            );
-                          }
-                        }),
+                      hoursByRateType: hoursTotals as typeof selectedTicket.hoursByRateType,
+                      entries: exportEntries,
                     };
-                    // Recalculate total hours from edited hours
-                    modifiedTicket.totalHours = Object.values(modifiedTicket.hoursByRateType).reduce((sum, h) => sum + h, 0);
+                    // Recalculate total hours
+                    modifiedTicket.totalHours = Object.values(hoursTotals).reduce((sum, h) => sum + h, 0);
                     await handleExportPdf(modifiedTicket);
                     // Refresh the ticket list to show updated ticket number
                     queryClient.invalidateQueries({ queryKey: ['billableEntries'] });

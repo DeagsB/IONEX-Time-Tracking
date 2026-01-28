@@ -239,7 +239,15 @@ export function groupEntriesIntoTickets(
     ticket.totalHours += entry.hours || 0;
 
     // Aggregate by rate type
-    const rateType = (entry.rate_type || 'Shop Time') as keyof typeof ticket.hoursByRateType;
+    // Convert overtime to regular time for service tickets - overtime must be manually added
+    // This allows billing overtime hours as regular time to hide OT from clients
+    let rateType = (entry.rate_type || 'Shop Time') as keyof typeof ticket.hoursByRateType;
+    if (rateType === 'Shop Overtime') {
+      rateType = 'Shop Time';
+    } else if (rateType === 'Field Overtime') {
+      rateType = 'Field Time';
+    }
+    
     if (ticket.hoursByRateType.hasOwnProperty(rateType)) {
       ticket.hoursByRateType[rateType] += entry.hours || 0;
     } else {
