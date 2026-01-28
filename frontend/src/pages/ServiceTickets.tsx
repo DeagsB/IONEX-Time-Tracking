@@ -338,8 +338,7 @@ export default function ServiceTickets() {
       let ticketRecordId: string;
       if (existing) {
         if (existing.ticket_number) {
-          alert('This ticket already has a ticket number assigned.');
-          return;
+          return; // Already has a ticket number assigned
         }
         ticketRecordId = existing.id;
           } else {
@@ -383,11 +382,8 @@ export default function ServiceTickets() {
       // Refresh the tickets list
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
-      
-      alert('Ticket number assigned successfully!');
     } catch (error) {
       console.error('Error assigning ticket number:', error);
-      alert('Failed to assign ticket number. Please try again.');
     }
   };
 
@@ -401,7 +397,6 @@ export default function ServiceTickets() {
       );
 
       if (!existing || !existing.ticket_number) {
-        alert('This ticket does not have a ticket number assigned.');
         return;
       }
 
@@ -410,11 +405,8 @@ export default function ServiceTickets() {
       // Refresh the tickets list
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
-      
-      alert('Ticket number unassigned successfully!');
     } catch (error) {
       console.error('Error unassigning ticket number:', error);
-      alert('Failed to unassign ticket number. Please try again.');
     }
   };
 
@@ -434,8 +426,7 @@ export default function ServiceTickets() {
         });
 
       if (ticketsToAssign.length === 0) {
-        alert('No tickets selected or all selected tickets already have ticket numbers.');
-        return;
+        return; // No tickets to assign
       }
 
       for (const ticket of ticketsToAssign) {
@@ -443,10 +434,8 @@ export default function ServiceTickets() {
       }
 
       setSelectedTicketIds(new Set());
-      alert(`Successfully assigned ticket numbers to ${ticketsToAssign.length} ticket(s)!`);
     } catch (error) {
       console.error('Error in bulk assign:', error);
-      alert('Error during bulk assignment. Some tickets may have been assigned.');
     }
   };
 
@@ -466,7 +455,6 @@ export default function ServiceTickets() {
         });
 
       if (ticketsToUnassign.length === 0) {
-        alert('No tickets selected or selected tickets do not have ticket numbers assigned.');
         return;
       }
 
@@ -475,10 +463,8 @@ export default function ServiceTickets() {
       }
 
       setSelectedTicketIds(new Set());
-      alert(`Successfully unassigned ticket numbers from ${ticketsToUnassign.length} ticket(s)!`);
     } catch (error) {
       console.error('Error in bulk unassign:', error);
-      alert('Error during bulk unassignment. Some tickets may have been unassigned.');
     }
   };
 
