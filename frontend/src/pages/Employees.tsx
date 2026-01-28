@@ -12,7 +12,6 @@ export default function Employees() {
   const [formData, setFormData] = useState({
     user_id: '', // Will need to fetch users to link
     employee_id: '',
-    hire_date: new Date().toISOString().split('T')[0],
     department: '',
     position: '',
     status: 'active',
@@ -58,7 +57,7 @@ export default function Employees() {
       const employeeData = {
         user_id: data.user_id || null,
         employee_id: data.employee_id,
-        hire_date: data.hire_date,
+        hire_date: new Date().toISOString().split('T')[0], // Set to current date by default
         department: data.department || null,
         position: data.position || null,
         status: data.status || 'active',
@@ -104,7 +103,7 @@ export default function Employees() {
       
       const employeeData: any = {
         employee_id: data.employee_id,
-        hire_date: data.hire_date,
+        hire_date: existingEmployee?.hire_date || new Date().toISOString().split('T')[0], // Preserve existing or set to current date
         department: data.department || null,
         position: data.position || null,
         status: data.status || 'active',
@@ -154,7 +153,6 @@ export default function Employees() {
     setFormData({
       user_id: '',
       employee_id: '',
-      hire_date: new Date().toISOString().split('T')[0],
       department: '',
       position: '',
       status: 'active',
@@ -172,7 +170,6 @@ export default function Employees() {
     setFormData({
       user_id: employee.user_id || '',
       employee_id: employee.employee_id || '',
-      hire_date: employee.hire_date || '',
       department: employee.department || '',
       position: employee.position || '',
       status: employee.status || 'active',
@@ -312,17 +309,6 @@ export default function Employees() {
                   <option value="terminated">Terminated</option>
                 </select>
               </div>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Hire Date</label>
-              <input
-                type="date"
-                className="input"
-                value={formData.hire_date}
-                onChange={(e) => setFormData({ ...formData, hire_date: e.target.value })}
-                required
-              />
             </div>
 
             {formData.department !== 'Panel Shop' && (
