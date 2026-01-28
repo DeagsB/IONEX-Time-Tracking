@@ -28,6 +28,11 @@ export default function Projects() {
     end_date: '',
     budget: '',
     color: '#4ecdc4',
+    shop_junior_rate: '',
+    shop_senior_rate: '',
+    ft_junior_rate: '',
+    ft_senior_rate: '',
+    travel_rate: '',
   });
 
   const { data: projects } = useQuery({
@@ -96,6 +101,11 @@ export default function Projects() {
         end_date: data.end_date || null,
         budget: data.budget ? parseFloat(data.budget) : null,
         color: data.color || '#4ecdc4',
+        shop_junior_rate: data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null,
+        shop_senior_rate: data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null,
+        ft_junior_rate: data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null,
+        ft_senior_rate: data.ft_senior_rate ? parseFloat(data.ft_senior_rate) : null,
+        travel_rate: data.travel_rate ? parseFloat(data.travel_rate) : null,
         is_demo: isDemoMode, // Mark as demo project if in demo mode
       };
       if (!user?.id) throw new Error('User not authenticated.');
@@ -122,6 +132,11 @@ export default function Projects() {
       if (data.end_date !== undefined) projectData.end_date = data.end_date || null;
       if (data.budget !== undefined) projectData.budget = data.budget ? parseFloat(data.budget) : null;
       if (data.color !== undefined) projectData.color = data.color;
+      if (data.shop_junior_rate !== undefined) projectData.shop_junior_rate = data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null;
+      if (data.shop_senior_rate !== undefined) projectData.shop_senior_rate = data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null;
+      if (data.ft_junior_rate !== undefined) projectData.ft_junior_rate = data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null;
+      if (data.ft_senior_rate !== undefined) projectData.ft_senior_rate = data.ft_senior_rate ? parseFloat(data.ft_senior_rate) : null;
+      if (data.travel_rate !== undefined) projectData.travel_rate = data.travel_rate ? parseFloat(data.travel_rate) : null;
       // is_private is always false, don't include it
 
       return await projectsService.update(id, projectData);
@@ -173,6 +188,11 @@ export default function Projects() {
       end_date: '',
       budget: '',
       color: '#4ecdc4',
+      shop_junior_rate: '',
+      shop_senior_rate: '',
+      ft_junior_rate: '',
+      ft_senior_rate: '',
+      travel_rate: '',
     });
   };
 
@@ -188,6 +208,11 @@ export default function Projects() {
       end_date: project.end_date ? new Date(project.end_date).toISOString().split('T')[0] : '',
       budget: project.budget?.toString() || '',
       color: project.color || '#4ecdc4',
+      shop_junior_rate: project.shop_junior_rate?.toString() || '',
+      shop_senior_rate: project.shop_senior_rate?.toString() || '',
+      ft_junior_rate: project.ft_junior_rate?.toString() || '',
+      ft_senior_rate: project.ft_senior_rate?.toString() || '',
+      travel_rate: project.travel_rate?.toString() || '',
     });
     setShowModal(true);
   };
@@ -431,8 +456,71 @@ export default function Projects() {
               />
             </div>
 
+            {/* Project-Specific Rate Overrides */}
+            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+              <h4 style={{ marginBottom: '15px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                Rate Overrides (Optional - overrides employee default rates)
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="form-group">
+                  <label className="label">Shop Junior ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.shop_junior_rate}
+                    onChange={(e) => setFormData({ ...formData, shop_junior_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label">Shop Senior ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.shop_senior_rate}
+                    onChange={(e) => setFormData({ ...formData, shop_senior_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label">FT Junior ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.ft_junior_rate}
+                    onChange={(e) => setFormData({ ...formData, ft_junior_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label">FT Senior ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.ft_senior_rate}
+                    onChange={(e) => setFormData({ ...formData, ft_senior_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label">Travel Time ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.travel_rate}
+                    onChange={(e) => setFormData({ ...formData, travel_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+              </div>
+            </div>
 
-              <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+              <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending} style={{ marginTop: '20px' }}>
                 Update Project
               </button>
             </form>
@@ -700,7 +788,71 @@ export default function Projects() {
               />
             </div>
 
-            <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
+            {/* Project-Specific Rate Overrides */}
+            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+              <h4 style={{ marginBottom: '15px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                Rate Overrides (Optional - overrides employee default rates)
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="form-group">
+                  <label className="label">Shop Junior ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.shop_junior_rate}
+                    onChange={(e) => setFormData({ ...formData, shop_junior_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label">Shop Senior ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.shop_senior_rate}
+                    onChange={(e) => setFormData({ ...formData, shop_senior_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label">FT Junior ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.ft_junior_rate}
+                    onChange={(e) => setFormData({ ...formData, ft_junior_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label">FT Senior ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.ft_senior_rate}
+                    onChange={(e) => setFormData({ ...formData, ft_senior_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label">Travel Time ($/hr)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    value={formData.travel_rate}
+                    onChange={(e) => setFormData({ ...formData, travel_rate: e.target.value })}
+                    placeholder="Leave empty to use default"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending} style={{ marginTop: '20px' }}>
               Create Project
             </button>
           </form>
