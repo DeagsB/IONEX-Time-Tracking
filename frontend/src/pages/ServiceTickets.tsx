@@ -336,48 +336,47 @@ export default function ServiceTickets() {
           );
           
       let ticketRecordId: string;
+      const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+      
+      // Get the next available ticket number ONCE before any database operations
+      const ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
+      const year = new Date().getFullYear() % 100;
+      const sequenceMatch = ticketNumber.match(/\d{3}$/);
+      const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+      
       if (existing) {
         if (existing.ticket_number) {
           return; // Already has a ticket number assigned
         }
         ticketRecordId = existing.id;
-          } else {
-        // Create ticket record first (with a temporary ticket number, then we'll assign the real one)
-            const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
-            const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
-            const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-            const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-            const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-            const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
-            const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
-            const otAmount = shopOtAmount + fieldOtAmount;
-            const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-            
-        // Generate ticket number first, then create record with it (we'll update it to the correct one)
-        const year = new Date().getFullYear() % 100;
-        const tempTicketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
-        const sequenceMatch = tempTicketNumber.match(/\d{3}$/);
-        const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+        // Update existing record with the ticket number
+        await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket);
+      } else {
+        // Create ticket record with the ticket number already assigned
+        const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
+        const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+        const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+        const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+        const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
+        const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
+        const otAmount = shopOtAmount + fieldOtAmount;
+        const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
         
         const record = await serviceTicketsService.createTicketRecord({
-          ticketNumber: tempTicketNumber,
-              employeeInitials: ticket.userInitials,
-              year,
-              sequenceNumber,
-              date: ticket.date,
-              customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-              userId: ticket.userId,
-              projectId: ticket.projectId,
-              totalHours: ticket.totalHours,
-              totalAmount,
-              isDemo: isDemoTicket,
-            });
+          ticketNumber: ticketNumber,
+          employeeInitials: ticket.userInitials,
+          year,
+          sequenceNumber,
+          date: ticket.date,
+          customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+          userId: ticket.userId,
+          projectId: ticket.projectId,
+          totalHours: ticket.totalHours,
+          totalAmount,
+          isDemo: isDemoTicket,
+        });
         ticketRecordId = record.id;
       }
-
-      // Assign ticket number (get next available)
-      const ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoMode);
-      await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoMode);
 
       // Refresh the tickets list
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
