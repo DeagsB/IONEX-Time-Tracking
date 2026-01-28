@@ -323,12 +323,12 @@ export default function Employees() {
               <div className="form-group">
                 <label className="label">Regular Time (RT)</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
                   <input
                     type="number"
                     step="0.01"
                     className="input"
-                    style={{ paddingLeft: '25px' }}
+                    style={{ paddingLeft: '28px' }}
                     value={formData.rt_rate}
                     onChange={(e) => setFormData({ ...formData, rt_rate: e.target.value })}
                     placeholder="110.00"
@@ -338,12 +338,12 @@ export default function Employees() {
               <div className="form-group">
                 <label className="label">Travel Time (TT)</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
                   <input
                     type="number"
                     step="0.01"
                     className="input"
-                    style={{ paddingLeft: '25px' }}
+                    style={{ paddingLeft: '28px' }}
                     value={formData.tt_rate}
                     onChange={(e) => setFormData({ ...formData, tt_rate: e.target.value })}
                     placeholder="85.00"
@@ -353,12 +353,12 @@ export default function Employees() {
               <div className="form-group">
                 <label className="label">Field Time (FT)</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
                   <input
                     type="number"
                     step="0.01"
                     className="input"
-                    style={{ paddingLeft: '25px' }}
+                    style={{ paddingLeft: '28px' }}
                     value={formData.ft_rate}
                     onChange={(e) => setFormData({ ...formData, ft_rate: e.target.value })}
                     placeholder="140.00"
@@ -390,12 +390,12 @@ export default function Employees() {
               <div className="form-group">
                 <label className="label">Shop Pay Rate</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
                   <input
                     type="number"
                     step="0.01"
                     className="input"
-                    style={{ paddingLeft: '25px' }}
+                    style={{ paddingLeft: '28px' }}
                     value={formData.shop_pay_rate}
                     onChange={(e) => setFormData({ ...formData, shop_pay_rate: e.target.value })}
                     placeholder="25.00"
@@ -422,12 +422,12 @@ export default function Employees() {
               <div className="form-group">
                 <label className="label">Internal Rate</label>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', zIndex: 1 }}>$</span>
                   <input
                     type="number"
                     step="0.01"
                     className="input"
-                    style={{ paddingLeft: '25px' }}
+                    style={{ paddingLeft: '28px' }}
                     value={formData.internal_rate}
                     onChange={(e) => setFormData({ ...formData, internal_rate: e.target.value })}
                     placeholder="0.00"
