@@ -228,12 +228,24 @@ export function groupEntriesIntoTickets(
         
         if (isSenior) {
           // Senior employee rates
-          if (project.shop_senior_rate != null) projectRates.rt = project.shop_senior_rate;
-          if (project.ft_senior_rate != null) projectRates.ft = project.ft_senior_rate;
+          if (project.shop_senior_rate != null) {
+            projectRates.rt = project.shop_senior_rate;
+            projectRates.shop_ot = project.shop_senior_rate * 1.5; // OT is 1.5x the special rate
+          }
+          if (project.ft_senior_rate != null) {
+            projectRates.ft = project.ft_senior_rate;
+            projectRates.field_ot = project.ft_senior_rate * 1.5; // OT is 1.5x the special rate
+          }
         } else {
           // Junior employee rates
-          if (project.shop_junior_rate != null) projectRates.rt = project.shop_junior_rate;
-          if (project.ft_junior_rate != null) projectRates.ft = project.ft_junior_rate;
+          if (project.shop_junior_rate != null) {
+            projectRates.rt = project.shop_junior_rate;
+            projectRates.shop_ot = project.shop_junior_rate * 1.5; // OT is 1.5x the special rate
+          }
+          if (project.ft_junior_rate != null) {
+            projectRates.ft = project.ft_junior_rate;
+            projectRates.field_ot = project.ft_junior_rate * 1.5; // OT is 1.5x the special rate
+          }
         }
         
         // Travel rate is the same regardless of Junior/Senior
