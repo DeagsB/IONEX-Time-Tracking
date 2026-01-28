@@ -373,30 +373,6 @@ export default function Employees() {
             )}
 
             <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
-              Internal Rate
-            </h4>
-            <p style={{ fontSize: '0.9em', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-              Rate charged for internal (non-billable) work
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
-              <div className="form-group">
-                <label className="label">Internal Rate</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input"
-                    style={{ paddingLeft: '25px' }}
-                    value={formData.internal_rate}
-                    onChange={(e) => setFormData({ ...formData, internal_rate: e.target.value })}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
               Pay Rates (Employee Compensation)
             </h4>
             {formData.department === 'Panel Shop' ? (
@@ -410,7 +386,7 @@ export default function Employees() {
                 Note: Travel time is paid at the Shop Rate. OT pay rates are automatically calculated as 1.5x base pay rates.
               </p>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: formData.department === 'Panel Shop' && !isAdmin ? '1fr' : '1fr 1fr', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: formData.department === 'Panel Shop' && !isAdmin ? '1fr 1fr' : '1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Shop Pay Rate</label>
                 <div style={{ position: 'relative' }}>
@@ -443,6 +419,21 @@ export default function Employees() {
                   </div>
                 </div>
               )}
+              <div className="form-group">
+                <label className="label">Internal Rate</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.internal_rate}
+                    onChange={(e) => setFormData({ ...formData, internal_rate: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
             </div>
             <div style={{ marginTop: '10px', padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '0.9em', color: 'var(--text-secondary)' }}>
               <strong>Calculated OT Pay Rates:</strong> Shop OT = ${((parseFloat(formData.shop_pay_rate) || 25) * 1.5).toFixed(2)}, Field OT = ${((parseFloat(formData.field_pay_rate) || 30) * 1.5).toFixed(2)}
