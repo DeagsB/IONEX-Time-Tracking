@@ -62,6 +62,7 @@ export default function ServiceTickets() {
     locationCode: string;
     poNumber: string;
     approverName: string;
+    other: string;
     techName: string;
     projectNumber: string;
     date: string;
@@ -1113,9 +1114,10 @@ export default function ServiceTickets() {
                     email: ticket.customerInfo.email || '',
                     contactName: ticket.userName || '',
                     serviceLocation: ticket.customerInfo.service_location || ticket.customerInfo.address || '',
-                    locationCode: '',
-                    poNumber: '',
+                    locationCode: ticket.customerInfo.location_code || '',
+                    poNumber: ticket.customerInfo.po_number || '',
                     approverName: [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '',
+                    other: '',
                     techName: ticket.userName || '',
                     projectNumber: ticket.projectNumber || '',
                     date: ticket.date || '',
@@ -1553,13 +1555,20 @@ export default function ServiceTickets() {
                             />
                           </div>
                           <div>
-                            <label style={labelStyle}>Other</label>
+                            <label style={labelStyle}>Approver / PO / AFE</label>
                             <input
                               style={inputStyle}
                               value={editableTicket.approverName}
                               onChange={(e) => setEditableTicket({ ...editableTicket, approverName: e.target.value })}
                             />
-                            <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px', display: 'block' }}>Approver / PO / AFE</span>
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Other</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.other}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, other: e.target.value })}
+                            />
                           </div>
                         </div>
                       </div>
@@ -2304,7 +2313,7 @@ export default function ServiceTickets() {
                         phone: editableTicket.phone,
                         email: editableTicket.email,
                         service_location: editableTicket.serviceLocation,
-                        location_code: editableTicket.locationCode,
+                        location_code: editableTicket.other,
                         po_number: editableTicket.poNumber,
                         approver_name: editableTicket.approverName,
                       },
