@@ -658,200 +658,152 @@ export function calculateRateTypeBreakdown(
     }
   });
 
-  // STEP 3: Calculate HOURS and REVENUE from service tickets
-  // Hours displayed and revenue are based on service ticket hours
+  // STEP 3: Calculate HOURS and REVENUE
+  // FIX: Always start with time entries, then adjust for edited service tickets
+  // This ensures hours are counted even if service tickets haven't been clicked/created
   console.log('[RateTypeBreakdown] Service tickets received:', serviceTicketHours?.length || 0, 'userId:', userId);
   
-  if (serviceTicketHours && serviceTicketHours.length > 0) {
-    // Track service ticket hours by rate type for revenue calculation
-    const serviceHoursByRateType: Record<string, number> = {
-      shopTime: 0,
-      fieldTime: 0,
-      travelTime: 0,
-      shopOvertime: 0,
-      fieldOvertime: 0,
-    };
+  // First, calculate billable hours from time entries (this is the base)
+  const billableHoursByRateType: Record<string, number> = {
+    shopTime: 0,
+    fieldTime: 0,
+    travelTime: 0,
+    shopOvertime: 0,
+    fieldOvertime: 0,
+  };
 
-    // Deduplicate service tickets by date + user_id + customer_id
-    // Multiple records can exist for the same ticket (e.g., from multiple exports)
-    // We only want to count each unique ticket once
-    const uniqueTicketMap = new Map<string, typeof serviceTicketHours[0]>();
+  // Track which entries have been processed by edited service tickets
+  const processedEntryIds = new Set<string>();
+
+  // Deduplicate service tickets by date + user_id + customer_id
+  const uniqueTicketMap = new Map<string, ServiceTicketHours>();
+  if (serviceTicketHours && serviceTicketHours.length > 0) {
     serviceTicketHours.forEach(ticket => {
       const key = `${ticket.date}-${ticket.user_id}-${ticket.customer_id || 'unassigned'}`;
-      // Keep the one with is_edited=true if available, otherwise keep the first one
       const existing = uniqueTicketMap.get(key);
       if (!existing || (ticket.is_edited && !existing.is_edited)) {
         uniqueTicketMap.set(key, ticket);
       }
     });
-    const dedupedTickets = Array.from(uniqueTicketMap.values());
-    
-    console.log('[RateTypeBreakdown] After deduplication:', dedupedTickets.length, 'unique tickets (was', serviceTicketHours.length, ')');
+  }
+  const dedupedTickets = Array.from(uniqueTicketMap.values());
+  
+  console.log('[RateTypeBreakdown] After deduplication:', dedupedTickets.length, 'unique tickets');
 
-    // Process each service ticket
-    dedupedTickets.forEach((ticket, index) => {
-      console.log(`[RateTypeBreakdown] Processing ticket ${index + 1}/${dedupedTickets.length}:`, {
-        id: ticket.id,
-        ticket_user_id: ticket.user_id,
-        userId,
-        total_hours: ticket.total_hours,
-        is_edited: ticket.is_edited,
-        edited_hours: ticket.edited_hours,
-        date: ticket.date
+  // Process edited service tickets first - these override time entry hours
+  dedupedTickets.forEach((ticket) => {
+    if (ticket.user_id !== userId) return;
+    
+    // Only process tickets that have been EDITED (hours manually adjusted)
+    if (ticket.is_edited && ticket.edited_hours) {
+      console.log('[RateTypeBreakdown] Processing edited ticket:', ticket.id, ticket.edited_hours);
+      
+      // Find matching entries to mark them as processed
+      const matchingEntries = entries.filter(entry => {
+        if (entry.date !== ticket.date) return false;
+        if (!entry.billable) return false;
+        if (ticket.customer_id && entry.project?.customer?.id !== ticket.customer_id) return false;
+        if (ticket.project_id && entry.project_id !== ticket.project_id) return false;
+        return true;
       });
       
-      if (ticket.user_id !== userId) {
-        console.log('[RateTypeBreakdown] Skipping ticket - user_id mismatch');
-        return;
-      }
+      // Mark these entries as processed
+      matchingEntries.forEach(entry => processedEntryIds.add(entry.id));
       
-      // If ticket has been edited, use edited_hours directly
-      if (ticket.is_edited && ticket.edited_hours) {
-        console.log('[RateTypeBreakdown] Using edited_hours:', ticket.edited_hours);
-        const editedHours = ticket.edited_hours;
+      // Use edited_hours from the service ticket
+      Object.keys(ticket.edited_hours).forEach(rateTypeKey => {
+        const hours = ticket.edited_hours![rateTypeKey];
+        let totalHoursForRate = 0;
         
-        // Process each rate type from edited hours
-        Object.keys(editedHours).forEach(rateTypeKey => {
-          const hours = editedHours[rateTypeKey];
-          let totalHoursForRate = 0;
-          
-          // Sum hours if it's an array, otherwise use the number directly
-          if (Array.isArray(hours)) {
-            totalHoursForRate = hours.reduce((sum: number, h: number) => sum + (h || 0), 0);
-          } else {
-            totalHoursForRate = hours as number;
-          }
-          
-          console.log(`[RateTypeBreakdown] Rate type "${rateTypeKey}" has totalHoursForRate: ${totalHoursForRate}`);
-          
-          if (totalHoursForRate > 0) {
-            const rateType = rateTypeKey.toLowerCase();
-            
-            if (rateType.includes('shop') && rateType.includes('overtime')) {
-              serviceHoursByRateType.shopOvertime += totalHoursForRate;
-            } else if (rateType.includes('field') && rateType.includes('overtime')) {
-              serviceHoursByRateType.fieldOvertime += totalHoursForRate;
-            } else if (rateType.includes('field')) {
-              serviceHoursByRateType.fieldTime += totalHoursForRate;
-            } else if (rateType.includes('travel')) {
-              serviceHoursByRateType.travelTime += totalHoursForRate;
-            } else {
-              serviceHoursByRateType.shopTime += totalHoursForRate;
-            }
-          }
-        });
-        console.log('[RateTypeBreakdown] After this ticket, serviceHoursByRateType:', { ...serviceHoursByRateType });
-      } else {
-        // Ticket not edited - use service ticket total_hours and distribute by rate type from matching entries
-        console.log('[RateTypeBreakdown] Ticket not edited, using total_hours:', ticket.total_hours);
-        const ticketDate = ticket.date;
-        const ticketHours = Number(ticket.total_hours) || 0;
-        
-        // Find matching billable time entries for this ticket to determine rate type distribution
-        const matchingEntries = entries.filter(entry => {
-          if (entry.date !== ticketDate) return false;
-          if (!entry.billable) return false;
-          if (ticket.customer_id && entry.project?.customer?.id !== ticket.customer_id) return false;
-          if (ticket.project_id && entry.project_id !== ticket.project_id) return false;
-          return true;
-        });
-
-        console.log('[RateTypeBreakdown] Matching entries for ticket:', matchingEntries.length, 'ticketHours:', ticketHours);
-
-        if (matchingEntries.length > 0 && ticketHours > 0) {
-          // Calculate total hours from matching entries to get proportions
-          const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-          console.log('[RateTypeBreakdown] totalEntryHours from matching entries:', totalEntryHours);
-          
-          if (totalEntryHours > 0) {
-            // Distribute ticket hours proportionally by rate type from entries
-            matchingEntries.forEach(entry => {
-              const entryHours = Number(entry.hours) || 0;
-              const proportion = entryHours / totalEntryHours;
-              const ticketHoursForThisRate = ticketHours * proportion;
-              const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-              console.log('[RateTypeBreakdown] Entry proportion:', { entryHours, proportion, ticketHoursForThisRate, rateType });
-
-              if (rateType.includes('shop') && rateType.includes('overtime')) {
-                serviceHoursByRateType.shopOvertime += ticketHoursForThisRate;
-              } else if (rateType.includes('field') && rateType.includes('overtime')) {
-                serviceHoursByRateType.fieldOvertime += ticketHoursForThisRate;
-              } else if (rateType.includes('field')) {
-                serviceHoursByRateType.fieldTime += ticketHoursForThisRate;
-              } else if (rateType.includes('travel')) {
-                serviceHoursByRateType.travelTime += ticketHoursForThisRate;
-              } else {
-                serviceHoursByRateType.shopTime += ticketHoursForThisRate;
-              }
-            });
-          }
-        } else if (ticketHours > 0) {
-          // No matching entries but ticket has hours - default to shop time
-          serviceHoursByRateType.shopTime += ticketHours;
+        if (Array.isArray(hours)) {
+          totalHoursForRate = hours.reduce((sum: number, h: number) => sum + (h || 0), 0);
+        } else {
+          totalHoursForRate = hours as number;
         }
-      }
-    });
+        
+        if (totalHoursForRate > 0) {
+          const rateType = rateTypeKey.toLowerCase();
+          
+          if (rateType.includes('shop') && rateType.includes('overtime')) {
+            billableHoursByRateType.shopOvertime += totalHoursForRate;
+          } else if (rateType.includes('field') && rateType.includes('overtime')) {
+            billableHoursByRateType.fieldOvertime += totalHoursForRate;
+          } else if (rateType.includes('field')) {
+            billableHoursByRateType.fieldTime += totalHoursForRate;
+          } else if (rateType.includes('travel')) {
+            billableHoursByRateType.travelTime += totalHoursForRate;
+          } else {
+            billableHoursByRateType.shopTime += totalHoursForRate;
+          }
+        }
+      });
+    }
+  });
 
-    console.log('[RateTypeBreakdown] Final serviceHoursByRateType:', serviceHoursByRateType);
-    console.log('[RateTypeBreakdown] Final payrollCostsByRateType:', payrollCostsByRateType);
+  // Now process ALL billable time entries that weren't covered by edited tickets
+  entries.forEach(entry => {
+    if (!entry.billable) return;
+    if (processedEntryIds.has(entry.id)) return; // Skip if processed by edited ticket
+    
+    const hours = Number(entry.hours) || 0;
+    const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+    
+    if (rateType.includes('shop') && rateType.includes('overtime')) {
+      billableHoursByRateType.shopOvertime += hours;
+    } else if (rateType.includes('field') && rateType.includes('overtime')) {
+      billableHoursByRateType.fieldOvertime += hours;
+    } else if (rateType.includes('field')) {
+      billableHoursByRateType.fieldTime += hours;
+    } else if (rateType.includes('travel')) {
+      billableHoursByRateType.travelTime += hours;
+    } else {
+      billableHoursByRateType.shopTime += hours;
+    }
+  });
 
-    // Now combine: hours and revenue from service tickets, cost from payroll
-    // Shop Time
-    const shopTimeHours = serviceHoursByRateType.shopTime;
-    const shopTimeRevenue = shopTimeHours * getBillableRate('shop time');
-    breakdown.shopTime.hours = shopTimeHours;
-    breakdown.shopTime.revenue = shopTimeRevenue;
-    breakdown.shopTime.cost = payrollCostsByRateType.shopTime;
-    breakdown.shopTime.profit = shopTimeRevenue - payrollCostsByRateType.shopTime;
+  console.log('[RateTypeBreakdown] Final billableHoursByRateType:', billableHoursByRateType);
+  console.log('[RateTypeBreakdown] Final payrollCostsByRateType:', payrollCostsByRateType);
 
-    // Field Time
-    const fieldTimeHours = serviceHoursByRateType.fieldTime;
-    const fieldTimeRevenue = fieldTimeHours * getBillableRate('field time');
-    breakdown.fieldTime.hours = fieldTimeHours;
-    breakdown.fieldTime.revenue = fieldTimeRevenue;
-    breakdown.fieldTime.cost = payrollCostsByRateType.fieldTime;
-    breakdown.fieldTime.profit = fieldTimeRevenue - payrollCostsByRateType.fieldTime;
+  // Now combine: hours from time entries (or edited tickets), revenue calculated from hours × rate, cost from payroll
+  // Shop Time
+  const shopTimeHours = billableHoursByRateType.shopTime;
+  const shopTimeRevenue = shopTimeHours * getBillableRate('shop time');
+  breakdown.shopTime.hours = shopTimeHours;
+  breakdown.shopTime.revenue = shopTimeRevenue;
+  breakdown.shopTime.cost = payrollCostsByRateType.shopTime;
+  breakdown.shopTime.profit = shopTimeRevenue - payrollCostsByRateType.shopTime;
 
-    // Travel Time
-    const travelTimeHours = serviceHoursByRateType.travelTime;
-    const travelTimeRevenue = travelTimeHours * getBillableRate('travel time');
-    breakdown.travelTime.hours = travelTimeHours;
-    breakdown.travelTime.revenue = travelTimeRevenue;
-    breakdown.travelTime.cost = payrollCostsByRateType.travelTime;
-    breakdown.travelTime.profit = travelTimeRevenue - payrollCostsByRateType.travelTime;
+  // Field Time
+  const fieldTimeHours = billableHoursByRateType.fieldTime;
+  const fieldTimeRevenue = fieldTimeHours * getBillableRate('field time');
+  breakdown.fieldTime.hours = fieldTimeHours;
+  breakdown.fieldTime.revenue = fieldTimeRevenue;
+  breakdown.fieldTime.cost = payrollCostsByRateType.fieldTime;
+  breakdown.fieldTime.profit = fieldTimeRevenue - payrollCostsByRateType.fieldTime;
 
-    // Shop Overtime
-    const shopOvertimeHours = serviceHoursByRateType.shopOvertime;
-    const shopOvertimeRevenue = shopOvertimeHours * getBillableRate('shop overtime');
-    breakdown.shopOvertime.hours = shopOvertimeHours;
-    breakdown.shopOvertime.revenue = shopOvertimeRevenue;
-    breakdown.shopOvertime.cost = payrollCostsByRateType.shopOvertime;
-    breakdown.shopOvertime.profit = shopOvertimeRevenue - payrollCostsByRateType.shopOvertime;
+  // Travel Time
+  const travelTimeHours = billableHoursByRateType.travelTime;
+  const travelTimeRevenue = travelTimeHours * getBillableRate('travel time');
+  breakdown.travelTime.hours = travelTimeHours;
+  breakdown.travelTime.revenue = travelTimeRevenue;
+  breakdown.travelTime.cost = payrollCostsByRateType.travelTime;
+  breakdown.travelTime.profit = travelTimeRevenue - payrollCostsByRateType.travelTime;
 
-    // Field Overtime
-    const fieldOvertimeHours = serviceHoursByRateType.fieldOvertime;
-    const fieldOvertimeRevenue = fieldOvertimeHours * getBillableRate('field overtime');
-    breakdown.fieldOvertime.hours = fieldOvertimeHours;
-    breakdown.fieldOvertime.revenue = fieldOvertimeRevenue;
-    breakdown.fieldOvertime.cost = payrollCostsByRateType.fieldOvertime;
-    breakdown.fieldOvertime.profit = fieldOvertimeRevenue - payrollCostsByRateType.fieldOvertime;
+  // Shop Overtime
+  const shopOvertimeHours = billableHoursByRateType.shopOvertime;
+  const shopOvertimeRevenue = shopOvertimeHours * getBillableRate('shop overtime');
+  breakdown.shopOvertime.hours = shopOvertimeHours;
+  breakdown.shopOvertime.revenue = shopOvertimeRevenue;
+  breakdown.shopOvertime.cost = payrollCostsByRateType.shopOvertime;
+  breakdown.shopOvertime.profit = shopOvertimeRevenue - payrollCostsByRateType.shopOvertime;
 
-  } else {
-    // Fallback to time entry hours if no service tickets exist (for billable entries only)
-    // In this case, both hours/revenue AND cost come from time entries
-    entries.forEach(entry => {
-      if (entry.billable) {
-        const hours = Number(entry.hours) || 0;
-        const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-        const billableRate = getBillableRate(rateType) || Number(entry.rate) || 0;
-        const revenue = hours * billableRate;
-        const payRate = getPayRate(rateType);
-        const cost = hours * payRate;
-
-        addToBreakdown(rateType, hours, revenue, cost);
-      }
-    });
-  }
+  // Field Overtime
+  const fieldOvertimeHours = billableHoursByRateType.fieldOvertime;
+  const fieldOvertimeRevenue = fieldOvertimeHours * getBillableRate('field overtime');
+  breakdown.fieldOvertime.hours = fieldOvertimeHours;
+  breakdown.fieldOvertime.revenue = fieldOvertimeRevenue;
+  breakdown.fieldOvertime.cost = payrollCostsByRateType.fieldOvertime;
+  breakdown.fieldOvertime.profit = fieldOvertimeRevenue - payrollCostsByRateType.fieldOvertime;
 
   return breakdown;
 }

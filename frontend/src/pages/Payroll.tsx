@@ -198,17 +198,10 @@ export default function Payroll() {
       }
     }
 
-    // Second pass: Adjust hours based on service ticket edits
+    // Second pass: Adjust hours ONLY based on EDITED service tickets
+    // FIX: Only adjust hours when service tickets have been manually edited
+    // Non-edited tickets should use time entry hours directly
     if (serviceTicketHours && serviceTicketHours.length > 0) {
-      // Group service ticket hours by user and rate type
-      const serviceHoursByUser = new Map<string, {
-        shopTime: number;
-        fieldTime: number;
-        travelTime: number;
-        shopOvertime: number;
-        fieldOvertime: number;
-      }>();
-
       // Deduplicate service tickets by date + user_id + customer_id
       const uniqueTicketMap = new Map<string, typeof serviceTicketHours[0]>();
       serviceTicketHours.forEach(ticket => {
@@ -220,23 +213,51 @@ export default function Payroll() {
       });
       const dedupedTickets = Array.from(uniqueTicketMap.values());
 
-      dedupedTickets.forEach(ticket => {
-        const userId = ticket.user_id;
-        if (!serviceHoursByUser.has(userId)) {
-          serviceHoursByUser.set(userId, {
-            shopTime: 0,
-            fieldTime: 0,
-            travelTime: 0,
-            shopOvertime: 0,
-            fieldOvertime: 0,
+      // Only process EDITED tickets - these have manually adjusted hours
+      const editedTickets = dedupedTickets.filter(t => t.is_edited && t.edited_hours);
+      
+      if (editedTickets.length > 0) {
+        // Track which entries have been covered by edited tickets
+        const processedEntryIds = new Set<string>();
+        
+        // Group edited ticket hours by user
+        const editedHoursByUser = new Map<string, {
+          shopTime: number;
+          fieldTime: number;
+          travelTime: number;
+          shopOvertime: number;
+          fieldOvertime: number;
+        }>();
+
+        editedTickets.forEach(ticket => {
+          const userId = ticket.user_id;
+          if (!editedHoursByUser.has(userId)) {
+            editedHoursByUser.set(userId, {
+              shopTime: 0,
+              fieldTime: 0,
+              travelTime: 0,
+              shopOvertime: 0,
+              fieldOvertime: 0,
+            });
+          }
+
+          const userEditedHours = editedHoursByUser.get(userId)!;
+          
+          // Find matching entries to mark them as processed
+          const matchingEntries = timeEntries.filter(entry => {
+            if (entry.date !== ticket.date) return false;
+            if (!entry.billable) return false;
+            if (entry.user_id !== ticket.user_id) return false;
+            if (ticket.customer_id && entry.project?.customer?.id !== ticket.customer_id) return false;
+            if (ticket.project_id && entry.project_id !== ticket.project_id) return false;
+            return true;
           });
-        }
+          
+          // Mark these entries as processed
+          matchingEntries.forEach(entry => processedEntryIds.add(entry.id));
 
-        const userServiceHours = serviceHoursByUser.get(userId)!;
-
-        // If ticket has been edited, use edited_hours directly
-        if (ticket.is_edited && ticket.edited_hours) {
-          Object.entries(ticket.edited_hours).forEach(([rateTypeKey, hours]) => {
+          // Use edited_hours from the ticket
+          Object.entries(ticket.edited_hours!).forEach(([rateTypeKey, hours]) => {
             let hoursForRate = 0;
             if (Array.isArray(hours)) {
               hoursForRate = hours.reduce((sum, h) => sum + (h || 0), 0);
@@ -246,107 +267,96 @@ export default function Payroll() {
 
             const rateType = rateTypeKey.toLowerCase();
             if (rateType.includes('shop') && rateType.includes('overtime')) {
-              userServiceHours.shopOvertime += hoursForRate;
+              userEditedHours.shopOvertime += hoursForRate;
             } else if (rateType.includes('field') && rateType.includes('overtime')) {
-              userServiceHours.fieldOvertime += hoursForRate;
+              userEditedHours.fieldOvertime += hoursForRate;
             } else if (rateType.includes('field')) {
-              userServiceHours.fieldTime += hoursForRate;
+              userEditedHours.fieldTime += hoursForRate;
             } else if (rateType.includes('travel')) {
-              userServiceHours.travelTime += hoursForRate;
+              userEditedHours.travelTime += hoursForRate;
             } else {
-              userServiceHours.shopTime += hoursForRate;
+              userEditedHours.shopTime += hoursForRate;
             }
           });
-        } else {
-          // Ticket not edited - use total_hours and distribute by matching entries
-          const ticketDate = ticket.date;
-          const ticketHours = Number(ticket.total_hours) || 0;
+        });
+
+        // Adjust employee hours: for entries NOT covered by edited tickets, keep original hours
+        // For entries covered by edited tickets, use the edited hours
+        employeeMap.forEach((emp, userId) => {
+          const editedHours = editedHoursByUser.get(userId);
+          if (!editedHours) return; // No edited tickets for this employee - keep original hours
+
+          // Calculate hours from non-processed entries (entries not covered by edited tickets)
+          const unprocessedHours = {
+            shopTime: 0,
+            fieldTime: 0,
+            travelTime: 0,
+            shopOvertime: 0,
+            fieldOvertime: 0,
+          };
           
-          // Find matching billable time entries for this ticket
-          const matchingEntries = timeEntries.filter(entry => {
-            if (entry.date !== ticketDate) return false;
-            if (!entry.billable) return false;
-            if (entry.user_id !== ticket.user_id) return false;
-            if (ticket.customer_id && entry.project?.customer?.id !== ticket.customer_id) return false;
-            if (ticket.project_id && entry.project_id !== ticket.project_id) return false;
-            return true;
+          emp.entries.filter(e => e.billable && !processedEntryIds.has(e.id)).forEach(entry => {
+            const hours = Number(entry.hours) || 0;
+            const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+            
+            if (rateType.includes('shop') && rateType.includes('overtime')) {
+              unprocessedHours.shopOvertime += hours;
+            } else if (rateType.includes('field') && rateType.includes('overtime')) {
+              unprocessedHours.fieldOvertime += hours;
+            } else if (rateType.includes('field')) {
+              unprocessedHours.fieldTime += hours;
+            } else if (rateType.includes('travel')) {
+              unprocessedHours.travelTime += hours;
+            } else {
+              unprocessedHours.shopTime += hours;
+            }
           });
 
-          if (matchingEntries.length > 0 && ticketHours > 0) {
-            const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-            if (totalEntryHours > 0) {
-              matchingEntries.forEach(entry => {
-                const entryHours = Number(entry.hours) || 0;
-                const proportion = entryHours / totalEntryHours;
-                const ticketHoursForThisRate = ticketHours * proportion;
-                const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+          // New billable hours = edited ticket hours + unprocessed entry hours
+          const newBillableHours = {
+            shopTime: editedHours.shopTime + unprocessedHours.shopTime,
+            fieldTime: editedHours.fieldTime + unprocessedHours.fieldTime,
+            travelTime: editedHours.travelTime + unprocessedHours.travelTime,
+            shopOvertime: editedHours.shopOvertime + unprocessedHours.shopOvertime,
+            fieldOvertime: editedHours.fieldOvertime + unprocessedHours.fieldOvertime,
+          };
 
-                if (rateType.includes('shop') && rateType.includes('overtime')) {
-                  userServiceHours.shopOvertime += ticketHoursForThisRate;
-                } else if (rateType.includes('field') && rateType.includes('overtime')) {
-                  userServiceHours.fieldOvertime += ticketHoursForThisRate;
-                } else if (rateType.includes('field')) {
-                  userServiceHours.fieldTime += ticketHoursForThisRate;
-                } else if (rateType.includes('travel')) {
-                  userServiceHours.travelTime += ticketHoursForThisRate;
-                } else {
-                  userServiceHours.shopTime += ticketHoursForThisRate;
-                }
-              });
-            }
-          } else if (ticketHours > 0) {
-            // No matching entries but ticket has hours - default to shop time
-            userServiceHours.shopTime += ticketHours;
-          }
-        }
-      });
+          // Store original actual payroll hours (from time entries)
+          const originalShopTime = emp.shopTime;
+          const originalFieldTime = emp.fieldTime;
+          const originalTravelTime = emp.travelTime;
+          const originalShopOT = emp.shopOvertime;
+          const originalFieldOT = emp.fieldOvertime;
 
-      // Adjust employee hours based on service ticket hours
-      // IMPORTANT: Payroll should NEVER exceed actual hours worked from time entries
-      // Service ticket increases (like 4-hour minimums) are for billing only, not payroll
-      employeeMap.forEach((emp, userId) => {
-        const serviceHours = serviceHoursByUser.get(userId);
-        if (!serviceHours) return; // No service tickets for this employee
+          // Calculate unbilled work (actual hours - billable hours, but never negative)
+          const unbilledShopTime = Math.max(0, originalShopTime - newBillableHours.shopTime);
+          const unbilledFieldTime = Math.max(0, originalFieldTime - newBillableHours.fieldTime);
+          const unbilledTravelTime = Math.max(0, originalTravelTime - newBillableHours.travelTime);
+          const unbilledShopOT = Math.max(0, originalShopOT - newBillableHours.shopOvertime);
+          const unbilledFieldOT = Math.max(0, originalFieldOT - newBillableHours.fieldOvertime);
 
-        // Store original actual payroll hours (from time entries)
-        const originalShopTime = emp.shopTime;
-        const originalFieldTime = emp.fieldTime;
-        const originalTravelTime = emp.travelTime;
-        const originalShopOT = emp.shopOvertime;
-        const originalFieldOT = emp.fieldOvertime;
+          // Move unbilled work to internal
+          emp.internalShopTime += unbilledShopTime;
+          emp.internalFieldTime += unbilledFieldTime;
+          emp.internalTravelTime += unbilledTravelTime;
+          emp.internalShopOvertime += unbilledShopOT;
+          emp.internalFieldOvertime += unbilledFieldOT;
 
-        // For each billable rate type, if payroll > service ticket, move difference to internal
-        // If service ticket > payroll (minimums), keep payroll at actual worked hours (don't inflate)
-        const unbilledShopTime = Math.max(0, originalShopTime - serviceHours.shopTime);
-        const unbilledFieldTime = Math.max(0, originalFieldTime - serviceHours.fieldTime);
-        const unbilledTravelTime = Math.max(0, originalTravelTime - serviceHours.travelTime);
-        const unbilledShopOT = Math.max(0, originalShopOT - serviceHours.shopOvertime);
-        const unbilledFieldOT = Math.max(0, originalFieldOT - serviceHours.fieldOvertime);
+          // Update billable hours (cap at original to prevent payroll inflation)
+          emp.shopTime = Math.min(newBillableHours.shopTime, originalShopTime);
+          emp.fieldTime = Math.min(newBillableHours.fieldTime, originalFieldTime);
+          emp.travelTime = Math.min(newBillableHours.travelTime, originalTravelTime);
+          emp.shopOvertime = Math.min(newBillableHours.shopOvertime, originalShopOT);
+          emp.fieldOvertime = Math.min(newBillableHours.fieldOvertime, originalFieldOT);
 
-        // Move unbilled work to internal
-        emp.internalShopTime += unbilledShopTime;
-        emp.internalFieldTime += unbilledFieldTime;
-        emp.internalTravelTime += unbilledTravelTime;
-        emp.internalShopOvertime += unbilledShopOT;
-        emp.internalFieldOvertime += unbilledFieldOT;
-
-        // Update billable hours to match service ticket hours, 
-        // BUT cap at original actual hours (payroll can't exceed actual work)
-        // This means: billable = min(serviceTicketHours, actualWorkedHours)
-        emp.shopTime = Math.min(serviceHours.shopTime, originalShopTime);
-        emp.fieldTime = Math.min(serviceHours.fieldTime, originalFieldTime);
-        emp.travelTime = Math.min(serviceHours.travelTime, originalTravelTime);
-        emp.shopOvertime = Math.min(serviceHours.shopOvertime, originalShopOT);
-        emp.fieldOvertime = Math.min(serviceHours.fieldOvertime, originalFieldOT);
-
-        // Recalculate internal hours and total hours
-        // Total hours should equal original total hours (payroll never changes from actual worked)
-        emp.internalHours = emp.internalShopTime + emp.internalShopOvertime + 
-                           emp.internalTravelTime + emp.internalFieldTime + 
-                           emp.internalFieldOvertime;
-        emp.totalHours = emp.internalHours + emp.shopTime + emp.shopOvertime + 
-                        emp.travelTime + emp.fieldTime + emp.fieldOvertime;
-      });
+          // Recalculate internal hours and total hours
+          emp.internalHours = emp.internalShopTime + emp.internalShopOvertime + 
+                             emp.internalTravelTime + emp.internalFieldTime + 
+                             emp.internalFieldOvertime;
+          emp.totalHours = emp.internalHours + emp.shopTime + emp.shopOvertime + 
+                          emp.travelTime + emp.fieldTime + emp.fieldOvertime;
+        });
+      }
     }
 
     // Round totals after summing all actual hours and adjustments
