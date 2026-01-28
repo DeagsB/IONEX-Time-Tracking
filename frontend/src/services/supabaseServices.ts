@@ -1005,21 +1005,29 @@ export const serviceTicketsService = {
           .select()
           .single();
 
-        // If we get a duplicate key error (race condition), find next number
+        // If we get a duplicate key error (race condition), find next available number
         if (error && error.code === '23505') {
           attempts++;
-          // Get the next sequence number
+          // Get all used sequence numbers and find first gap
           const year = new Date().getFullYear() % 100;
-          const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+          const retryTableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
           const { data: seqData } = await supabase
-            .from(tableName)
+            .from(retryTableName)
             .select('sequence_number')
             .eq('employee_initials', ticket.employeeInitials.toUpperCase())
             .eq('year', year)
-            .order('sequence_number', { ascending: false })
-            .limit(1);
+            .not('sequence_number', 'is', null)
+            .order('sequence_number', { ascending: true });
           
-          const nextSequence = seqData && seqData.length > 0 ? seqData[0].sequence_number + 1 : 1;
+          // Find first available gap
+          let nextSequence = 1;
+          if (seqData && seqData.length > 0) {
+            const usedSequences = new Set(seqData.map(d => d.sequence_number));
+            while (usedSequences.has(nextSequence)) {
+              nextSequence++;
+            }
+          }
+          
           ticket.sequenceNumber = nextSequence;
           const paddedSequence = String(nextSequence).padStart(3, '0');
           ticketNumber = `${ticket.employeeInitials.toUpperCase()}_${year}${paddedSequence}`;
@@ -1034,18 +1042,26 @@ export const serviceTicketsService = {
       } else if (existing) {
         // Ticket number exists, find the next available one
         attempts++;
-        // Get the next sequence number
+        // Get all used sequence numbers and find first gap
         const year = new Date().getFullYear() % 100;
-        const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+        const retryTableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
         const { data: seqData } = await supabase
-          .from(tableName)
+          .from(retryTableName)
           .select('sequence_number')
           .eq('employee_initials', ticket.employeeInitials.toUpperCase())
           .eq('year', year)
-          .order('sequence_number', { ascending: false })
-          .limit(1);
+          .not('sequence_number', 'is', null)
+          .order('sequence_number', { ascending: true });
         
-        const nextSequence = seqData && seqData.length > 0 ? seqData[0].sequence_number + 1 : 1;
+        // Find first available gap
+        let nextSequence = 1;
+        if (seqData && seqData.length > 0) {
+          const usedSequences = new Set(seqData.map(d => d.sequence_number));
+          while (usedSequences.has(nextSequence)) {
+            nextSequence++;
+          }
+        }
+        
         ticket.sequenceNumber = nextSequence;
         const paddedSequence = String(nextSequence).padStart(3, '0');
         ticketNumber = `${ticket.employeeInitials.toUpperCase()}_${year}${paddedSequence}`;
