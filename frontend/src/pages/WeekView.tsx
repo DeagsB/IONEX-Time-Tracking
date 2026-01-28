@@ -520,7 +520,10 @@ export default function WeekView() {
     const [endHour, endMin] = selectedSlot.endTime.split(':').map(Number);
     
     const startDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), startHour, startMin);
-    const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), endHour, endMin);
+    
+    // Check for overnight entry (end time is earlier than start time)
+    const isOvernight = (endHour * 60 + endMin) < (startHour * 60 + startMin);
+    const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate() + (isOvernight ? 1 : 0), endHour, endMin);
     
     // Convert to ISO string (includes timezone offset)
     const startDateTime = startDate.toISOString();
@@ -634,7 +637,17 @@ export default function WeekView() {
     // Parse times to calculate hours for validation
     const [startH, startM] = editedEntry.start_time.split(':').map(Number);
     const [endH, endM] = editedEntry.end_time.split(':').map(Number);
-    const calculatedHours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    
+    // Handle overnight entries (end time is earlier than start time)
+    let calculatedHours;
+    if (endMinutes < startMinutes) {
+      // Overnight entry: add 24 hours worth of minutes
+      calculatedHours = (endMinutes + 24 * 60 - startMinutes) / 60;
+    } else {
+      calculatedHours = (endMinutes - startMinutes) / 60;
+    }
     
     // Validate hours are within reasonable range (0 to 24)
     if (calculatedHours <= 0 || calculatedHours > 24) {
@@ -694,9 +707,12 @@ export default function WeekView() {
     const [startHour, startMin] = editedEntry.start_time.split(':').map(Number);
     const [endHour, endMin] = editedEntry.end_time.split(':').map(Number);
     
+    // Check for overnight entry (end time is earlier than start time)
+    const isOvernight = (endHour * 60 + endMin) < (startHour * 60 + startMin);
+    
     // Create Date objects with local time
     const startDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), startHour, startMin);
-    const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), endHour, endMin);
+    const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate() + (isOvernight ? 1 : 0), endHour, endMin);
     
     // Calculate hours
     const durationMs = endDate.getTime() - startDate.getTime();
@@ -2072,7 +2088,18 @@ export default function WeekView() {
                     // Calculate hours
                     const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
                     const [endH, endM] = e.target.value.split(':').map(Number);
-                    let hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+                    const startMinutes = startH * 60 + startM;
+                    const endMinutes = endH * 60 + endM;
+                    
+                    // Handle overnight entries (end time is earlier than start time)
+                    let hours;
+                    if (endMinutes < startMinutes) {
+                      // Overnight entry: add 24 hours worth of minutes
+                      hours = (endMinutes + 24 * 60 - startMinutes) / 60;
+                    } else {
+                      hours = (endMinutes - startMinutes) / 60;
+                    }
+                    
                     // Ensure hours are within valid range (0 to 24)
                     hours = Math.max(0, Math.min(24, hours));
                     setNewEntry({ ...newEntry, hours });
@@ -2096,6 +2123,12 @@ export default function WeekView() {
                   }}
                 >
                   {newEntry.hours.toFixed(2)}h
+                  {(() => {
+                    const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
+                    const [endH, endM] = selectedSlot.endTime.split(':').map(Number);
+                    const isOvernight = (endH * 60 + endM) < (startH * 60 + startM);
+                    return isOvernight ? <span style={{ color: '#ff9800', marginLeft: '4px', fontSize: '11px' }}>(+1 day)</span> : null;
+                  })()}
                 </div>
               </div>
 
