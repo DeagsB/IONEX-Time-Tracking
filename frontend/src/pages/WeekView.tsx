@@ -1040,25 +1040,33 @@ export default function WeekView() {
     if (!entry.start_time || !entry.end_time) return null;
     
     // Parse ISO timestamp or HH:MM format
-    const parseTime = (timeStr: string) => {
-      // If it's an ISO timestamp (contains 'T' or space), extract time portion
+    const parseTimeWithDate = (timeStr: string) => {
+      // If it's an ISO timestamp (contains 'T' or space), extract time and date
       if (timeStr.includes('T') || timeStr.includes(' ')) {
         const date = new Date(timeStr);
         return {
           hour: date.getHours(),
-          minute: date.getMinutes()
+          minute: date.getMinutes(),
+          dateStr: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
         };
       }
       // Otherwise parse as HH:MM format
       const [hour, minute] = timeStr.split(':').map(Number);
-      return { hour, minute };
+      return { hour, minute, dateStr: entry.date };
     };
     
-    const startTime = parseTime(entry.start_time);
-    const endTime = parseTime(entry.end_time);
+    const startTime = parseTimeWithDate(entry.start_time);
+    const endTime = parseTimeWithDate(entry.end_time);
     
     const startMinutes = startTime.hour * 60 + startTime.minute;
-    const endMinutes = endTime.hour * 60 + endTime.minute;
+    let endMinutes = endTime.hour * 60 + endTime.minute;
+    
+    // If the end time is on a different day than the entry's date, 
+    // treat it as extending to midnight (24:00 = 1440 minutes)
+    if (endTime.dateStr !== entry.date) {
+      endMinutes = 24 * 60; // Midnight = end of day
+    }
+    
     const duration = endMinutes - startMinutes;
     
     // Use state rowHeight instead of hardcoded 60
