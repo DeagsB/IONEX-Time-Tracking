@@ -523,34 +523,84 @@ export default function WeekView() {
     
     // Check for overnight entry (end time is earlier than start time)
     const isOvernight = (endHour * 60 + endMin) < (startHour * 60 + startMin);
-    const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate() + (isOvernight ? 1 : 0), endHour, endMin);
     
-    // Convert to ISO string (includes timezone offset)
-    const startDateTime = startDate.toISOString();
-    const endDateTime = endDate.toISOString();
-    
-    const timeEntryData: any = {
-      user_id: actualUserId,
-      date: dateStr,
-      start_time: startDateTime,
-      end_time: endDateTime,
-      hours: newEntry.hours,
-      rate: 0, // Default rate, can be updated later
-      description: newEntry.description || '',
-      billable: isPanelShop ? false : newEntry.billable, // Panel Shop employees are never billable
-      rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type, // Panel Shop only has Shop Time
-      is_demo: isDemoMode, // Mark as demo entry if in demo mode
-    };
+    if (isOvernight) {
+      // Split into two entries: one for day 1 (until midnight) and one for day 2 (from midnight)
+      const midnightDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate() + 1, 0, 0);
+      const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate() + 1, endHour, endMin);
+      
+      // Calculate hours for each part
+      const hoursDay1 = (midnightDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
+      const hoursDay2 = (endDate.getTime() - midnightDate.getTime()) / (1000 * 60 * 60);
+      
+      // Format day 2 date string
+      const day2Month = String(midnightDate.getMonth() + 1).padStart(2, '0');
+      const day2Day = String(midnightDate.getDate()).padStart(2, '0');
+      const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
+      
+      // Entry 1: Start time to midnight on day 1
+      const entry1: any = {
+        user_id: actualUserId,
+        date: dateStr,
+        start_time: startDate.toISOString(),
+        end_time: midnightDate.toISOString(),
+        hours: hoursDay1,
+        rate: 0,
+        description: newEntry.description ? `${newEntry.description} (overnight 1/2)` : '(overnight 1/2)',
+        billable: isPanelShop ? false : newEntry.billable,
+        rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
+        is_demo: isDemoMode,
+      };
+      if (newEntry.project_id) entry1.project_id = newEntry.project_id;
+      
+      // Entry 2: Midnight to end time on day 2
+      const entry2: any = {
+        user_id: actualUserId,
+        date: dateStrDay2,
+        start_time: midnightDate.toISOString(),
+        end_time: endDate.toISOString(),
+        hours: hoursDay2,
+        rate: 0,
+        description: newEntry.description ? `${newEntry.description} (overnight 2/2)` : '(overnight 2/2)',
+        billable: isPanelShop ? false : newEntry.billable,
+        rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
+        is_demo: isDemoMode,
+      };
+      if (newEntry.project_id) entry2.project_id = newEntry.project_id;
+      
+      console.log('Submitting overnight entry split into two:');
+      console.log('  Entry 1 (Day 1):', entry1);
+      console.log('  Entry 2 (Day 2):', entry2);
+      
+      // Submit both entries
+      createTimeEntryMutation.mutate(entry1);
+      createTimeEntryMutation.mutate(entry2);
+    } else {
+      // Normal entry (same day)
+      const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), endHour, endMin);
+      
+      const timeEntryData: any = {
+        user_id: actualUserId,
+        date: dateStr,
+        start_time: startDate.toISOString(),
+        end_time: endDate.toISOString(),
+        hours: newEntry.hours,
+        rate: 0,
+        description: newEntry.description || '',
+        billable: isPanelShop ? false : newEntry.billable,
+        rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
+        is_demo: isDemoMode,
+      };
 
-    // Only add project_id if one is selected
-    if (newEntry.project_id) {
-      timeEntryData.project_id = newEntry.project_id;
+      if (newEntry.project_id) {
+        timeEntryData.project_id = newEntry.project_id;
+      }
+
+      console.log('Submitting time entry (with timezone):', timeEntryData);
+      console.log('  Local time clicked:', selectedSlot.startTime, '-', selectedSlot.endTime);
+      console.log('  ISO timestamps:', startDate.toISOString(), endDate.toISOString());
+      createTimeEntryMutation.mutate(timeEntryData);
     }
-
-    console.log('Submitting time entry (with timezone):', timeEntryData);
-    console.log('  Local time clicked:', selectedSlot.startTime, '-', selectedSlot.endTime);
-    console.log('  ISO timestamps:', startDateTime, endDateTime);
-    createTimeEntryMutation.mutate(timeEntryData);
   };
 
   // Handle clicking on an existing time entry to edit it
@@ -712,28 +762,91 @@ export default function WeekView() {
     
     // Create Date objects with local time
     const startDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), startHour, startMin);
-    const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate() + (isOvernight ? 1 : 0), endHour, endMin);
     
-    // Calculate hours
-    const durationMs = endDate.getTime() - startDate.getTime();
-    const hours = durationMs / (1000 * 60 * 60);
-    
-    const updateData: any = {
-      description: editedEntry.description,
-      start_time: startDate.toISOString(),
-      end_time: endDate.toISOString(),
-      hours: hours,
-      date: dateStr,
-      billable: isPanelShop ? false : editedEntry.billable, // Panel Shop employees are never billable
-      rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type, // Panel Shop only has Shop Time
-    };
-    
-    // Only include project_id if one is selected
-    if (editedEntry.project_id) {
-      updateData.project_id = editedEntry.project_id;
+    if (isOvernight) {
+      // Split into two entries: delete original, create two new ones
+      const midnightDate = new Date(year, entryDate.getMonth(), entryDate.getDate() + 1, 0, 0);
+      const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate() + 1, endHour, endMin);
+      
+      // Calculate hours for each part
+      const hoursDay1 = (midnightDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
+      const hoursDay2 = (endDate.getTime() - midnightDate.getTime()) / (1000 * 60 * 60);
+      
+      // Format day 2 date string
+      const day2Month = String(midnightDate.getMonth() + 1).padStart(2, '0');
+      const day2Day = String(midnightDate.getDate()).padStart(2, '0');
+      const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
+      
+      // Get user ID from the original entry
+      const actualUserId = editingEntry.user_id || user?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
+      
+      // Entry 1: Start time to midnight on day 1
+      const entry1: any = {
+        user_id: actualUserId,
+        date: dateStr,
+        start_time: startDate.toISOString(),
+        end_time: midnightDate.toISOString(),
+        hours: hoursDay1,
+        rate: editingEntry.rate || 0,
+        description: editedEntry.description ? `${editedEntry.description} (overnight 1/2)` : '(overnight 1/2)',
+        billable: isPanelShop ? false : editedEntry.billable,
+        rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
+        is_demo: editingEntry.is_demo || isDemoMode,
+      };
+      if (editedEntry.project_id) entry1.project_id = editedEntry.project_id;
+      
+      // Entry 2: Midnight to end time on day 2
+      const entry2: any = {
+        user_id: actualUserId,
+        date: dateStrDay2,
+        start_time: midnightDate.toISOString(),
+        end_time: endDate.toISOString(),
+        hours: hoursDay2,
+        rate: editingEntry.rate || 0,
+        description: editedEntry.description ? `${editedEntry.description} (overnight 2/2)` : '(overnight 2/2)',
+        billable: isPanelShop ? false : editedEntry.billable,
+        rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
+        is_demo: editingEntry.is_demo || isDemoMode,
+      };
+      if (editedEntry.project_id) entry2.project_id = editedEntry.project_id;
+      
+      console.log('Editing overnight entry - splitting into two:');
+      console.log('  Deleting original:', editingEntry.id);
+      console.log('  Creating Entry 1 (Day 1):', entry1);
+      console.log('  Creating Entry 2 (Day 2):', entry2);
+      
+      // Delete original and create two new entries
+      deleteTimeEntryMutation.mutate(editingEntry.id);
+      createTimeEntryMutation.mutate(entry1);
+      createTimeEntryMutation.mutate(entry2);
+      
+      setShowEditModal(false);
+      setEditingEntry(null);
+    } else {
+      // Normal entry (same day)
+      const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), endHour, endMin);
+      
+      // Calculate hours
+      const durationMs = endDate.getTime() - startDate.getTime();
+      const hours = durationMs / (1000 * 60 * 60);
+      
+      const updateData: any = {
+        description: editedEntry.description,
+        start_time: startDate.toISOString(),
+        end_time: endDate.toISOString(),
+        hours: hours,
+        date: dateStr,
+        billable: isPanelShop ? false : editedEntry.billable,
+        rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
+      };
+      
+      // Only include project_id if one is selected
+      if (editedEntry.project_id) {
+        updateData.project_id = editedEntry.project_id;
+      }
+      
+      updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
     }
-    
-    updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
   };
 
   // Handle deleting time entry
