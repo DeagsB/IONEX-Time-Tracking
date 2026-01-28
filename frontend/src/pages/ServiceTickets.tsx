@@ -1484,6 +1484,14 @@ export default function ServiceTickets() {
                               />
                             </div>
                           </div>
+                          <div>
+                            <label style={labelStyle}>Contact Name</label>
+                            <input
+                              style={inputStyle}
+                              value={editableTicket.contactName}
+                              onChange={(e) => setEditableTicket({ ...editableTicket, contactName: e.target.value })}
+                            />
+                          </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
                               <label style={labelStyle}>Phone</label>
@@ -1501,14 +1509,6 @@ export default function ServiceTickets() {
                                 onChange={(e) => setEditableTicket({ ...editableTicket, email: e.target.value })}
                               />
                             </div>
-                          </div>
-                          <div>
-                            <label style={labelStyle}>Contact Name</label>
-                            <input
-                              style={inputStyle}
-                              value={editableTicket.contactName}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, contactName: e.target.value })}
-                            />
                           </div>
                         </div>
                       </div>
