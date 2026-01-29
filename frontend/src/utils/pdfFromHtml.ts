@@ -91,10 +91,11 @@ export async function downloadPdfFromHtml(
     descriptionLines.push({ text: '', st: 0, tt: 0, ft: 0, so: 0, fo: 0 });
   }
 
-  // Get employee name from first entry
+  // Get employee name and email from first entry
   const employeeName = ticket.entries[0]?.user?.first_name && ticket.entries[0]?.user?.last_name
     ? `${ticket.entries[0].user.first_name} ${ticket.entries[0].user.last_name}`
     : ticket.userName || 'Unknown';
+  const employeeEmail = ticket.entries[0]?.user?.email || '';
 
   const ticketDate = ticket.entries[0]?.date ? formatDate(ticket.entries[0].date) : formatDate(new Date().toISOString());
 
@@ -146,8 +147,22 @@ export async function downloadPdfFromHtml(
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeName}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px;">Date</td>
-              <td colspan="3" style="padding: 2px 4px;">${ticketDate}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Date</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticketDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Address</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">2-3650 19th Street NE</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px;">City</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">Calgary</td>
+              <td style="padding: 2px 4px;">AB</td>
+              <td style="padding: 2px 4px;">T2E 6V2</td>
             </tr>
           </table>
         </div>
@@ -429,16 +444,17 @@ export async function generateAndStorePdf(
     descriptionLines.push({ text: '', st: 0, tt: 0, ft: 0, so: 0, fo: 0 });
   }
 
-  // Get employee name from first entry
+  // Get employee name and email from first entry
   const employeeName = ticket.entries[0]?.user?.first_name && ticket.entries[0]?.user?.last_name
     ? `${ticket.entries[0].user.first_name} ${ticket.entries[0].user.last_name}`
     : ticket.userName || 'Unknown';
+  const employeeEmail = ticket.entries[0]?.user?.email || '';
 
   const ticketDate = ticket.entries[0]?.date ? formatDate(ticket.entries[0].date) : formatDate(new Date().toISOString());
   const filename = `ServiceTicket_${ticket.ticketNumber || ticket.id.substring(0, 8)}.pdf`;
 
   // Build the same HTML as downloadPdfFromHtml (abbreviated for space)
-  const html = buildPdfHtml(ticket, expenses, descriptionLines, employeeName, ticketDate, rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, rtRate, ttRate, ftRate, shopOtRate, fieldOtRate, rtAmount, ttAmount, ftAmount, shopOtAmount, fieldOtAmount, expensesTotal, grandTotal);
+  const html = buildPdfHtml(ticket, expenses, descriptionLines, employeeName, employeeEmail, ticketDate, rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, rtRate, ttRate, ftRate, shopOtRate, fieldOtRate, rtAmount, ttAmount, ftAmount, shopOtAmount, fieldOtAmount, expensesTotal, grandTotal);
 
   // Create a temporary container
   const container = document.createElement('div');
@@ -522,6 +538,7 @@ function buildPdfHtml(
   expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }>,
   descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[],
   employeeName: string,
+  employeeEmail: string,
   ticketDate: string,
   rtHours: number,
   ttHours: number,
@@ -589,8 +606,22 @@ function buildPdfHtml(
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeName}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px;">Date</td>
-              <td colspan="3" style="padding: 2px 4px;">${ticketDate}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Date</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticketDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Address</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">2-3650 19th Street NE</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px;">City</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">Calgary</td>
+              <td style="padding: 2px 4px;">AB</td>
+              <td style="padding: 2px 4px;">T2E 6V2</td>
             </tr>
           </table>
         </div>
