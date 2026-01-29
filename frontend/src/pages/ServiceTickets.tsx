@@ -1425,7 +1425,29 @@ export default function ServiceTickets() {
                           );
                         }
                       } else {
-                        // Non-admin flow: toggle workflow_status
+                        // Non-admin flow
+                        // If admin has approved (has ticket number), show locked approved state
+                        if (hasTicketNumber) {
+                          return (
+                            <button
+                              className="button"
+                              disabled
+                              style={{
+                                padding: '6px 16px',
+                                fontSize: '13px',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'not-allowed',
+                                opacity: 0.9,
+                              }}
+                              title="Approved by admin"
+                            >
+                              ✓ Approved
+                            </button>
+                          );
+                        }
+                        // User can toggle workflow_status
                         return (
                           <button
                             className="button"
