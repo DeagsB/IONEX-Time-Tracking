@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
+import SearchableSelect from '../components/SearchableSelect';
 
 export default function Projects() {
   const { user, isAdmin } = useAuth();
@@ -412,20 +413,17 @@ export default function Projects() {
             <div className="form-group">
               <label className="label">Customer</label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
-                <select
-                  className="input"
+                <SearchableSelect
+                  options={customers?.map((customer: any) => ({
+                    value: customer.id,
+                    label: customer.name,
+                  })) || []}
                   value={formData.customer_id}
-                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                  required
-                  style={{ flex: 1, margin: 0 }}
-                >
-                  <option value="">Select Customer</option>
-                  {customers?.map((customer: any) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setFormData({ ...formData, customer_id: value })}
+                  placeholder="Search customers..."
+                  emptyOption={{ value: '', label: 'Select Customer' }}
+                  style={{ flex: 1 }}
+                />
                 <button
                   type="button"
                   className="button button-secondary"
@@ -748,20 +746,17 @@ export default function Projects() {
             <div className="form-group">
               <label className="label">Customer</label>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
-                <select
-                  className="input"
+                <SearchableSelect
+                  options={customers?.map((customer: any) => ({
+                    value: customer.id,
+                    label: customer.name,
+                  })) || []}
                   value={formData.customer_id}
-                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                  required
-                  style={{ flex: 1, margin: 0 }}
-                >
-                  <option value="">Select Customer</option>
-                  {customers?.map((customer: any) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setFormData({ ...formData, customer_id: value })}
+                  placeholder="Search customers..."
+                  emptyOption={{ value: '', label: 'Select Customer' }}
+                  style={{ flex: 1 }}
+                />
                 <button
                   type="button"
                   className="button button-secondary"
