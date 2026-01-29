@@ -26,6 +26,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedProjectName, setSelectedProjectName] = useState<string>('');
+  const [location, setLocation] = useState(''); // Work location for service tickets
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [shouldAutoStart, setShouldAutoStart] = useState(false);
@@ -65,6 +66,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rate: parseFloat(data.rate || 0),
         billable: data.billable !== undefined ? data.billable : true,
         description: data.description || null,
+        location: data.location || null, // Work location for service tickets
         is_demo: isDemoMode, // Mark as demo entry if in demo mode
       };
       
@@ -159,6 +161,10 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     setSelectedProjectName(project.name);
     setProjectSearch(project.name);
     setShowProjectDropdown(false);
+    // Auto-populate location from project default
+    if (project.location) {
+      setLocation(project.location);
+    }
   };
 
   const handleClearProject = () => {
@@ -166,6 +172,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     setSelectedProjectName('');
     setProjectSearch('');
     setShowProjectDropdown(false);
+    setLocation(''); // Clear location when project is cleared
   };
 
   const handleStop = async () => {
@@ -240,6 +247,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rate: projectRate,
         billable: true,
         description: currentEntry.description,
+        location: location || null, // Include location for service tickets
       });
 
       // Stop timer after saving
@@ -250,6 +258,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       setSelectedProjectId('');
       setSelectedProjectName('');
       setProjectSearch('');
+      setLocation(''); // Reset location
       setShowProjectDropdown(false);
       
       // Navigate to week view (which will show today's week)
@@ -474,6 +483,26 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
               </div>
             )}
           </div>
+        )}
+
+        {/* Location input - only shown when not running */}
+        {!timerRunning && (
+          <input
+            type="text"
+            placeholder="Location..."
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            style={{
+              width: '140px',
+              padding: '8px 12px',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              fontSize: '14px',
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              transition: 'all 0.2s ease',
+            }}
+          />
         )}
 
         <button
