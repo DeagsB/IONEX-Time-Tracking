@@ -36,13 +36,13 @@ export default function Projects() {
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects', user?.id, isAdmin],
-    queryFn: () => projectsService.getAll(user?.id),
+    queryKey: ['projects'],
+    queryFn: () => projectsService.getAll(),
   });
 
   const { data: customers } = useQuery({
-    queryKey: ['customers', user?.id],
-    queryFn: () => customersService.getAll(user?.id),
+    queryKey: ['customers'],
+    queryFn: () => customersService.getAll(),
   });
 
   // Toggle for admins to show only their hours vs all hours

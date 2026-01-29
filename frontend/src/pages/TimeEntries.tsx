@@ -27,8 +27,8 @@ export default function TimeEntries() {
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects', user?.id],
-    queryFn: () => projectsService.getAll(user?.id),
+    queryKey: ['projects'],
+    queryFn: () => projectsService.getAll(),
   });
 
   const createMutation = useMutation({

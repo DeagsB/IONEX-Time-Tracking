@@ -223,13 +223,13 @@ export default function WeekView() {
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects', user?.id],
-    queryFn: () => projectsService.getAll(user?.id),
+    queryKey: ['projects'],
+    queryFn: () => projectsService.getAll(),
   });
 
   const { data: customers } = useQuery({
-    queryKey: ['customers', user?.id],
-    queryFn: () => customersService.getAll(user?.id),
+    queryKey: ['customers'],
+    queryFn: () => customersService.getAll(),
   });
 
   // Fetch current user's employee record to check department

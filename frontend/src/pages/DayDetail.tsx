@@ -40,8 +40,8 @@ export default function DayDetail() {
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects', user?.id],
-    queryFn: () => projectsService.getAll(user?.id),
+    queryKey: ['projects'],
+    queryFn: () => projectsService.getAll(),
   });
 
   const { data: timeEntries } = useQuery({

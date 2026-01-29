@@ -36,8 +36,8 @@ export default function Customers() {
   });
 
   const { data: customers } = useQuery({
-    queryKey: ['customers', user?.id],
-    queryFn: () => customersService.getAll(user?.id),
+    queryKey: ['customers'],
+    queryFn: () => customersService.getAll(),
   });
 
   // Sorting state - persisted per user in localStorage
