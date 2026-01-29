@@ -24,9 +24,15 @@ export default function ServiceTickets() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   
-  // Sorting state
-  const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>('date');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  // Sorting state - persisted per user in localStorage
+  const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>(() => {
+    const saved = localStorage.getItem(`serviceTickets_sortField_${user?.id}`);
+    return (saved as any) || 'date';
+  });
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
+    const saved = localStorage.getItem(`serviceTickets_sortDirection_${user?.id}`);
+    return (saved as 'asc' | 'desc') || 'desc';
+  });
   
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
@@ -864,14 +870,19 @@ export default function ServiceTickets() {
     return result;
   }, [ticketsWithNumbers, selectedCustomerId, sortField, sortDirection]);
   
-  // Toggle sort function
+  // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
+    let newDirection: 'asc' | 'desc';
     if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(newDirection);
     } else {
+      newDirection = 'asc';
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection(newDirection);
+      if (user?.id) localStorage.setItem(`serviceTickets_sortField_${user.id}`, field);
     }
+    if (user?.id) localStorage.setItem(`serviceTickets_sortDirection_${user.id}`, newDirection);
   };
 
   if (user?.role !== 'ADMIN') {

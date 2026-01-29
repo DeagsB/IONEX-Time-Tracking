@@ -47,6 +47,16 @@ export default function Projects() {
 
   // Toggle for admins to show only their hours vs all hours
   const [showOnlyMyHours, setShowOnlyMyHours] = useState(false);
+  
+  // Sorting state - persisted per user in localStorage
+  const [sortField, setSortField] = useState<'project_number' | 'name' | 'customer' | 'status' | 'hours'>(() => {
+    const saved = localStorage.getItem(`projects_sortField_${user?.id}`);
+    return (saved as any) || 'name';
+  });
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
+    const saved = localStorage.getItem(`projects_sortDirection_${user?.id}`);
+    return (saved as 'asc' | 'desc') || 'asc';
+  });
 
   // Fetch all time entries to calculate total hours per project
   const { data: allTimeEntries } = useQuery({
@@ -87,6 +97,60 @@ export default function Projects() {
     const h = Math.floor(hours);
     const m = Math.round((hours - h) * 60);
     return `${h}:${m.toString().padStart(2, '0')}`;
+  };
+
+  // Sorted projects
+  const sortedProjects = useMemo(() => {
+    if (!projects) return [];
+    
+    return [...projects].sort((a: any, b: any) => {
+      let aVal: string | number;
+      let bVal: string | number;
+      
+      switch (sortField) {
+        case 'project_number':
+          aVal = (a.project_number || '').toLowerCase();
+          bVal = (b.project_number || '').toLowerCase();
+          break;
+        case 'name':
+          aVal = (a.name || '').toLowerCase();
+          bVal = (b.name || '').toLowerCase();
+          break;
+        case 'customer':
+          aVal = (a.customer?.name || '').toLowerCase();
+          bVal = (b.customer?.name || '').toLowerCase();
+          break;
+        case 'status':
+          aVal = a.status || '';
+          bVal = b.status || '';
+          break;
+        case 'hours':
+          aVal = projectHours[a.id] || 0;
+          bVal = projectHours[b.id] || 0;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [projects, sortField, sortDirection, projectHours]);
+
+  // Toggle sort function - saves to localStorage per user
+  const handleSort = (field: typeof sortField) => {
+    let newDirection: 'asc' | 'desc';
+    if (sortField === field) {
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(newDirection);
+    } else {
+      newDirection = 'asc';
+      setSortField(field);
+      setSortDirection(newDirection);
+      if (user?.id) localStorage.setItem(`projects_sortField_${user.id}`, field);
+    }
+    if (user?.id) localStorage.setItem(`projects_sortDirection_${user.id}`, newDirection);
   };
 
   const createMutation = useMutation({
@@ -870,11 +934,21 @@ export default function Projects() {
         <table className="table">
           <thead>
             <tr>
-              <th>Project #</th>
-              <th>Name</th>
-              <th>Customer</th>
-              <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Total Hours</th>
+              <th onClick={() => handleSort('project_number')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Project # {sortField === 'project_number' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
+              <th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Name {sortField === 'name' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
+              <th onClick={() => handleSort('customer')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Customer {sortField === 'customer' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
+              <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Status {sortField === 'status' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
+              <th onClick={() => handleSort('hours')} style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
+                Total Hours {sortField === 'hours' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
@@ -886,7 +960,7 @@ export default function Projects() {
                 </td>
               </tr>
             )}
-            {projects?.map((project: any) => (
+            {sortedProjects.map((project: any) => (
               <tr key={project.id}>
                 <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{project.project_number || '-'}</td>
                 <td>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -33,6 +33,70 @@ export default function Customers() {
     queryKey: ['customers', user?.id],
     queryFn: () => customersService.getAll(user?.id),
   });
+
+  // Sorting state - persisted per user in localStorage
+  const [sortField, setSortField] = useState<'name' | 'email' | 'phone' | 'city' | 'projects'>(() => {
+    const saved = localStorage.getItem(`customers_sortField_${user?.id}`);
+    return (saved as any) || 'name';
+  });
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
+    const saved = localStorage.getItem(`customers_sortDirection_${user?.id}`);
+    return (saved as 'asc' | 'desc') || 'asc';
+  });
+
+  // Sorted customers
+  const sortedCustomers = useMemo(() => {
+    if (!customers) return [];
+    
+    return [...customers].sort((a: any, b: any) => {
+      let aVal: string | number;
+      let bVal: string | number;
+      
+      switch (sortField) {
+        case 'name':
+          aVal = (a.name || '').toLowerCase();
+          bVal = (b.name || '').toLowerCase();
+          break;
+        case 'email':
+          aVal = (a.email || '').toLowerCase();
+          bVal = (b.email || '').toLowerCase();
+          break;
+        case 'phone':
+          aVal = (a.phone || '').toLowerCase();
+          bVal = (b.phone || '').toLowerCase();
+          break;
+        case 'city':
+          aVal = (a.city || '').toLowerCase();
+          bVal = (b.city || '').toLowerCase();
+          break;
+        case 'projects':
+          aVal = a.projects?.length || 0;
+          bVal = b.projects?.length || 0;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [customers, sortField, sortDirection]);
+
+  // Toggle sort function - saves to localStorage per user
+  const handleSort = (field: typeof sortField) => {
+    let newDirection: 'asc' | 'desc';
+    if (sortField === field) {
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      setSortDirection(newDirection);
+    } else {
+      newDirection = 'asc';
+      setSortField(field);
+      setSortDirection(newDirection);
+      if (user?.id) localStorage.setItem(`customers_sortField_${user.id}`, field);
+    }
+    if (user?.id) localStorage.setItem(`customers_sortDirection_${user.id}`, newDirection);
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -556,11 +620,21 @@ export default function Customers() {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>City</th>
-              <th>Projects</th>
+              <th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Name {sortField === 'name' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
+              <th onClick={() => handleSort('email')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Email {sortField === 'email' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
+              <th onClick={() => handleSort('phone')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Phone {sortField === 'phone' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
+              <th onClick={() => handleSort('city')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                City {sortField === 'city' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
+              <th onClick={() => handleSort('projects')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                Projects {sortField === 'projects' && (sortDirection === 'asc' ? '▲' : '▼')}
+              </th>
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
@@ -572,7 +646,7 @@ export default function Customers() {
                 </td>
               </tr>
             )}
-            {customers?.map((customer: any) => (
+            {sortedCustomers.map((customer: any) => (
               <tr key={customer.id}>
                 <td>{customer.name}</td>
                 <td>{customer.email || '-'}</td>
