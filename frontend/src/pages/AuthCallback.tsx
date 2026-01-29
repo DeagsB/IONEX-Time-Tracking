@@ -31,13 +31,42 @@ export default function AuthCallback() {
         const hashParams = new URLSearchParams(hash.substring(1));
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
+
+        // Email change: Supabase may redirect with token_hash and type=email_change (query or hash)
+        const tokenHash = searchParams.get('token_hash') || hashParams.get('token_hash');
+        const type = searchParams.get('type') || hashParams.get('type');
+        const emailFromUrl = searchParams.get('email') || hashParams.get('email');
         
         console.log('🔐 AuthCallback: Checking verification parameters...', {
           hasCode: !!code,
           hasAccessToken: !!accessToken,
           hasRefreshToken: !!refreshToken,
+          hasTokenHash: !!tokenHash,
+          type,
           url: window.location.href
         });
+
+        // Handle email change verification (verifyOtp completes the change and returns a session)
+        if (tokenHash && type === 'email_change') {
+          console.log('🔐 AuthCallback: Verifying email change OTP...');
+          const { data: otpData, error: otpError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: 'email_change',
+            ...(emailFromUrl ? { email: emailFromUrl } : {}),
+          });
+          if (otpError) {
+            console.error('❌ AuthCallback: Email change verifyOtp error:', otpError);
+            setError(otpError.message || 'Email change verification failed. Try logging in with your new email.');
+            setLoading(false);
+            return;
+          }
+          if (otpData?.session) {
+            console.log('✅ AuthCallback: Email change verified, session established.');
+            setLoading(false);
+            setTimeout(() => navigate('/calendar'), 500);
+            return;
+          }
+        }
         
         // Try to exchange code for session
         if (code) {

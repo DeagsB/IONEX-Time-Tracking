@@ -109,9 +109,8 @@ export default function Profile() {
   const profileMutation = useMutation({
     mutationFn: async (data: ProfileData) => {
       if (!user) throw new Error('Not authenticated');
-      const emailChanged = data.email !== user.email;
 
-      // Update profile in users table
+      // Update profile in users table (email change is hidden for now)
       await usersService.updateProfile(user.id, {
         first_name: data.firstName,
         last_name: data.lastName,
@@ -120,28 +119,16 @@ export default function Profile() {
         time_format: data.timeFormat,
       });
 
-      // If email changed, update via auth (sends verification to new email)
-      if (emailChanged) {
-        await usersService.updateEmail(data.email);
-      }
-
-      return { data, emailChanged };
+      return data;
     },
-    onSuccess: ({ data, emailChanged }) => {
+    onSuccess: (data) => {
       updateUser({
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
       });
-      if (emailChanged) {
-        setProfileMessage({
-          type: 'success',
-          text: `Verification email sent to ${data.email}. After you click the link in that email, log in using your new email address (same password). Your old email will no longer work.`,
-        });
-      } else {
-        setProfileMessage({ type: 'success', text: 'Profile updated successfully!' });
-      }
-      setTimeout(() => setProfileMessage(null), 12000);
+      setProfileMessage({ type: 'success', text: 'Profile updated successfully!' });
+      setTimeout(() => setProfileMessage(null), 5000);
     },
     onError: (error: Error) => {
       setProfileMessage({ type: 'error', text: error.message || 'Failed to update profile' });
@@ -183,12 +170,6 @@ export default function Profile() {
     
     if (!profileData.lastName.trim()) {
       errors.lastName = 'Last name is required';
-    }
-    
-    if (!profileData.email.trim()) {
-      errors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileData.email)) {
-      errors.email = 'Invalid email format';
     }
     
     setProfileErrors(errors);
@@ -347,17 +328,7 @@ export default function Profile() {
           
           <div style={{ marginBottom: '20px' }}>
             <label style={labelStyle}>Email Address</label>
-            <input
-              type="email"
-              value={profileData.email}
-              onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-              style={profileErrors.email ? errorInputStyle : inputStyle}
-              placeholder="Enter your email address"
-            />
-            {profileErrors.email && <div style={errorTextStyle}>{profileErrors.email}</div>}
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Changing your email may require verification
-            </div>
+            <div style={{ ...inputStyle, cursor: 'default', opacity: 0.9 }}>{profileData.email}</div>
           </div>
           
           {profileMessage && (
