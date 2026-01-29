@@ -24,6 +24,10 @@ export default function ServiceTickets() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   
+  // Sorting state
+  const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
@@ -815,14 +819,60 @@ export default function ServiceTickets() {
     });
   }, [tickets, existingTickets]);
 
-  // Filter by customer on frontend (optional, for additional client-side filtering)
+  // Filter and sort tickets
   const filteredTickets = useMemo(() => {
     let result = ticketsWithNumbers;
     if (selectedCustomerId) {
       result = result.filter(t => t.customerId === selectedCustomerId);
     }
+    
+    // Sort tickets
+    result = [...result].sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
+      
+      switch (sortField) {
+        case 'ticketNumber':
+          aVal = a.displayTicketNumber || a.ticketNumber || '';
+          bVal = b.displayTicketNumber || b.ticketNumber || '';
+          break;
+        case 'date':
+          aVal = a.date;
+          bVal = b.date;
+          break;
+        case 'customerName':
+          aVal = a.customerName.toLowerCase();
+          bVal = b.customerName.toLowerCase();
+          break;
+        case 'userName':
+          aVal = a.userName.toLowerCase();
+          bVal = b.userName.toLowerCase();
+          break;
+        case 'totalHours':
+          aVal = a.totalHours;
+          bVal = b.totalHours;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId]);
+  }, [ticketsWithNumbers, selectedCustomerId, sortField, sortDirection]);
+  
+  // Toggle sort function
+  const handleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
 
   if (user?.role !== 'ADMIN') {
     return (
@@ -1049,20 +1099,35 @@ export default function ServiceTickets() {
                     title="Select all"
                   />
                 </th>
-                <th style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Ticket ID
+                <th 
+                  onClick={() => handleSort('ticketNumber')}
+                  style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
+                >
+                  Ticket ID {sortField === 'ticketNumber' && (sortDirection === 'asc' ? '▲' : '▼')}
                 </th>
-                <th style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Date
+                <th 
+                  onClick={() => handleSort('date')}
+                  style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
+                >
+                  Date {sortField === 'date' && (sortDirection === 'asc' ? '▲' : '▼')}
                 </th>
-                <th style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Customer
+                <th 
+                  onClick={() => handleSort('customerName')}
+                  style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
+                >
+                  Customer {sortField === 'customerName' && (sortDirection === 'asc' ? '▲' : '▼')}
                 </th>
-                <th style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Tech
+                <th 
+                  onClick={() => handleSort('userName')}
+                  style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
+                >
+                  Tech {sortField === 'userName' && (sortDirection === 'asc' ? '▲' : '▼')}
                 </th>
-                <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Total Hours
+                <th 
+                  onClick={() => handleSort('totalHours')}
+                  style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
+                >
+                  Total Hours {sortField === 'totalHours' && (sortDirection === 'asc' ? '▲' : '▼')}
                 </th>
                 <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   ST
