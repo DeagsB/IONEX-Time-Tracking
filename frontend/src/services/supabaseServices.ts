@@ -1117,6 +1117,189 @@ export const serviceTicketsService = {
       throw error;
     }
   },
+
+  /**
+   * Update workflow status for a service ticket
+   * @param ticketId - The ID of the ticket record to update
+   * @param workflowStatus - The new workflow status
+   * @param isDemo - If true, updates the demo table
+   */
+  async updateWorkflowStatus(ticketId: string, workflowStatus: string, isDemo: boolean = false): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    const { error } = await supabase
+      .from(tableName)
+      .update({ workflow_status: workflowStatus })
+      .eq('id', ticketId);
+    
+    if (error) {
+      console.error('Error updating workflow status:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update service ticket with PDF export info
+   */
+  async markPdfExported(ticketId: string, pdfUrl: string | null, isDemo: boolean = false): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    const { error } = await supabase
+      .from(tableName)
+      .update({ 
+        workflow_status: 'pdf_exported',
+        pdf_exported_at: new Date().toISOString(),
+        pdf_url: pdfUrl 
+      })
+      .eq('id', ticketId);
+    
+    if (error) {
+      console.error('Error marking PDF exported:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update service ticket with QuickBooks invoice info
+   */
+  async markQboCreated(ticketId: string, qboInvoiceId: string, qboInvoiceNumber: string, isDemo: boolean = false): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    const { error } = await supabase
+      .from(tableName)
+      .update({ 
+        workflow_status: 'qbo_created',
+        qbo_invoice_id: qboInvoiceId,
+        qbo_invoice_number: qboInvoiceNumber
+      })
+      .eq('id', ticketId);
+    
+    if (error) {
+      console.error('Error marking QBO created:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Mark ticket as sent to CNRL
+   */
+  async markSentToCnrl(ticketId: string, isDemo: boolean = false): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    const { error } = await supabase
+      .from(tableName)
+      .update({ 
+        workflow_status: 'sent_to_cnrl',
+        sent_to_cnrl_at: new Date().toISOString()
+      })
+      .eq('id', ticketId);
+    
+    if (error) {
+      console.error('Error marking sent to CNRL:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Mark ticket as CNRL approved
+   */
+  async markCnrlApproved(ticketId: string, isDemo: boolean = false): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    const { error } = await supabase
+      .from(tableName)
+      .update({ 
+        workflow_status: 'cnrl_approved',
+        cnrl_approved_at: new Date().toISOString()
+      })
+      .eq('id', ticketId);
+    
+    if (error) {
+      console.error('Error marking CNRL approved:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Mark ticket as submitted to CNRL invoicing
+   */
+  async markSubmittedToCnrl(ticketId: string, notes: string | null, isDemo: boolean = false): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    const { error } = await supabase
+      .from(tableName)
+      .update({ 
+        workflow_status: 'submitted_to_cnrl',
+        submitted_to_cnrl_at: new Date().toISOString(),
+        cnrl_notes: notes
+      })
+      .eq('id', ticketId);
+    
+    if (error) {
+      console.error('Error marking submitted to CNRL:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get service ticket by ID with workflow data
+   */
+  async getById(ticketId: string, isDemo: boolean = false) {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .eq('id', ticketId)
+      .single();
+    
+    if (error) {
+      console.error('Error getting service ticket:', error);
+      throw error;
+    }
+    
+    return data;
+  },
+
+  /**
+   * Get all service tickets with workflow data
+   */
+  async getAllTickets(filters?: { 
+    startDate?: string; 
+    endDate?: string; 
+    userId?: string;
+    workflowStatus?: string;
+  }, isDemo: boolean = false) {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    let query = supabase
+      .from(tableName)
+      .select('*')
+      .not('ticket_number', 'is', null)
+      .order('date', { ascending: false });
+    
+    if (filters?.startDate) {
+      query = query.gte('date', filters.startDate);
+    }
+    if (filters?.endDate) {
+      query = query.lte('date', filters.endDate);
+    }
+    if (filters?.userId) {
+      query = query.eq('user_id', filters.userId);
+    }
+    if (filters?.workflowStatus) {
+      query = query.eq('workflow_status', filters.workflowStatus);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+      console.error('Error getting service tickets:', error);
+      throw error;
+    }
+    
+    return data;
+  },
 };
 
 export const serviceTicketExpensesService = {

@@ -8,6 +8,20 @@ import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
 import { supabase } from '../lib/supabaseClient';
+import { quickbooksClientService } from '../services/quickbooksService';
+
+// Workflow status types and labels
+const WORKFLOW_STATUSES = {
+  draft: { label: 'Draft', color: '#6b7280', icon: '📝' },
+  approved: { label: 'Approved', color: '#3b82f6', icon: '✓' },
+  pdf_exported: { label: 'PDF Exported', color: '#8b5cf6', icon: '📄' },
+  qbo_created: { label: 'QBO Invoice', color: '#f59e0b', icon: '💰' },
+  sent_to_cnrl: { label: 'Sent to CNRL', color: '#ec4899', icon: '📧' },
+  cnrl_approved: { label: 'CNRL Approved', color: '#10b981', icon: '✅' },
+  submitted_to_cnrl: { label: 'Submitted', color: '#059669', icon: '🎉' },
+} as const;
+
+type WorkflowStatus = keyof typeof WORKFLOW_STATUSES;
 
 export default function ServiceTickets() {
   const { user } = useAuth();
@@ -23,6 +37,7 @@ export default function ServiceTickets() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [selectedWorkflowStatus, setSelectedWorkflowStatus] = useState<string>('');
   
   // Sorting state - persisted per user in localStorage
   const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>(() => {
@@ -832,6 +847,19 @@ export default function ServiceTickets() {
       result = result.filter(t => t.customerId === selectedCustomerId);
     }
     
+    // Filter by workflow status
+    if (selectedWorkflowStatus) {
+      result = result.filter(t => {
+        const existing = existingTickets?.find(
+          et => et.date === t.date && 
+                et.user_id === t.userId && 
+                (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
+        );
+        const workflowStatus = existing?.workflow_status || 'draft';
+        return workflowStatus === selectedWorkflowStatus;
+      });
+    }
+    
     // Sort tickets
     result = [...result].sort((a, b) => {
       let aVal: string | number;
@@ -868,7 +896,7 @@ export default function ServiceTickets() {
     });
     
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId, sortField, sortDirection]);
+  }, [ticketsWithNumbers, selectedCustomerId, selectedWorkflowStatus, existingTickets, sortField, sortDirection]);
   
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
@@ -983,6 +1011,29 @@ export default function ServiceTickets() {
               {employees?.map((employee: any) => (
                 <option key={employee.user_id} value={employee.user_id}>
                   {employee.user?.first_name} {employee.user?.last_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Workflow Status</label>
+            <select
+              className="input"
+              value={selectedWorkflowStatus}
+              onChange={(e) => setSelectedWorkflowStatus(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <option value="">All Statuses</option>
+              {Object.entries(WORKFLOW_STATUSES).map(([key, { label, icon }]) => (
+                <option key={key} value={key}>
+                  {icon} {label}
                 </option>
               ))}
             </select>
@@ -1157,6 +1208,9 @@ export default function ServiceTickets() {
                 </th>
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Action
+                </th>
+                <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                  Workflow
                 </th>
               </tr>
             </thead>
@@ -1363,6 +1417,37 @@ export default function ServiceTickets() {
                         >
                           Approve
                         </button>
+                      );
+                    })()}
+                  </td>
+                  <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                    {(() => {
+                      const existing = existingTickets?.find(
+                        et => et.date === ticket.date && 
+                              et.user_id === ticket.userId && 
+                              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+                      );
+                      const workflowStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
+                      const statusInfo = WORKFLOW_STATUSES[workflowStatus] || WORKFLOW_STATUSES.draft;
+                      
+                      return (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: '500',
+                            backgroundColor: `${statusInfo.color}20`,
+                            color: statusInfo.color,
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={`Status: ${statusInfo.label}`}
+                        >
+                          {statusInfo.icon} {statusInfo.label}
+                        </span>
                       );
                     })()}
                   </td>
@@ -2300,6 +2385,141 @@ export default function ServiceTickets() {
                       )}
                     </div>
                   </>
+                );
+              })()}
+
+              {/* Workflow Status Section */}
+              {(() => {
+                const existing = existingTickets?.find(
+                  et => et.date === selectedTicket.date && 
+                        et.user_id === selectedTicket.userId && 
+                        (et.customer_id === selectedTicket.customerId || (!et.customer_id && selectedTicket.customerId === 'unassigned'))
+                );
+                const currentStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
+                const hasTicketNumber = !!existing?.ticket_number;
+                
+                // Define the workflow steps in order
+                const workflowSteps: WorkflowStatus[] = ['approved', 'pdf_exported', 'qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'];
+                const currentStepIndex = workflowSteps.indexOf(currentStatus);
+                
+                const handleWorkflowAction = async (action: WorkflowStatus) => {
+                  if (!currentTicketRecordId) return;
+                  
+                  try {
+                    switch (action) {
+                      case 'pdf_exported':
+                        await serviceTicketsService.markPdfExported(currentTicketRecordId, null, isDemoMode);
+                        break;
+                      case 'qbo_created':
+                        // For now, just mark as QBO created (manual entry)
+                        // In future, this will trigger actual QBO invoice creation
+                        const invoiceId = prompt('Enter QuickBooks Invoice ID (or leave blank to skip):');
+                        const invoiceNumber = prompt('Enter QuickBooks Invoice Number:') || '';
+                        if (invoiceId) {
+                          await serviceTicketsService.markQboCreated(currentTicketRecordId, invoiceId, invoiceNumber, isDemoMode);
+                        } else {
+                          await serviceTicketsService.updateWorkflowStatus(currentTicketRecordId, 'qbo_created', isDemoMode);
+                        }
+                        break;
+                      case 'sent_to_cnrl':
+                        await serviceTicketsService.markSentToCnrl(currentTicketRecordId, isDemoMode);
+                        break;
+                      case 'cnrl_approved':
+                        await serviceTicketsService.markCnrlApproved(currentTicketRecordId, isDemoMode);
+                        break;
+                      case 'submitted_to_cnrl':
+                        const notes = prompt('Enter any notes for CNRL submission (optional):');
+                        await serviceTicketsService.markSubmittedToCnrl(currentTicketRecordId, notes, isDemoMode);
+                        break;
+                      default:
+                        await serviceTicketsService.updateWorkflowStatus(currentTicketRecordId, action, isDemoMode);
+                    }
+                    
+                    // Refresh data
+                    queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                    alert(`Workflow updated to: ${WORKFLOW_STATUSES[action].label}`);
+                  } catch (error) {
+                    console.error('Error updating workflow:', error);
+                    alert('Failed to update workflow status');
+                  }
+                };
+                
+                return hasTicketNumber ? (
+                  <div style={{
+                    marginTop: '24px',
+                    padding: '16px',
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                  }}>
+                    <h4 style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--primary-color)', marginBottom: '12px', letterSpacing: '1px' }}>
+                      Workflow Progress
+                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                      {workflowSteps.map((step, idx) => {
+                        const stepInfo = WORKFLOW_STATUSES[step];
+                        const isCompleted = idx <= currentStepIndex;
+                        const isCurrent = step === currentStatus;
+                        
+                        return (
+                          <div key={step} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '6px 12px',
+                                borderRadius: '16px',
+                                fontSize: '12px',
+                                fontWeight: isCurrent ? '600' : '400',
+                                backgroundColor: isCompleted ? `${stepInfo.color}30` : 'var(--bg-tertiary)',
+                                color: isCompleted ? stepInfo.color : 'var(--text-secondary)',
+                                border: isCurrent ? `2px solid ${stepInfo.color}` : '1px solid var(--border-color)',
+                              }}
+                            >
+                              {stepInfo.icon} {stepInfo.label}
+                            </span>
+                            {idx < workflowSteps.length - 1 && (
+                              <span style={{ color: 'var(--text-secondary)' }}>→</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {currentStepIndex < workflowSteps.length - 1 && (
+                        <button
+                          className="button button-primary"
+                          onClick={() => handleWorkflowAction(workflowSteps[currentStepIndex + 1])}
+                          style={{ padding: '8px 16px', fontSize: '13px' }}
+                        >
+                          Mark as {WORKFLOW_STATUSES[workflowSteps[currentStepIndex + 1]].label}
+                        </button>
+                      )}
+                      {currentStepIndex > 0 && (
+                        <button
+                          className="button button-secondary"
+                          onClick={() => handleWorkflowAction(workflowSteps[currentStepIndex - 1])}
+                          style={{ padding: '8px 16px', fontSize: '13px' }}
+                        >
+                          Revert to {WORKFLOW_STATUSES[workflowSteps[currentStepIndex - 1]].label}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    marginTop: '24px',
+                    padding: '16px',
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    textAlign: 'center',
+                  }}>
+                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+                      Approve this ticket to enable workflow tracking
+                    </p>
+                  </div>
                 );
               })()}
 
