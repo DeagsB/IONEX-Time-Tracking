@@ -1452,9 +1452,9 @@ export default function ServiceTickets() {
                               border: 'none',
                               cursor: 'pointer',
                             }}
-                            title={isApproved ? "Click to unapprove" : "Click to approve"}
+                            title={isApproved ? "Click to withdraw submission" : "Click to submit for approval"}
                           >
-                            {isApproved ? '✓ Approved' : 'Approve'}
+                            {isApproved ? '✓ Submitted' : 'Submit'}
                           </button>
                         );
                       }
@@ -2704,7 +2704,7 @@ export default function ServiceTickets() {
                       }}
                       disabled={isApproving}
                     >
-                      {isApproving ? 'Updating...' : (isTicketApproved ? '✓ Approved' : 'Approve')}
+                      {isApproving ? 'Submitting...' : (isTicketApproved ? '✓ Submitted' : 'Submit for Approval')}
                     </button>
                   );
                 })()}
