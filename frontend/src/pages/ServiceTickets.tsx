@@ -1904,6 +1904,42 @@ export default function ServiceTickets() {
                           </div>
                         ))}
                         
+                        {/* Totals Row */}
+                        <div 
+                          style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '1fr 55px 55px 55px 55px 55px 40px',
+                            gap: '8px',
+                            alignItems: 'center',
+                            padding: '10px 8px',
+                            backgroundColor: 'var(--bg-secondary)',
+                            borderRadius: '6px',
+                            borderTop: '2px solid var(--border-color)',
+                            marginTop: '8px',
+                          }}
+                        >
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>TOTAL HOURS:</span>
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'center' }}>
+                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.st || 0), 0)).toFixed(1)}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'center' }}>
+                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0)).toFixed(1)}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'center' }}>
+                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0)).toFixed(1)}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: '#ff9800', textAlign: 'center' }}>
+                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.so || 0), 0)).toFixed(1)}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: '700', color: '#ff9800', textAlign: 'center' }}>
+                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0)).toFixed(1)}
+                          </span>
+                          <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', textAlign: 'center' }}>
+                            {roundToHalfHour(serviceRows.reduce((sum, r) => 
+                              sum + (r.st || 0) + (r.tt || 0) + (r.ft || 0) + (r.so || 0) + (r.fo || 0), 0)).toFixed(1)}
+                          </span>
+                        </div>
+                        
                         {/* Add Row Button */}
                         <button
                           onClick={() => {
@@ -1930,6 +1966,7 @@ export default function ServiceTickets() {
                             fontWeight: '600',
                             cursor: 'pointer',
                             alignSelf: 'flex-start',
+                            marginTop: '8px',
                           }}
                         >
                           + Add Row
@@ -2013,66 +2050,6 @@ export default function ServiceTickets() {
                           </button>
                         </div>
                       )}
-                    </div>
-
-                    {/* Hours Summary Section */}
-                    <div style={sectionStyle}>
-                      <h3 style={sectionTitleStyle}>Hours Summary</h3>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                        {(() => {
-                          // Calculate totals from serviceRows
-                          const totals = {
-                            st: serviceRows.reduce((sum, r) => sum + (r.st || 0), 0),
-                            tt: serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0),
-                            ft: serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0),
-                            so: serviceRows.reduce((sum, r) => sum + (r.so || 0), 0),
-                            fo: serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0),
-                          };
-                          
-                          const rateTypes = [
-                            { key: 'st', label: 'Shop Time', value: totals.st },
-                            { key: 'tt', label: 'Travel Time', value: totals.tt },
-                            { key: 'ft', label: 'Field Time', value: totals.ft },
-                            { key: 'so', label: 'Shop Overtime', value: totals.so },
-                            { key: 'fo', label: 'Field Overtime', value: totals.fo },
-                          ].filter(rt => rt.value > 0);
-                          
-                          return rateTypes.map(rt => (
-                            <div key={rt.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ 
-                                fontSize: '13px', 
-                                color: rt.key === 'so' || rt.key === 'fo' ? '#ff9800' : 'var(--text-secondary)', 
-                                fontWeight: '500' 
-                              }}>
-                                {rt.label}:
-                              </span>
-                              <span style={{ fontSize: '14px', color: 'var(--text-primary)', fontWeight: '700' }}>
-                                {roundToHalfHour(rt.value).toFixed(2)}
-                              </span>
-                            </div>
-                          ));
-                        })()}
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gridColumn: 'span 3',
-                            paddingTop: '12px',
-                            borderTop: '1px solid var(--border-color)',
-                            marginTop: '8px',
-                          }}
-                        >
-                          <span style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>TOTAL HOURS:</span>
-                          <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: '700' }}>
-                            {(() => {
-                              const total = serviceRows.reduce((sum, r) => 
-                                sum + (r.st || 0) + (r.tt || 0) + (r.ft || 0) + (r.so || 0) + (r.fo || 0), 0);
-                              return roundToHalfHour(total).toFixed(2);
-                            })()}
-                          </span>
-                        </div>
-                      </div>
                     </div>
 
                     {/* Expenses Section */}
