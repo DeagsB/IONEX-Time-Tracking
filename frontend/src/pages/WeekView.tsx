@@ -1356,7 +1356,7 @@ export default function WeekView() {
                           }}
                           onMouseEnter={(e) => {
                             if (!isSelectedWeek) {
-                              e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                              e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.15)';
                             }
                           }}
                           onMouseLeave={(e) => {
@@ -1597,7 +1597,7 @@ export default function WeekView() {
                                 transition: 'background-color 0.2s'
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                                e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.15)';
                               }}
                               onMouseLeave={(e) => {
                                 e.currentTarget.style.backgroundColor = 'transparent';
