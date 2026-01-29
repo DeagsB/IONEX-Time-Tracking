@@ -543,6 +543,10 @@ export default function WeekView() {
       const day2Day = String(midnightDate.getDate()).padStart(2, '0');
       const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
       
+      // No project = internal time, not billable
+      const isBillableOvernight = isPanelShop ? false : (newEntry.project_id ? newEntry.billable : false);
+      const rateTypeOvernight = isPanelShop ? 'Shop Time' : (newEntry.project_id ? newEntry.rate_type : 'Internal');
+      
       // Entry 1: Start time to midnight on day 1
       const entry1: any = {
         user_id: actualUserId,
@@ -552,8 +556,8 @@ export default function WeekView() {
         hours: hoursDay1,
         rate: 0,
         description: newEntry.description ? `${newEntry.description} (overnight 1/2)` : '(overnight 1/2)',
-        billable: isPanelShop ? false : newEntry.billable,
-        rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
+        billable: isBillableOvernight,
+        rate_type: rateTypeOvernight,
         is_demo: isDemoMode,
         location: newEntry.location || null,
       };
@@ -568,8 +572,8 @@ export default function WeekView() {
         hours: hoursDay2,
         rate: 0,
         description: newEntry.description ? `${newEntry.description} (overnight 2/2)` : '(overnight 2/2)',
-        billable: isPanelShop ? false : newEntry.billable,
-        rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
+        billable: isBillableOvernight,
+        rate_type: rateTypeOvernight,
         is_demo: isDemoMode,
         location: newEntry.location || null,
       };
@@ -586,6 +590,9 @@ export default function WeekView() {
       // Normal entry (same day)
       const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), endHour, endMin);
       
+      // No project = internal time, not billable
+      const isBillable = isPanelShop ? false : (newEntry.project_id ? newEntry.billable : false);
+      
       const timeEntryData: any = {
         user_id: actualUserId,
         date: dateStr,
@@ -594,8 +601,8 @@ export default function WeekView() {
         hours: newEntry.hours,
         rate: 0,
         description: newEntry.description || '',
-        billable: isPanelShop ? false : newEntry.billable,
-        rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
+        billable: isBillable,
+        rate_type: isPanelShop ? 'Shop Time' : (newEntry.project_id ? newEntry.rate_type : 'Internal'),
         is_demo: isDemoMode,
         location: newEntry.location || null,
       };

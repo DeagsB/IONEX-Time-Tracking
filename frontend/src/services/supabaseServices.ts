@@ -878,6 +878,7 @@ export const serviceTicketsService = {
         )
       `)
       .eq('billable', true)
+      .not('project_id', 'is', null) // Only entries with a project can be service tickets
       .order('date', { ascending: false });
 
     if (filters?.startDate) {

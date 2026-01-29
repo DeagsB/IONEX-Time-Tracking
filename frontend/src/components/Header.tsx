@@ -65,6 +65,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         hours: parseFloat(data.hours),
         rate: parseFloat(data.rate || 0),
         billable: data.billable !== undefined ? data.billable : true,
+        rate_type: data.rateType || 'Shop Time',
         description: data.description || null,
         location: data.location || null, // Work location for service tickets
         is_demo: isDemoMode, // Mark as demo entry if in demo mode
@@ -237,6 +238,9 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     const day = String(startTime.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
 
+    // No project = internal time, not billable
+    const isBillable = currentEntry.projectId ? true : false;
+    
     try {
       await createTimeEntryMutation.mutateAsync({
         projectId: currentEntry.projectId || null,
@@ -245,7 +249,8 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         endTime: endTime.toISOString(),
         hours: hours,
         rate: projectRate,
-        billable: true,
+        billable: isBillable,
+        rateType: isBillable ? 'Shop Time' : 'Internal',
         description: currentEntry.description,
         location: location || null, // Include location for service tickets
       });

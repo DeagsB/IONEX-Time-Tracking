@@ -165,49 +165,30 @@ export function groupEntriesIntoTickets(
     if (employeeDepartment === 'Panel Shop') {
       continue;
     }
-    // Handle entries without project/customer as "Unassigned Client"
-    let customerId: string;
-    let customerName: string;
-    let customerInfo: ServiceTicket['customerInfo'];
     
+    // Skip entries without a project or customer - these are internal time, not billable service tickets
     if (!entry.project || !entry.project.customer) {
-      // Create unassigned bucket
-      customerId = 'unassigned';
-      customerName = 'Unassigned Client';
-      customerInfo = {
-        name: 'Unassigned Client',
-        email: undefined,
-        phone: undefined,
-        address: undefined,
-        city: undefined,
-        state: undefined,
-        zip_code: undefined,
-        country: undefined,
-        tax_id: undefined,
-        po_number: undefined,
-        approver_name: undefined,
-        location_code: undefined,
-        service_location: undefined,
-      };
-    } else {
-      customerId = entry.project.customer.id;
-      customerName = entry.project.customer.name;
-      customerInfo = {
-        name: entry.project.customer.name,
-        email: entry.project.customer.email,
-        phone: entry.project.customer.phone,
-        address: entry.project.customer.address,
-        city: entry.project.customer.city,
-        state: entry.project.customer.state,
-        zip_code: entry.project.customer.zip_code,
-        country: entry.project.customer.country,
-        tax_id: entry.project.customer.tax_id,
-        po_number: entry.project.customer.po_number,
-        approver_name: entry.project.customer.approver_name,
-        location_code: entry.project.customer.location_code,
-        service_location: entry.project.customer.service_location,
-      };
+      continue;
     }
+    
+    // Get customer info from project (entry.project and entry.project.customer are guaranteed to exist here)
+    const customerId = entry.project.customer.id;
+    const customerName = entry.project.customer.name;
+    const customerInfo: ServiceTicket['customerInfo'] = {
+      name: entry.project.customer.name,
+      email: entry.project.customer.email,
+      phone: entry.project.customer.phone,
+      address: entry.project.customer.address,
+      city: entry.project.customer.city,
+      state: entry.project.customer.state,
+      zip_code: entry.project.customer.zip_code,
+      country: entry.project.customer.country,
+      tax_id: entry.project.customer.tax_id,
+      po_number: entry.project.customer.po_number,
+      approver_name: entry.project.customer.approver_name,
+      location_code: entry.project.customer.location_code,
+      service_location: entry.project.customer.service_location,
+    };
 
     const date = entry.date;
     const userId = entry.user_id;
