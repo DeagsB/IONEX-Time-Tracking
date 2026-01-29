@@ -894,8 +894,13 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
   }
 
   // First pass: sum non-billable hours per project (billable hours come from service tickets only)
+  // Skip entries without a project - they are internal time and don't belong in project breakdown
   entries.forEach(entry => {
-    const projectId = entry.project_id || 'no-project';
+    if (!entry.project_id || !entry.project) {
+      return; // Skip entries without a project
+    }
+    
+    const projectId = entry.project_id;
     const rawHours = Number(entry.hours) || 0;
 
     if (!projectMap.has(projectId)) {
@@ -933,18 +938,20 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
     data.revenue = ticketRevenue + (data.nonBillableHours * internalRate);
   });
 
-  // Convert to ProjectBreakdown format
-  const result: ProjectBreakdown[] = Array.from(projectMap.entries()).map(([projectId, data]) => {
-    const projectName = entries.find(e => (e.project_id || 'no-project') === projectId)?.project?.name || '(No Project)';
-    // Hours displayed = billable hours from service tickets only
-    return {
-      projectId,
-      projectName,
-      hours: data.billableHours,
-      revenue: data.revenue,
-      billableHours: data.billableHours,
-    };
-  });
+  // Convert to ProjectBreakdown format - only include projects with hours
+  const result: ProjectBreakdown[] = Array.from(projectMap.entries())
+    .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0) // Only include projects with activity
+    .map(([projectId, data]) => {
+      const projectName = entries.find(e => e.project_id === projectId)?.project?.name || '(Unknown Project)';
+      // Hours displayed = billable hours from service tickets only
+      return {
+        projectId,
+        projectName,
+        hours: data.billableHours,
+        revenue: data.revenue,
+        billableHours: data.billableHours,
+      };
+    });
 
   return result.sort((a, b) => b.hours - a.hours);
 }
@@ -1034,8 +1041,13 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
   }
 
   // First pass: sum non-billable hours per customer (billable hours come from service tickets only)
+  // Skip entries without a customer - they are internal time and don't belong in customer breakdown
   entries.forEach(entry => {
-    const customerId = entry.project?.customer?.id || 'no-customer';
+    if (!entry.project?.customer?.id) {
+      return; // Skip entries without a customer
+    }
+    
+    const customerId = entry.project.customer.id;
     const rawHours = Number(entry.hours) || 0;
 
     if (!customerMap.has(customerId)) {
@@ -1073,18 +1085,20 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
     data.revenue = ticketRevenue + (data.nonBillableHours * internalRate);
   });
 
-  // Convert to CustomerBreakdown format
-  const result: CustomerBreakdown[] = Array.from(customerMap.entries()).map(([customerId, data]) => {
-    const customerName = entries.find(e => (e.project?.customer?.id || 'no-customer') === customerId)?.project?.customer?.name || '(No Customer)';
-    // Hours displayed = billable hours from service tickets only
-    return {
-      customerId,
-      customerName,
-      hours: data.billableHours,
-      revenue: data.revenue,
-      billableHours: data.billableHours,
-    };
-  });
+  // Convert to CustomerBreakdown format - only include customers with hours
+  const result: CustomerBreakdown[] = Array.from(customerMap.entries())
+    .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0) // Only include customers with activity
+    .map(([customerId, data]) => {
+      const customerName = entries.find(e => e.project?.customer?.id === customerId)?.project?.customer?.name || '(Unknown Customer)';
+      // Hours displayed = billable hours from service tickets only
+      return {
+        customerId,
+        customerName,
+        hours: data.billableHours,
+        revenue: data.revenue,
+        billableHours: data.billableHours,
+      };
+    });
 
   return result.sort((a, b) => b.hours - a.hours);
 }
