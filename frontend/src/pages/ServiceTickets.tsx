@@ -665,7 +665,7 @@ export default function ServiceTickets() {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
       const { data, error } = await supabase
         .from(tableName)
-        .select('id, ticket_number, date, user_id, customer_id, is_edited, edited_hours');
+        .select('id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status');
       if (error) throw error;
       return data;
     },

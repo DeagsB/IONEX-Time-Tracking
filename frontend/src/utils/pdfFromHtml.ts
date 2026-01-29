@@ -466,7 +466,7 @@ export async function generateAndStorePdf(
     };
 
     // Generate PDF as blob
-    const pdfBlob = await html2pdf().set(opt).from(element).outputPdf('blob');
+    const pdfBlob = await html2pdf().set(opt).from(element).outputPdf('blob') as Blob;
     
     let storageUrl: string | undefined;
     
@@ -474,7 +474,7 @@ export async function generateAndStorePdf(
     if (options.uploadToStorage) {
       const storagePath = `service-tickets/${new Date().getFullYear()}/${ticket.ticketNumber || ticket.id}/${filename}`;
       
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from('service-ticket-pdfs')
         .upload(storagePath, pdfBlob, {
           contentType: 'application/pdf',
