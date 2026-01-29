@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTimer } from '../context/TimerContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { timeEntriesService, projectsService, employeesService } from '../services/supabaseServices';
+import { timeEntriesService, projectsService, employeesService, customersService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 
 interface TimeEntry {
@@ -61,9 +61,10 @@ export default function WeekView() {
   } | null>(null);
   const [newEntry, setNewEntry] = useState({
     description: '',
+    customer_id: '', // Customer filter for project dropdown
     project_id: '',
     hours: 0.25,
-    billable: true, // Default to billable (will be updated based on department if Panel Shop)
+    billable: true, // Determined by rate_type (Internal = not billable)
     rate_type: 'Shop Time',
     location: '', // Work location - different locations create separate service tickets
   });
@@ -224,6 +225,11 @@ export default function WeekView() {
     queryFn: () => projectsService.getAll(user?.id),
   });
 
+  const { data: customers } = useQuery({
+    queryKey: ['customers', user?.id],
+    queryFn: () => customersService.getAll(user?.id),
+  });
+
   // Fetch current user's employee record to check department
   const { data: currentEmployee } = useQuery({
     queryKey: ['currentEmployee', user?.id],
@@ -237,15 +243,8 @@ export default function WeekView() {
 
   const isPanelShop = currentEmployee?.department === 'Panel Shop';
 
-  // Update newEntry defaults when department is loaded
-  useEffect(() => {
-    if (currentEmployee !== undefined) {
-      setNewEntry(prev => ({
-        ...prev,
-        billable: !isPanelShop, // Panel Shop employees are not billable
-      }));
-    }
-  }, [isPanelShop, currentEmployee]);
+  // For Panel Shop employees, billable is always false (they only have Shop Time)
+  // For other employees, billable is determined by rate_type (Internal = not billable)
 
   const createTimeEntryMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -260,7 +259,7 @@ export default function WeekView() {
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       await refetchTimeEntries();
       setShowTimeEntryModal(false);
-      setNewEntry({ description: '', project_id: '', hours: 0.25, billable: !isPanelShop, rate_type: 'Shop Time', location: '' });
+      setNewEntry({ description: '', customer_id: '', project_id: '', hours: 0.25, billable: true, rate_type: 'Shop Time', location: '' });
       setSelectedSlot(null);
     },
     onError: (error: any) => {
@@ -488,15 +487,14 @@ export default function WeekView() {
       startTime: `${startHour}:${startMin}`,
       endTime: `${endHour}:${endMin}`,
     });
-      // Get default location from first project if available
-      const defaultProject = projects?.[0];
       setNewEntry({
         description: '',
-        project_id: defaultProject?.id || '',
+        customer_id: '',
+        project_id: '',
         hours: minutesPerDivision / 60,
-        billable: !isPanelShop, // Panel Shop employees are not billable
+        billable: true, // Determined by rate_type (Internal = not billable)
         rate_type: 'Shop Time',
-        location: defaultProject?.location || '', // Pre-fill from project default
+        location: '',
       });
     setShowTimeEntryModal(true);
   };
@@ -2177,96 +2175,132 @@ export default function WeekView() {
               </button>
 
             <div style={{ padding: '20px' }}>
-              <h3 style={{ marginBottom: '20px' }}>Add a description</h3>
+              <h3 style={{ marginBottom: '20px' }}>Add Time Entry</h3>
 
-              {/* Description input */}
-              <textarea
-                placeholder="What are you working on?"
-                value={newEntry.description}
-                onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
+              {/* 1. Description input */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Description</label>
+                <textarea
+                  placeholder="What are you working on?"
+                  value={newEntry.description}
+                  onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
                   style={{
                     width: '100%',
-                  minHeight: '80px',
+                    minHeight: '80px',
                     padding: '12px',
-                  marginBottom: '20px',
                     backgroundColor: 'var(--bg-primary)',
                     border: '1px solid var(--border-color)',
                     borderRadius: '6px',
                     color: 'var(--text-primary)',
-                  fontSize: '14px',
-                  resize: 'none',
+                    fontSize: '14px',
+                    resize: 'none',
                   }}
                 />
+              </div>
 
-              {/* Time inputs */}
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '20px' }}>
-                <input
-                  type="time"
-                  value={selectedSlot.startTime}
-                  onChange={(e) => setSelectedSlot({ ...selectedSlot, startTime: e.target.value })}
-                  style={{
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                  }}
-                />
-                <span>→</span>
-                <input
-                  type="time"
-                  value={selectedSlot.endTime}
-                  onChange={(e) => {
-                    setSelectedSlot({ ...selectedSlot, endTime: e.target.value });
-                    // Calculate hours
-                    const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
-                    const [endH, endM] = e.target.value.split(':').map(Number);
-                    const startMinutes = startH * 60 + startM;
-                    const endMinutes = endH * 60 + endM;
-                    
-                    // Handle overnight entries (end time is earlier than start time)
-                    let hours;
-                    if (endMinutes < startMinutes) {
-                      // Overnight entry: add 24 hours worth of minutes
-                      hours = (endMinutes + 24 * 60 - startMinutes) / 60;
-                    } else {
-                      hours = (endMinutes - startMinutes) / 60;
-                    }
-                    
-                    // Ensure hours are within valid range (0 to 24)
-                    hours = Math.max(0, Math.min(24, hours));
-                    setNewEntry({ ...newEntry, hours });
-                  }}
-                  style={{
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                  }}
-                />
-                <div
-                  style={{
-                    padding: '10px 15px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                  }}
-                >
-                  {newEntry.hours.toFixed(2)}h
-                  {(() => {
-                    const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
-                    const [endH, endM] = selectedSlot.endTime.split(':').map(Number);
-                    const isOvernight = (endH * 60 + endM) < (startH * 60 + startM);
-                    return isOvernight ? <span style={{ color: '#ff9800', marginLeft: '4px', fontSize: '11px' }}>(+1 day)</span> : null;
-                  })()}
+              {/* 2. Time inputs */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Time</label>
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                  <input
+                    type="time"
+                    value={selectedSlot.startTime}
+                    onChange={(e) => setSelectedSlot({ ...selectedSlot, startTime: e.target.value })}
+                    style={{
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                    }}
+                  />
+                  <span>→</span>
+                  <input
+                    type="time"
+                    value={selectedSlot.endTime}
+                    onChange={(e) => {
+                      setSelectedSlot({ ...selectedSlot, endTime: e.target.value });
+                      // Calculate hours
+                      const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
+                      const [endH, endM] = e.target.value.split(':').map(Number);
+                      const startMinutes = startH * 60 + startM;
+                      const endMinutes = endH * 60 + endM;
+                      
+                      // Handle overnight entries (end time is earlier than start time)
+                      let hours;
+                      if (endMinutes < startMinutes) {
+                        hours = (endMinutes + 24 * 60 - startMinutes) / 60;
+                      } else {
+                        hours = (endMinutes - startMinutes) / 60;
+                      }
+                      
+                      hours = Math.max(0, Math.min(24, hours));
+                      setNewEntry({ ...newEntry, hours });
+                    }}
+                    style={{
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                    }}
+                  />
+                  <div
+                    style={{
+                      padding: '10px 15px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                    }}
+                  >
+                    {newEntry.hours.toFixed(2)}h
+                    {(() => {
+                      const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
+                      const [endH, endM] = selectedSlot.endTime.split(':').map(Number);
+                      const isOvernight = (endH * 60 + endM) < (startH * 60 + startM);
+                      return isOvernight ? <span style={{ color: '#ff9800', marginLeft: '4px', fontSize: '11px' }}>(+1 day)</span> : null;
+                    })()}
+                  </div>
                 </div>
               </div>
 
-              {/* Project select */}
+              {/* 3. Customer select */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Customer</label>
+                <select
+                  className="input"
+                  value={newEntry.customer_id}
+                  onChange={(e) => {
+                    // Clear project when customer changes
+                    setNewEntry({ 
+                      ...newEntry, 
+                      customer_id: e.target.value,
+                      project_id: '',
+                      location: ''
+                    });
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="">All Customers</option>
+                  {customers?.map((customer: any) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 4. Project select (filtered by customer) */}
               <div className="form-group" style={{ marginBottom: '20px' }}>
                 <label className="label">Project</label>
                 <select
@@ -2277,7 +2311,6 @@ export default function WeekView() {
                     setNewEntry({ 
                       ...newEntry, 
                       project_id: e.target.value,
-                      // Pre-fill location from project default when project changes
                       location: selectedProject?.location || newEntry.location || ''
                     });
                   }}
@@ -2291,15 +2324,17 @@ export default function WeekView() {
                   }}
                 >
                   <option value="">No Project</option>
-                  {projects?.map((project: any) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
+                  {projects
+                    ?.filter((project: any) => !newEntry.customer_id || project.customer_id === newEntry.customer_id)
+                    .map((project: any) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 
-              {/* Location input - used to group entries into separate service tickets */}
+              {/* 5. Location input */}
               <div className="form-group" style={{ marginBottom: '20px' }}>
                 <label className="label">Location</label>
                 <input
@@ -2322,14 +2357,19 @@ export default function WeekView() {
                 </span>
               </div>
 
-              {/* Rate Type dropdown - hidden for Panel Shop */}
+              {/* 6. Rate Type dropdown (includes Internal) - hidden for Panel Shop */}
               {!isPanelShop && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
                   <label className="label">Rate Type</label>
                   <select
                     className="input"
                     value={newEntry.rate_type}
-                    onChange={(e) => setNewEntry({ ...newEntry, rate_type: e.target.value })}
+                    onChange={(e) => {
+                      const rateType = e.target.value;
+                      // Internal = not billable, everything else = billable
+                      const isBillable = rateType !== 'Internal';
+                      setNewEntry({ ...newEntry, rate_type: rateType, billable: isBillable });
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px',
@@ -2339,51 +2379,13 @@ export default function WeekView() {
                       color: 'var(--text-primary)',
                     }}
                   >
-                    {!newEntry.billable && <option value="Internal">Internal</option>}
+                    <option value="Internal">Internal</option>
                     <option value="Shop Time">Shop Time</option>
                     <option value="Shop Overtime">Shop Overtime</option>
                     <option value="Travel Time">Travel Time</option>
                     <option value="Field Time">Field Time</option>
                     <option value="Field Overtime">Field Overtime</option>
                   </select>
-                </div>
-              )}
-
-              {/* Billable toggle - hidden for Panel Shop */}
-              {!isPanelShop && (
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '10px', 
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: 'var(--text-primary)'
-                  }}>
-                  <input
-                      type="checkbox"
-                      checked={newEntry.billable}
-                      onChange={(e) => {
-                        const isBillable = e.target.checked;
-                        // If unchecking billable, set rate_type to Internal
-                        // If checking billable and rate_type is Internal, set to Shop Time
-                        const newRateType = !isBillable 
-                          ? 'Internal' 
-                          : (newEntry.rate_type === 'Internal' ? 'Shop Time' : newEntry.rate_type);
-                        setNewEntry({ ...newEntry, billable: isBillable, rate_type: newRateType });
-                      }}
-                      style={{
-                        width: '18px',
-                        height: '18px',
-                        cursor: 'pointer',
-                        accentColor: '#dc2626'
-                      }}
-                    />
-                    <span>Billable?</span>
-                    <span style={{ fontSize: '12px', opacity: 0.7 }}>
-                      {newEntry.billable ? 'Yes' : 'Internal'}
-                    </span>
-                  </label>
                 </div>
               )}
 
