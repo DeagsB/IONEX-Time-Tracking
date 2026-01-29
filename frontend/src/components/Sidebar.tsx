@@ -1,13 +1,11 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { useTheme } from '../context/ThemeContext';
 
 export default function Sidebar() {
   const location = useLocation();
   const { user, logout, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
-  const { theme } = useTheme();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
 
@@ -35,8 +33,7 @@ export default function Sidebar() {
     }}>
       <div style={{ padding: '0 20px', marginBottom: '32px' }}>
         <img
-          key={theme}
-          src={theme === 'dark' ? '/Black w WHT background square.png' : '/ionex-logo-removebg-preview.png'}
+          src="/ionex-logo-removebg-preview.png"
           alt="IONEX Time Tracking"
           onError={(e) => {
             if (!e.currentTarget.src.includes('ionex-logo.png')) {
