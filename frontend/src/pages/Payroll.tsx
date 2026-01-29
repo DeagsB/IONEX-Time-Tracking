@@ -53,13 +53,13 @@ const roundToQuarterHour = (hours: number): number => {
 };
 
 // Calculate the current payroll period based on biweekly schedule
-// Pay periods are 2 weeks, payday is 5 days after the period ends
-// Reference: Pay period Jan 19, 2026 to Feb 1, 2026 with payday Feb 6, 2026
+// Pay periods are 2 weeks; payday is the Friday 5 days after the period ends
+// Reference: Pay period 19 Jan 2026 to 1 Feb 2026 → payday Friday 6 Feb 2026
 const getCurrentPayPeriod = (): { start: string; end: string } => {
-  // Reference pay period start date (Monday Jan 19, 2026)
+  // Reference pay period start date (19 Jan 2026)
   const referenceStart = new Date(2026, 0, 19); // Jan 19, 2026
   const periodLengthDays = 14; // 2 weeks
-  const daysUntilPayday = 5; // Payday is 5 days after period ends
+  const daysUntilPayday = 5; // Payday is Friday, 5 days after period end (e.g. Fri 6 Feb 2026)
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -147,13 +147,11 @@ export default function Payroll() {
     const period = getCurrentPayPeriod();
     return period.end;
   });
-  const [approvedOnly, setApprovedOnly] = useState(false);
-
   // Fetch all time entries for the date range (filtered by demo mode)
   const { data: timeEntries, isLoading, error } = useQuery({
-    queryKey: ['payrollReport', startDate, endDate, approvedOnly, isDemoMode],
+    queryKey: ['payrollReport', startDate, endDate, isDemoMode],
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from('time_entries')
         .select(`
           *,
@@ -167,12 +165,6 @@ export default function Payroll() {
         .lte('date', endDate)
         .eq('is_demo', isDemoMode) // Only show demo entries in demo mode
         .order('date', { ascending: true });
-
-      if (approvedOnly) {
-        query = query.eq('approved', true);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
       return data as TimeEntry[];
     },
@@ -356,11 +348,11 @@ export default function Payroll() {
     setEndDate(end.toISOString().split('T')[0]);
   };
   
-  // Calculate payday for the current selected period (5 days after end date)
+  // Payday is the Friday, 5 days after period end (e.g. Friday 6 Feb 2026)
   const getPayday = () => {
-    const end = new Date(endDate);
+    const end = new Date(endDate + 'T12:00:00'); // parse as local date
     end.setDate(end.getDate() + 5);
-    return end.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    return end.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   if (user?.role !== 'ADMIN') {
@@ -443,20 +435,6 @@ export default function Payroll() {
           }}>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Payday:</span>
             <span style={{ fontSize: '12px', fontWeight: '600', color: '#4caf50' }}>{getPayday()}</span>
-          </div>
-
-          {/* Approved Only Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input
-              type="checkbox"
-              id="approvedOnly"
-              checked={approvedOnly}
-              onChange={(e) => setApprovedOnly(e.target.checked)}
-              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#c770f0' }}
-            />
-            <label htmlFor="approvedOnly" style={{ fontSize: '14px', color: 'var(--text-primary)', cursor: 'pointer' }}>
-              Approved Only
-            </label>
           </div>
         </div>
       </div>

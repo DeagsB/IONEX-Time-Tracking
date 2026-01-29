@@ -855,7 +855,6 @@ export const serviceTicketsService = {
     endDate?: string;
     customerId?: string;
     userId?: string;
-    approvedOnly?: boolean;
     isDemoMode?: boolean;
   }) {
     let query = supabase
@@ -889,9 +888,6 @@ export const serviceTicketsService = {
     }
     if (filters?.userId) {
       query = query.eq('user_id', filters.userId);
-    }
-    if (filters?.approvedOnly) {
-      query = query.eq('approved', true);
     }
     // Filter by demo mode - only show demo entries in demo mode, only real entries outside
     if (filters?.isDemoMode !== undefined) {

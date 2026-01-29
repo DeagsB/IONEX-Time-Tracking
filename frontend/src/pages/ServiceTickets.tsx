@@ -23,7 +23,6 @@ export default function ServiceTickets() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [approvedOnly, setApprovedOnly] = useState(false);
   
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
@@ -611,13 +610,12 @@ export default function ServiceTickets() {
 
   // Fetch billable entries (filtered by demo mode)
   const { data: billableEntries, isLoading: isLoadingEntries, error: entriesError } = useQuery({
-    queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, selectedUserId, approvedOnly, isDemoMode],
+    queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, selectedUserId, isDemoMode],
     queryFn: () => serviceTicketsService.getBillableEntries({
       startDate,
       endDate,
       customerId: selectedCustomerId || undefined,
       userId: selectedUserId || undefined,
-      approvedOnly,
       isDemoMode, // Only show demo entries in demo mode, real entries otherwise
     }),
   });
@@ -928,19 +926,6 @@ export default function ServiceTickets() {
               ))}
             </select>
           </div>
-          {!isDemoMode && (
-            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={approvedOnly}
-                  onChange={(e) => setApprovedOnly(e.target.checked)}
-                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary-color)' }}
-                />
-                <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>Approved Only</span>
-              </label>
-            </div>
-          )}
         </div>
       </div>
 
