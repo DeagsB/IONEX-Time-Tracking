@@ -24,9 +24,6 @@ export default function Projects() {
     description: '',
     customer_id: '',
     status: 'active',
-    start_date: '',
-    end_date: '',
-    budget: '',
     color: '#4ecdc4',
     shop_junior_rate: '',
     shop_senior_rate: '',
@@ -97,9 +94,6 @@ export default function Projects() {
         description: data.description || null,
         customer_id: data.customer_id || null,
         status: data.status,
-        start_date: data.start_date || null,
-        end_date: data.end_date || null,
-        budget: data.budget ? parseFloat(data.budget) : null,
         color: data.color || '#4ecdc4',
         shop_junior_rate: data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null,
         shop_senior_rate: data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null,
@@ -128,9 +122,6 @@ export default function Projects() {
       if (data.description !== undefined) projectData.description = data.description || null;
       if (data.customer_id !== undefined) projectData.customer_id = data.customer_id || null;
       if (data.status !== undefined) projectData.status = data.status;
-      if (data.start_date !== undefined) projectData.start_date = data.start_date || null;
-      if (data.end_date !== undefined) projectData.end_date = data.end_date || null;
-      if (data.budget !== undefined) projectData.budget = data.budget ? parseFloat(data.budget) : null;
       if (data.color !== undefined) projectData.color = data.color;
       if (data.shop_junior_rate !== undefined) projectData.shop_junior_rate = data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null;
       if (data.shop_senior_rate !== undefined) projectData.shop_senior_rate = data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null;
@@ -184,9 +175,6 @@ export default function Projects() {
       description: '',
       customer_id: '',
       status: 'active',
-      start_date: '',
-      end_date: '',
-      budget: '',
       color: '#4ecdc4',
       shop_junior_rate: '',
       shop_senior_rate: '',
@@ -204,9 +192,6 @@ export default function Projects() {
       description: project.description || '',
       customer_id: project.customer_id || '',
       status: project.status || 'active',
-      start_date: project.start_date ? new Date(project.start_date).toISOString().split('T')[0] : '',
-      end_date: project.end_date ? new Date(project.end_date).toISOString().split('T')[0] : '',
-      budget: project.budget?.toString() || '',
       color: project.color || '#4ecdc4',
       shop_junior_rate: project.shop_junior_rate?.toString() || '',
       shop_senior_rate: project.shop_senior_rate?.toString() || '',
@@ -384,40 +369,18 @@ export default function Projects() {
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-              <div className="form-group">
-                <label className="label">Status</label>
-                <select
-                  className="input"
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                >
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="on-hold">On Hold</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="label">Start Date</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="label">End Date</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={formData.end_date}
-                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                />
-              </div>
+            <div className="form-group">
+              <label className="label">Status</label>
+              <select
+                className="input"
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              >
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="on-hold">On Hold</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
             </div>
 
             <div className="form-group">
@@ -443,17 +406,6 @@ export default function Projects() {
                   {formData.color}
                 </span>
               </div>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Budget</label>
-              <input
-                type="number"
-                step="0.01"
-                className="input"
-                value={formData.budget}
-                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-              />
             </div>
 
             {/* Project-Specific Rate Overrides */}
@@ -716,40 +668,18 @@ export default function Projects() {
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-              <div className="form-group">
-                <label className="label">Status</label>
-                <select
-                  className="input"
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                >
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="on-hold">On Hold</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="label">Start Date</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="label">End Date</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={formData.end_date}
-                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                />
-              </div>
+            <div className="form-group">
+              <label className="label">Status</label>
+              <select
+                className="input"
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+              >
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="on-hold">On Hold</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
             </div>
 
             <div className="form-group">
@@ -775,17 +705,6 @@ export default function Projects() {
                   {formData.color}
                 </span>
               </div>
-            </div>
-
-            <div className="form-group">
-              <label className="label">Budget</label>
-              <input
-                type="number"
-                step="0.01"
-                className="input"
-                value={formData.budget}
-                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-              />
             </div>
 
             {/* Project-Specific Rate Overrides */}
