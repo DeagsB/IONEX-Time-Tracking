@@ -10,6 +10,10 @@ export default function Sidebar() {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
+  
+  // Use stable theme detection - check localStorage directly to avoid flash
+  const stableTheme = theme || localStorage.getItem('theme') || 'light';
+  const isDarkMode = stableTheme === 'dark';
 
   const handleSignOut = async () => {
     try {
@@ -35,7 +39,7 @@ export default function Sidebar() {
     }}>
       <div style={{ padding: '0 20px', marginBottom: '32px' }}>
         <img
-          src={theme === 'dark' ? '/Black w WHT background square.png' : '/ionex-logo-removebg-preview.png'}
+          src={isDarkMode ? '/Black w WHT background square.png' : '/ionex-logo-removebg-preview.png'}
           alt="IONEX Time Tracking"
           onError={(e) => {
             if (!e.currentTarget.src.includes('ionex-logo.png')) {
