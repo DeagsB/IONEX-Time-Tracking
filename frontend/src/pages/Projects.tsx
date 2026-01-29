@@ -25,6 +25,9 @@ export default function Projects() {
     customer_id: '',
     status: 'active',
     color: '#4ecdc4',
+    location: '',
+    approver_po_afe: '',
+    other: '',
     shop_junior_rate: '',
     shop_senior_rate: '',
     ft_junior_rate: '',
@@ -95,6 +98,9 @@ export default function Projects() {
         customer_id: data.customer_id || null,
         status: data.status,
         color: data.color || '#4ecdc4',
+        location: data.location || null,
+        approver_po_afe: data.approver_po_afe || null,
+        other: data.other || null,
         shop_junior_rate: data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null,
         shop_senior_rate: data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null,
         ft_junior_rate: data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null,
@@ -123,12 +129,14 @@ export default function Projects() {
       if (data.customer_id !== undefined) projectData.customer_id = data.customer_id || null;
       if (data.status !== undefined) projectData.status = data.status;
       if (data.color !== undefined) projectData.color = data.color;
+      if (data.location !== undefined) projectData.location = data.location || null;
+      if (data.approver_po_afe !== undefined) projectData.approver_po_afe = data.approver_po_afe || null;
+      if (data.other !== undefined) projectData.other = data.other || null;
       if (data.shop_junior_rate !== undefined) projectData.shop_junior_rate = data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null;
       if (data.shop_senior_rate !== undefined) projectData.shop_senior_rate = data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null;
       if (data.ft_junior_rate !== undefined) projectData.ft_junior_rate = data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null;
       if (data.ft_senior_rate !== undefined) projectData.ft_senior_rate = data.ft_senior_rate ? parseFloat(data.ft_senior_rate) : null;
       if (data.travel_rate !== undefined) projectData.travel_rate = data.travel_rate ? parseFloat(data.travel_rate) : null;
-      // is_private is always false, don't include it
 
       return await projectsService.update(id, projectData);
     },
@@ -176,6 +184,9 @@ export default function Projects() {
       customer_id: '',
       status: 'active',
       color: '#4ecdc4',
+      location: '',
+      approver_po_afe: '',
+      other: '',
       shop_junior_rate: '',
       shop_senior_rate: '',
       ft_junior_rate: '',
@@ -193,6 +204,9 @@ export default function Projects() {
       customer_id: project.customer_id || '',
       status: project.status || 'active',
       color: project.color || '#4ecdc4',
+      location: project.location || '',
+      approver_po_afe: project.approver_po_afe || '',
+      other: project.other || '',
       shop_junior_rate: project.shop_junior_rate?.toString() || '',
       shop_senior_rate: project.shop_senior_rate?.toString() || '',
       ft_junior_rate: project.ft_junior_rate?.toString() || '',
@@ -405,6 +419,43 @@ export default function Projects() {
                 }}>
                   {formData.color}
                 </span>
+              </div>
+            </div>
+
+            {/* Service Ticket Defaults */}
+            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+              <h4 style={{ marginBottom: '15px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                Service Ticket Defaults (auto-populate service tickets)
+              </h4>
+              <div className="form-group">
+                <label className="label">Location</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="e.g., Site A, Building 3"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Approver / PO / AFE</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.approver_po_afe}
+                  onChange={(e) => setFormData({ ...formData, approver_po_afe: e.target.value })}
+                  placeholder="e.g., G900 CN0031 24561 or G900, CN0031, 24561"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Other</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.other}
+                  onChange={(e) => setFormData({ ...formData, other: e.target.value })}
+                  placeholder="Additional notes"
+                />
               </div>
             </div>
 
@@ -704,6 +755,43 @@ export default function Projects() {
                 }}>
                   {formData.color}
                 </span>
+              </div>
+            </div>
+
+            {/* Service Ticket Defaults */}
+            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+              <h4 style={{ marginBottom: '15px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                Service Ticket Defaults (auto-populate service tickets)
+              </h4>
+              <div className="form-group">
+                <label className="label">Location</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="e.g., Site A, Building 3"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Approver / PO / AFE</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.approver_po_afe}
+                  onChange={(e) => setFormData({ ...formData, approver_po_afe: e.target.value })}
+                  placeholder="e.g., G900 CN0031 24561 or G900, CN0031, 24561"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Other</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.other}
+                  onChange={(e) => setFormData({ ...formData, other: e.target.value })}
+                  placeholder="Additional notes"
+                />
               </div>
             </div>
 

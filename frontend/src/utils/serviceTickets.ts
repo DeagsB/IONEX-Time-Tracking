@@ -27,6 +27,10 @@ export interface ServiceTicket {
   projectId?: string;
   projectName?: string;
   projectNumber?: string;
+  // Project-level service ticket defaults
+  projectLocation?: string;
+  projectApproverPoAfe?: string;
+  projectOther?: string;
   ticketNumber?: string; // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
   totalHours: number;
   entries: TimeEntryWithRelations[];
@@ -72,6 +76,10 @@ export interface TimeEntryWithRelations {
     ft_junior_rate?: number;
     ft_senior_rate?: number;
     travel_rate?: number;
+    // Service ticket defaults
+    location?: string;
+    approver_po_afe?: string;
+    other?: string;
     customer?: {
       id: string;
       name: string;
@@ -269,6 +277,9 @@ export function groupEntriesIntoTickets(
         projectId: entry.project?.id,
         projectName: entry.project?.name,
         projectNumber: entry.project?.project_number,
+        projectLocation: entry.project?.location,
+        projectApproverPoAfe: entry.project?.approver_po_afe,
+        projectOther: entry.project?.other,
         totalHours: 0,
         entries: [],
         hoursByRateType: {

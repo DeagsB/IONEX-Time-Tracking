@@ -872,6 +872,9 @@ export const serviceTicketsService = {
           ft_junior_rate,
           ft_senior_rate,
           travel_rate,
+          location,
+          approver_po_afe,
+          other,
           customer:customers!projects_customer_id_fkey(*)
         )
       `)
