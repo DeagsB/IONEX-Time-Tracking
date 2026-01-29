@@ -2557,39 +2557,51 @@ export default function ServiceTickets() {
                   >
                     {isExportingPdf ? 'Generating PDF...' : 'Export PDF'}
                   </button>
-                ) : (
-                  <button
-                    className="button button-primary"
-                    onClick={async () => {
-                      setIsApproving(true);
-                      try {
-                        // Get or create the ticket record
-                        const ticketRecord = await serviceTicketsService.getOrCreateTicket({
-                          date: selectedTicket.date,
-                          userId: selectedTicket.userId,
-                          customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
-                        }, isDemoMode);
-                        
-                        // Update workflow status to approved
-                        await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, 'approved', isDemoMode);
-                        
-                        // Refresh data
-                        queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                        alert('Ticket approved successfully!');
-                        setSelectedTicket(null);
-                      } catch (error) {
-                        console.error('Error approving ticket:', error);
-                        alert('Failed to approve ticket');
-                      } finally {
-                        setIsApproving(false);
-                      }
-                    }}
-                    style={{ padding: '10px 24px' }}
-                    disabled={isApproving}
-                  >
-                    {isApproving ? 'Approving...' : 'Approve'}
-                  </button>
-                )}
+                ) : (() => {
+                  // Check if ticket is already approved
+                  const existingTicketRecord = existingTickets?.find(
+                    et => et.date === selectedTicket.date && 
+                          et.user_id === selectedTicket.userId && 
+                          (et.customer_id === selectedTicket.customerId || (!et.customer_id && selectedTicket.customerId === 'unassigned'))
+                  );
+                  const isTicketApproved = existingTicketRecord?.workflow_status === 'approved';
+                  
+                  return (
+                    <button
+                      className={isTicketApproved ? "button button-secondary" : "button button-primary"}
+                      onClick={async () => {
+                        setIsApproving(true);
+                        try {
+                          // Get or create the ticket record
+                          const ticketRecord = await serviceTicketsService.getOrCreateTicket({
+                            date: selectedTicket.date,
+                            userId: selectedTicket.userId,
+                            customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                          }, isDemoMode);
+                          
+                          // Toggle workflow status
+                          const newStatus = isTicketApproved ? 'draft' : 'approved';
+                          await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
+                          
+                          // Refresh data
+                          queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                        } catch (error) {
+                          console.error('Error updating ticket status:', error);
+                        } finally {
+                          setIsApproving(false);
+                        }
+                      }}
+                      style={{ 
+                        padding: '10px 24px',
+                        backgroundColor: isTicketApproved ? '#10b981' : undefined,
+                        borderColor: isTicketApproved ? '#10b981' : undefined,
+                      }}
+                      disabled={isApproving}
+                    >
+                      {isApproving ? 'Updating...' : (isTicketApproved ? '✓ Approved' : 'Approve')}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
