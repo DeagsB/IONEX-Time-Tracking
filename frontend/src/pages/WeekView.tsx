@@ -61,11 +61,11 @@ export default function WeekView() {
   } | null>(null);
   const [newEntry, setNewEntry] = useState({
     description: '',
-    customer_id: '', // Customer filter for project dropdown
+    customer_id: '', // No customer = Internal time
     project_id: '',
     hours: 0.25,
-    billable: true, // Determined by rate_type (Internal = not billable)
-    rate_type: 'Shop Time',
+    billable: false, // Determined by rate_type (Internal = not billable)
+    rate_type: 'Internal', // Default to Internal since no customer is default
     location: '', // Work location - different locations create separate service tickets
   });
 
@@ -259,7 +259,7 @@ export default function WeekView() {
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       await refetchTimeEntries();
       setShowTimeEntryModal(false);
-      setNewEntry({ description: '', customer_id: '', project_id: '', hours: 0.25, billable: true, rate_type: 'Shop Time', location: '' });
+      setNewEntry({ description: '', customer_id: '', project_id: '', hours: 0.25, billable: false, rate_type: 'Internal', location: '' });
       setSelectedSlot(null);
     },
     onError: (error: any) => {
@@ -492,8 +492,8 @@ export default function WeekView() {
         customer_id: '',
         project_id: '',
         hours: minutesPerDivision / 60,
-        billable: true, // Determined by rate_type (Internal = not billable)
-        rate_type: 'Shop Time',
+        billable: false, // No customer = Internal = not billable
+        rate_type: 'Internal',
         location: '',
       });
     setShowTimeEntryModal(true);
@@ -2274,13 +2274,28 @@ export default function WeekView() {
                   className="input"
                   value={newEntry.customer_id}
                   onChange={(e) => {
-                    // Clear project when customer changes
-                    setNewEntry({ 
-                      ...newEntry, 
-                      customer_id: e.target.value,
-                      project_id: '',
-                      location: ''
-                    });
+                    const customerId = e.target.value;
+                    // No customer = no project, Internal rate type
+                    if (!customerId) {
+                      setNewEntry({ 
+                        ...newEntry, 
+                        customer_id: '',
+                        project_id: '',
+                        location: '',
+                        rate_type: 'Internal',
+                        billable: false
+                      });
+                    } else {
+                      // Customer selected = billable work, default to Shop Time
+                      setNewEntry({ 
+                        ...newEntry, 
+                        customer_id: customerId,
+                        project_id: '',
+                        location: '',
+                        rate_type: 'Shop Time',
+                        billable: true
+                      });
+                    }
                   }}
                   style={{
                     width: '100%',
@@ -2291,7 +2306,7 @@ export default function WeekView() {
                     color: 'var(--text-primary)',
                   }}
                 >
-                  <option value="">All Customers</option>
+                  <option value="">No Customer (Internal)</option>
                   {customers?.map((customer: any) => (
                     <option key={customer.id} value={customer.id}>
                       {customer.name}
@@ -2300,65 +2315,69 @@ export default function WeekView() {
                 </select>
               </div>
 
-              {/* 4. Project select (filtered by customer) */}
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="label">Project</label>
-                <select
-                  className="input"
-                  value={newEntry.project_id}
-                  onChange={(e) => {
-                    const selectedProject = projects?.find((p: any) => p.id === e.target.value);
-                    setNewEntry({ 
-                      ...newEntry, 
-                      project_id: e.target.value,
-                      location: selectedProject?.location || newEntry.location || ''
-                    });
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  <option value="">No Project</option>
-                  {projects
-                    ?.filter((project: any) => !newEntry.customer_id || project.customer_id === newEntry.customer_id)
-                    .map((project: any) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
+              {/* 4. Project select (only shown when customer is selected) */}
+              {newEntry.customer_id && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="label">Project</label>
+                  <select
+                    className="input"
+                    value={newEntry.project_id}
+                    onChange={(e) => {
+                      const selectedProject = projects?.find((p: any) => p.id === e.target.value);
+                      setNewEntry({ 
+                        ...newEntry, 
+                        project_id: e.target.value,
+                        location: selectedProject?.location || newEntry.location || ''
+                      });
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <option value="">No Project</option>
+                    {projects
+                      ?.filter((project: any) => project.customer_id === newEntry.customer_id)
+                      .map((project: any) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
-              {/* 5. Location input */}
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="label">Location</label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Work location (e.g., Site A, Building 3)"
-                  value={newEntry.location}
-                  onChange={(e) => setNewEntry({ ...newEntry, location: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                  Different locations create separate service tickets
-                </span>
-              </div>
+              {/* 5. Location input (only shown when customer is selected - for service tickets) */}
+              {newEntry.customer_id && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="label">Location</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Work location (e.g., Site A, Building 3)"
+                    value={newEntry.location}
+                    onChange={(e) => setNewEntry({ ...newEntry, location: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
+                    Different locations create separate service tickets
+                  </span>
+                </div>
+              )}
 
-              {/* 6. Rate Type dropdown (includes Internal) - hidden for Panel Shop */}
-              {!isPanelShop && (
+              {/* 6. Rate Type dropdown - only shown when customer selected (otherwise Internal) */}
+              {!isPanelShop && newEntry.customer_id && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
                   <label className="label">Rate Type</label>
                   <select
