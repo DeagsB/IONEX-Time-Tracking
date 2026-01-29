@@ -28,6 +28,11 @@ export default function Customers() {
     approver_name: '',
     location_code: '',
     service_location: '',
+    rate_shop_junior: '',
+    rate_shop_senior: '',
+    rate_field_junior: '',
+    rate_field_senior: '',
+    rate_travel: '',
   });
 
   const { data: customers } = useQuery({
@@ -166,6 +171,11 @@ export default function Customers() {
       approver_name: '',
       location_code: '',
       service_location: '',
+      rate_shop_junior: '',
+      rate_shop_senior: '',
+      rate_field_junior: '',
+      rate_field_senior: '',
+      rate_travel: '',
     });
   };
 
@@ -187,6 +197,11 @@ export default function Customers() {
       approver_name: customer.approver_name || '',
       location_code: customer.location_code || '',
       service_location: customer.service_location || '',
+      rate_shop_junior: customer.rate_shop_junior || '',
+      rate_shop_senior: customer.rate_shop_senior || '',
+      rate_field_junior: customer.rate_field_junior || '',
+      rate_field_senior: customer.rate_field_senior || '',
+      rate_travel: customer.rate_travel || '',
     });
     setShowModal(true);
   };
@@ -396,6 +411,106 @@ export default function Customers() {
               />
             </div>
 
+            <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid var(--border-color)' }} />
+            <h4 style={{ marginBottom: '15px', color: 'var(--text-secondary)', fontSize: '14px', textTransform: 'uppercase' }}>
+              Special Billing Rates (Optional)
+            </h4>
+            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '15px' }}>
+              Set custom rates for this client. Project rates take priority if also set.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Shop Rate - Junior</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_shop_junior}
+                    onChange={(e) => setFormData({ ...formData, rate_shop_junior: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Shop Rate - Senior</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_shop_senior}
+                    onChange={(e) => setFormData({ ...formData, rate_shop_senior: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Field Rate - Junior</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_field_junior}
+                    onChange={(e) => setFormData({ ...formData, rate_field_junior: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Field Rate - Senior</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_field_senior}
+                    onChange={(e) => setFormData({ ...formData, rate_field_senior: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Travel Time Rate</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_travel}
+                    onChange={(e) => setFormData({ ...formData, rate_travel: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div></div>
+            </div>
+
               <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
                 Update Customer
               </button>
@@ -525,6 +640,106 @@ export default function Customers() {
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
+            </div>
+
+            <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid var(--border-color)' }} />
+            <h4 style={{ marginBottom: '15px', color: 'var(--text-secondary)', fontSize: '14px', textTransform: 'uppercase' }}>
+              Special Billing Rates (Optional)
+            </h4>
+            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '15px' }}>
+              Set custom rates for this client. Project rates take priority if also set.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Shop Rate - Junior</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_shop_junior}
+                    onChange={(e) => setFormData({ ...formData, rate_shop_junior: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Shop Rate - Senior</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_shop_senior}
+                    onChange={(e) => setFormData({ ...formData, rate_shop_senior: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Field Rate - Junior</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_field_junior}
+                    onChange={(e) => setFormData({ ...formData, rate_field_junior: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Field Rate - Senior</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_field_senior}
+                    onChange={(e) => setFormData({ ...formData, rate_field_senior: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="label">Travel Time Rate</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    style={{ paddingLeft: '25px' }}
+                    value={formData.rate_travel}
+                    onChange={(e) => setFormData({ ...formData, rate_travel: e.target.value })}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div></div>
             </div>
 
             <button type="submit" className="button button-primary" disabled={createMutation.isPending || updateMutation.isPending}>
