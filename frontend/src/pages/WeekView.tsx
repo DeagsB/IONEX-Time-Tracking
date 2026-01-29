@@ -2296,24 +2296,24 @@ export default function WeekView() {
                   onChange={(customerId) => {
                     // No customer = no project, Internal rate type
                     if (!customerId) {
-                      setNewEntry({ 
-                        ...newEntry, 
+                      setNewEntry(prev => ({ 
+                        ...prev, 
                         customer_id: '',
                         project_id: '',
                         location: '',
                         rate_type: 'Internal',
                         billable: false
-                      });
+                      }));
                     } else {
-                      // Customer selected = billable work, default to Shop Time
-                      setNewEntry({ 
-                        ...newEntry, 
+                      // Customer selected = billable work, clear project when customer changes
+                      setNewEntry(prev => ({ 
+                        ...prev, 
                         customer_id: customerId,
                         project_id: '',
                         location: '',
                         rate_type: 'Shop Time',
                         billable: true
-                      });
+                      }));
                     }
                   }}
                   placeholder="Search customers..."
@@ -2628,24 +2628,26 @@ export default function WeekView() {
                   onChange={(customerId) => {
                     // No customer = no project, Internal rate type
                     if (!customerId) {
-                      setEditedEntry({ 
-                        ...editedEntry, 
+                      setEditedEntry(prev => ({ 
+                        ...prev, 
                         customer_id: '',
                         project_id: '',
                         location: '',
                         rate_type: 'Internal',
                         billable: false
-                      });
+                      }));
                     } else {
-                      // Customer selected = billable work
-                      const newRateType = editedEntry.rate_type === 'Internal' ? 'Shop Time' : editedEntry.rate_type;
-                      setEditedEntry({ 
-                        ...editedEntry, 
-                        customer_id: customerId,
-                        project_id: '',
-                        location: '',
-                        rate_type: newRateType,
-                        billable: newRateType !== 'Internal'
+                      // Customer selected = billable work, clear project when customer changes
+                      setEditedEntry(prev => {
+                        const newRateType = prev.rate_type === 'Internal' ? 'Shop Time' : prev.rate_type;
+                        return { 
+                          ...prev, 
+                          customer_id: customerId,
+                          project_id: '',
+                          location: '',
+                          rate_type: newRateType,
+                          billable: newRateType !== 'Internal'
+                        };
                       });
                     }
                   }}
