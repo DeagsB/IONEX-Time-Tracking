@@ -22,6 +22,10 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [description, setDescription] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [selectedCustomerName, setSelectedCustomerName] = useState<string>('');
   const [projectSearch, setProjectSearch] = useState('');
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -30,6 +34,8 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [shouldAutoStart, setShouldAutoStart] = useState(false);
+  const customerInputRef = useRef<HTMLInputElement>(null);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const projectDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -43,10 +49,17 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     queryFn: () => customersService.getAll(),
   });
 
-  // Filter projects based on search input
-  const filteredProjects = projects?.filter((project: any) =>
-    project.name.toLowerCase().includes(projectSearch.toLowerCase())
+  // Filter customers based on search input
+  const filteredCustomers = customers?.filter((customer: any) =>
+    customer.name.toLowerCase().includes(customerSearch.toLowerCase())
   ) || [];
+
+  // Filter projects based on search input AND selected customer
+  const filteredProjects = projects?.filter((project: any) => {
+    const matchesSearch = project.name.toLowerCase().includes(projectSearch.toLowerCase());
+    const matchesCustomer = !selectedCustomerId || project.customer_id === selectedCustomerId;
+    return matchesSearch && matchesCustomer;
+  }) || [];
 
   // Check if we should show "Create new project" option
   const showCreateOption = projectSearch.trim().length > 0 && filteredProjects.length === 0;
@@ -106,9 +119,17 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     },
   });
 
-  // Handle clicking outside to close dropdown
+  // Handle clicking outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (
+        customerDropdownRef.current &&
+        !customerDropdownRef.current.contains(event.target as Node) &&
+        customerInputRef.current &&
+        !customerInputRef.current.contains(event.target as Node)
+      ) {
+        setShowCustomerDropdown(false);
+      }
       if (
         projectDropdownRef.current &&
         !projectDropdownRef.current.contains(event.target as Node) &&
@@ -157,11 +178,39 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     }
   };
 
+  const handleCustomerSelect = (customer: any) => {
+    setSelectedCustomerId(customer.id);
+    setSelectedCustomerName(customer.name);
+    setCustomerSearch(customer.name);
+    setShowCustomerDropdown(false);
+    // Clear project selection when customer changes
+    setSelectedProjectId('');
+    setSelectedProjectName('');
+    setProjectSearch('');
+  };
+
+  const handleClearCustomer = () => {
+    setSelectedCustomerId('');
+    setSelectedCustomerName('');
+    setCustomerSearch('');
+    setShowCustomerDropdown(false);
+    // Also clear project when customer is cleared
+    setSelectedProjectId('');
+    setSelectedProjectName('');
+    setProjectSearch('');
+  };
+
   const handleProjectSelect = (project: any) => {
     setSelectedProjectId(project.id);
     setSelectedProjectName(project.name);
     setProjectSearch(project.name);
     setShowProjectDropdown(false);
+    // Auto-populate customer if project has one and none selected
+    if (project.customer && !selectedCustomerId) {
+      setSelectedCustomerId(project.customer.id || project.customer_id);
+      setSelectedCustomerName(project.customer.name);
+      setCustomerSearch(project.customer.name);
+    }
     // Auto-populate location from project default
     if (project.location) {
       setLocation(project.location);
@@ -260,10 +309,14 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
 
       // Reset form
       setDescription('');
+      setSelectedCustomerId('');
+      setSelectedCustomerName('');
+      setCustomerSearch('');
       setSelectedProjectId('');
       setSelectedProjectName('');
       setProjectSearch('');
       setLocation(''); // Reset location
+      setShowCustomerDropdown(false);
       setShowProjectDropdown(false);
       
       // Navigate to week view (which will show today's week)
@@ -348,12 +401,112 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
 
       {/* Right side - Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginLeft: '20px' }}>
+        {/* Customer Selector */}
         {!timerRunning && (
-          <div style={{ position: 'relative', width: '200px' }}>
+          <div style={{ position: 'relative', width: '160px' }}>
+            <input
+              ref={customerInputRef}
+              type="text"
+              placeholder="Select customer..."
+              value={customerSearch}
+              onChange={(e) => {
+                setCustomerSearch(e.target.value);
+                setShowCustomerDropdown(true);
+                if (!e.target.value) {
+                  handleClearCustomer();
+                }
+              }}
+              onFocus={() => setShowCustomerDropdown(true)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                fontSize: '14px',
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                transition: 'all 0.2s ease',
+              }}
+            />
+            {showCustomerDropdown && (filteredCustomers.length > 0 || !customerSearch) && (
+              <div
+                ref={customerDropdownRef}
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  marginTop: '5px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  boxShadow: 'var(--shadow-lg)',
+                  zIndex: 1000,
+                  maxHeight: '250px',
+                  overflowY: 'auto',
+                }}
+              >
+                {!customerSearch && (
+                  <div
+                    style={{
+                      padding: '10px 16px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      color: 'var(--text-secondary)',
+                      borderBottom: '1px solid var(--border-color)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={handleClearCustomer}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
+                  >
+                    All Customers
+                  </div>
+                )}
+                {filteredCustomers.map((customer: any) => (
+                  <div
+                    key={customer.id}
+                    style={{
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      color: 'var(--text-primary)',
+                      backgroundColor: selectedCustomerId === customer.id ? 'var(--primary-light)' : 'transparent',
+                      transition: 'background-color 0.15s ease',
+                    }}
+                    onClick={() => handleCustomerSelect(customer)}
+                    onMouseEnter={(e) => {
+                      if (selectedCustomerId !== customer.id) {
+                        e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selectedCustomerId !== customer.id) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
+                  >
+                    {customer.name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Project Selector */}
+        {!timerRunning && (
+          <div style={{ position: 'relative', width: '180px' }}>
             <input
               ref={projectInputRef}
               type="text"
-              placeholder="Select project..."
+              placeholder={selectedCustomerId ? "Select project..." : "Select project..."}
               value={projectSearch}
               onChange={(e) => {
                 setProjectSearch(e.target.value);
