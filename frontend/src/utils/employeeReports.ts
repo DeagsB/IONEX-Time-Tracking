@@ -894,10 +894,13 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
   }
 
   // First pass: sum non-billable hours per project (billable hours come from service tickets only)
-  // Skip entries without a project - they are internal time and don't belong in project breakdown
+  // Skip entries without a project or with Internal rate type - they don't belong in project breakdown
   entries.forEach(entry => {
     if (!entry.project_id || !entry.project) {
       return; // Skip entries without a project
+    }
+    if (entry.rate_type === 'Internal' || !entry.billable) {
+      return; // Skip internal time entries - they don't count toward project totals
     }
     
     const projectId = entry.project_id;
@@ -911,31 +914,19 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
       });
     }
 
-    const project = projectMap.get(projectId)!;
-    
-    if (!entry.billable) {
-      // For non-billable entries, sum actual hours (will be rounded later)
-      project.nonBillableHours += rawHours;
-    }
-    // Billable hours are NOT added from entries - they come from service tickets only
+    // Just ensure the project is in the map - billable hours come from service tickets
+    projectMap.get(projectId);
   });
 
-  // Second pass: set billable hours from service tickets, round non-billable, and calculate revenue
+  // Second pass: set billable hours from service tickets and calculate revenue (billable only)
   projectMap.forEach((data, projectId) => {
     // Set billable hours from service tickets (only use service ticket hours, not entry hours)
     const ticketHours = ticketHoursByProject.get(projectId) || 0;
     data.billableHours = ticketHours;
     
-    // Round non-billable hours
-    data.nonBillableHours = roundToQuarterHour(data.nonBillableHours);
-    
-    // Revenue: billable revenue = hours × rate (from service tickets), non-billable = hours × internal rate
+    // Revenue: billable revenue only (from service tickets)
     const ticketRevenue = ticketRevenueByProject.get(projectId) || 0;
-    const internalRate = Number(employee?.internal_rate) || 0;
-    
-    // Billable revenue comes from calculated hours × rate
-    // Non-billable revenue is calculated from rounded hours × internal rate
-    data.revenue = ticketRevenue + (data.nonBillableHours * internalRate);
+    data.revenue = ticketRevenue;
   });
 
   // Convert to ProjectBreakdown format - only include projects with hours
@@ -1040,15 +1031,17 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
     });
   }
 
-  // First pass: sum non-billable hours per customer (billable hours come from service tickets only)
-  // Skip entries without a customer - they are internal time and don't belong in customer breakdown
+  // First pass: initialize customer map (billable hours come from service tickets only)
+  // Skip entries without a customer or with Internal rate type
   entries.forEach(entry => {
     if (!entry.project?.customer?.id) {
       return; // Skip entries without a customer
     }
+    if (entry.rate_type === 'Internal' || !entry.billable) {
+      return; // Skip internal time entries - they don't count toward customer totals
+    }
     
     const customerId = entry.project.customer.id;
-    const rawHours = Number(entry.hours) || 0;
 
     if (!customerMap.has(customerId)) {
       customerMap.set(customerId, {
@@ -1058,31 +1051,19 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
       });
     }
 
-    const customer = customerMap.get(customerId)!;
-    
-    if (!entry.billable) {
-      // For non-billable entries, sum actual hours (will be rounded later)
-      customer.nonBillableHours += rawHours;
-    }
-    // Billable hours are NOT added from entries - they come from service tickets only
+    // Just ensure the customer is in the map - billable hours come from service tickets
+    customerMap.get(customerId);
   });
 
-  // Second pass: set billable hours from service tickets, round non-billable, and calculate revenue
+  // Second pass: set billable hours from service tickets and calculate revenue (billable only)
   customerMap.forEach((data, customerId) => {
     // Set billable hours from service tickets (only use service ticket hours, not entry hours)
     const ticketHours = ticketHoursByCustomer.get(customerId) || 0;
     data.billableHours = ticketHours;
     
-    // Round non-billable hours
-    data.nonBillableHours = roundToQuarterHour(data.nonBillableHours);
-    
-    // Revenue: billable revenue = hours × rate (from service tickets), non-billable = hours × internal rate
+    // Revenue: billable revenue only (from service tickets)
     const ticketRevenue = ticketRevenueByCustomer.get(customerId) || 0;
-    const internalRate = Number(employee?.internal_rate) || 0;
-    
-    // Billable revenue comes from calculated hours × rate
-    // Non-billable revenue is calculated from rounded hours × internal rate
-    data.revenue = ticketRevenue + (data.nonBillableHours * internalRate);
+    data.revenue = ticketRevenue;
   });
 
   // Convert to CustomerBreakdown format - only include customers with hours
