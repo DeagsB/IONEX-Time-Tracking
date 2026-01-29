@@ -157,7 +157,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Sign Out Button at Bottom */}
+      {/* Sign Out at Bottom */}
       <div style={{
         position: 'absolute',
         bottom: '24px',
@@ -168,34 +168,30 @@ export default function Sidebar() {
         <button
           onClick={handleSignOut}
           style={{
-            width: '100%',
-            padding: '12px 16px',
-            backgroundColor: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
+            display: 'block',
+            width: 'calc(100% - 16px)',
+            padding: '10px 16px',
             color: 'var(--text-primary)',
+            textDecoration: 'none',
+            borderRadius: '8px',
+            marginLeft: '8px',
+            marginRight: '8px',
+            backgroundColor: 'transparent',
+            fontWeight: '400',
             fontSize: '14px',
-            fontWeight: '500',
-            cursor: 'pointer',
             transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
+            border: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-            e.currentTarget.style.borderColor = 'var(--error-color)';
-            e.currentTarget.style.color = 'var(--error-color)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.borderColor = 'var(--border-color)';
-            e.currentTarget.style.color = 'var(--text-primary)';
           }}
         >
-          <span>🚪</span>
-          <span>Sign Out</span>
+          Sign Out
         </button>
       </div>
     </div>
