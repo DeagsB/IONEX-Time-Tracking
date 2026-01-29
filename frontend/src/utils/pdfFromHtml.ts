@@ -159,10 +159,12 @@ export async function downloadPdfFromHtml(
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">2-3650 19th Street NE</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px;">City</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">Calgary</td>
-              <td style="padding: 2px 4px;">AB</td>
-              <td style="padding: 2px 4px;">T2E 6V2</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">City</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Calgary, AB</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px;">Postal</td>
+              <td colspan="3" style="padding: 2px 4px;">T2E 6V2</td>
             </tr>
           </table>
         </div>
@@ -618,10 +620,12 @@ function buildPdfHtml(
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">2-3650 19th Street NE</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px;">City</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">Calgary</td>
-              <td style="padding: 2px 4px;">AB</td>
-              <td style="padding: 2px 4px;">T2E 6V2</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">City</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Calgary, AB</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px;">Postal</td>
+              <td colspan="3" style="padding: 2px 4px;">T2E 6V2</td>
             </tr>
           </table>
         </div>
