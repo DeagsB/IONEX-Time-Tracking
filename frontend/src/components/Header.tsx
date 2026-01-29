@@ -5,6 +5,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsService, customersService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
+import SearchableSelect from './SearchableSelect';
 
 interface HeaderProps {
   onTimerStart: (description: string, projectId?: string) => void;
@@ -22,22 +23,9 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [description, setDescription] = useState('');
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const [selectedCustomerName, setSelectedCustomerName] = useState<string>('');
-  const [projectSearch, setProjectSearch] = useState('');
-  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [selectedProjectName, setSelectedProjectName] = useState<string>('');
   const [location, setLocation] = useState(''); // Work location for service tickets
-  const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [shouldAutoStart, setShouldAutoStart] = useState(false);
-  const customerInputRef = useRef<HTMLInputElement>(null);
-  const customerDropdownRef = useRef<HTMLDivElement>(null);
-  const projectInputRef = useRef<HTMLInputElement>(null);
-  const projectDropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
@@ -49,20 +37,10 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     queryFn: () => customersService.getAll(),
   });
 
-  // Filter customers based on search input
-  const filteredCustomers = customers?.filter((customer: any) =>
-    customer.name.toLowerCase().includes(customerSearch.toLowerCase())
-  ) || [];
-
-  // Filter projects based on search input AND selected customer
+  // Filter projects based on selected customer
   const filteredProjects = projects?.filter((project: any) => {
-    const matchesSearch = project.name.toLowerCase().includes(projectSearch.toLowerCase());
-    const matchesCustomer = !selectedCustomerId || project.customer_id === selectedCustomerId;
-    return matchesSearch && matchesCustomer;
+    return !selectedCustomerId || project.customer_id === selectedCustomerId;
   }) || [];
-
-  // Check if we should show "Create new project" option
-  const showCreateOption = projectSearch.trim().length > 0 && filteredProjects.length === 0;
 
   const createTimeEntryMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -91,60 +69,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     },
   });
 
-  const createProjectMutation = useMutation({
-    mutationFn: async (projectName: string) => {
-      if (!user?.id) throw new Error('User not authenticated.');
-      const projectData: any = {
-        name: projectName,
-        status: 'active',
-        color: '#4ecdc4',
-        is_demo: isDemoMode,
-      };
-      return await projectsService.create(projectData, user.id);
-    },
-    onSuccess: (newProject) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      setSelectedProjectId(newProject.id);
-      setSelectedProjectName(newProject.name);
-      setProjectSearch(newProject.name);
-      setShowCreateProjectModal(false);
-      setNewProjectName('');
-      setShowProjectDropdown(false);
-      
-      // Auto-start timer if user clicked start before creating project
-      if (shouldAutoStart && description.trim()) {
-        setShouldAutoStart(false);
-        onTimerStart(description.trim(), newProject.id);
-      }
-    },
-  });
 
-  // Handle clicking outside to close dropdowns
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        customerDropdownRef.current &&
-        !customerDropdownRef.current.contains(event.target as Node) &&
-        customerInputRef.current &&
-        !customerInputRef.current.contains(event.target as Node)
-      ) {
-        setShowCustomerDropdown(false);
-      }
-      if (
-        projectDropdownRef.current &&
-        !projectDropdownRef.current.contains(event.target as Node) &&
-        projectInputRef.current &&
-        !projectInputRef.current.contains(event.target as Node)
-      ) {
-        setShowProjectDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
 
   const handleStart = () => {
     if (timerRunning) {
@@ -159,70 +84,25 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       return;
     }
 
-    // If there's project search text but no selected project, try to create it
-    if (projectSearch.trim() && !selectedProjectId && showCreateOption) {
-      setNewProjectName(projectSearch.trim());
-      setShouldAutoStart(true);
-      setShowCreateProjectModal(true);
-      return;
-    }
-
     onTimerStart(description.trim(), selectedProjectId || undefined);
-    setShowProjectDropdown(false);
-    // Project name will be available through currentEntry once timer starts
   };
 
-  const handleCreateProject = () => {
-    if (newProjectName.trim()) {
-      createProjectMutation.mutate(newProjectName.trim());
-    }
-  };
-
-  const handleCustomerSelect = (customer: any) => {
-    setSelectedCustomerId(customer.id);
-    setSelectedCustomerName(customer.name);
-    setCustomerSearch(customer.name);
-    setShowCustomerDropdown(false);
+  const handleCustomerChange = (customerId: string) => {
+    setSelectedCustomerId(customerId);
     // Clear project selection when customer changes
     setSelectedProjectId('');
-    setSelectedProjectName('');
-    setProjectSearch('');
+    setLocation('');
   };
 
-  const handleClearCustomer = () => {
-    setSelectedCustomerId('');
-    setSelectedCustomerName('');
-    setCustomerSearch('');
-    setShowCustomerDropdown(false);
-    // Also clear project when customer is cleared
-    setSelectedProjectId('');
-    setSelectedProjectName('');
-    setProjectSearch('');
-  };
-
-  const handleProjectSelect = (project: any) => {
-    setSelectedProjectId(project.id);
-    setSelectedProjectName(project.name);
-    setProjectSearch(project.name);
-    setShowProjectDropdown(false);
-    // Auto-populate customer if project has one and none selected
-    if (project.customer && !selectedCustomerId) {
-      setSelectedCustomerId(project.customer.id || project.customer_id);
-      setSelectedCustomerName(project.customer.name);
-      setCustomerSearch(project.customer.name);
-    }
+  const handleProjectChange = (projectId: string) => {
+    setSelectedProjectId(projectId);
     // Auto-populate location from project default
-    if (project.location) {
+    const project = projects?.find((p: any) => p.id === projectId);
+    if (project?.location) {
       setLocation(project.location);
+    } else {
+      setLocation('');
     }
-  };
-
-  const handleClearProject = () => {
-    setSelectedProjectId('');
-    setSelectedProjectName('');
-    setProjectSearch('');
-    setShowProjectDropdown(false);
-    setLocation(''); // Clear location when project is cleared
   };
 
   const handleStop = async () => {
@@ -310,14 +190,8 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       // Reset form
       setDescription('');
       setSelectedCustomerId('');
-      setSelectedCustomerName('');
-      setCustomerSearch('');
       setSelectedProjectId('');
-      setSelectedProjectName('');
-      setProjectSearch('');
-      setLocation(''); // Reset location
-      setShowCustomerDropdown(false);
-      setShowProjectDropdown(false);
+      setLocation('');
       
       // Navigate to week view (which will show today's week)
       // The entry will appear in the correct time slot
@@ -370,11 +244,6 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
                 {currentEntry.projectName}
               </div>
             )}
-            {selectedProjectName && !currentEntry?.projectName && (
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                {selectedProjectName}
-              </div>
-            )}
           </div>
         ) : (
           <>
@@ -400,265 +269,52 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       </div>
 
       {/* Right side - Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginLeft: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '20px' }}>
         {/* Customer Selector */}
         {!timerRunning && (
-          <div style={{ position: 'relative', width: '160px' }}>
-            <input
-              ref={customerInputRef}
-              type="text"
-              placeholder="Select customer..."
-              value={customerSearch}
-              onChange={(e) => {
-                setCustomerSearch(e.target.value);
-                setShowCustomerDropdown(true);
-                if (!e.target.value) {
-                  handleClearCustomer();
-                }
-              }}
-              onFocus={() => setShowCustomerDropdown(true)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                fontSize: '14px',
-                backgroundColor: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-                transition: 'all 0.2s ease',
-              }}
-            />
-            {showCustomerDropdown && (filteredCustomers.length > 0 || !customerSearch) && (
-              <div
-                ref={customerDropdownRef}
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  marginTop: '5px',
-                  backgroundColor: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  boxShadow: 'var(--shadow-lg)',
-                  zIndex: 1000,
-                  maxHeight: '250px',
-                  overflowY: 'auto',
-                }}
-              >
-                {!customerSearch && (
-                  <div
-                    style={{
-                      padding: '10px 16px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      color: 'var(--text-secondary)',
-                      borderBottom: '1px solid var(--border-color)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      cursor: 'pointer',
-                    }}
-                    onClick={handleClearCustomer}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    All Customers
-                  </div>
-                )}
-                {filteredCustomers.map((customer: any) => (
-                  <div
-                    key={customer.id}
-                    style={{
-                      padding: '10px 16px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      color: 'var(--text-primary)',
-                      backgroundColor: selectedCustomerId === customer.id ? 'var(--primary-light)' : 'transparent',
-                      transition: 'background-color 0.15s ease',
-                    }}
-                    onClick={() => handleCustomerSelect(customer)}
-                    onMouseEnter={(e) => {
-                      if (selectedCustomerId !== customer.id) {
-                        e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedCustomerId !== customer.id) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }
-                    }}
-                  >
-                    {customer.name}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <SearchableSelect
+            options={customers?.map((customer: any) => ({
+              value: customer.id,
+              label: customer.name,
+            })) || []}
+            value={selectedCustomerId}
+            onChange={handleCustomerChange}
+            placeholder="Search customers..."
+            emptyOption={{ value: '', label: 'Select Customer' }}
+            style={{ width: '150px' }}
+          />
         )}
 
-        {/* Project Selector */}
-        {!timerRunning && (
-          <div style={{ position: 'relative', width: '180px' }}>
-            <input
-              ref={projectInputRef}
-              type="text"
-              placeholder={selectedCustomerId ? "Select project..." : "Select project..."}
-              value={projectSearch}
-              onChange={(e) => {
-                setProjectSearch(e.target.value);
-                setShowProjectDropdown(true);
-                if (!e.target.value) {
-                  setSelectedProjectId('');
-                  setSelectedProjectName('');
-                }
-              }}
-              onFocus={() => setShowProjectDropdown(true)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                fontSize: '14px',
-                backgroundColor: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-                transition: 'all 0.2s ease',
-              }}
-            />
-            {showProjectDropdown && (filteredProjects.length > 0 || showCreateOption || !projectSearch) && (
-              <div
-                ref={projectDropdownRef}
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  marginTop: '5px',
-                  backgroundColor: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  boxShadow: 'var(--shadow-lg)',
-                  zIndex: 1000,
-                  maxHeight: '250px',
-                  overflowY: 'auto',
-                }}
-              >
-                {!projectSearch && (
-                  <div
-                    style={{
-                      padding: '10px 16px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      color: 'var(--text-secondary)',
-                      borderBottom: '1px solid var(--border-color)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                      cursor: 'pointer',
-                    }}
-                    onClick={handleClearProject}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    No project
-                  </div>
-                )}
-                {filteredProjects.map((project: any) => (
-                  <div
-                    key={project.id}
-                    style={{
-                      padding: '10px 16px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      color: 'var(--text-primary)',
-                      backgroundColor: selectedProjectId === project.id ? 'var(--primary-light)' : 'transparent',
-                      transition: 'background-color 0.15s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                    }}
-                    onClick={() => handleProjectSelect(project)}
-                    onMouseEnter={(e) => {
-                      if (selectedProjectId !== project.id) {
-                        e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selectedProjectId !== project.id) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }
-                    }}
-                  >
-                    <div
-                      style={{
-                        backgroundColor: project.color || '#666',
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div style={{ flex: 1 }}>
-                      {project.name}
-                      {project.customer && (
-                        <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>
-                          • {project.customer.name}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {showCreateOption && (
-                  <div
-                    style={{
-                      padding: '10px 16px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      color: 'var(--primary-color)',
-                      borderTop: '1px solid var(--border-color)',
-                      backgroundColor: 'var(--primary-light)',
-                      fontWeight: '500',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                    }}
-                    onClick={() => {
-                      setNewProjectName(projectSearch.trim());
-                      setShowCreateProjectModal(true);
-                      setShowProjectDropdown(false);
-                    }}
-                  >
-                    <span>+</span>
-                    <span>Create "{projectSearch.trim()}"</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        {/* Project Selector - only show when customer selected */}
+        {!timerRunning && selectedCustomerId && (
+          <SearchableSelect
+            options={filteredProjects.map((project: any) => ({
+              value: project.id,
+              label: project.name,
+            }))}
+            value={selectedProjectId}
+            onChange={handleProjectChange}
+            placeholder="Search projects..."
+            emptyOption={{ value: '', label: 'Select Project' }}
+            style={{ width: '150px' }}
+          />
         )}
 
-        {/* Location input - only shown when not running */}
-        {!timerRunning && (
+        {/* Location input - only shown when project selected */}
+        {!timerRunning && selectedProjectId && (
           <input
             type="text"
             placeholder="Location..."
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             style={{
-              width: '140px',
-              padding: '8px 12px',
+              width: '120px',
+              padding: '8px 10px',
               border: '1px solid var(--border-color)',
-              borderRadius: '8px',
+              borderRadius: '6px',
               fontSize: '14px',
-              backgroundColor: 'var(--bg-secondary)',
+              backgroundColor: 'var(--bg-primary)',
               color: 'var(--text-primary)',
-              transition: 'all 0.2s ease',
             }}
           />
         )}
@@ -803,102 +459,6 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         </div>
       </div>
 
-      {/* Create Project Modal */}
-      {showCreateProjectModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-          }}
-          onClick={() => {
-            setShowCreateProjectModal(false);
-            setNewProjectName('');
-            setShouldAutoStart(false);
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: 'var(--bg-primary)',
-              borderRadius: '12px',
-              padding: '24px',
-              maxWidth: '400px',
-              width: '90%',
-              boxShadow: 'var(--shadow-lg)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px', color: 'var(--text-primary)' }}>
-              Create New Project
-            </h3>
-            <input
-              type="text"
-              placeholder="Project name"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && newProjectName.trim()) {
-                  handleCreateProject();
-                }
-              }}
-              autoFocus
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                fontSize: '14px',
-                backgroundColor: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-                marginBottom: '20px',
-              }}
-            />
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setShowCreateProjectModal(false);
-                  setNewProjectName('');
-                  setShouldAutoStart(false);
-                }}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateProject}
-                disabled={!newProjectName.trim() || createProjectMutation.isPending}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: 'var(--primary-color)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: newProjectName.trim() && !createProjectMutation.isPending ? 'pointer' : 'not-allowed',
-                  fontSize: '14px',
-                  opacity: newProjectName.trim() && !createProjectMutation.isPending ? 1 : 0.5,
-                }}
-              >
-                {createProjectMutation.isPending ? 'Creating...' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
