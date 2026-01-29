@@ -321,7 +321,7 @@ export default function Employees() {
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               <div className="form-group">
-                <label className="label">Regular Time (RT)</label>
+                <label className="label">Shop Time (ST)</label>
                 <div style={{ position: 'relative' }}>
                   <span style={{ position: 'absolute', left: '12px', top: '50%', marginTop: '-0.5em', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1em', fontSize: '14px' }}>$</span>
                   <input
@@ -332,21 +332,6 @@ export default function Employees() {
                     value={formData.rt_rate}
                     onChange={(e) => setFormData({ ...formData, rt_rate: e.target.value })}
                     placeholder="110.00"
-                  />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="label">Travel Time (TT)</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: '12px', top: '50%', marginTop: '-0.5em', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1em', fontSize: '14px' }}>$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="input"
-                    style={{ paddingLeft: '28px' }}
-                    value={formData.tt_rate}
-                    onChange={(e) => setFormData({ ...formData, tt_rate: e.target.value })}
-                    placeholder="85.00"
                   />
                 </div>
               </div>
@@ -362,6 +347,21 @@ export default function Employees() {
                     value={formData.ft_rate}
                     onChange={(e) => setFormData({ ...formData, ft_rate: e.target.value })}
                     placeholder="140.00"
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="label">Travel Time (TT)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', marginTop: '-0.5em', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1em', fontSize: '14px' }}>$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input"
+                    style={{ paddingLeft: '28px' }}
+                    value={formData.tt_rate}
+                    onChange={(e) => setFormData({ ...formData, tt_rate: e.target.value })}
+                    placeholder="85.00"
                   />
                 </div>
               </div>
