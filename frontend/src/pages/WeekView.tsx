@@ -65,6 +65,7 @@ export default function WeekView() {
     hours: 0.25,
     billable: true, // Default to billable (will be updated based on department if Panel Shop)
     rate_type: 'Shop Time',
+    location: '', // Work location - different locations create separate service tickets
   });
 
   // Edit existing entry modal state
@@ -78,6 +79,7 @@ export default function WeekView() {
     hours: 0,
     billable: true,
     rate_type: 'Shop Time',
+    location: '',
   });
   
   // Track mouse position for modal drag detection
@@ -258,7 +260,7 @@ export default function WeekView() {
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       await refetchTimeEntries();
       setShowTimeEntryModal(false);
-      setNewEntry({ description: '', project_id: '', hours: 0.25, billable: !isPanelShop, rate_type: 'Shop Time' });
+      setNewEntry({ description: '', project_id: '', hours: 0.25, billable: !isPanelShop, rate_type: 'Shop Time', location: '' });
       setSelectedSlot(null);
     },
     onError: (error: any) => {
@@ -486,12 +488,15 @@ export default function WeekView() {
       startTime: `${startHour}:${startMin}`,
       endTime: `${endHour}:${endMin}`,
     });
+      // Get default location from first project if available
+      const defaultProject = projects?.[0];
       setNewEntry({
         description: '',
-        project_id: projects?.[0]?.id || '',
+        project_id: defaultProject?.id || '',
         hours: minutesPerDivision / 60,
         billable: !isPanelShop, // Panel Shop employees are not billable
         rate_type: 'Shop Time',
+        location: defaultProject?.location || '', // Pre-fill from project default
       });
     setShowTimeEntryModal(true);
   };
@@ -550,6 +555,7 @@ export default function WeekView() {
         billable: isPanelShop ? false : newEntry.billable,
         rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
         is_demo: isDemoMode,
+        location: newEntry.location || null,
       };
       if (newEntry.project_id) entry1.project_id = newEntry.project_id;
       
@@ -565,6 +571,7 @@ export default function WeekView() {
         billable: isPanelShop ? false : newEntry.billable,
         rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
         is_demo: isDemoMode,
+        location: newEntry.location || null,
       };
       if (newEntry.project_id) entry2.project_id = newEntry.project_id;
       
@@ -590,6 +597,7 @@ export default function WeekView() {
         billable: isPanelShop ? false : newEntry.billable,
         rate_type: isPanelShop ? 'Shop Time' : newEntry.rate_type,
         is_demo: isDemoMode,
+        location: newEntry.location || null,
       };
 
       if (newEntry.project_id) {
@@ -630,6 +638,7 @@ export default function WeekView() {
       hours: entry.hours || 0,
       billable: entry.billable !== undefined ? entry.billable : true,
       rate_type: entry.rate_type || 'Shop Time',
+      location: entry.location || '',
     });
     setShowEditModal(true);
   };
@@ -792,6 +801,7 @@ export default function WeekView() {
         billable: isPanelShop ? false : editedEntry.billable,
         rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
         is_demo: editingEntry.is_demo || isDemoMode,
+        location: editedEntry.location || null,
       };
       if (editedEntry.project_id) entry1.project_id = editedEntry.project_id;
       
@@ -807,6 +817,7 @@ export default function WeekView() {
         billable: isPanelShop ? false : editedEntry.billable,
         rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
         is_demo: editingEntry.is_demo || isDemoMode,
+        location: editedEntry.location || null,
       };
       if (editedEntry.project_id) entry2.project_id = editedEntry.project_id;
       
@@ -838,6 +849,7 @@ export default function WeekView() {
         date: dateStr,
         billable: isPanelShop ? false : editedEntry.billable,
         rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
+        location: editedEntry.location || null,
       };
       
       // Only include project_id if one is selected
@@ -2259,7 +2271,15 @@ export default function WeekView() {
                 <select
                   className="input"
                   value={newEntry.project_id}
-                  onChange={(e) => setNewEntry({ ...newEntry, project_id: e.target.value })}
+                  onChange={(e) => {
+                    const selectedProject = projects?.find((p: any) => p.id === e.target.value);
+                    setNewEntry({ 
+                      ...newEntry, 
+                      project_id: e.target.value,
+                      // Pre-fill location from project default when project changes
+                      location: selectedProject?.location || newEntry.location || ''
+                    });
+                  }}
                   style={{
                     width: '100%',
                     padding: '10px',
@@ -2276,6 +2296,29 @@ export default function WeekView() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Location input - used to group entries into separate service tickets */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Location</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Work location (e.g., Site A, Building 3)"
+                  value={newEntry.location}
+                  onChange={(e) => setNewEntry({ ...newEntry, location: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
+                  Different locations create separate service tickets
+                </span>
               </div>
 
               {/* Rate Type dropdown - hidden for Panel Shop */}
@@ -2481,7 +2524,15 @@ export default function WeekView() {
                 }} />
                 <select
                   value={editedEntry.project_id}
-                  onChange={(e) => setEditedEntry({ ...editedEntry, project_id: e.target.value })}
+                  onChange={(e) => {
+                    const selectedProject = projects?.find((p: any) => p.id === e.target.value);
+                    setEditedEntry({ 
+                      ...editedEntry, 
+                      project_id: e.target.value,
+                      // Pre-fill location from project default when project changes (only if location is empty)
+                      location: editedEntry.location || selectedProject?.location || ''
+                    });
+                  }}
                   style={{
                     flex: 1,
                     padding: '10px',
@@ -2499,6 +2550,28 @@ export default function WeekView() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Location input */}
+              <div style={{ marginBottom: '15px' }}>
+                <input
+                  type="text"
+                  placeholder="Location (e.g., Site A, Building 3)"
+                  value={editedEntry.location}
+                  onChange={(e) => setEditedEntry({ ...editedEntry, location: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
+                  Different locations create separate service tickets
+                </span>
               </div>
 
               {/* Time inputs */}

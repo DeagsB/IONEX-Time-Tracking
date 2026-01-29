@@ -1,10 +1,11 @@
 // Service Tickets utility functions for grouping and aggregating billable time entries
 
 export interface ServiceTicket {
-  id: string; // Composite key: date-customerId-userId
+  id: string; // Composite key: date-customerId-userId-location
   date: string;
   customerId: string;
   customerName: string;
+  location?: string; // Work location - different locations create separate tickets
   customerInfo: {
     name: string;
     email?: string;
@@ -59,6 +60,7 @@ export interface TimeEntryWithRelations {
   rate_type?: string;
   start_time?: string;
   end_time?: string;
+  location?: string; // Work location for grouping into service tickets
   is_demo?: boolean;
   user?: {
     id: string;
@@ -209,9 +211,11 @@ export function groupEntriesIntoTickets(
 
     const date = entry.date;
     const userId = entry.user_id;
+    // Use entry location, or fall back to project location, or empty string
+    const entryLocation = entry.location || entry.project?.location || '';
 
-    // Create composite key
-    const ticketKey = `${date}-${customerId}-${userId}`;
+    // Create composite key - include location to create separate tickets per location
+    const ticketKey = `${date}-${customerId}-${userId}-${entryLocation}`;
 
     // Get or create ticket
     let ticket = ticketMap.get(ticketKey);
@@ -267,6 +271,7 @@ export function groupEntriesIntoTickets(
         date,
         customerId,
         customerName,
+        location: entryLocation || undefined, // Work location for this ticket
         customerInfo,
         userId,
         userName: entry.user
