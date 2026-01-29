@@ -1048,6 +1048,18 @@ export const serviceTicketsService = {
       return { id: existing.id };
     }
     
+    // Look up user's initials for proper tracking
+    let employeeInitials: string | null = null;
+    const { data: userData } = await supabase
+      .from('users')
+      .select('first_name, last_name')
+      .eq('id', params.userId)
+      .single();
+    
+    if (userData?.first_name && userData?.last_name) {
+      employeeInitials = `${userData.first_name[0]}${userData.last_name[0]}`.toUpperCase();
+    }
+    
     // Create a new ticket record (without a ticket number - that's assigned on approval/export)
     const { data: newTicket, error: createError } = await supabase
       .from(tableName)
@@ -1056,6 +1068,7 @@ export const serviceTicketsService = {
         user_id: params.userId,
         customer_id: params.customerId,
         workflow_status: 'draft',
+        employee_initials: employeeInitials,
       })
       .select('id')
       .single();
