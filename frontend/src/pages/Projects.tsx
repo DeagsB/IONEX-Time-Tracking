@@ -5,7 +5,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 
 export default function Projects() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -300,7 +300,7 @@ export default function Projects() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2>Projects</h2>
         <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-          {user?.role === 'ADMIN' && (
+          {isAdmin && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
               <input
                 type="checkbox"
@@ -985,7 +985,7 @@ export default function Projects() {
                 </td>
                 <td style={{ textAlign: 'right' }}>
                   {/* Allow users to edit/delete their own projects, or admins to edit/delete any */}
-                  {(user?.id === project.created_by || user?.role === 'ADMIN' || !project.created_by) && (
+                  {(user?.id === project.created_by || isAdmin || !project.created_by) && (
                     <>
                       <button
                         className="button button-secondary"

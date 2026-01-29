@@ -5,7 +5,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { customersService } from '../services/supabaseServices';
 
 export default function Customers() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -788,7 +788,7 @@ export default function Customers() {
                 <td>{customer.projects?.length || 0}</td>
                 <td style={{ textAlign: 'right' }}>
                   {/* Allow users to edit/delete their own customers, or admins to edit/delete any */}
-                  {(user?.id === customer.created_by || user?.role === 'ADMIN' || customer.created_by === null || customer.created_by === undefined) && (
+                  {(user?.id === customer.created_by || isAdmin || customer.created_by === null || customer.created_by === undefined) && (
                     <>
                       <button
                         className="button button-secondary"

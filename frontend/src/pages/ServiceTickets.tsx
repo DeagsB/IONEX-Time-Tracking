@@ -25,7 +25,7 @@ const WORKFLOW_STATUSES = {
 type WorkflowStatus = keyof typeof WORKFLOW_STATUSES;
 
 export default function ServiceTickets() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   
@@ -638,7 +638,6 @@ export default function ServiceTickets() {
   });
 
   // Role-based access control
-  const isAdmin = user?.role === 'ADMIN';
   const isAutomationDepartment = currentEmployee?.department === 'Automation';
   const canAccessPage = isAdmin || isAutomationDepartment;
 

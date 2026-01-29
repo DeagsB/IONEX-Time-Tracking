@@ -7,7 +7,7 @@ import { bugReportsService } from '../services/supabaseServices';
 
 export default function Sidebar() {
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
@@ -145,7 +145,7 @@ export default function Sidebar() {
           )}
         </div>
 
-        {user?.role === 'ADMIN' && (
+        {isAdmin && (
           <div style={{ marginBottom: '30px' }}>
             <div style={{ 
               fontSize: '11px', 
@@ -172,7 +172,7 @@ export default function Sidebar() {
           </div>
         )}
 
-        {user?.role === 'ADMIN' && (
+        {isAdmin && (
           <div style={{ marginBottom: '30px' }}>
             <div style={{ 
               fontSize: '11px', 
@@ -197,7 +197,7 @@ export default function Sidebar() {
           </div>
         )}
 
-        {user?.role === 'ADMIN' && (
+        {isAdmin && (
           <div style={{ marginBottom: '30px' }}>
             <div style={{ 
               fontSize: '11px', 

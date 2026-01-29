@@ -7,7 +7,7 @@ interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'ADMIN' | 'USER';
+  role: 'ADMIN' | 'USER' | 'DEVELOPER';
   global_admin?: boolean;
 }
 
@@ -26,6 +26,12 @@ interface AuthContextType {
   updateUser: (updates: Partial<User>) => void;
   refreshUserProfile: () => Promise<void>;
   loading: boolean;
+  // Developer role switching
+  isDeveloper: boolean;
+  effectiveRole: 'ADMIN' | 'USER';
+  setEffectiveRole: (role: 'ADMIN' | 'USER') => void;
+  // Computed admin check - considers developer's effective role
+  isAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -55,6 +61,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(DEV_MODE ? DEV_USER : null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(DEV_MODE ? false : true);
+  
+  // Developer role switching - persisted in localStorage
+  const [effectiveRole, setEffectiveRoleState] = useState<'ADMIN' | 'USER'>(() => {
+    const stored = localStorage.getItem('developer_effective_role');
+    return (stored === 'ADMIN' || stored === 'USER') ? stored : 'ADMIN';
+  });
+  
+  const isDeveloper = user?.role === 'DEVELOPER';
+  
+  const setEffectiveRole = (role: 'ADMIN' | 'USER') => {
+    setEffectiveRoleState(role);
+    localStorage.setItem('developer_effective_role', role);
+  };
+  
+  // Computed admin check - developers use their effective role, others use actual role
+  const isAdmin = isDeveloper 
+    ? effectiveRole === 'ADMIN' 
+    : user?.role === 'ADMIN';
 
   useEffect(() => {
     // Skip auth initialization in development mode
@@ -290,6 +314,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateUser,
         refreshUserProfile,
         loading,
+        isDeveloper,
+        effectiveRole,
+        setEffectiveRole,
+        isAdmin,
       }}
     >
       {children}

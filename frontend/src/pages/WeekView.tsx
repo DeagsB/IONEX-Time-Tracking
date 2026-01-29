@@ -27,7 +27,7 @@ interface Project {
 }
 
 export default function WeekView() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { timerRunning, timerStartTime, currentEntry, updateStartTime, updateTimerEntry, stopTimer } = useTimer();
   const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
@@ -38,7 +38,7 @@ export default function WeekView() {
   // Get viewUserId from query params (for admins viewing another employee's calendar)
   const viewUserId = searchParams.get('viewUserId');
   // Only allow admins to view other users' calendars
-  const effectiveUserId = (user?.role === 'ADMIN' && viewUserId) ? viewUserId : user?.id;
+  const effectiveUserId = (isAdmin && viewUserId) ? viewUserId : user?.id;
   const [currentProject, setCurrentProject] = useState<string>('Time Tracking Software');
   const [viewMode, setViewMode] = useState<'week' | 'list' | 'timesheet'>('week');
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -203,7 +203,7 @@ export default function WeekView() {
       if (error) throw error;
       return data;
     },
-    enabled: !!viewUserId && user?.role === 'ADMIN',
+    enabled: !!viewUserId && isAdmin,
   });
 
   const { data: timeEntries, refetch: refetchTimeEntries } = useQuery({
@@ -470,7 +470,7 @@ export default function WeekView() {
   // Handle clicking on a time slot division
   const handleSlotClick = (date: Date, hour: number, division: number) => {
     // Prevent creating entries when viewing another employee's calendar
-    if (viewUserId && user?.role === 'ADMIN') {
+    if (viewUserId && isAdmin) {
       alert('You cannot create entries for other employees. Switch to your own calendar to create entries.');
       return;
     }
@@ -624,7 +624,7 @@ export default function WeekView() {
   const handleEntryClick = (entry: any, event: React.MouseEvent) => {
     event.stopPropagation();
     // Prevent editing entries when viewing another employee's calendar
-    if (viewUserId && user?.role === 'ADMIN') {
+    if (viewUserId && isAdmin) {
       alert('You cannot edit entries for other employees. Switch to your own calendar to edit entries.');
       return;
     }
@@ -1180,7 +1180,7 @@ export default function WeekView() {
   return (
     <div style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Banner when viewing another employee's calendar */}
-      {viewUserId && user?.role === 'ADMIN' && viewedEmployee && (
+      {viewUserId && isAdmin && viewedEmployee && (
         <div style={{
           backgroundColor: 'var(--warning-color)',
           color: 'white',
@@ -2131,7 +2131,7 @@ export default function WeekView() {
       )}
 
       {/* Time Entry Modal */}
-      {showTimeEntryModal && selectedSlot && !(viewUserId && user?.role === 'ADMIN') && (
+      {showTimeEntryModal && selectedSlot && !(viewUserId && isAdmin) && (
         <div
           style={{
             position: 'fixed',
@@ -2442,7 +2442,7 @@ export default function WeekView() {
       )}
 
       {/* Edit Time Entry Modal */}
-      {showEditModal && editingEntry && !(viewUserId && user?.role === 'ADMIN') && (
+      {showEditModal && editingEntry && !(viewUserId && isAdmin) && (
         <div
           style={{
             position: 'fixed',

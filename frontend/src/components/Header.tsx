@@ -16,7 +16,7 @@ interface HeaderProps {
 }
 
 export default function Header({ onTimerStart, onTimerStop, timerRunning, timerDisplay, currentEntry, timerStartTime }: HeaderProps) {
-  const { user } = useAuth();
+  const { user, isDeveloper, effectiveRole, setEffectiveRole } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
@@ -584,8 +584,68 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
 
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Developer Role Switcher */}
+          {isDeveloper && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              backgroundColor: 'var(--bg-secondary)',
+              borderRadius: '6px',
+              padding: '4px',
+              border: '1px solid var(--border-color)',
+            }}>
+              <button
+                onClick={() => setEffectiveRole('USER')}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  backgroundColor: effectiveRole === 'USER' ? 'var(--primary-color)' : 'transparent',
+                  color: effectiveRole === 'USER' ? 'white' : 'var(--text-secondary)',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Switch to User mode"
+              >
+                User
+              </button>
+              <button
+                onClick={() => setEffectiveRole('ADMIN')}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  backgroundColor: effectiveRole === 'ADMIN' ? 'var(--primary-color)' : 'transparent',
+                  color: effectiveRole === 'ADMIN' ? 'white' : 'var(--text-secondary)',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Switch to Admin mode"
+              >
+                Admin
+              </button>
+            </div>
+          )}
           <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
             {user?.firstName} {user?.lastName}
+            {isDeveloper && (
+              <span style={{ 
+                fontSize: '10px', 
+                marginLeft: '6px', 
+                padding: '2px 6px', 
+                backgroundColor: 'var(--warning-color)', 
+                color: 'white', 
+                borderRadius: '4px',
+                fontWeight: '600',
+              }}>
+                DEV
+              </span>
+            )}
           </span>
         </div>
       </div>

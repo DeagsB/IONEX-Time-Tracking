@@ -5,8 +5,7 @@ import { useAuth } from '../context/AuthContext';
 
 export default function Employees() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'ADMIN';
+  const { user, isAdmin } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<any>(null);
   const [formData, setFormData] = useState({

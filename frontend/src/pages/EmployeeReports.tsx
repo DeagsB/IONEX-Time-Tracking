@@ -25,7 +25,7 @@ const formatHoursDecimal = (hours: number): string => {
 };
 
 export default function EmployeeReports() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [selectedPeriod, setSelectedPeriod] = useState('This Month');
@@ -65,7 +65,7 @@ export default function EmployeeReports() {
   const { data: employees, isLoading: loadingEmployees, error: employeesError } = useQuery({
     queryKey: ['employeesWithRates'],
     queryFn: () => reportsService.getEmployeesWithRates(),
-    enabled: user?.role === 'ADMIN',
+    enabled: isAdmin,
   });
 
   // Fetch time entries for the period
@@ -86,7 +86,7 @@ export default function EmployeeReports() {
         throw error;
       }
     },
-    enabled: user?.role === 'ADMIN' && !!startDate && !!endDate,
+    enabled: isAdmin && !!startDate && !!endDate,
     retry: 1,
   });
 
@@ -108,7 +108,7 @@ export default function EmployeeReports() {
         throw error;
       }
     },
-    enabled: user?.role === 'ADMIN' && !!startDate && !!endDate,
+    enabled: isAdmin && !!startDate && !!endDate,
     retry: 1,
   });
 
