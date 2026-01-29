@@ -2650,8 +2650,9 @@ export default function ServiceTickets() {
                           const newStatus = isTicketApproved ? 'draft' : 'approved';
                           await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
                           
-                          // Refresh data
-                          queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                          // Refresh data and wait for it to complete
+                          await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                          await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
                         } catch (error) {
                           console.error('Error updating ticket status:', error);
                         } finally {
