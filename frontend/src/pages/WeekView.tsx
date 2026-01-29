@@ -560,9 +560,10 @@ export default function WeekView() {
         rate_type: rateTypeOvernight,
         is_demo: isDemoMode,
         location: newEntry.location || null,
+        customer_id: newEntry.customer_id || null,
+        project_id: newEntry.project_id || null,
       };
-      if (newEntry.project_id) entry1.project_id = newEntry.project_id;
-      
+
       // Entry 2: Midnight to end time on day 2
       const entry2: any = {
         user_id: actualUserId,
@@ -576,8 +577,9 @@ export default function WeekView() {
         rate_type: rateTypeOvernight,
         is_demo: isDemoMode,
         location: newEntry.location || null,
+        customer_id: newEntry.customer_id || null,
+        project_id: newEntry.project_id || null,
       };
-      if (newEntry.project_id) entry2.project_id = newEntry.project_id;
       
       console.log('Submitting overnight entry split into two:');
       console.log('  Entry 1 (Day 1):', entry1);
@@ -818,9 +820,10 @@ export default function WeekView() {
         rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
         is_demo: editingEntry.is_demo || isDemoMode,
         location: editedEntry.location || null,
+        customer_id: editedEntry.customer_id || null,
+        project_id: editedEntry.project_id || null,
       };
-      if (editedEntry.project_id) entry1.project_id = editedEntry.project_id;
-      
+
       // Entry 2: Midnight to end time on day 2
       const entry2: any = {
         user_id: actualUserId,
@@ -834,8 +837,9 @@ export default function WeekView() {
         rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
         is_demo: editingEntry.is_demo || isDemoMode,
         location: editedEntry.location || null,
+        customer_id: editedEntry.customer_id || null,
+        project_id: editedEntry.project_id || null,
       };
-      if (editedEntry.project_id) entry2.project_id = editedEntry.project_id;
       
       console.log('Editing overnight entry - splitting into two:');
       console.log('  Deleting original:', editingEntry.id);
@@ -866,12 +870,9 @@ export default function WeekView() {
         billable: isPanelShop ? false : editedEntry.billable,
         rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
         location: editedEntry.location || null,
+        customer_id: editedEntry.customer_id || null,
+        project_id: editedEntry.project_id || null,
       };
-      
-      // Only include project_id if one is selected
-      if (editedEntry.project_id) {
-        updateData.project_id = editedEntry.project_id;
-      }
       
       updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
     }
