@@ -144,9 +144,9 @@ export default function Login() {
             justifyContent: 'center',
             alignItems: 'center'
           }}>
-            <img 
-              src={theme === 'dark' ? '/Black w WHT background square.png' : '/ionex-logo-removebg-preview.png'} 
-              alt="IONEX Logo" 
+            <img
+              src="/ionex-logo-removebg-preview.png"
+              alt="IONEX Logo"
               onError={(e) => {
                 console.error('Logo failed to load, trying fallback:', e.currentTarget.src);
                 // Fallback to original logo if new one fails
