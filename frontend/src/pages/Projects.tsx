@@ -347,13 +347,13 @@ export default function Projects() {
 
             <div className="form-group">
               <label className="label">Customer</label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
                 <select
                   className="input"
                   value={formData.customer_id}
                   onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
                   required
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, margin: 0 }}
                 >
                   <option value="">Select Customer</option>
                   {customers?.map((customer: any) => (
@@ -366,7 +366,7 @@ export default function Projects() {
                   type="button"
                   className="button button-secondary"
                   onClick={() => setShowCustomerModal(true)}
-                  style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}
+                  style={{ padding: '0 12px', whiteSpace: 'nowrap', height: 'auto' }}
                 >
                   + New
                 </button>
@@ -683,13 +683,13 @@ export default function Projects() {
 
             <div className="form-group">
               <label className="label">Customer</label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
                 <select
                   className="input"
                   value={formData.customer_id}
                   onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
                   required
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, margin: 0 }}
                 >
                   <option value="">Select Customer</option>
                   {customers?.map((customer: any) => (
@@ -702,7 +702,7 @@ export default function Projects() {
                   type="button"
                   className="button button-secondary"
                   onClick={() => setShowCustomerModal(true)}
-                  style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}
+                  style={{ padding: '0 12px', whiteSpace: 'nowrap', height: 'auto' }}
                 >
                   + New
                 </button>
