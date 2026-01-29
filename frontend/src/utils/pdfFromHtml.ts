@@ -271,20 +271,24 @@ export async function downloadPdfFromHtml(
           <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Ticket Summary</div>
           <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
             <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total RT</td>
+              <td style="padding: 3px 6px;">Total ST</td>
               <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${rtAmount.toFixed(2)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total TT</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ttAmount.toFixed(2)}</td>
             </tr>
             <tr style="border-bottom: 1px solid #ccc;">
               <td style="padding: 3px 6px;">Total FT</td>
               <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ftAmount.toFixed(2)}</td>
             </tr>
             <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total OT</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${otAmount.toFixed(2)}</td>
+              <td style="padding: 3px 6px;">Total TT</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ttAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total SO</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${shopOtAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total FO</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${fieldOtAmount.toFixed(2)}</td>
             </tr>
             <tr style="border-bottom: 1px solid #ccc;">
               <td style="padding: 3px 6px;">Total Expenses</td>
@@ -436,7 +440,7 @@ export async function generateAndStorePdf(
   const filename = `ServiceTicket_${ticket.ticketNumber || ticket.id.substring(0, 8)}.pdf`;
 
   // Build the same HTML as downloadPdfFromHtml (abbreviated for space)
-  const html = buildPdfHtml(ticket, expenses, descriptionLines, employeeName, ticketDate, rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, rtRate, ttRate, ftRate, shopOtRate, fieldOtRate, rtAmount, ttAmount, ftAmount, otAmount, expensesTotal, grandTotal);
+  const html = buildPdfHtml(ticket, expenses, descriptionLines, employeeName, ticketDate, rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, rtRate, ttRate, ftRate, shopOtRate, fieldOtRate, rtAmount, ttAmount, ftAmount, shopOtAmount, fieldOtAmount, expensesTotal, grandTotal);
 
   // Create a temporary container
   const container = document.createElement('div');
@@ -534,7 +538,8 @@ function buildPdfHtml(
   rtAmount: number,
   ttAmount: number,
   ftAmount: number,
-  otAmount: number,
+  shopOtAmount: number,
+  fieldOtAmount: number,
   expensesTotal: number,
   grandTotal: number
 ): string {
@@ -711,20 +716,24 @@ function buildPdfHtml(
           <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Ticket Summary</div>
           <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
             <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total RT</td>
+              <td style="padding: 3px 6px;">Total ST</td>
               <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${rtAmount.toFixed(2)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total TT</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ttAmount.toFixed(2)}</td>
             </tr>
             <tr style="border-bottom: 1px solid #ccc;">
               <td style="padding: 3px 6px;">Total FT</td>
               <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ftAmount.toFixed(2)}</td>
             </tr>
             <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total OT</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${otAmount.toFixed(2)}</td>
+              <td style="padding: 3px 6px;">Total TT</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ttAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total SO</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${shopOtAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total FO</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${fieldOtAmount.toFixed(2)}</td>
             </tr>
             <tr style="border-bottom: 1px solid #ccc;">
               <td style="padding: 3px 6px;">Total Expenses</td>
