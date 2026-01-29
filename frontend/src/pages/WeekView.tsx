@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTimer } from '../context/TimerContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { timeEntriesService, projectsService, employeesService, customersService } from '../services/supabaseServices';
+import SearchableSelect from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
 
 interface TimeEntry {
@@ -2267,14 +2268,16 @@ export default function WeekView() {
                 </div>
               </div>
 
-              {/* 3. Customer select */}
+              {/* 3. Customer select (searchable) */}
               <div className="form-group" style={{ marginBottom: '20px' }}>
                 <label className="label">Customer</label>
-                <select
-                  className="input"
+                <SearchableSelect
+                  options={customers?.map((customer: any) => ({
+                    value: customer.id,
+                    label: customer.name,
+                  })) || []}
                   value={newEntry.customer_id}
-                  onChange={(e) => {
-                    const customerId = e.target.value;
+                  onChange={(customerId) => {
                     // No customer = no project, Internal rate type
                     if (!customerId) {
                       setNewEntry({ 
@@ -2297,57 +2300,34 @@ export default function WeekView() {
                       });
                     }
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  <option value="">No Customer (Internal)</option>
-                  {customers?.map((customer: any) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Search customers..."
+                  emptyOption={{ value: '', label: 'No Customer (Internal)' }}
+                />
               </div>
 
-              {/* 4. Project select (only shown when customer is selected) */}
+              {/* 4. Project select (only shown when customer is selected, searchable) */}
               {newEntry.customer_id && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
                   <label className="label">Project</label>
-                  <select
-                    className="input"
+                  <SearchableSelect
+                    options={projects
+                      ?.filter((project: any) => project.customer_id === newEntry.customer_id)
+                      .map((project: any) => ({
+                        value: project.id,
+                        label: project.name,
+                      })) || []}
                     value={newEntry.project_id}
-                    onChange={(e) => {
-                      const selectedProject = projects?.find((p: any) => p.id === e.target.value);
+                    onChange={(projectId) => {
+                      const selectedProject = projects?.find((p: any) => p.id === projectId);
                       setNewEntry({ 
                         ...newEntry, 
-                        project_id: e.target.value,
+                        project_id: projectId,
                         location: selectedProject?.location || newEntry.location || ''
                       });
                     }}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    <option value="">No Project</option>
-                    {projects
-                      ?.filter((project: any) => project.customer_id === newEntry.customer_id)
-                      .map((project: any) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                  </select>
+                    placeholder="Search projects..."
+                    emptyOption={{ value: '', label: 'No Project' }}
+                  />
                 </div>
               )}
 
