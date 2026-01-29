@@ -620,6 +620,27 @@ export default function ServiceTickets() {
     queryFn: () => employeesService.getAll(),
   });
 
+  // Fetch current user's employee record to check department
+  const { data: currentEmployee } = useQuery({
+    queryKey: ['currentEmployee', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Role-based access control
+  const isAdmin = user?.role === 'ADMIN';
+  const isAutomationDepartment = currentEmployee?.department === 'Automation';
+  const canAccessPage = isAdmin || isAutomationDepartment;
+
   // Group entries into tickets (with employee rates)
   // Fetch existing ticket numbers and edited hours for display (from appropriate table based on demo mode)
   const { data: existingTickets } = useQuery({
@@ -806,12 +827,18 @@ export default function ServiceTickets() {
   // Filter and sort tickets
   const filteredTickets = useMemo(() => {
     let result = ticketsWithNumbers;
+    
+    // Non-admin users can only see their own tickets
+    if (!isAdmin && user?.id) {
+      result = result.filter(t => t.userId === user.id);
+    }
+    
     if (selectedCustomerId) {
       result = result.filter(t => t.customerId === selectedCustomerId);
     }
     
-    // Filter by workflow status
-    if (selectedWorkflowStatus) {
+    // Filter by workflow status (only for admins)
+    if (isAdmin && selectedWorkflowStatus) {
       result = result.filter(t => {
         const existing = existingTickets?.find(
           et => et.date === t.date && 
@@ -859,7 +886,7 @@ export default function ServiceTickets() {
     });
     
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId, selectedWorkflowStatus, existingTickets, sortField, sortDirection]);
+  }, [ticketsWithNumbers, selectedCustomerId, selectedWorkflowStatus, existingTickets, sortField, sortDirection, isAdmin, user?.id]);
   
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
@@ -876,7 +903,7 @@ export default function ServiceTickets() {
     if (user?.id) localStorage.setItem(`serviceTickets_sortDirection_${user.id}`, newDirection);
   };
 
-  if (user?.role !== 'ADMIN') {
+  if (!canAccessPage) {
     return (
       <div>
         <h2>Service Tickets</h2>
@@ -955,52 +982,58 @@ export default function ServiceTickets() {
               ))}
             </select>
           </div>
-          <div>
-            <label className="label">Employee</label>
-            <select
-              className="input"
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-              }}
-            >
-              <option value="">All Employees</option>
-              {employees?.map((employee: any) => (
-                <option key={employee.user_id} value={employee.user_id}>
-                  {employee.user?.first_name} {employee.user?.last_name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Workflow Status</label>
-            <select
-              className="input"
-              value={selectedWorkflowStatus}
-              onChange={(e) => setSelectedWorkflowStatus(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-              }}
-            >
-              <option value="">All Statuses</option>
-              {Object.entries(WORKFLOW_STATUSES).map(([key, { label, icon }]) => (
-                <option key={key} value={key}>
-                  {icon} {label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Employee filter - only visible to admins (non-admins only see their own tickets) */}
+          {isAdmin && (
+            <div>
+              <label className="label">Employee</label>
+              <select
+                className="input"
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <option value="">All Employees</option>
+                {employees?.map((employee: any) => (
+                  <option key={employee.user_id} value={employee.user_id}>
+                    {employee.user?.first_name} {employee.user?.last_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {/* Workflow Status filter - only visible to admins */}
+          {isAdmin && (
+            <div>
+              <label className="label">Workflow Status</label>
+              <select
+                className="input"
+                value={selectedWorkflowStatus}
+                onChange={(e) => setSelectedWorkflowStatus(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <option value="">All Statuses</option>
+                {Object.entries(WORKFLOW_STATUSES).map(([key, { label, icon }]) => (
+                  <option key={key} value={key}>
+                    {icon} {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1172,9 +1205,12 @@ export default function ServiceTickets() {
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Action
                 </th>
-                <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Workflow
-                </th>
+                {/* Workflow column - only visible to admins */}
+                {isAdmin && (
+                  <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                    Workflow
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -1383,37 +1419,40 @@ export default function ServiceTickets() {
                       );
                     })()}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    {(() => {
-                      const existing = existingTickets?.find(
-                        et => et.date === ticket.date && 
-                              et.user_id === ticket.userId && 
-                              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-                      );
-                      const workflowStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
-                      const statusInfo = WORKFLOW_STATUSES[workflowStatus] || WORKFLOW_STATUSES.draft;
-                      
-                      return (
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '4px 10px',
-                            borderRadius: '12px',
-                            fontSize: '11px',
-                            fontWeight: '500',
-                            backgroundColor: `${statusInfo.color}20`,
-                            color: statusInfo.color,
-                            whiteSpace: 'nowrap',
-                          }}
-                          title={`Status: ${statusInfo.label}`}
-                        >
-                          {statusInfo.icon} {statusInfo.label}
-                        </span>
-                      );
-                    })()}
-                  </td>
+                  {/* Workflow status cell - only visible to admins */}
+                  {isAdmin && (
+                    <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      {(() => {
+                        const existing = existingTickets?.find(
+                          et => et.date === ticket.date && 
+                                et.user_id === ticket.userId && 
+                                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+                        );
+                        const workflowStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
+                        const statusInfo = WORKFLOW_STATUSES[workflowStatus] || WORKFLOW_STATUSES.draft;
+                        
+                        return (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '11px',
+                              fontWeight: '500',
+                              backgroundColor: `${statusInfo.color}20`,
+                              color: statusInfo.color,
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={`Status: ${statusInfo.label}`}
+                          >
+                            {statusInfo.icon} {statusInfo.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                  )}
                 </tr>
                 );
               })}
@@ -2351,8 +2390,8 @@ export default function ServiceTickets() {
                 );
               })()}
 
-              {/* Workflow Status Section */}
-              {(() => {
+              {/* Workflow Status Section - only visible to admins */}
+              {isAdmin && (() => {
                 const existing = existingTickets?.find(
                   et => et.date === selectedTicket.date && 
                         et.user_id === selectedTicket.userId && 
