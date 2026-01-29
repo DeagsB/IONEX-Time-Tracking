@@ -751,7 +751,7 @@ export const reportsService = {
     return data;
   },
 
-  // Get service tickets for an employee
+  // Get service tickets for an employee (only entries with project/customer)
   async getEmployeeServiceTickets(userId: string, startDate: string, endDate: string) {
     const { data, error } = await supabase
       .from('time_entries')
@@ -761,6 +761,7 @@ export const reportsService = {
       `)
       .eq('user_id', userId)
       .eq('billable', true)
+      .not('project_id', 'is', null) // Only entries with a project can be service tickets
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date');
