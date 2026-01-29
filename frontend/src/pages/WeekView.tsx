@@ -75,6 +75,7 @@ export default function WeekView() {
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [editedEntry, setEditedEntry] = useState({
     description: '',
+    customer_id: '', // For filtering projects
     project_id: '',
     start_time: '',
     end_time: '',
@@ -629,8 +630,12 @@ export default function WeekView() {
       return timeStr.slice(0, 5);
     };
     
+    // Look up the customer_id from the project
+    const entryProject = projects?.find((p: any) => p.id === entry.project_id);
+    
     setEditedEntry({
       description: entry.description || '',
+      customer_id: entryProject?.customer_id || '',
       project_id: entry.project_id || '',
       start_time: parseTime(entry.start_time),
       end_time: parseTime(entry.end_time),
@@ -676,8 +681,12 @@ export default function WeekView() {
     };
     
     setEditingEntry(timerEntry);
+    // Look up the customer_id from the project
+    const timerProject = projects?.find((p: any) => p.id === currentEntry.projectId);
+    
     setEditedEntry({
       description: currentEntry.description || '',
+      customer_id: timerProject?.customer_id || '',
       project_id: currentEntry.projectId || '',
       start_time: formatTime(startDate),
       end_time: formatTime(now),
@@ -2305,29 +2314,40 @@ export default function WeekView() {
                 />
               </div>
 
-              {/* 4. Project select (only shown when customer is selected, searchable) */}
+              {/* 4. Project select (only shown when customer is selected, searchable, with color indicator) */}
               {newEntry.customer_id && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
                   <label className="label">Project</label>
-                  <SearchableSelect
-                    options={projects
-                      ?.filter((project: any) => project.customer_id === newEntry.customer_id)
-                      .map((project: any) => ({
-                        value: project.id,
-                        label: project.name,
-                      })) || []}
-                    value={newEntry.project_id}
-                    onChange={(projectId) => {
-                      const selectedProject = projects?.find((p: any) => p.id === projectId);
-                      setNewEntry({ 
-                        ...newEntry, 
-                        project_id: projectId,
-                        location: selectedProject?.location || newEntry.location || ''
-                      });
-                    }}
-                    placeholder="Search projects..."
-                    emptyOption={{ value: '', label: 'No Project' }}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      backgroundColor: projects?.find((p: any) => p.id === newEntry.project_id)?.color || '#666',
+                      width: '14px',
+                      height: '14px',
+                      borderRadius: '50%',
+                      flexShrink: 0,
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      <SearchableSelect
+                        options={projects
+                          ?.filter((project: any) => project.customer_id === newEntry.customer_id)
+                          .map((project: any) => ({
+                            value: project.id,
+                            label: project.name,
+                          })) || []}
+                        value={newEntry.project_id}
+                        onChange={(projectId) => {
+                          const selectedProject = projects?.find((p: any) => p.id === projectId);
+                          setNewEntry({ 
+                            ...newEntry, 
+                            project_id: projectId,
+                            location: selectedProject?.location || newEntry.location || ''
+                          });
+                        }}
+                        placeholder="Search projects..."
+                        emptyOption={{ value: '', label: 'No Project' }}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -2497,160 +2517,211 @@ export default function WeekView() {
             </div>
 
             <div>
-              {/* Description input */}
-              <input
-                type="text"
-                placeholder="What are you working on?"
-                value={editedEntry.description}
-                onChange={(e) => setEditedEntry({ ...editedEntry, description: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  backgroundColor: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                  fontSize: '15px',
-                  marginBottom: '15px',
-                }}
-              />
-
-              {/* Project select with icon */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
-                <div style={{
-                  backgroundColor: projects?.find((p: any) => p.id === editedEntry.project_id)?.color || '#666',
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                }} />
-                <select
-                  value={editedEntry.project_id}
-                  onChange={(e) => {
-                    const selectedProject = projects?.find((p: any) => p.id === e.target.value);
-                    setEditedEntry({ 
-                      ...editedEntry, 
-                      project_id: e.target.value,
-                      // Pre-fill location from project default when project changes (only if location is empty)
-                      location: editedEntry.location || selectedProject?.location || ''
-                    });
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                  }}
-                >
-                  <option value="">No Project</option>
-                  {projects?.map((project: any) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Location input */}
-              <div style={{ marginBottom: '15px' }}>
-                <input
-                  type="text"
-                  placeholder="Location (e.g., Site A, Building 3)"
-                  value={editedEntry.location}
-                  onChange={(e) => setEditedEntry({ ...editedEntry, location: e.target.value })}
+              {/* 1. Description input */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Description</label>
+                <textarea
+                  placeholder="What are you working on?"
+                  value={editedEntry.description}
+                  onChange={(e) => setEditedEntry({ ...editedEntry, description: e.target.value })}
                   style={{
                     width: '100%',
-                    padding: '10px',
+                    minHeight: '80px',
+                    padding: '12px',
                     backgroundColor: 'var(--bg-primary)',
                     border: '1px solid var(--border-color)',
                     borderRadius: '6px',
                     color: 'var(--text-primary)',
                     fontSize: '14px',
+                    resize: 'none',
                   }}
                 />
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                  Different locations create separate service tickets
-                </span>
               </div>
 
-              {/* Time inputs */}
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '20px' }}>
-                <input
-                  type="time"
-                  value={editedEntry.start_time}
-                  onChange={(e) => {
-                    setEditedEntry({ ...editedEntry, start_time: e.target.value });
-                    // Recalculate hours
-                    if (editedEntry.end_time) {
-                      const [startH, startM] = e.target.value.split(':').map(Number);
-                      const [endH, endM] = editedEntry.end_time.split(':').map(Number);
-                      const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
-                      setEditedEntry({ ...editedEntry, start_time: e.target.value, hours });
-                    }
-                  }}
-                  style={{
-                    padding: '10px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                  }}
-                />
-                <span style={{ color: 'var(--text-secondary)' }}>→</span>
-                <input
-                  type="time"
-                  value={editedEntry.end_time}
-                  onChange={(e) => {
-                    // Don't allow changing end time for running timer
-                    if (editingEntry.isRunningTimer) return;
-                    setEditedEntry({ ...editedEntry, end_time: e.target.value });
-                    // Recalculate hours
-                    if (editedEntry.start_time) {
-                      const [startH, startM] = editedEntry.start_time.split(':').map(Number);
-                      const [endH, endM] = e.target.value.split(':').map(Number);
-                      const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
-                      setEditedEntry({ ...editedEntry, end_time: e.target.value, hours });
-                    }
-                  }}
-                  disabled={editingEntry.isRunningTimer}
-                  style={{
-                    padding: '10px',
-                    backgroundColor: editingEntry.isRunningTimer ? 'var(--bg-secondary)' : 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: editingEntry.isRunningTimer ? 'var(--text-secondary)' : 'var(--text-primary)',
-                    fontSize: '14px',
-                    cursor: editingEntry.isRunningTimer ? 'not-allowed' : 'text',
-                  }}
-                  title={editingEntry.isRunningTimer ? 'End time updates automatically while timer is running' : ''}
-                />
-                <div
-                  style={{
-                  padding: '10px 15px',
-                  backgroundColor: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  color: 'var(--text-primary)',
-                    minWidth: '70px',
-                  textAlign: 'center',
-                  }}
-                >
-                  {editedEntry.hours.toFixed(2)}
+              {/* 2. Time inputs */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Time</label>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <input
+                    type="time"
+                    value={editedEntry.start_time}
+                    onChange={(e) => {
+                      setEditedEntry({ ...editedEntry, start_time: e.target.value });
+                      // Recalculate hours
+                      if (editedEntry.end_time) {
+                        const [startH, startM] = e.target.value.split(':').map(Number);
+                        const [endH, endM] = editedEntry.end_time.split(':').map(Number);
+                        const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+                        setEditedEntry({ ...editedEntry, start_time: e.target.value, hours });
+                      }
+                    }}
+                    style={{
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                    }}
+                  />
+                  <span style={{ color: 'var(--text-secondary)' }}>→</span>
+                  <input
+                    type="time"
+                    value={editedEntry.end_time}
+                    onChange={(e) => {
+                      // Don't allow changing end time for running timer
+                      if (editingEntry.isRunningTimer) return;
+                      setEditedEntry({ ...editedEntry, end_time: e.target.value });
+                      // Recalculate hours
+                      if (editedEntry.start_time) {
+                        const [startH, startM] = editedEntry.start_time.split(':').map(Number);
+                        const [endH, endM] = e.target.value.split(':').map(Number);
+                        const hours = (endH * 60 + endM - (startH * 60 + startM)) / 60;
+                        setEditedEntry({ ...editedEntry, end_time: e.target.value, hours });
+                      }
+                    }}
+                    disabled={editingEntry.isRunningTimer}
+                    style={{
+                      padding: '10px',
+                      backgroundColor: editingEntry.isRunningTimer ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: editingEntry.isRunningTimer ? 'var(--text-secondary)' : 'var(--text-primary)',
+                      fontSize: '14px',
+                      cursor: editingEntry.isRunningTimer ? 'not-allowed' : 'text',
+                    }}
+                    title={editingEntry.isRunningTimer ? 'End time updates automatically while timer is running' : ''}
+                  />
+                  <div
+                    style={{
+                      padding: '10px 15px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      color: 'var(--text-primary)',
+                      minWidth: '70px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {editedEntry.hours.toFixed(2)}h
+                  </div>
                 </div>
               </div>
 
-              {/* Rate Type dropdown - hidden for Panel Shop */}
-              {!isPanelShop && (
-                <div style={{ marginBottom: '20px' }}>
-                  <label className="label" style={{ marginBottom: '8px', display: 'block', fontSize: '14px' }}>Rate Type</label>
+              {/* 3. Customer select (searchable) */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Customer</label>
+                <SearchableSelect
+                  options={customers?.map((customer: any) => ({
+                    value: customer.id,
+                    label: customer.name,
+                  })) || []}
+                  value={editedEntry.customer_id}
+                  onChange={(customerId) => {
+                    // No customer = no project, Internal rate type
+                    if (!customerId) {
+                      setEditedEntry({ 
+                        ...editedEntry, 
+                        customer_id: '',
+                        project_id: '',
+                        location: '',
+                        rate_type: 'Internal',
+                        billable: false
+                      });
+                    } else {
+                      // Customer selected = billable work
+                      const newRateType = editedEntry.rate_type === 'Internal' ? 'Shop Time' : editedEntry.rate_type;
+                      setEditedEntry({ 
+                        ...editedEntry, 
+                        customer_id: customerId,
+                        project_id: '',
+                        location: '',
+                        rate_type: newRateType,
+                        billable: newRateType !== 'Internal'
+                      });
+                    }
+                  }}
+                  placeholder="Search customers..."
+                  emptyOption={{ value: '', label: 'No Customer (Internal)' }}
+                />
+              </div>
+
+              {/* 4. Project select (searchable, with color indicator) - only when customer selected */}
+              {editedEntry.customer_id && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="label">Project</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      backgroundColor: projects?.find((p: any) => p.id === editedEntry.project_id)?.color || '#666',
+                      width: '14px',
+                      height: '14px',
+                      borderRadius: '50%',
+                      flexShrink: 0,
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      <SearchableSelect
+                        options={projects
+                          ?.filter((project: any) => project.customer_id === editedEntry.customer_id)
+                          .map((project: any) => ({
+                            value: project.id,
+                            label: project.name,
+                          })) || []}
+                        value={editedEntry.project_id}
+                        onChange={(projectId) => {
+                          const selectedProject = projects?.find((p: any) => p.id === projectId);
+                          setEditedEntry({ 
+                            ...editedEntry, 
+                            project_id: projectId,
+                            location: selectedProject?.location || editedEntry.location || ''
+                          });
+                        }}
+                        placeholder="Search projects..."
+                        emptyOption={{ value: '', label: 'No Project' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 5. Location input - only when customer selected */}
+              {editedEntry.customer_id && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="label">Location</label>
+                  <input
+                    type="text"
+                    placeholder="Work location (e.g., Site A, Building 3)"
+                    value={editedEntry.location}
+                    onChange={(e) => setEditedEntry({ ...editedEntry, location: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                    }}
+                  />
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
+                    Different locations create separate service tickets
+                  </span>
+                </div>
+              )}
+
+              {/* 6. Rate Type dropdown - only when customer selected, hidden for Panel Shop */}
+              {!isPanelShop && editedEntry.customer_id && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="label">Rate Type</label>
                   <select
+                    className="input"
                     value={editedEntry.rate_type}
-                    onChange={(e) => setEditedEntry({ ...editedEntry, rate_type: e.target.value })}
+                    onChange={(e) => {
+                      const rateType = e.target.value;
+                      // Internal = not billable, everything else = billable
+                      const isBillable = rateType !== 'Internal';
+                      setEditedEntry({ ...editedEntry, rate_type: rateType, billable: isBillable });
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px',
@@ -2661,51 +2732,13 @@ export default function WeekView() {
                       fontSize: '14px',
                     }}
                   >
-                    {!editedEntry.billable && <option value="Internal">Internal</option>}
+                    <option value="Internal">Internal</option>
                     <option value="Shop Time">Shop Time</option>
                     <option value="Shop Overtime">Shop Overtime</option>
                     <option value="Travel Time">Travel Time</option>
                     <option value="Field Time">Field Time</option>
                     <option value="Field Overtime">Field Overtime</option>
                   </select>
-                </div>
-              )}
-
-              {/* Billable toggle - hidden for Panel Shop */}
-              {!isPanelShop && (
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '10px', 
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                    color: 'var(--text-primary)'
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={editedEntry.billable}
-                      onChange={(e) => {
-                        const isBillable = e.target.checked;
-                        // If unchecking billable, set rate_type to Internal
-                        // If checking billable and rate_type is Internal, set to Shop Time
-                        const newRateType = !isBillable 
-                          ? 'Internal' 
-                          : (editedEntry.rate_type === 'Internal' ? 'Shop Time' : editedEntry.rate_type);
-                        setEditedEntry({ ...editedEntry, billable: isBillable, rate_type: newRateType });
-                      }}
-                      style={{
-                        width: '18px',
-                        height: '18px',
-                        cursor: 'pointer',
-                        accentColor: '#dc2626'
-                      }}
-                    />
-                    <span>Billable?</span>
-                    <span style={{ fontSize: '12px', opacity: 0.7 }}>
-                      {editedEntry.billable ? 'Yes' : 'Internal'}
-                    </span>
-                  </label>
                 </div>
               )}
 
