@@ -107,6 +107,7 @@ export default function ServiceTickets() {
   }
   const [serviceRows, setServiceRows] = useState<ServiceRow[]>([]);
   const [isTicketEdited, setIsTicketEdited] = useState(false);
+  const [isLockedForEditing, setIsLockedForEditing] = useState(false); // True when admin has approved
   
   // Legacy state for backward compatibility (used in some exports)
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
@@ -1188,6 +1189,15 @@ export default function ServiceTickets() {
             <tbody>
               {filteredTickets.map((ticket) => {
                 const handleRowClick = async () => {
+                  // Check if admin has approved this ticket (has ticket_number)
+                  const existingRecord = existingTickets?.find(
+                    et => et.date === ticket.date && 
+                          et.user_id === ticket.userId && 
+                          (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+                  );
+                  const isAdminApproved = !!existingRecord?.ticket_number;
+                  setIsLockedForEditing(isAdminApproved && !isAdmin); // Lock for non-admins when admin approved
+                  
                   setSelectedTicket(ticket);
                   setEditableTicket({
                     customerName: ticket.customerInfo.name || '',
@@ -1548,6 +1558,7 @@ export default function ServiceTickets() {
             setEditedDescriptions({});
             setEditedHours({});
             setIsTicketEdited(false);
+            setIsLockedForEditing(false);
           }}
         >
           <div
@@ -1619,17 +1630,41 @@ export default function ServiceTickets() {
             </div>
 
             <div style={{ padding: '24px' }}>
+              {/* Locked banner for non-admins when ticket is admin-approved */}
+              {isLockedForEditing && (
+                <div style={{
+                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid #10b981',
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                }}>
+                  <span style={{ fontSize: '18px' }}>🔒</span>
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#10b981' }}>Ticket Approved</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      This ticket has been approved by an admin and can no longer be edited.
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {/* Editable input style */}
               {(() => {
                 const inputStyle: React.CSSProperties = {
                   width: '100%',
                   padding: '8px 12px',
-                  backgroundColor: 'var(--bg-tertiary)',
+                  backgroundColor: isLockedForEditing ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
                   border: '1px solid var(--border-color)',
                   borderRadius: '6px',
-                  color: 'var(--text-primary)',
+                  color: isLockedForEditing ? 'var(--text-secondary)' : 'var(--text-primary)',
                   fontSize: '14px',
                   outline: 'none',
+                  cursor: isLockedForEditing ? 'not-allowed' : 'text',
+                  opacity: isLockedForEditing ? 0.7 : 1,
                 };
                 const labelStyle: React.CSSProperties = {
                   display: 'block',
@@ -1669,7 +1704,8 @@ export default function ServiceTickets() {
                             <input
                               style={inputStyle}
                               value={editableTicket.customerName}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, customerName: e.target.value })}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, customerName: e.target.value })}
+                              readOnly={isLockedForEditing}
                             />
                           </div>
                           <div>
@@ -1677,7 +1713,8 @@ export default function ServiceTickets() {
                             <input
                               style={inputStyle}
                               value={editableTicket.address}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, address: e.target.value })}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, address: e.target.value })}
+                              readOnly={isLockedForEditing}
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
@@ -1686,7 +1723,8 @@ export default function ServiceTickets() {
                               <input
                                 style={inputStyle}
                                 value={editableTicket.cityState}
-                                onChange={(e) => setEditableTicket({ ...editableTicket, cityState: e.target.value })}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, cityState: e.target.value })}
+                                readOnly={isLockedForEditing}
                               />
                             </div>
                             <div>
@@ -1694,7 +1732,8 @@ export default function ServiceTickets() {
                               <input
                                 style={inputStyle}
                                 value={editableTicket.zipCode}
-                                onChange={(e) => setEditableTicket({ ...editableTicket, zipCode: e.target.value })}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, zipCode: e.target.value })}
+                                readOnly={isLockedForEditing}
                               />
                             </div>
                           </div>
@@ -1703,7 +1742,8 @@ export default function ServiceTickets() {
                             <input
                               style={inputStyle}
                               value={editableTicket.contactName}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, contactName: e.target.value })}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, contactName: e.target.value })}
+                              readOnly={isLockedForEditing}
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -1712,7 +1752,8 @@ export default function ServiceTickets() {
                               <input
                                 style={inputStyle}
                                 value={editableTicket.phone}
-                                onChange={(e) => setEditableTicket({ ...editableTicket, phone: e.target.value })}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, phone: e.target.value })}
+                                readOnly={isLockedForEditing}
                               />
                             </div>
                             <div>
@@ -1720,7 +1761,8 @@ export default function ServiceTickets() {
                               <input
                                 style={inputStyle}
                                 value={editableTicket.email}
-                                onChange={(e) => setEditableTicket({ ...editableTicket, email: e.target.value })}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, email: e.target.value })}
+                                readOnly={isLockedForEditing}
                               />
                             </div>
                           </div>
@@ -1736,7 +1778,8 @@ export default function ServiceTickets() {
                             <input
                               style={inputStyle}
                               value={editableTicket.techName}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, techName: e.target.value })}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, techName: e.target.value })}
+                              readOnly={isLockedForEditing}
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -1745,7 +1788,8 @@ export default function ServiceTickets() {
                               <input
                                 style={inputStyle}
                                 value={editableTicket.projectNumber}
-                                onChange={(e) => setEditableTicket({ ...editableTicket, projectNumber: e.target.value })}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, projectNumber: e.target.value })}
+                                readOnly={isLockedForEditing}
                               />
                             </div>
                             <div>
@@ -1754,7 +1798,8 @@ export default function ServiceTickets() {
                                 type="date"
                                 style={inputStyle}
                                 value={editableTicket.date}
-                                onChange={(e) => setEditableTicket({ ...editableTicket, date: e.target.value })}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, date: e.target.value })}
+                                readOnly={isLockedForEditing}
                               />
                             </div>
                           </div>
@@ -1763,7 +1808,8 @@ export default function ServiceTickets() {
                             <input
                               style={inputStyle}
                               value={editableTicket.serviceLocation}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, serviceLocation: e.target.value })}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, serviceLocation: e.target.value })}
+                              readOnly={isLockedForEditing}
                             />
                           </div>
                           <div>
@@ -1771,7 +1817,8 @@ export default function ServiceTickets() {
                             <input
                               style={inputStyle}
                               value={editableTicket.approverName}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, approverName: e.target.value })}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, approverName: e.target.value })}
+                              readOnly={isLockedForEditing}
                             />
                           </div>
                           <div>
@@ -1779,7 +1826,8 @@ export default function ServiceTickets() {
                             <input
                               style={inputStyle}
                               value={editableTicket.other}
-                              onChange={(e) => setEditableTicket({ ...editableTicket, other: e.target.value })}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, other: e.target.value })}
+                              readOnly={isLockedForEditing}
                             />
                           </div>
                         </div>
@@ -1840,6 +1888,7 @@ export default function ServiceTickets() {
                             <textarea
                               value={row.description}
                               onChange={(e) => {
+                                if (isLockedForEditing) return;
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, description: e.target.value };
                                 setServiceRows(newRows);
@@ -1849,6 +1898,7 @@ export default function ServiceTickets() {
                                 setEditedDescriptions(legacy.descriptions);
                                 setEditedHours(legacy.hours);
                               }}
+                              readOnly={isLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 minHeight: '60px',
@@ -1864,6 +1914,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.st || ''}
                               onChange={(e) => {
+                                if (isLockedForEditing) return;
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, st: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -1872,6 +1923,7 @@ export default function ServiceTickets() {
                                 setEditedDescriptions(legacy.descriptions);
                                 setEditedHours(legacy.hours);
                               }}
+                              readOnly={isLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
@@ -1886,6 +1938,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.tt || ''}
                               onChange={(e) => {
+                                if (isLockedForEditing) return;
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, tt: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -1894,6 +1947,7 @@ export default function ServiceTickets() {
                                 setEditedDescriptions(legacy.descriptions);
                                 setEditedHours(legacy.hours);
                               }}
+                              readOnly={isLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
@@ -1908,6 +1962,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.ft || ''}
                               onChange={(e) => {
+                                if (isLockedForEditing) return;
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, ft: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -1916,6 +1971,7 @@ export default function ServiceTickets() {
                                 setEditedDescriptions(legacy.descriptions);
                                 setEditedHours(legacy.hours);
                               }}
+                              readOnly={isLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
@@ -1930,6 +1986,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.so || ''}
                               onChange={(e) => {
+                                if (isLockedForEditing) return;
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, so: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -1938,12 +1995,13 @@ export default function ServiceTickets() {
                                 setEditedDescriptions(legacy.descriptions);
                                 setEditedHours(legacy.hours);
                               }}
+                              readOnly={isLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
                                 textAlign: 'center',
                                 fontSize: '13px',
-                                backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                                backgroundColor: isLockedForEditing ? 'var(--bg-secondary)' : 'rgba(255, 152, 0, 0.1)',
                               }}
                               title="Shop Overtime"
                             />
@@ -1953,6 +2011,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.fo || ''}
                               onChange={(e) => {
+                                if (isLockedForEditing) return;
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, fo: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -1961,15 +2020,17 @@ export default function ServiceTickets() {
                                 setEditedDescriptions(legacy.descriptions);
                                 setEditedHours(legacy.hours);
                               }}
+                              readOnly={isLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
                                 textAlign: 'center',
                                 fontSize: '13px',
-                                backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                                backgroundColor: isLockedForEditing ? 'var(--bg-secondary)' : 'rgba(255, 152, 0, 0.1)',
                               }}
                               title="Field Overtime"
                             />
+                            {!isLockedForEditing && (
                             <button
                               onClick={() => {
                                 const newRows = serviceRows.filter((_, i) => i !== index);
@@ -1993,6 +2054,7 @@ export default function ServiceTickets() {
                             >
                               ✕
                             </button>
+                            )}
                           </div>
                         ))}
                         
@@ -2032,7 +2094,8 @@ export default function ServiceTickets() {
                           </span>
                         </div>
                         
-                        {/* Add Row Button */}
+                        {/* Add Row Button - only shown when not locked */}
+                        {!isLockedForEditing && (
                         <button
                           onClick={() => {
                             const newRow: ServiceRow = {
@@ -2063,6 +2126,7 @@ export default function ServiceTickets() {
                         >
                           + Add Row
                         </button>
+                        )}
                         
                         {/* Legend */}
                         <div style={{ 
@@ -2148,7 +2212,7 @@ export default function ServiceTickets() {
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={sectionTitleStyle}>Travel / Subsistence / Expenses / Equipment</h3>
-                        {currentTicketRecordId && (
+                        {currentTicketRecordId && !isLockedForEditing && (
                           <button
                             onClick={() => {
                               setEditingExpense({
@@ -2371,6 +2435,7 @@ export default function ServiceTickets() {
                           <div style={{ textAlign: 'right', color: 'var(--text-primary)', fontWeight: '700' }}>
                             ${(expense.quantity * expense.rate).toFixed(2)}
                           </div>
+                          {!isLockedForEditing && (
                           <div style={{ display: 'flex', gap: '6px' }}>
                             <button
                               onClick={() => setEditingExpense({ ...expense })}
@@ -2405,6 +2470,7 @@ export default function ServiceTickets() {
                               Delete
                             </button>
                           </div>
+                          )}
                         </div>
                       ))}
 
