@@ -1016,28 +1016,28 @@ export const serviceTicketsService = {
   /**
    * Get or create a service ticket record for a given date/user/customer combination
    * Used for basic user approvals when no ticket record exists yet
+   * Requires a valid customerId - tickets without customers can't be invoiced
    */
   async getOrCreateTicket(params: {
     date: string;
     userId: string;
     customerId: string | null;
   }, isDemo: boolean = false): Promise<{ id: string }> {
+    // Don't create tickets without a customer - they need a project/customer to be valid
+    if (!params.customerId) {
+      throw new Error('Cannot create service ticket without a customer. Please assign a project to the time entries first.');
+    }
+    
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     
     // First try to find an existing ticket
-    let query = supabase
+    const { data: existing, error: findError } = await supabase
       .from(tableName)
       .select('id')
       .eq('date', params.date)
-      .eq('user_id', params.userId);
-    
-    if (params.customerId) {
-      query = query.eq('customer_id', params.customerId);
-    } else {
-      query = query.is('customer_id', null);
-    }
-    
-    const { data: existing, error: findError } = await query.maybeSingle();
+      .eq('user_id', params.userId)
+      .eq('customer_id', params.customerId)
+      .maybeSingle();
     
     if (findError) {
       console.error('Error finding ticket:', findError);
