@@ -1876,7 +1876,7 @@ export default function WeekView() {
                             zIndex: 1
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'rgba(200, 112, 240, 0.15)';
+                            e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.15)';
                           }}
                           onMouseLeave={(e) => {
                             e.currentTarget.style.backgroundColor = 'transparent';
