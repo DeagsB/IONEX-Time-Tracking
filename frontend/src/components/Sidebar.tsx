@@ -155,44 +155,39 @@ export default function Sidebar() {
             </SidebarLink>
           </div>
         )}
-      </div>
 
-      {/* Sign Out at Bottom */}
-      <div style={{
-        position: 'absolute',
-        bottom: '24px',
-        left: '0',
-        right: '0',
-        padding: '0 15px'
-      }}>
-        <button
-          onClick={handleSignOut}
-          style={{
-            display: 'block',
-            width: 'calc(100% - 16px)',
-            padding: '10px 16px',
-            color: 'var(--text-primary)',
-            textDecoration: 'none',
-            borderRadius: '8px',
-            marginLeft: '8px',
-            marginRight: '8px',
-            backgroundColor: 'transparent',
-            fontWeight: '400',
-            fontSize: '14px',
-            transition: 'all 0.2s ease',
-            border: 'none',
-            cursor: 'pointer',
-            textAlign: 'left',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-        >
-          Sign Out
-        </button>
+        {/* Sign Out */}
+        <div style={{ marginBottom: '30px' }}>
+          <button
+            onClick={handleSignOut}
+            style={{
+              display: 'block',
+              width: 'calc(100% - 16px)',
+              padding: '10px 16px',
+              color: 'var(--text-primary)',
+              textDecoration: 'none',
+              borderRadius: '8px',
+              marginBottom: '4px',
+              marginLeft: '8px',
+              marginRight: '8px',
+              backgroundColor: 'transparent',
+              fontWeight: '400',
+              fontSize: '14px',
+              transition: 'all 0.2s ease',
+              border: 'none',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            Sign Out
+          </button>
+        </div>
       </div>
     </div>
   );
