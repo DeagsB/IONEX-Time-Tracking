@@ -4,16 +4,16 @@ import { useAuth } from '../context/AuthContext';
 import { usersService } from '../services/supabaseServices';
 
 export default function UserManagement() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Redirect if not global admin
-  if (!user?.global_admin) {
+  // Redirect if not admin
+  if (!isAdmin) {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
         <h2>Access Denied</h2>
-        <p>You must be a global admin to access this page.</p>
+        <p>You must be an admin to access this page.</p>
       </div>
     );
   }
@@ -24,8 +24,8 @@ export default function UserManagement() {
   });
 
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, role, globalAdmin }: { userId: string; role: 'ADMIN' | 'USER'; globalAdmin?: boolean }) => {
-      return await usersService.updateUserRole(userId, role, globalAdmin);
+    mutationFn: async ({ userId, role }: { userId: string; role: 'ADMIN' | 'USER' | 'DEVELOPER' }) => {
+      return await usersService.updateUserRole(userId, role);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -41,27 +41,10 @@ export default function UserManagement() {
     );
   });
 
-  const handleRoleChange = (userId: string, newRole: 'ADMIN' | 'USER') => {
+  const handleRoleChange = (userId: string, newRole: 'ADMIN' | 'USER' | 'DEVELOPER') => {
     if (window.confirm(`Are you sure you want to change this user's role to ${newRole}?`)) {
       updateRoleMutation.mutate({ userId, role: newRole });
     }
-  };
-
-  const handleGlobalAdminToggle = (userId: string, currentValue: boolean) => {
-    if (currentValue) {
-      if (!window.confirm('Are you sure you want to remove global admin access from this user?')) {
-        return;
-      }
-    } else {
-      if (!window.confirm('Are you sure you want to grant global admin access to this user? This will give them access to payroll and user management.')) {
-        return;
-      }
-    }
-    updateRoleMutation.mutate({ 
-      userId, 
-      role: users?.find((u: any) => u.id === userId)?.role || 'USER',
-      globalAdmin: !currentValue 
-    });
   };
 
   const deleteUserMutation = useMutation({
@@ -111,7 +94,6 @@ export default function UserManagement() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
-                <th>Global Admin</th>
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
@@ -119,7 +101,7 @@ export default function UserManagement() {
             <tbody>
               {filteredUsers && filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '20px' }}>
                     No users found.
                   </td>
                 </tr>
@@ -134,29 +116,17 @@ export default function UserManagement() {
                     <select
                       className="input"
                       value={u.role || 'USER'}
-                      onChange={(e) => handleRoleChange(u.id, e.target.value as 'ADMIN' | 'USER')}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value as 'ADMIN' | 'USER' | 'DEVELOPER')}
                       style={{ 
                         padding: '4px 8px', 
                         fontSize: '13px',
-                        minWidth: '100px'
+                        minWidth: '120px'
                       }}
                     >
                       <option value="USER">USER</option>
                       <option value="ADMIN">ADMIN</option>
+                      <option value="DEVELOPER">DEVELOPER</option>
                     </select>
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={u.global_admin || false}
-                        onChange={() => handleGlobalAdminToggle(u.id, u.global_admin || false)}
-                        disabled={u.id === user?.id} // Can't remove your own global admin status
-                      />
-                      <span style={{ fontSize: '13px' }}>
-                        {u.global_admin ? 'Yes' : 'No'}
-                      </span>
-                    </label>
                   </td>
                   <td>
                     {u.archived ? (
@@ -221,8 +191,8 @@ export default function UserManagement() {
         <h3 style={{ marginBottom: '10px', fontSize: '16px' }}>About User Roles</h3>
         <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', lineHeight: '1.6' }}>
           <li><strong>USER:</strong> Standard user with basic access to time tracking and projects.</li>
-          <li><strong>ADMIN:</strong> Can access employee reports, service tickets, and manage employees.</li>
-          <li><strong>Global Admin:</strong> Has access to payroll and user management. Only one global admin should exist.</li>
+          <li><strong>ADMIN:</strong> Full access including employee reports, service tickets, payroll, user management, and bug reports.</li>
+          <li><strong>DEVELOPER:</strong> Can switch between USER and ADMIN modes for testing purposes.</li>
         </ul>
       </div>
     </div>

@@ -600,15 +600,10 @@ export const usersService = {
     return true;
   },
 
-  async updateUserRole(userId: string, role: 'ADMIN' | 'USER', globalAdmin?: boolean) {
-    const updateData: any = { role };
-    if (globalAdmin !== undefined) {
-      updateData.global_admin = globalAdmin;
-    }
-    
+  async updateUserRole(userId: string, role: 'ADMIN' | 'USER' | 'DEVELOPER') {
     const { data, error } = await supabase
       .from('users')
-      .update(updateData)
+      .update({ role })
       .eq('id', userId)
       .select()
       .single();

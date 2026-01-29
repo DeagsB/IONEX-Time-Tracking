@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { bugReportsService } from '../services/supabaseServices';
 
 export default function BugReports() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -16,8 +16,8 @@ export default function BugReports() {
   const [notes, setNotes] = useState('');
   const [modalMouseDownPos, setModalMouseDownPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Redirect if not global admin
-  if (!user?.global_admin) {
+  // Redirect if not admin
+  if (!isAdmin) {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
         <h2>Access Denied</h2>
