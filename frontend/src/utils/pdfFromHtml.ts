@@ -306,9 +306,7 @@ export async function downloadPdfFromHtml(
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
         <div style="flex: 1; border: 1px solid #000;">
           <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Customer Approval / Coding</div>
-          <div style="padding: 6px; font-size: 8pt;">
-            <div style="margin-bottom: 4px;"><strong>AFE:</strong> ${ticket.customerInfo.po_number || '_________________'}</div>
-            <div><strong>CC:</strong> _________________</div>
+          <div style="padding: 20px 6px; font-size: 8pt;">
           </div>
         </div>
         <div style="flex: 1; border: 1px solid #000;">
@@ -751,9 +749,7 @@ function buildPdfHtml(
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
         <div style="flex: 1; border: 1px solid #000;">
           <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Customer Approval / Coding</div>
-          <div style="padding: 6px; font-size: 8pt;">
-            <div style="margin-bottom: 4px;"><strong>AFE:</strong> ${ticket.customerInfo.po_number || '_________________'}</div>
-            <div><strong>CC:</strong> _________________</div>
+          <div style="padding: 20px 6px; font-size: 8pt;">
           </div>
         </div>
         <div style="flex: 1; border: 1px solid #000;">
