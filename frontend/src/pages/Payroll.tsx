@@ -52,17 +52,101 @@ const roundToQuarterHour = (hours: number): number => {
   return Math.ceil(hours * 10) / 10;
 };
 
+// Calculate the current payroll period based on biweekly schedule
+// Pay periods are 2 weeks, payday is 5 days after the period ends
+// Reference: Pay period Jan 19, 2026 to Feb 1, 2026 with payday Feb 6, 2026
+const getCurrentPayPeriod = (): { start: string; end: string } => {
+  // Reference pay period start date (Monday Jan 19, 2026)
+  const referenceStart = new Date(2026, 0, 19); // Jan 19, 2026
+  const periodLengthDays = 14; // 2 weeks
+  const daysUntilPayday = 5; // Payday is 5 days after period ends
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Calculate how many days since the reference period start
+  const daysSinceReference = Math.floor((today.getTime() - referenceStart.getTime()) / (1000 * 60 * 60 * 24));
+  
+  // Find which pay period we're in (including the payday buffer)
+  // We show a pay period until its payday has passed
+  // Period ends at day 13 (0-indexed), payday is at day 18 (13 + 5)
+  const totalCycleDays = periodLengthDays + daysUntilPayday; // 19 days total cycle before switching view
+  
+  // Calculate which period to show
+  // If we're within the first 19 days of a cycle, show that period
+  // After payday (day 19+), show the next period
+  let periodNumber: number;
+  
+  if (daysSinceReference >= 0) {
+    // After or on reference date
+    periodNumber = Math.floor(daysSinceReference / periodLengthDays);
+    
+    // Check if we're past payday for this period
+    const daysIntoPeriod = daysSinceReference % periodLengthDays;
+    const periodStartDays = periodNumber * periodLengthDays;
+    const periodEndDays = periodStartDays + periodLengthDays - 1;
+    const paydayDays = periodEndDays + daysUntilPayday;
+    
+    // If today is past the payday for the current calculated period, show that period
+    // If today is before payday, show the previous period (whose payday hasn't passed)
+    if (daysSinceReference <= paydayDays) {
+      // We're before or on payday, this is the correct period to show
+    } else {
+      // We're past payday, but the period calculation already accounts for this
+      // Actually we need to check if we've passed payday for the current period
+    }
+    
+    // Simpler approach: show the period whose payday hasn't passed yet
+    // For any given day, find the most recent period whose payday is >= today
+    const currentPeriodEnd = new Date(referenceStart);
+    currentPeriodEnd.setDate(referenceStart.getDate() + (periodNumber + 1) * periodLengthDays - 1);
+    
+    const currentPayday = new Date(currentPeriodEnd);
+    currentPayday.setDate(currentPayday.getDate() + daysUntilPayday);
+    
+    if (today > currentPayday) {
+      // Payday has passed, move to next period
+      periodNumber++;
+    }
+  } else {
+    // Before reference date, go backwards
+    periodNumber = Math.floor(daysSinceReference / periodLengthDays);
+  }
+  
+  // Calculate the period start and end dates
+  const periodStart = new Date(referenceStart);
+  periodStart.setDate(referenceStart.getDate() + periodNumber * periodLengthDays);
+  
+  const periodEnd = new Date(periodStart);
+  periodEnd.setDate(periodStart.getDate() + periodLengthDays - 1);
+  
+  const formatDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  return {
+    start: formatDate(periodStart),
+    end: formatDate(periodEnd),
+  };
+};
+
 export default function Payroll() {
   const { user } = useAuth();
   const { isDemoMode } = useDemoMode();
   
-  // Default to current pay period (bi-weekly or monthly)
+  // Default to current pay period based on biweekly schedule
+  // Period shown until payday (5 days after period ends) has passed
   const [startDate, setStartDate] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 14); // Last 2 weeks
-    return date.toISOString().split('T')[0];
+    const period = getCurrentPayPeriod();
+    return period.start;
   });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => {
+    const period = getCurrentPayPeriod();
+    return period.end;
+  });
   const [approvedOnly, setApprovedOnly] = useState(false);
 
   // Fetch all time entries for the date range (filtered by demo mode)
@@ -236,6 +320,12 @@ export default function Payroll() {
     let end: Date = today;
 
     switch (preset) {
+      case 'currentPayPeriod': {
+        const period = getCurrentPayPeriod();
+        setStartDate(period.start);
+        setEndDate(period.end);
+        return;
+      }
       case 'thisWeek':
         start = new Date(today);
         start.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
@@ -264,6 +354,13 @@ export default function Payroll() {
 
     setStartDate(start.toISOString().split('T')[0]);
     setEndDate(end.toISOString().split('T')[0]);
+  };
+  
+  // Calculate payday for the current selected period (5 days after end date)
+  const getPayday = () => {
+    const end = new Date(endDate);
+    end.setDate(end.getDate() + 5);
+    return end.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   if (user?.role !== 'ADMIN') {
@@ -325,12 +422,27 @@ export default function Payroll() {
           </div>
 
           {/* Quick Presets */}
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button className="button button-primary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('currentPayPeriod')}>Current Pay Period</button>
             <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('thisWeek')}>This Week</button>
             <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('lastWeek')}>Last Week</button>
             <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('last2Weeks')}>Last 2 Weeks</button>
             <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('thisMonth')}>This Month</button>
             <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('lastMonth')}>Last Month</button>
+          </div>
+          
+          {/* Payday indicator */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px', 
+            padding: '8px 12px',
+            backgroundColor: 'rgba(76, 175, 80, 0.1)',
+            borderRadius: '6px',
+            border: '1px solid rgba(76, 175, 80, 0.3)',
+          }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Payday:</span>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: '#4caf50' }}>{getPayday()}</span>
           </div>
 
           {/* Approved Only Filter */}
