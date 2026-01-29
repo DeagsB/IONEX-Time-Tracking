@@ -2632,6 +2632,27 @@ export default function ServiceTickets() {
                           (et.customer_id === selectedTicket.customerId || (!et.customer_id && selectedTicket.customerId === 'unassigned'))
                   );
                   const isTicketApproved = existingTicketRecord?.workflow_status === 'approved';
+                  const isAdminApproved = !!existingTicketRecord?.ticket_number; // Admin has assigned a ticket number
+                  
+                  // If admin has approved (assigned ticket number), show locked state
+                  if (isAdminApproved) {
+                    return (
+                      <button
+                        className="button button-secondary"
+                        disabled
+                        style={{ 
+                          padding: '10px 24px',
+                          backgroundColor: '#10b981',
+                          borderColor: '#10b981',
+                          cursor: 'not-allowed',
+                          opacity: 0.8,
+                        }}
+                        title="This ticket has been approved by an admin and cannot be changed"
+                      >
+                        ✓ Admin Approved
+                      </button>
+                    );
+                  }
                   
                   return (
                     <button
