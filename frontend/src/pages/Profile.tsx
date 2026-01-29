@@ -109,7 +109,8 @@ export default function Profile() {
   const profileMutation = useMutation({
     mutationFn: async (data: ProfileData) => {
       if (!user) throw new Error('Not authenticated');
-      
+      const emailChanged = data.email !== user.email;
+
       // Update profile in users table
       await usersService.updateProfile(user.id, {
         first_name: data.firstName,
@@ -118,22 +119,29 @@ export default function Profile() {
         date_format: data.dateFormat,
         time_format: data.timeFormat,
       });
-      
-      // If email changed, update via auth
-      if (data.email !== user.email) {
+
+      // If email changed, update via auth (sends verification to new email)
+      if (emailChanged) {
         await usersService.updateEmail(data.email);
       }
-      
-      return data;
+
+      return { data, emailChanged };
     },
-    onSuccess: (data) => {
+    onSuccess: ({ data, emailChanged }) => {
       updateUser({
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
       });
-      setProfileMessage({ type: 'success', text: 'Profile updated successfully!' });
-      setTimeout(() => setProfileMessage(null), 5000);
+      if (emailChanged) {
+        setProfileMessage({
+          type: 'success',
+          text: `Verification email sent to ${data.email}. After you click the link in that email, log in using your new email address (same password). Your old email will no longer work.`,
+        });
+      } else {
+        setProfileMessage({ type: 'success', text: 'Profile updated successfully!' });
+      }
+      setTimeout(() => setProfileMessage(null), 12000);
     },
     onError: (error: Error) => {
       setProfileMessage({ type: 'error', text: error.message || 'Failed to update profile' });

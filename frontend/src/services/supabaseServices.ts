@@ -470,6 +470,7 @@ export const usersService = {
   async updateProfile(userId: string, updates: {
     first_name?: string;
     last_name?: string;
+    email?: string;
     timezone?: string;
     date_format?: string;
     time_format?: string;

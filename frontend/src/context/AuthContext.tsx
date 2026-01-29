@@ -145,9 +145,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (data) {
+        // Auth is source of truth for email (e.g. after email-change verification)
+        const authEmail = supabaseUser.email || '';
+        if (authEmail && data.email !== authEmail) {
+          await supabase.from('users').update({ email: authEmail }).eq('id', supabaseUser.id);
+        }
         setUser({
           id: data.id,
-          email: data.email || supabaseUser.email || '',
+          email: authEmail || data.email || '',
           firstName: data.first_name || '',
           lastName: data.last_name || '',
           role: data.role || 'USER',
