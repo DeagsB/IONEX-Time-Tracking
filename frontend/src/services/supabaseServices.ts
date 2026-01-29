@@ -978,29 +978,35 @@ export const serviceTicketsService = {
    */
   async updateTicketNumber(ticketId: string, ticketNumber: string | null, isDemo: boolean = false): Promise<void> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-    
+
     const updateData: any = {};
-    
+
     if (ticketNumber === null) {
-      // Unassign ticket number
+      // Unassign ticket number - keep employee_initials for tracking
       updateData.ticket_number = null;
       updateData.sequence_number = null;
       updateData.year = null;
     } else {
-      // Assign ticket number
+      // Assign ticket number - extract employee_initials from ticket number (format: XX_YYNNN)
       updateData.ticket_number = ticketNumber;
       const year = new Date().getFullYear() % 100;
       const sequenceMatch = ticketNumber.match(/\d{3}$/);
       const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : null;
+      
+      // Extract employee initials from ticket number (e.g., "DB_25001" -> "DB")
+      const initialsMatch = ticketNumber.match(/^([A-Z]+)_/);
+      const employeeInitials = initialsMatch ? initialsMatch[1] : null;
+      
       updateData.year = year;
       updateData.sequence_number = sequenceNumber;
+      updateData.employee_initials = employeeInitials;
     }
-    
+
     const { error } = await supabase
       .from(tableName)
       .update(updateData)
       .eq('id', ticketId);
-    
+
     if (error) {
       console.error('Error updating ticket number:', error);
       throw error;
