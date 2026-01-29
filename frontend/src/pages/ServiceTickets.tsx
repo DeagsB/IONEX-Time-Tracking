@@ -54,6 +54,7 @@ export default function ServiceTickets() {
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
   const [currentTicketRecordId, setCurrentTicketRecordId] = useState<string | null>(null);
   
   // Expense management state
@@ -637,9 +638,7 @@ export default function ServiceTickets() {
     enabled: !!user?.id,
   });
 
-  // Role-based access control
-  const isAutomationDepartment = currentEmployee?.department === 'Automation';
-  const canAccessPage = isAdmin || isAutomationDepartment;
+  // All users can access this page - non-admins will only see their own tickets
 
   // Group entries into tickets (with employee rates)
   // Fetch existing ticket numbers and edited hours for display (from appropriate table based on demo mode)
@@ -903,16 +902,6 @@ export default function ServiceTickets() {
     if (user?.id) localStorage.setItem(`serviceTickets_sortDirection_${user.id}`, newDirection);
   };
 
-  if (!canAccessPage) {
-    return (
-      <div>
-        <h2>Service Tickets</h2>
-        <div className="card">
-          <p>You don't have permission to view this page.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -1029,8 +1018,8 @@ export default function ServiceTickets() {
         </div>
       ) : (
         <>
-        {/* Bulk Action Bar */}
-        {selectedTicketIds.size > 0 && (
+        {/* Bulk Action Bar - only visible to admins */}
+        {isAdmin && selectedTicketIds.size > 0 && (
           <div style={{
             backgroundColor: '#2563eb',
             padding: '12px 20px',
@@ -1118,15 +1107,17 @@ export default function ServiceTickets() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
-                <th style={{ padding: '16px', textAlign: 'center', width: '50px' }}>
-                  <input
-                    type="checkbox"
-                    checked={filteredTickets.length > 0 && selectedTicketIds.size === filteredTickets.length}
-                    onChange={toggleSelectAll}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary-color)' }}
-                    title="Select all"
-                  />
-                </th>
+                {isAdmin && (
+                  <th style={{ padding: '16px', textAlign: 'center', width: '50px' }}>
+                    <input
+                      type="checkbox"
+                      checked={filteredTickets.length > 0 && selectedTicketIds.size === filteredTickets.length}
+                      onChange={toggleSelectAll}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary-color)' }}
+                      title="Select all"
+                    />
+                  </th>
+                )}
                 <th 
                   onClick={() => handleSort('ticketNumber')}
                   style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
@@ -1300,14 +1291,16 @@ export default function ServiceTickets() {
                   }}
                   onClick={handleRowClick}
                 >
-                  <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedTicketIds.has(ticket.id)}
-                      onChange={() => toggleTicketSelection(ticket.id)}
-                      style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary-color)' }}
-                    />
-                  </td>
+                  {isAdmin && (
+                    <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTicketIds.has(ticket.id)}
+                        onChange={() => toggleTicketSelection(ticket.id)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary-color)' }}
+                      />
+                    </td>
+                  )}
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
                     {ticket.displayTicketNumber}
                   </td>
@@ -2489,80 +2482,119 @@ export default function ServiceTickets() {
                 >
                   Close
                 </button>
-                <button
-                  className="button button-primary"
-                  onClick={async () => {
-                    // Ensure expenses are loaded
-                    if (currentTicketRecordId && expenses.length === 0) {
-                      await loadExpenses(currentTicketRecordId);
-                    }
-                    
-                    // Calculate hours totals from serviceRows
-                    const hoursTotals = {
-                      'Shop Time': serviceRows.reduce((sum, r) => sum + (r.st || 0), 0),
-                      'Travel Time': serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0),
-                      'Field Time': serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0),
-                      'Shop Overtime': serviceRows.reduce((sum, r) => sum + (r.so || 0), 0),
-                      'Field Overtime': serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0),
-                    };
-                    
-                    // Convert serviceRows to entries for export
-                    // Each row with hours in a column becomes an entry with that rate type
-                    const exportEntries: typeof selectedTicket.entries = [];
-                    serviceRows.forEach((row, idx) => {
-                      const template = selectedTicket.entries[0] || { id: '', date: selectedTicket.date, user_id: selectedTicket.userId };
-                      if (row.st > 0) {
-                        exportEntries.push({ ...template, id: `export-st-${idx}`, description: row.description, hours: row.st, rate_type: 'Shop Time' });
+                {isAdmin ? (
+                  <button
+                    className="button button-primary"
+                    onClick={async () => {
+                      // Ensure expenses are loaded
+                      if (currentTicketRecordId && expenses.length === 0) {
+                        await loadExpenses(currentTicketRecordId);
                       }
-                      if (row.tt > 0) {
-                        exportEntries.push({ ...template, id: `export-tt-${idx}`, description: row.description, hours: row.tt, rate_type: 'Travel Time' });
+                      
+                      // Calculate hours totals from serviceRows
+                      const hoursTotals = {
+                        'Shop Time': serviceRows.reduce((sum, r) => sum + (r.st || 0), 0),
+                        'Travel Time': serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0),
+                        'Field Time': serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0),
+                        'Shop Overtime': serviceRows.reduce((sum, r) => sum + (r.so || 0), 0),
+                        'Field Overtime': serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0),
+                      };
+                      
+                      // Convert serviceRows to entries for export
+                      // Each row with hours in a column becomes an entry with that rate type
+                      const exportEntries: typeof selectedTicket.entries = [];
+                      serviceRows.forEach((row, idx) => {
+                        const template = selectedTicket.entries[0] || { id: '', date: selectedTicket.date, user_id: selectedTicket.userId };
+                        if (row.st > 0) {
+                          exportEntries.push({ ...template, id: `export-st-${idx}`, description: row.description, hours: row.st, rate_type: 'Shop Time' });
+                        }
+                        if (row.tt > 0) {
+                          exportEntries.push({ ...template, id: `export-tt-${idx}`, description: row.description, hours: row.tt, rate_type: 'Travel Time' });
+                        }
+                        if (row.ft > 0) {
+                          exportEntries.push({ ...template, id: `export-ft-${idx}`, description: row.description, hours: row.ft, rate_type: 'Field Time' });
+                        }
+                        if (row.so > 0) {
+                          exportEntries.push({ ...template, id: `export-so-${idx}`, description: row.description, hours: row.so, rate_type: 'Shop Overtime' });
+                        }
+                        if (row.fo > 0) {
+                          exportEntries.push({ ...template, id: `export-fo-${idx}`, description: row.description, hours: row.fo, rate_type: 'Field Overtime' });
+                        }
+                      });
+                      
+                      // Create a modified ticket with the editable values and serviceRows data
+                      const modifiedTicket: ServiceTicket = {
+                        ...selectedTicket,
+                        userName: editableTicket.techName,
+                        projectNumber: editableTicket.projectNumber,
+                        date: editableTicket.date,
+                        customerInfo: {
+                          ...selectedTicket.customerInfo,
+                          name: editableTicket.customerName,
+                          address: editableTicket.address,
+                          city: editableTicket.cityState.split(',')[0]?.trim() || '',
+                          state: editableTicket.cityState.split(',')[1]?.trim() || '',
+                          zip_code: editableTicket.zipCode,
+                          phone: editableTicket.phone,
+                          email: editableTicket.email,
+                          service_location: editableTicket.serviceLocation,
+                          location_code: editableTicket.other,
+                          po_number: editableTicket.poNumber,
+                          approver_name: editableTicket.approverName,
+                        },
+                        hoursByRateType: hoursTotals as typeof selectedTicket.hoursByRateType,
+                        entries: exportEntries,
+                      };
+                      // Recalculate total hours
+                      modifiedTicket.totalHours = Object.values(hoursTotals).reduce((sum, h) => sum + h, 0);
+                      await handleExportPdf(modifiedTicket);
+                      // Refresh the ticket list to show updated ticket number
+                      queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+                      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                    }}
+                    style={{ padding: '10px 24px' }}
+                    disabled={isExportingExcel || isExportingPdf}
+                  >
+                    {isExportingPdf ? 'Generating PDF...' : 'Export PDF'}
+                  </button>
+                ) : (
+                  <button
+                    className="button button-primary"
+                    onClick={async () => {
+                      setIsApproving(true);
+                      try {
+                        // Get or create the ticket record
+                        let ticketRecordId = currentTicketRecordId;
+                        if (!ticketRecordId) {
+                          // Create a new ticket record
+                          const ticketRecord = await serviceTicketsService.getOrCreateTicket({
+                            date: selectedTicket.date,
+                            userId: selectedTicket.userId,
+                            customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                          }, isDemoMode);
+                          ticketRecordId = ticketRecord.id;
+                        }
+                        
+                        // Update workflow status to approved
+                        await serviceTicketsService.updateWorkflowStatus(ticketRecordId, 'approved', isDemoMode);
+                        
+                        // Refresh data
+                        queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                        alert('Ticket approved successfully!');
+                        setSelectedTicket(null);
+                      } catch (error) {
+                        console.error('Error approving ticket:', error);
+                        alert('Failed to approve ticket');
+                      } finally {
+                        setIsApproving(false);
                       }
-                      if (row.ft > 0) {
-                        exportEntries.push({ ...template, id: `export-ft-${idx}`, description: row.description, hours: row.ft, rate_type: 'Field Time' });
-                      }
-                      if (row.so > 0) {
-                        exportEntries.push({ ...template, id: `export-so-${idx}`, description: row.description, hours: row.so, rate_type: 'Shop Overtime' });
-                      }
-                      if (row.fo > 0) {
-                        exportEntries.push({ ...template, id: `export-fo-${idx}`, description: row.description, hours: row.fo, rate_type: 'Field Overtime' });
-                      }
-                    });
-                    
-                    // Create a modified ticket with the editable values and serviceRows data
-                    const modifiedTicket: ServiceTicket = {
-                      ...selectedTicket,
-                      userName: editableTicket.techName,
-                      projectNumber: editableTicket.projectNumber,
-                      date: editableTicket.date,
-                      customerInfo: {
-                        ...selectedTicket.customerInfo,
-                        name: editableTicket.customerName,
-                        address: editableTicket.address,
-                        city: editableTicket.cityState.split(',')[0]?.trim() || '',
-                        state: editableTicket.cityState.split(',')[1]?.trim() || '',
-                        zip_code: editableTicket.zipCode,
-                        phone: editableTicket.phone,
-                        email: editableTicket.email,
-                        service_location: editableTicket.serviceLocation,
-                        location_code: editableTicket.other,
-                        po_number: editableTicket.poNumber,
-                        approver_name: editableTicket.approverName,
-                      },
-                      hoursByRateType: hoursTotals as typeof selectedTicket.hoursByRateType,
-                      entries: exportEntries,
-                    };
-                    // Recalculate total hours
-                    modifiedTicket.totalHours = Object.values(hoursTotals).reduce((sum, h) => sum + h, 0);
-                    await handleExportPdf(modifiedTicket);
-                    // Refresh the ticket list to show updated ticket number
-                    queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
-                    queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                  }}
-                  style={{ padding: '10px 24px' }}
-                  disabled={isExportingExcel || isExportingPdf}
-                >
-                  {isExportingPdf ? 'Generating PDF...' : 'Export PDF'}
-                </button>
+                    }}
+                    style={{ padding: '10px 24px' }}
+                    disabled={isApproving}
+                  >
+                    {isApproving ? 'Approving...' : 'Approve'}
+                  </button>
+                )}
               </div>
             </div>
           </div>

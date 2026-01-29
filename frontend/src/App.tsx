@@ -107,14 +107,7 @@ function AppRoutes() {
             </AdminRoute>
           }
         />
-        <Route
-          path="service-tickets"
-          element={
-            <AdminRoute>
-              <ServiceTickets />
-            </AdminRoute>
-          }
-        />
+        <Route path="service-tickets" element={<ServiceTickets />} />
         <Route
           path="employee-reports"
           element={
