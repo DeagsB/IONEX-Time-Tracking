@@ -1343,49 +1343,76 @@ export default function ServiceTickets() {
                               (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
                       );
                       
-                      // For admins, check ticket_number; for non-admins, check workflow_status
-                      const isApproved = isAdmin 
-                        ? !!existing?.ticket_number 
-                        : existing?.workflow_status === 'approved';
+                      // Check both ticket_number and workflow_status for approval
+                      const hasTicketNumber = !!existing?.ticket_number;
+                      const isWorkflowApproved = existing?.workflow_status === 'approved';
+                      const isApproved = hasTicketNumber || isWorkflowApproved;
                       
                       if (isAdmin) {
                         // Admin flow: assign/unassign ticket numbers
-                        return isApproved ? (
-                          <button
-                            className="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUnassignTicketNumber(ticket);
-                            }}
-                            style={{
-                              padding: '6px 16px',
-                              fontSize: '13px',
-                              backgroundColor: '#4caf50',
-                              color: 'white',
-                              border: 'none',
-                              cursor: 'pointer',
-                            }}
-                            title="Click to unapprove"
-                          >
-                            ✓ Approved
-                          </button>
-                        ) : (
-                          <button
-                            className="button button-primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAssignTicketNumber(ticket);
-                            }}
-                            style={{
-                              padding: '6px 16px',
-                              fontSize: '13px',
-                              cursor: 'pointer',
-                            }}
-                            title="Approve and assign ticket number"
-                          >
-                            Approve
-                          </button>
-                        );
+                        // Show different states: fully approved (has ticket#) vs user-approved (workflow only)
+                        if (hasTicketNumber) {
+                          return (
+                            <button
+                              className="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUnassignTicketNumber(ticket);
+                              }}
+                              style={{
+                                padding: '6px 16px',
+                                fontSize: '13px',
+                                backgroundColor: '#4caf50',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                              }}
+                              title="Click to unapprove"
+                            >
+                              ✓ Approved
+                            </button>
+                          );
+                        } else if (isWorkflowApproved) {
+                          // User has approved but no ticket number assigned yet
+                          return (
+                            <button
+                              className="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAssignTicketNumber(ticket);
+                              }}
+                              style={{
+                                padding: '6px 16px',
+                                fontSize: '13px',
+                                backgroundColor: '#3b82f6',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                              }}
+                              title="User approved - click to assign ticket number"
+                            >
+                              ✓ User Approved
+                            </button>
+                          );
+                        } else {
+                          return (
+                            <button
+                              className="button button-primary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAssignTicketNumber(ticket);
+                              }}
+                              style={{
+                                padding: '6px 16px',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                              }}
+                              title="Approve and assign ticket number"
+                            >
+                              Approve
+                            </button>
+                          );
+                        }
                       } else {
                         // Non-admin flow: toggle workflow_status
                         return (
