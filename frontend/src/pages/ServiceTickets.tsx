@@ -416,8 +416,8 @@ export default function ServiceTickets() {
           return; // Already has a ticket number assigned
         }
         ticketRecordId = existing.id;
-        // Update existing record with the ticket number
-        await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket);
+        // Update existing record with the ticket number and admin who approved
+        await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket, user?.id);
       } else {
         // Create ticket record with the ticket number already assigned
         const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
@@ -441,6 +441,7 @@ export default function ServiceTickets() {
           totalHours: ticket.totalHours,
           totalAmount,
           isDemo: isDemoTicket,
+          approvedByAdminId: user?.id,
         });
         ticketRecordId = record.id;
       }
@@ -648,8 +649,18 @@ export default function ServiceTickets() {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
       const { data, error } = await supabase
         .from(tableName)
-        .select('id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status');
-      if (error) throw error;
+        .select(`
+          id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status, approved_by_admin_id,
+          approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
+        `);
+      if (error) {
+        // If the join fails (column doesn't exist yet), try without the join
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from(tableName)
+          .select('id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status, approved_by_admin_id');
+        if (fallbackError) throw fallbackError;
+        return fallbackData;
+      }
       return data;
     },
   });
@@ -2634,6 +2645,12 @@ export default function ServiceTickets() {
                   const isTicketApproved = existingTicketRecord?.workflow_status === 'approved';
                   const isAdminApproved = !!existingTicketRecord?.ticket_number; // Admin has assigned a ticket number
                   
+                  // Get admin name if available
+                  const approvedByAdmin = (existingTicketRecord as any)?.approved_by_admin;
+                  const adminName = approvedByAdmin 
+                    ? `${approvedByAdmin.first_name || ''} ${approvedByAdmin.last_name || ''}`.trim() || 'Admin'
+                    : 'Admin';
+                  
                   // If admin has approved (assigned ticket number), show locked state
                   if (isAdminApproved) {
                     return (
@@ -2647,9 +2664,9 @@ export default function ServiceTickets() {
                           cursor: 'not-allowed',
                           opacity: 0.8,
                         }}
-                        title="This ticket has been approved by an admin and cannot be changed"
+                        title={`Approved by ${adminName}`}
                       >
-                        ✓ Admin Approved
+                        ✓ Approved by {adminName}
                       </button>
                     );
                   }

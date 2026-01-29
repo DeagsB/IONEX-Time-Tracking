@@ -886,6 +886,7 @@ export const serviceTicketsService = {
     totalHours: number;
     totalAmount: number;
     isDemo?: boolean;
+    approvedByAdminId?: string;
   }) {
     const isDemo = ticket.isDemo || false;
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
@@ -904,21 +905,25 @@ export const serviceTicketsService = {
       // If it doesn't exist, we can use this number
       if (!existing && !checkError) {
         // Create the ticket with this number
+        const insertData: any = {
+          ticket_number: ticketNumber,
+          employee_initials: ticket.employeeInitials,
+          year: ticket.year,
+          sequence_number: ticket.sequenceNumber,
+          date: ticket.date,
+          customer_id: ticket.customerId,
+          user_id: ticket.userId,
+          project_id: ticket.projectId,
+          total_hours: ticket.totalHours,
+          total_amount: ticket.totalAmount,
+          status: 'draft',
+        };
+        if (ticket.approvedByAdminId) {
+          insertData.approved_by_admin_id = ticket.approvedByAdminId;
+        }
         const { data, error } = await supabase
           .from(tableName)
-          .insert({
-            ticket_number: ticketNumber,
-            employee_initials: ticket.employeeInitials,
-            year: ticket.year,
-            sequence_number: ticket.sequenceNumber,
-            date: ticket.date,
-            customer_id: ticket.customerId,
-            user_id: ticket.userId,
-            project_id: ticket.projectId,
-            total_hours: ticket.totalHours,
-            total_amount: ticket.totalAmount,
-            status: 'draft',
-          })
+          .insert(insertData)
           .select()
           .single();
 
@@ -997,8 +1002,9 @@ export const serviceTicketsService = {
    * @param ticketId - The ID of the ticket record to update
    * @param ticketNumber - The new ticket number (or null to unassign)
    * @param isDemo - If true, updates the demo table; otherwise updates the regular table
+   * @param approvedByAdminId - Optional admin user ID who approved the ticket
    */
-  async updateTicketNumber(ticketId: string, ticketNumber: string | null, isDemo: boolean = false): Promise<void> {
+  async updateTicketNumber(ticketId: string, ticketNumber: string | null, isDemo: boolean = false, approvedByAdminId?: string): Promise<void> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
 
     const updateData: any = {};
@@ -1008,6 +1014,7 @@ export const serviceTicketsService = {
       updateData.ticket_number = null;
       updateData.sequence_number = null;
       updateData.year = null;
+      updateData.approved_by_admin_id = null;
     } else {
       // Assign ticket number - extract employee_initials from ticket number (format: XX_YYNNN)
       updateData.ticket_number = ticketNumber;
@@ -1022,6 +1029,9 @@ export const serviceTicketsService = {
       updateData.year = year;
       updateData.sequence_number = sequenceNumber;
       updateData.employee_initials = employeeInitials;
+      if (approvedByAdminId) {
+        updateData.approved_by_admin_id = approvedByAdminId;
+      }
     }
 
     const { error } = await supabase
