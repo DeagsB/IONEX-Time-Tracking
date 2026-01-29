@@ -244,10 +244,6 @@ export default function ServiceTickets() {
 
   // Handler for exporting ticket as Excel
   const handleExportExcel = async (ticket: ServiceTicket) => {
-    // #region agent log
-    console.log('[DEBUG] Single Excel export started', {ticketId:ticket.id,date:ticket.date,hasEntries:!!ticket.entries,entriesCount:ticket.entries?.length,isDemoEntries:ticket.entries?.every((e: any)=>e.is_demo),hasRates:!!ticket.rates,hasCustomerInfo:!!ticket.customerInfo});
-    fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:171',message:'Single Excel export started',data:{ticketId:ticket.id,date:ticket.date,hasEntries:!!ticket.entries,entriesCount:ticket.entries?.length,isDemoEntries:ticket.entries?.every((e: any)=>e.is_demo),hasRates:!!ticket.rates,hasCustomerInfo:!!ticket.customerInfo},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     setIsExportingExcel(true);
     try {
       // Check if a ticket number already exists in the database
@@ -293,24 +289,13 @@ export default function ServiceTickets() {
         }
       }
       
-      // #region agent log
-      console.log('[DEBUG] Single: Before downloadExcelServiceTicket', {ticketNumber:ticketWithNumber.ticketNumber,expensesCount:ticketExpenses.length,customerName:ticketWithNumber.customerName,entriesCount:ticketWithNumber.entries?.length});
-      fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:245',message:'Single: Before downloadExcelServiceTicket',data:{ticketNumber:ticketWithNumber.ticketNumber,expensesCount:ticketExpenses.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       await downloadExcelServiceTicket(ticketWithNumber, ticketExpenses);
-      // #region agent log
-      console.log('[DEBUG] Single: After downloadExcelServiceTicket - SUCCESS', {ticketNumber:ticketWithNumber.ticketNumber});
-      fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:250',message:'Single: After downloadExcelServiceTicket - SUCCESS',data:{ticketNumber:ticketWithNumber.ticketNumber},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       
       // Invalidate and refetch queries to refresh the ticket list with the new ticket number
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
     } catch (error) {
-      // #region agent log
-      console.error('[DEBUG] Single Excel: EXPORT ERROR', error);
-      fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:260',message:'Single Excel: EXPORT ERROR',data:{error:String(error),errorMessage:(error as Error)?.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
+      console.error('Excel export error:', error);
       alert('Failed to export service ticket Excel.');
     } finally {
       setIsExportingExcel(false);
@@ -347,16 +332,10 @@ export default function ServiceTickets() {
     setIsBulkExporting(true);
     try {
       const ticketsToExport = Array.from(selectedTicketIds).map(id => getTicketById(id)).filter(Boolean) as (ServiceTicket & { displayTicketNumber: string })[];
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:287',message:'Bulk Excel export started',data:{selectedCount:selectedTicketIds.size,ticketsToExportCount:ticketsToExport.length,ticketIds:ticketsToExport.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      
+
       let updatedTicketsList = [...(existingTickets || [])];
-      
+
       for (const ticket of ticketsToExport) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:293',message:'Excel: Processing ticket',data:{ticketId:ticket.id,date:ticket.date,hasEntries:!!ticket.entries,entriesCount:ticket.entries?.length,isDemoEntries:ticket.entries?.every((e: any)=>e.is_demo),hasRates:!!ticket.rates,displayTicketNumber:ticket.displayTicketNumber},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         try {
           // Check if a ticket number already exists (check both original list and newly created tickets)
           let existingRecord = updatedTicketsList.find(
@@ -378,9 +357,6 @@ export default function ServiceTickets() {
             ticketRecordId = existingRecord.id;
           
           const ticketWithNumber = { ...ticket, ticketNumber };
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:355',message:'Excel: Ticket number resolved',data:{ticketNumber,ticketRecordId,hasExistingRecord:!!existingRecord},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
           // Load expenses for bulk export
           let ticketExpenses = [];
           if (ticketRecordId) {
@@ -390,29 +366,16 @@ export default function ServiceTickets() {
               console.error('Error loading expenses for export:', error);
             }
           }
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:370',message:'Excel: Before downloadExcelServiceTicket',data:{ticketNumber,expensesCount:ticketExpenses.length,hasCustomerInfo:!!ticketWithNumber.customerInfo,customerName:ticketWithNumber.customerInfo?.name},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
           await downloadExcelServiceTicket(ticketWithNumber, ticketExpenses);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:375',message:'Excel: After downloadExcelServiceTicket - SUCCESS',data:{ticketNumber},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
-          
+
           // Small delay between exports to avoid overwhelming the browser
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:382',message:'Excel: ERROR in ticket export loop',data:{ticketDate:ticket.date,error:String(error),errorMessage:(error as Error)?.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,D,E'})}).catch(()=>{});
-          // #endregion
           console.error(`Error exporting ticket for ${ticket.date}:`, error);
           // Continue with next ticket even if this one fails
         }
       }
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ServiceTickets.tsx:390',message:'Excel: Bulk export complete',data:{exportedCount:ticketsToExport.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      
+
       // Invalidate and refetch queries to refresh the ticket list with new ticket numbers
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });

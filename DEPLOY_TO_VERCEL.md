@@ -37,12 +37,14 @@
 Before clicking "Deploy", click **"Environment Variables"** and add:
 
 1. **VITE_SUPABASE_URL**
-   - Value: `https://rfkjlysksehqcflcnlia.supabase.co`
+   - Value: Your Supabase project URL (found in Supabase Dashboard → Settings → API)
    - Apply to: Production, Preview, Development (check all)
 
 2. **VITE_SUPABASE_ANON_KEY**
-   - Value: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJma2pseXNrc2VocWNmbGNubGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzNzcwNTYsImV4cCI6MjA4MTk1MzA1Nn0.VIrum6MCVZcASMdWznv7F6PhrMqoQm3FlsqeXVdWVRQ`
+   - Value: Your Supabase anon/public key (found in Supabase Dashboard → Settings → API)
    - Apply to: Production, Preview, Development (check all)
+
+> **Note**: Get these values from your Supabase project dashboard. Never commit API keys to version control.
 
 ### Step 4: Deploy
 
@@ -101,13 +103,15 @@ After first deployment, add environment variables:
 
 ```bash
 vercel env add VITE_SUPABASE_URL
-# When prompted, paste: https://rfkjlysksehqcflcnlia.supabase.co
+# When prompted, paste your Supabase project URL (from Supabase Dashboard → Settings → API)
 # Select: Production, Preview, Development
 
 vercel env add VITE_SUPABASE_ANON_KEY
-# When prompted, paste: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJma2pseXNrc2VocWNmbGNubGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzNzcwNTYsImV4cCI6MjA4MTk1MzA1Nn0.VIrum6MCVZcASMdWznv7F6PhrMqoQm3FlsqeXVdWVRQ
+# When prompted, paste your Supabase anon/public key (from Supabase Dashboard → Settings → API)
 # Select: Production, Preview, Development
 ```
+
+> **Note**: Get these values from your Supabase project dashboard. Never commit API keys to version control.
 
 ### Step 6: Redeploy with Environment Variables
 

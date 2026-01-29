@@ -38,10 +38,12 @@ PostgreSQL includes `pg_dump`, which allows you to backup your Supabase database
 
 5. **Run the Backup:**
    ```powershell
-   cd "C:\Users\FPCR\Documents\GitHub\IONEX-Time-Tracking"
-   $env:SUPABASE_DB_URL = 'postgresql://postgres:YOUR_PASSWORD@db.rfkjlysksehqcflcnlia.supabase.co:5432/postgres'
+   cd "path/to/IONEX-Time-Tracking"
+   $env:SUPABASE_DB_URL = 'postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres'
    .\backup-supabase.ps1
    ```
+   
+   > **Note**: Replace `YOUR_PROJECT_REF` with your Supabase project reference (found in Supabase Dashboard → Settings → General) and `YOUR_PASSWORD` with your database password.
 
 ## Alternative: Portable PostgreSQL
 

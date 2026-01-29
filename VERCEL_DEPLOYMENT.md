@@ -24,12 +24,14 @@ https://github.com/DeagsB/IONEX-Time-Tracking
    Click "Environment Variables" and add:
    
    **VITE_SUPABASE_URL**
-   - Value: `https://rfkjlysksehqcflcnlia.supabase.co`
+   - Value: Your Supabase project URL (from Supabase Dashboard → Settings → API)
    - Environment: Production, Preview, Development (select all)
    
    **VITE_SUPABASE_ANON_KEY**
-   - Value: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJma2pseXNrc2VocWNmbGNubGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzNzcwNTYsImV4cCI6MjA4MTk1MzA1Nn0.VIrum6MCVZcASMdWznv7F6PhrMqoQm3FlsqeXVdWVRQ`
+   - Value: Your Supabase anon/public key (from Supabase Dashboard → Settings → API)
    - Environment: Production, Preview, Development (select all)
+   
+   > **Note**: Never commit API keys to version control. Get these values from your Supabase project dashboard.
 
 5. **Deploy**:
    - Click "Deploy"

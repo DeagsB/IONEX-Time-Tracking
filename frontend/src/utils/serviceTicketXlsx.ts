@@ -593,15 +593,7 @@ export async function downloadExcelServiceTicket(
     unit?: string;
   }> = []
 ): Promise<void> {
-  // #region agent log
-  console.log('[DEBUG] downloadExcelServiceTicket ENTRY', {ticketNumber:ticket.ticketNumber,customerName:ticket.customerName,entriesCount:ticket.entries?.length,hasRates:!!ticket.rates});
-  fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'serviceTicketXlsx.ts:558',message:'downloadExcelServiceTicket ENTRY',data:{ticketNumber:ticket.ticketNumber,customerName:ticket.customerName,entriesCount:ticket.entries?.length,hasRates:!!ticket.rates},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
   const excelBytes = await generateExcelServiceTicket(ticket, expenses);
-  // #region agent log
-  console.log('[DEBUG] generateExcelServiceTicket completed', {bytesLength:excelBytes?.length});
-  fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'serviceTicketXlsx.ts:565',message:'generateExcelServiceTicket completed',data:{bytesLength:excelBytes?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
 
   const blob = new Blob([excelBytes as any], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -612,11 +604,6 @@ export async function downloadExcelServiceTicket(
     ticket.ticketNumber ||
     `${new Date(ticket.date).toISOString().split('T')[0].replace(/-/g, '')}-${ticket.customerName.substring(0, 3).toUpperCase()}`;
   const fileName = `ServiceTicket_${ticketId}_${ticket.customerName.replace(/\s+/g, '_')}.xlsx`;
-  // #region agent log
-  console.log('[DEBUG] About to trigger download', {fileName,blobSize:blob.size});
-  fetch('http://127.0.0.1:7242/ingest/42154b7e-9114-4abf-aaac-8c6066245862',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'serviceTicketXlsx.ts:580',message:'About to trigger download',data:{fileName,blobSize:blob.size},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
 
   saveAs(blob, fileName);
-  console.log('[DEBUG] saveAs called for', fileName);
 }
