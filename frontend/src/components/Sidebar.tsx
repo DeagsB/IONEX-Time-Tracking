@@ -66,6 +66,9 @@ export default function Sidebar() {
               <SidebarLink to="/customers" active={isActive('/customers')}>
                 Clients
               </SidebarLink>
+              <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
+                Service Tickets
+              </SidebarLink>
             </>
           )}
         </div>
