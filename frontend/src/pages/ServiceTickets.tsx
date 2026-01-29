@@ -1342,44 +1342,84 @@ export default function ServiceTickets() {
                               et.user_id === ticket.userId && 
                               (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
                       );
-                      const hasTicketNumber = existing?.ticket_number;
                       
-                      return hasTicketNumber ? (
-                        <button
-                          className="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUnassignTicketNumber(ticket);
-                          }}
-                          style={{
-                            padding: '6px 16px',
-                            fontSize: '13px',
-                            backgroundColor: '#4caf50',
-                            color: 'white',
-                            border: 'none',
-                            cursor: 'pointer',
-                          }}
-                          title="Click to unapprove"
-                        >
-                          ✓ Approved
-                        </button>
-                      ) : (
-                        <button
-                          className="button button-primary"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAssignTicketNumber(ticket);
-                          }}
-                          style={{
-                            padding: '6px 16px',
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                          }}
-                          title="Approve and assign ticket number"
-                        >
-                          Approve
-                        </button>
-                      );
+                      // For admins, check ticket_number; for non-admins, check workflow_status
+                      const isApproved = isAdmin 
+                        ? !!existing?.ticket_number 
+                        : existing?.workflow_status === 'approved';
+                      
+                      if (isAdmin) {
+                        // Admin flow: assign/unassign ticket numbers
+                        return isApproved ? (
+                          <button
+                            className="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnassignTicketNumber(ticket);
+                            }}
+                            style={{
+                              padding: '6px 16px',
+                              fontSize: '13px',
+                              backgroundColor: '#4caf50',
+                              color: 'white',
+                              border: 'none',
+                              cursor: 'pointer',
+                            }}
+                            title="Click to unapprove"
+                          >
+                            ✓ Approved
+                          </button>
+                        ) : (
+                          <button
+                            className="button button-primary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAssignTicketNumber(ticket);
+                            }}
+                            style={{
+                              padding: '6px 16px',
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                            }}
+                            title="Approve and assign ticket number"
+                          >
+                            Approve
+                          </button>
+                        );
+                      } else {
+                        // Non-admin flow: toggle workflow_status
+                        return (
+                          <button
+                            className="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const ticketRecord = await serviceTicketsService.getOrCreateTicket({
+                                  date: ticket.date,
+                                  userId: ticket.userId,
+                                  customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+                                }, isDemoMode);
+                                const newStatus = isApproved ? 'draft' : 'approved';
+                                await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
+                                queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                              } catch (error) {
+                                console.error('Error updating ticket status:', error);
+                              }
+                            }}
+                            style={{
+                              padding: '6px 16px',
+                              fontSize: '13px',
+                              backgroundColor: isApproved ? '#10b981' : undefined,
+                              color: isApproved ? 'white' : undefined,
+                              border: 'none',
+                              cursor: 'pointer',
+                            }}
+                            title={isApproved ? "Click to unapprove" : "Click to approve"}
+                          >
+                            {isApproved ? '✓ Approved' : 'Approve'}
+                          </button>
+                        );
+                      }
                     })()}
                   </td>
                   {/* Workflow status cell - only visible to admins */}
