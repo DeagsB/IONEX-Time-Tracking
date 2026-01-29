@@ -43,9 +43,9 @@ export default function Sidebar() {
             }
           }}
           style={{
-            maxWidth: '100%',
-            height: 'auto',
-            maxHeight: '50px',
+            height: '50px',
+            width: 'auto',
+            objectFit: 'contain',
           }}
         />
       </div>
