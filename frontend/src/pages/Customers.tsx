@@ -14,6 +14,7 @@ export default function Customers() {
   const [modalMouseDownPos, setModalMouseDownPos] = useState<{ x: number; y: number } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
+    contact_name: '',
     email: '',
     phone: '',
     address: '',
@@ -151,6 +152,7 @@ export default function Customers() {
   const resetForm = () => {
     setFormData({
       name: '',
+      contact_name: '',
       email: '',
       phone: '',
       address: '',
@@ -171,6 +173,7 @@ export default function Customers() {
     setEditingCustomer(customer);
     setFormData({
       name: customer.name || '',
+      contact_name: customer.contact_name || '',
       email: customer.email || '',
       phone: customer.phone || '',
       address: customer.address || '',
@@ -283,6 +286,17 @@ export default function Customers() {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="label">Contact Name</label>
+              <input
+                type="text"
+                className="input"
+                value={formData.contact_name}
+                onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
+                placeholder="Primary contact person"
               />
             </div>
 
@@ -457,6 +471,17 @@ export default function Customers() {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="label">Contact Name</label>
+              <input
+                type="text"
+                className="input"
+                value={formData.contact_name}
+                onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
+                placeholder="Primary contact person"
               />
             </div>
 
