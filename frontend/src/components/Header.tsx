@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsService, customersService } from '../services/supabaseServices';
+import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
 import SearchableSelect from './SearchableSelect';
 
@@ -94,9 +94,24 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     setLocation('');
   };
 
-  const handleProjectChange = (projectId: string) => {
+  const handleProjectChange = async (projectId: string) => {
     setSelectedProjectId(projectId);
-    // Auto-populate location from project default
+    
+    if (!projectId) {
+      setLocation('');
+      return;
+    }
+    
+    // Try to get the last used location for this user and project
+    if (user?.id) {
+      const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
+      if (lastLocation) {
+        setLocation(lastLocation);
+        return;
+      }
+    }
+    
+    // Fallback to project default location if no previous entry found
     const project = projects?.find((p: any) => p.id === projectId);
     if (project?.location) {
       setLocation(project.location);

@@ -2344,12 +2344,28 @@ export default function WeekView() {
                             label: project.name,
                           })) || []}
                         value={newEntry.project_id}
-                        onChange={(projectId) => {
+                        onChange={async (projectId) => {
+                          setNewEntry(prev => ({ ...prev, project_id: projectId }));
+                          
+                          if (!projectId) {
+                            setNewEntry(prev => ({ ...prev, location: '' }));
+                            return;
+                          }
+                          
+                          // Try to get the last used location for this user and project
+                          if (user?.id) {
+                            const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
+                            if (lastLocation) {
+                              setNewEntry(prev => ({ ...prev, location: lastLocation }));
+                              return;
+                            }
+                          }
+                          
+                          // Fallback to project default location
                           const selectedProject = projects?.find((p: any) => p.id === projectId);
                           setNewEntry(prev => ({ 
                             ...prev, 
-                            project_id: projectId,
-                            location: selectedProject?.location || prev.location || ''
+                            location: selectedProject?.location || ''
                           }));
                         }}
                         placeholder="Search projects..."
@@ -2680,12 +2696,28 @@ export default function WeekView() {
                             label: project.name,
                           })) || []}
                         value={editedEntry.project_id}
-                        onChange={(projectId) => {
+                        onChange={async (projectId) => {
+                          setEditedEntry(prev => ({ ...prev, project_id: projectId }));
+                          
+                          if (!projectId) {
+                            setEditedEntry(prev => ({ ...prev, location: '' }));
+                            return;
+                          }
+                          
+                          // Try to get the last used location for this user and project
+                          if (user?.id) {
+                            const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
+                            if (lastLocation) {
+                              setEditedEntry(prev => ({ ...prev, location: lastLocation }));
+                              return;
+                            }
+                          }
+                          
+                          // Fallback to project default location
                           const selectedProject = projects?.find((p: any) => p.id === projectId);
-                          setEditedEntry(prev => ({ 
-                            ...prev, 
-                            project_id: projectId,
-                            location: selectedProject?.location || prev.location || ''
+                          setEditedEntry(prev => ({
+                            ...prev,
+                            location: selectedProject?.location || ''
                           }));
                         }}
                         placeholder="Search projects..."

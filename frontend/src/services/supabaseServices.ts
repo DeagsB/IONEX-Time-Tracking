@@ -97,6 +97,28 @@ export const timeEntriesService = {
     if (error) throw error;
     return data;
   },
+
+  async getLastLocation(userId: string, projectId: string): Promise<string | null> {
+    // Get the most recent time entry with a location for this user and project
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select('location')
+      .eq('user_id', userId)
+      .eq('project_id', projectId)
+      .not('location', 'is', null)
+      .neq('location', '')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      // No matching entry found is not an error for our purposes
+      if (error.code === 'PGRST116') return null;
+      console.error('Error fetching last location:', error);
+      return null;
+    }
+    return data?.location || null;
+  },
 };
 
 export const customersService = {
