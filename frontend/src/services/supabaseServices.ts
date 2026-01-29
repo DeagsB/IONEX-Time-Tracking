@@ -1008,6 +1008,61 @@ export const serviceTicketsService = {
   },
 
   /**
+   * Get or create a service ticket record for a given date/user/customer combination
+   * Used for basic user approvals when no ticket record exists yet
+   */
+  async getOrCreateTicket(params: {
+    date: string;
+    userId: string;
+    customerId: string | null;
+  }, isDemo: boolean = false): Promise<{ id: string }> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    
+    // First try to find an existing ticket
+    let query = supabase
+      .from(tableName)
+      .select('id')
+      .eq('date', params.date)
+      .eq('user_id', params.userId);
+    
+    if (params.customerId) {
+      query = query.eq('customer_id', params.customerId);
+    } else {
+      query = query.is('customer_id', null);
+    }
+    
+    const { data: existing, error: findError } = await query.maybeSingle();
+    
+    if (findError) {
+      console.error('Error finding ticket:', findError);
+      throw findError;
+    }
+    
+    if (existing) {
+      return { id: existing.id };
+    }
+    
+    // Create a new ticket record (without a ticket number - that's assigned on approval/export)
+    const { data: newTicket, error: createError } = await supabase
+      .from(tableName)
+      .insert({
+        date: params.date,
+        user_id: params.userId,
+        customer_id: params.customerId,
+        workflow_status: 'draft',
+      })
+      .select('id')
+      .single();
+    
+    if (createError) {
+      console.error('Error creating ticket:', createError);
+      throw createError;
+    }
+    
+    return { id: newTicket.id };
+  },
+
+  /**
    * Update workflow status for a service ticket
    * @param ticketId - The ID of the ticket record to update
    * @param workflowStatus - The new workflow status

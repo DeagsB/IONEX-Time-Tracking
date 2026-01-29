@@ -2564,19 +2564,14 @@ export default function ServiceTickets() {
                       setIsApproving(true);
                       try {
                         // Get or create the ticket record
-                        let ticketRecordId = currentTicketRecordId;
-                        if (!ticketRecordId) {
-                          // Create a new ticket record
-                          const ticketRecord = await serviceTicketsService.getOrCreateTicket({
-                            date: selectedTicket.date,
-                            userId: selectedTicket.userId,
-                            customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
-                          }, isDemoMode);
-                          ticketRecordId = ticketRecord.id;
-                        }
+                        const ticketRecord = await serviceTicketsService.getOrCreateTicket({
+                          date: selectedTicket.date,
+                          userId: selectedTicket.userId,
+                          customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                        }, isDemoMode);
                         
                         // Update workflow status to approved
-                        await serviceTicketsService.updateWorkflowStatus(ticketRecordId, 'approved', isDemoMode);
+                        await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, 'approved', isDemoMode);
                         
                         // Refresh data
                         queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
