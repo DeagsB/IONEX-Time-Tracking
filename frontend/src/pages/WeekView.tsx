@@ -2335,6 +2335,7 @@ export default function WeekView() {
                     }} />
                     <div style={{ flex: 1 }}>
                       <SearchableSelect
+                        key={`new-project-select-${newEntry.customer_id}`}
                         options={projects
                           ?.filter((project: any) => project.customer_id === newEntry.customer_id)
                           .map((project: any) => ({
@@ -2344,11 +2345,11 @@ export default function WeekView() {
                         value={newEntry.project_id}
                         onChange={(projectId) => {
                           const selectedProject = projects?.find((p: any) => p.id === projectId);
-                          setNewEntry({ 
-                            ...newEntry, 
+                          setNewEntry(prev => ({ 
+                            ...prev, 
                             project_id: projectId,
-                            location: selectedProject?.location || newEntry.location || ''
-                          });
+                            location: selectedProject?.location || prev.location || ''
+                          }));
                         }}
                         placeholder="Search projects..."
                         emptyOption={{ value: '', label: 'No Project' }}
@@ -2670,6 +2671,7 @@ export default function WeekView() {
                     }} />
                     <div style={{ flex: 1 }}>
                       <SearchableSelect
+                        key={`project-select-${editedEntry.customer_id}`}
                         options={projects
                           ?.filter((project: any) => project.customer_id === editedEntry.customer_id)
                           .map((project: any) => ({
@@ -2679,11 +2681,11 @@ export default function WeekView() {
                         value={editedEntry.project_id}
                         onChange={(projectId) => {
                           const selectedProject = projects?.find((p: any) => p.id === projectId);
-                          setEditedEntry({ 
-                            ...editedEntry, 
+                          setEditedEntry(prev => ({ 
+                            ...prev, 
                             project_id: projectId,
-                            location: selectedProject?.location || editedEntry.location || ''
-                          });
+                            location: selectedProject?.location || prev.location || ''
+                          }));
                         }}
                         placeholder="Search projects..."
                         emptyOption={{ value: '', label: 'No Project' }}
