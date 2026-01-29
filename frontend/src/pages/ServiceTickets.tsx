@@ -9,6 +9,7 @@ import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
 import { supabase } from '../lib/supabaseClient';
 import { quickbooksClientService } from '../services/quickbooksService';
+import SearchableSelect from '../components/SearchableSelect';
 
 // Workflow status types and labels
 const WORKFLOW_STATUSES = {
@@ -961,77 +962,47 @@ export default function ServiceTickets() {
           </div>
           <div>
             <label className="label">Customer</label>
-            <select
-              className="input"
+            <SearchableSelect
+              options={customers?.map((customer: any) => ({
+                value: customer.id,
+                label: customer.name,
+              })) || []}
               value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-              }}
-            >
-              <option value="">All Customers</option>
-              {customers?.map((customer: any) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setSelectedCustomerId(value)}
+              placeholder="Search customers..."
+              emptyOption={{ value: '', label: 'All Customers' }}
+            />
           </div>
           {/* Employee filter - only visible to admins (non-admins only see their own tickets) */}
           {isAdmin && (
             <div>
               <label className="label">Employee</label>
-              <select
-                className="input"
+              <SearchableSelect
+                options={employees?.map((employee: any) => ({
+                  value: employee.user_id,
+                  label: `${employee.user?.first_name || ''} ${employee.user?.last_name || ''}`.trim(),
+                })) || []}
                 value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  backgroundColor: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <option value="">All Employees</option>
-                {employees?.map((employee: any) => (
-                  <option key={employee.user_id} value={employee.user_id}>
-                    {employee.user?.first_name} {employee.user?.last_name}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setSelectedUserId(value)}
+                placeholder="Search employees..."
+                emptyOption={{ value: '', label: 'All Employees' }}
+              />
             </div>
           )}
           {/* Workflow Status filter - only visible to admins */}
           {isAdmin && (
             <div>
               <label className="label">Workflow Status</label>
-              <select
-                className="input"
+              <SearchableSelect
+                options={Object.entries(WORKFLOW_STATUSES).map(([key, { label, icon }]) => ({
+                  value: key,
+                  label: `${icon} ${label}`,
+                }))}
                 value={selectedWorkflowStatus}
-                onChange={(e) => setSelectedWorkflowStatus(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  backgroundColor: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <option value="">All Statuses</option>
-                {Object.entries(WORKFLOW_STATUSES).map(([key, { label, icon }]) => (
-                  <option key={key} value={key}>
-                    {icon} {label}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => setSelectedWorkflowStatus(value)}
+                placeholder="Search statuses..."
+                emptyOption={{ value: '', label: 'All Statuses' }}
+              />
             </div>
           )}
         </div>
