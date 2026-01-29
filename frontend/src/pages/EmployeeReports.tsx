@@ -252,7 +252,7 @@ export default function EmployeeReports() {
   const isLoading = loadingEmployees || loadingEntries;
 
   // Restrict to admins only
-  if (user?.role !== 'ADMIN') {
+  if (!isAdmin) {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
         <h2>Access Denied</h2>

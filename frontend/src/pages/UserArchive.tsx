@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { usersService } from '../services/supabaseServices';
 
 export default function UserArchive() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [showArchived, setShowArchived] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -43,7 +43,7 @@ export default function UserArchive() {
     }
   };
 
-  if (user?.role !== 'ADMIN') {
+  if (!isAdmin) {
     return (
       <div>
         <h2>User Archive</h2>

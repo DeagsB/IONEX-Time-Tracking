@@ -194,7 +194,7 @@ export default function WeekView() {
   const { data: viewedEmployee } = useQuery({
     queryKey: ['employee', viewUserId],
     queryFn: async () => {
-      if (!viewUserId || user?.role !== 'ADMIN') return null;
+      if (!viewUserId || !isAdmin) return null;
       const { data, error } = await supabase
         .from('users')
         .select('id, first_name, last_name, email')

@@ -134,7 +134,7 @@ const getCurrentPayPeriod = (): { start: string; end: string } => {
 };
 
 export default function Payroll() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
   
   // Default to current pay period based on biweekly schedule
@@ -355,7 +355,7 @@ export default function Payroll() {
     return end.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
   };
 
-  if (user?.role !== 'ADMIN') {
+  if (!isAdmin) {
     return (
       <div>
         <h2>Reports</h2>

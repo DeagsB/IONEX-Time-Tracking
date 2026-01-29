@@ -36,7 +36,7 @@ export default function Projects() {
   });
 
   const { data: projects } = useQuery({
-    queryKey: ['projects', user?.id, user?.role],
+    queryKey: ['projects', user?.id, isAdmin],
     queryFn: () => projectsService.getAll(user?.id),
   });
 
@@ -77,7 +77,7 @@ export default function Projects() {
         
         // For non-admin users, only count their own hours
         // For admin users, count all hours unless toggle is on
-        if (user?.role !== 'ADMIN' || showOnlyMyHours) {
+        if (!isAdmin || showOnlyMyHours) {
           // Only count hours for the current user
           if (entry.user_id === user?.id) {
             hoursMap[projectId] = (hoursMap[projectId] || 0) + Number(entry.hours);
@@ -90,7 +90,7 @@ export default function Projects() {
     });
     
     return hoursMap;
-  }, [allTimeEntries, projects, user?.id, user?.role, showOnlyMyHours]);
+  }, [allTimeEntries, projects, user?.id, isAdmin, showOnlyMyHours]);
 
   // Format hours helper
   const formatHours = (hours: number): string => {

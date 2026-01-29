@@ -58,7 +58,7 @@ export default function Sidebar() {
           <SidebarLink to="/calendar" active={isActive('/calendar')}>
             Timer
           </SidebarLink>
-          {user?.role !== 'ADMIN' && (
+          {!isAdmin && (
             <>
               <SidebarLink to="/projects" active={isActive('/projects')}>
                 Projects
