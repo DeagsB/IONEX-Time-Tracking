@@ -75,6 +75,11 @@ export default function Sidebar() {
               <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
                 Service Tickets
               </SidebarLink>
+              {!isDemoMode && (
+                <SidebarLink to="/profile" active={isActive('/profile')}>
+                  Profile
+                </SidebarLink>
+              )}
             </>
           )}
         </div>
