@@ -2042,9 +2042,8 @@ export default function WeekView() {
                         cursor: 'grab',
                         display: 'flex',
                         flexDirection: 'column',
-                        boxShadow: isHovered ? '0 2px 6px rgba(0,0,0,0.15)' : '0 2px 4px rgba(0,0,0,0.1)',
-                        transform: isHovered ? 'scale(1.008)' : 'none',
-                        transition: 'box-shadow 0.15s ease, transform 0.15s ease',
+                        boxShadow: isHovered ? `0 2px 4px rgba(0,0,0,0.1), 0 0 12px ${color}99` : '0 2px 4px rgba(0,0,0,0.1)',
+                        transition: 'box-shadow 0.2s ease',
                           zIndex: isDragging ? 20 : overlapPos.zIndex,
                           pointerEvents: 'auto',
                           boxSizing: 'border-box'
