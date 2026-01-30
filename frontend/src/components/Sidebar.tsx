@@ -178,27 +178,30 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Sign Out - fixed above the dividing line */}
-      <div style={{ padding: '0 15px 16px', flexShrink: 0 }}>
+      {/* Sign Out - fixed above the dividing line (different style so it's obvious it doesn't scroll) */}
+      <div style={{
+        padding: '12px 15px 16px',
+        flexShrink: 0,
+        borderTop: '1px solid var(--border-color)',
+        backgroundColor: 'var(--bg-secondary)',
+      }}>
         <button
           onClick={handleSignOut}
           style={{
             display: 'block',
-            width: 'calc(100% - 16px)',
-            padding: '10px 16px',
+            width: '100%',
+            padding: '10px 14px',
             color: 'var(--text-primary)',
             textDecoration: 'none',
             borderRadius: '8px',
-            marginBottom: '4px',
-            marginLeft: '8px',
-            marginRight: '8px',
+            margin: 0,
             backgroundColor: 'transparent',
-            fontWeight: '400',
+            fontWeight: '500',
             fontSize: '14px',
             transition: 'all 0.2s ease',
-            border: 'none',
+            border: '1px solid var(--border-color)',
             cursor: 'pointer',
-            textAlign: 'left',
+            textAlign: 'center',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
