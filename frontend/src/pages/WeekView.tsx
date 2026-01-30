@@ -542,96 +542,35 @@ export default function WeekView() {
     
     const startDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), startHour, startMin);
     
-    // Check for overnight entry (end time is earlier than start time)
+    // End time: same day or next day (overnight = one continuous entry)
     const isOvernight = (endHour * 60 + endMin) < (startHour * 60 + startMin);
-    
-    if (isOvernight) {
-      // Split into two entries: one for day 1 (until midnight) and one for day 2 (from midnight)
-      const midnightDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate() + 1, 0, 0);
-      const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate() + 1, endHour, endMin);
-      
-      // Calculate hours for each part
-      const hoursDay1 = (midnightDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
-      const hoursDay2 = (endDate.getTime() - midnightDate.getTime()) / (1000 * 60 * 60);
-      const hasSecondPart = hoursDay2 >= 1 / 60; // at least 1 minute to create entry 2
+    const endDate = isOvernight
+      ? new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate() + 1, endHour, endMin)
+      : new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), endHour, endMin);
+    const totalHours = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
 
-      // No project = internal time, not billable
-      const isBillableOvernight = isPanelShop ? false : (newEntry.project_id ? newEntry.billable : false);
-      const rateTypeOvernight = isPanelShop ? 'Shop Time' : (newEntry.project_id ? newEntry.rate_type : 'Internal');
+    const isBillable = isPanelShop ? false : (newEntry.project_id ? newEntry.billable : false);
+    const timeEntryData: any = {
+      user_id: actualUserId,
+      date: dateStr,
+      start_time: startDate.toISOString(),
+      end_time: endDate.toISOString(),
+      hours: totalHours,
+      rate: 0,
+      description: newEntry.description || '',
+      billable: isBillable,
+      rate_type: isPanelShop ? 'Shop Time' : (newEntry.project_id ? newEntry.rate_type : 'Internal'),
+      is_demo: isDemoMode,
+      location: newEntry.location || null,
+      customer_id: newEntry.customer_id || null,
+      project_id: newEntry.project_id || null,
+    };
 
-      // Entry 1: Start time to midnight on day 1 (always create when overnight)
-      const entry1Desc = hasSecondPart
-        ? (newEntry.description ? `${newEntry.description} (overnight 1/2)` : '(overnight 1/2)')
-        : (newEntry.description ? `${newEntry.description} (overnight)` : '(overnight)');
-      const entry1: any = {
-        user_id: actualUserId,
-        date: dateStr,
-        start_time: startDate.toISOString(),
-        end_time: midnightDate.toISOString(),
-        hours: hoursDay1,
-        rate: 0,
-        description: entry1Desc,
-        billable: isBillableOvernight,
-        rate_type: rateTypeOvernight,
-        is_demo: isDemoMode,
-        location: newEntry.location || null,
-        customer_id: newEntry.customer_id || null,
-        project_id: newEntry.project_id || null,
-      };
-
-      createTimeEntryMutation.mutate(entry1);
-
-      if (hasSecondPart) {
-        const day2Month = String(midnightDate.getMonth() + 1).padStart(2, '0');
-        const day2Day = String(midnightDate.getDate()).padStart(2, '0');
-        const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
-        const entry2: any = {
-          user_id: actualUserId,
-          date: dateStrDay2,
-          start_time: midnightDate.toISOString(),
-          end_time: endDate.toISOString(),
-          hours: hoursDay2,
-          rate: 0,
-          description: newEntry.description ? `${newEntry.description} (overnight 2/2)` : '(overnight 2/2)',
-          billable: isBillableOvernight,
-          rate_type: rateTypeOvernight,
-          is_demo: isDemoMode,
-          location: newEntry.location || null,
-          customer_id: newEntry.customer_id || null,
-          project_id: newEntry.project_id || null,
-        };
-        createTimeEntryMutation.mutate(entry2);
-      }
-    } else {
-      // Normal entry (same day)
-      const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), endHour, endMin);
-      
-      // No project = internal time, not billable
-      const isBillable = isPanelShop ? false : (newEntry.project_id ? newEntry.billable : false);
-      
-      const timeEntryData: any = {
-        user_id: actualUserId,
-        date: dateStr,
-        start_time: startDate.toISOString(),
-        end_time: endDate.toISOString(),
-        hours: newEntry.hours,
-        rate: 0,
-        description: newEntry.description || '',
-        billable: isBillable,
-        rate_type: isPanelShop ? 'Shop Time' : (newEntry.project_id ? newEntry.rate_type : 'Internal'),
-        is_demo: isDemoMode,
-        location: newEntry.location || null,
-      };
-
-      if (newEntry.project_id) {
-        timeEntryData.project_id = newEntry.project_id;
-      }
-
-      console.log('Submitting time entry (with timezone):', timeEntryData);
-      console.log('  Local time clicked:', selectedSlot.startTime, '-', selectedSlot.endTime);
-      console.log('  ISO timestamps:', startDate.toISOString(), endDate.toISOString());
-      createTimeEntryMutation.mutate(timeEntryData);
+    if (newEntry.project_id) {
+      timeEntryData.project_id = newEntry.project_id;
     }
+
+    createTimeEntryMutation.mutate(timeEntryData);
   };
 
   // Handle clicking on an existing time entry to edit it
@@ -798,90 +737,27 @@ export default function WeekView() {
     const [startHour, startMin] = editedEntry.start_time.split(':').map(Number);
     const [endHour, endMin] = editedEntry.end_time.split(':').map(Number);
     
-    // Check for overnight entry (end time is earlier than start time)
+    // End time: same day or next day (overnight = one continuous entry)
     const isOvernight = (endHour * 60 + endMin) < (startHour * 60 + startMin);
-    
-    // Create Date objects with local time
-    const startDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), startHour, startMin);
-    
-    if (isOvernight) {
-      // Split into two entries: delete original, create one or two new ones
-      const midnightDate = new Date(year, entryDate.getMonth(), entryDate.getDate() + 1, 0, 0);
-      const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate() + 1, endHour, endMin);
-      
-      const hoursDay1 = (midnightDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
-      const hoursDay2 = (endDate.getTime() - midnightDate.getTime()) / (1000 * 60 * 60);
-      const hasSecondPart = hoursDay2 >= 1 / 60;
+    const endDate = isOvernight
+      ? new Date(year, entryDate.getMonth(), entryDate.getDate() + 1, endHour, endMin)
+      : new Date(year, entryDate.getMonth(), entryDate.getDate(), endHour, endMin);
+    const hours = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
 
-      const actualUserId = editingEntry.user_id || user?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
-      const entry1Desc = hasSecondPart
-        ? (editedEntry.description ? `${editedEntry.description} (overnight 1/2)` : '(overnight 1/2)')
-        : (editedEntry.description ? `${editedEntry.description} (overnight)` : '(overnight)');
+    const updateData: any = {
+      description: editedEntry.description,
+      start_time: startDate.toISOString(),
+      end_time: endDate.toISOString(),
+      hours,
+      date: dateStr,
+      billable: isPanelShop ? false : editedEntry.billable,
+      rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
+      location: editedEntry.location || null,
+      customer_id: editedEntry.customer_id || null,
+      project_id: editedEntry.project_id || null,
+    };
 
-      const entry1: any = {
-        user_id: actualUserId,
-        date: dateStr,
-        start_time: startDate.toISOString(),
-        end_time: midnightDate.toISOString(),
-        hours: hoursDay1,
-        rate: editingEntry.rate || 0,
-        description: entry1Desc,
-        billable: isPanelShop ? false : editedEntry.billable,
-        rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
-        is_demo: editingEntry.is_demo || isDemoMode,
-        location: editedEntry.location || null,
-        customer_id: editedEntry.customer_id || null,
-        project_id: editedEntry.project_id || null,
-      };
-
-      deleteTimeEntryMutation.mutate(editingEntry.id);
-      createTimeEntryMutation.mutate(entry1);
-      if (hasSecondPart) {
-        const day2Month = String(midnightDate.getMonth() + 1).padStart(2, '0');
-        const day2Day = String(midnightDate.getDate()).padStart(2, '0');
-        const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
-        const entry2: any = {
-          user_id: actualUserId,
-          date: dateStrDay2,
-          start_time: midnightDate.toISOString(),
-          end_time: endDate.toISOString(),
-          hours: hoursDay2,
-          rate: editingEntry.rate || 0,
-          description: editedEntry.description ? `${editedEntry.description} (overnight 2/2)` : '(overnight 2/2)',
-          billable: isPanelShop ? false : editedEntry.billable,
-          rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
-          is_demo: editingEntry.is_demo || isDemoMode,
-          location: editedEntry.location || null,
-          customer_id: editedEntry.customer_id || null,
-          project_id: editedEntry.project_id || null,
-        };
-        createTimeEntryMutation.mutate(entry2);
-      }
-      setShowEditModal(false);
-      setEditingEntry(null);
-    } else {
-      // Normal entry (same day)
-      const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), endHour, endMin);
-      
-      // Calculate hours
-      const durationMs = endDate.getTime() - startDate.getTime();
-      const hours = durationMs / (1000 * 60 * 60);
-      
-      const updateData: any = {
-        description: editedEntry.description,
-        start_time: startDate.toISOString(),
-        end_time: endDate.toISOString(),
-        hours: hours,
-        date: dateStr,
-        billable: isPanelShop ? false : editedEntry.billable,
-        rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
-        location: editedEntry.location || null,
-        customer_id: editedEntry.customer_id || null,
-        project_id: editedEntry.project_id || null,
-      };
-      
-      updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
-    }
+    updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
   };
 
   // Handle deleting time entry
@@ -2447,12 +2323,6 @@ export default function WeekView() {
                     }}
                   >
                     {newEntry.hours.toFixed(2)}h
-                    {(() => {
-                      const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
-                      const [endH, endM] = selectedSlot.endTime.split(':').map(Number);
-                      const isOvernight = (endH * 60 + endM) < (startH * 60 + startM);
-                      return isOvernight ? <span style={{ color: '#ff9800', marginLeft: '4px', fontSize: '11px' }}>(+1 day)</span> : null;
-                    })()}
                   </div>
                 </div>
               </div>
