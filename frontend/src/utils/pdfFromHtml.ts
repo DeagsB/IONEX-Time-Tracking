@@ -269,8 +269,8 @@ export async function downloadPdfFromHtml(
 
       <!-- Travel/Expenses and Summary Row -->
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <!-- Travel/Expenses (table for aligned RATE, QTY, SUB; total at bottom, styled like Total Time) -->
-        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column; min-height: 140px; padding: 0;">
+        <!-- Travel/Expenses (single table, no spacer, so no gap below Total Expenses) -->
+        <div style="flex: 1; border: 1px solid #000;">
           <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
             <colgroup>
               <col style="width: auto;" />
@@ -304,23 +304,14 @@ export async function downloadPdfFromHtml(
               </tr>
               `).join('')}
             </tbody>
-          </table>
-          <div style="flex: 1; min-height: 8px;"></div>
-          <table style="width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; margin-bottom: 0;">
-            <colgroup>
-              <col style="width: auto;" />
-              <col style="width: 60px;" />
-              <col style="width: 40px;" />
-              <col style="width: 60px;" />
-            </colgroup>
-            <tbody>
+            <tfoot>
               <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
                 <td style="padding: 4px 6px 2px 6px; text-align: right;">Total Expenses</td>
                 <td style="padding: 4px 4px 2px 4px; border-left: 1px solid #000;"></td>
                 <td style="padding: 4px 4px 2px 4px; border-left: 1px solid #000;"></td>
                 <td style="padding: 4px 4px 2px 4px; border-left: 1px solid #000; text-align: right;">$${expensesTotal.toFixed(2)}</td>
               </tr>
-            </tbody>
+            </tfoot>
           </table>
         </div>
 
@@ -771,8 +762,8 @@ function buildPdfHtml(
 
       <!-- Travel/Expenses and Summary Row -->
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <!-- Travel/Expenses (table for aligned RATE, QTY, SUB; total at bottom, styled like Total Time) -->
-        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column; min-height: 140px; padding: 0;">
+        <!-- Travel/Expenses (single table, no spacer, so no gap below Total Expenses) -->
+        <div style="flex: 1; border: 1px solid #000;">
           <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
             <colgroup>
               <col style="width: auto;" />
@@ -806,23 +797,14 @@ function buildPdfHtml(
               </tr>
               `).join('')}
             </tbody>
-          </table>
-          <div style="flex: 1; min-height: 8px;"></div>
-          <table style="width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; margin-bottom: 0;">
-            <colgroup>
-              <col style="width: auto;" />
-              <col style="width: 60px;" />
-              <col style="width: 40px;" />
-              <col style="width: 60px;" />
-            </colgroup>
-            <tbody>
+            <tfoot>
               <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
                 <td style="padding: 4px 6px 2px 6px; text-align: right;">Total Expenses</td>
                 <td style="padding: 4px 4px 2px 4px; border-left: 1px solid #000;"></td>
                 <td style="padding: 4px 4px 2px 4px; border-left: 1px solid #000;"></td>
                 <td style="padding: 4px 4px 2px 4px; border-left: 1px solid #000; text-align: right;">$${expensesTotal.toFixed(2)}</td>
               </tr>
-            </tbody>
+            </tfoot>
           </table>
         </div>
 
