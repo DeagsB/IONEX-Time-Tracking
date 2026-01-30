@@ -269,33 +269,59 @@ export async function downloadPdfFromHtml(
 
       <!-- Travel/Expenses and Summary Row -->
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <!-- Travel/Expenses -->
-        <div style="flex: 1; border: 1px solid #000;">
-          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000; display: flex;">
-            <div style="flex: 1;">Travel / Subsistence / Expenses / Equipment</div>
-            <div style="width: 60px; text-align: center; border-left: 1px solid #000;">RATE</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #000;">QTY</div>
-            <div style="width: 60px; text-align: center; border-left: 1px solid #000;">SUB</div>
-          </div>
-          ${expenses.length > 0 ? expenses.map((expense) => `
-            <div style="display: flex; min-height: 16px; border-bottom: 1px solid #eee;">
-              <div style="flex: 1; padding: 2px 4px; font-size: 8pt;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</div>
-              <div style="width: 60px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: right; font-size: 8pt;">$${expense.rate.toFixed(2)}</div>
-              <div style="width: 40px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: center; font-size: 8pt;">${expense.quantity.toFixed(2)}</div>
-              <div style="width: 60px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: right; font-size: 8pt;">$${(expense.quantity * expense.rate).toFixed(2)}</div>
-            </div>
-          `).join('') : [1, 2, 3, 4].map(() => `
-            <div style="display: flex; min-height: 16px; border-bottom: 1px solid #eee;">
-              <div style="flex: 1; padding: 2px 4px;"></div>
-              <div style="width: 60px; border-left: 1px solid #ccc;"></div>
-              <div style="width: 40px; border-left: 1px solid #ccc;"></div>
-              <div style="width: 60px; border-left: 1px solid #ccc;"></div>
-            </div>
-          `).join('')}
-          <div style="display: flex; border-top: 1px solid #000; font-weight: bold;">
-            <div style="flex: 1; padding: 4px 6px; text-align: right;">Total Expenses</div>
-            <div style="width: 60px; border-left: 1px solid #000; padding: 4px; text-align: center;">$${expensesTotal.toFixed(2)}</div>
-          </div>
+        <!-- Travel/Expenses (table for aligned RATE, QTY, SUB; total at bottom, styled like Total Time) -->
+        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column; min-height: 140px;">
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+            <colgroup>
+              <col style="width: auto;" />
+              <col style="width: 60px;" />
+              <col style="width: 40px;" />
+              <col style="width: 60px;" />
+            </colgroup>
+            <thead>
+              <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
+                <td style="padding: 3px 6px;">Travel / Subsistence / Expenses / Equipment</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">RATE</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">QTY</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SUB</td>
+              </tr>
+            </thead>
+            <tbody>
+              ${expenses.length > 0 ? expenses.map((expense) => `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${expense.rate.toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: center; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">${expense.quantity.toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
+              </tr>
+              `).join('') : ''}
+              ${Array.from({ length: Math.max(0, 4 - expenses.length) }).map(() => `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+              </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div style="flex: 1; min-height: 8px;"></div>
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+            <colgroup>
+              <col style="width: auto;" />
+              <col style="width: 60px;" />
+              <col style="width: 40px;" />
+              <col style="width: 60px;" />
+            </colgroup>
+            <tbody>
+              <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
+                <td style="padding: 4px 6px; text-align: right;">Total Expenses</td>
+                <td style="padding: 4px; border-left: 1px solid #000;"></td>
+                <td style="padding: 4px; border-left: 1px solid #000;"></td>
+                <td style="padding: 4px; border-left: 1px solid #000; text-align: right;">$${expensesTotal.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- Service Ticket Summary -->
@@ -745,33 +771,59 @@ function buildPdfHtml(
 
       <!-- Travel/Expenses and Summary Row -->
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <!-- Travel/Expenses -->
-        <div style="flex: 1; border: 1px solid #000;">
-          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000; display: flex;">
-            <div style="flex: 1;">Travel / Subsistence / Expenses / Equipment</div>
-            <div style="width: 60px; text-align: center; border-left: 1px solid #000;">RATE</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #000;">QTY</div>
-            <div style="width: 60px; text-align: center; border-left: 1px solid #000;">SUB</div>
-          </div>
-          ${expenses.length > 0 ? expenses.map((expense) => `
-            <div style="display: flex; min-height: 16px; border-bottom: 1px solid #eee;">
-              <div style="flex: 1; padding: 2px 4px; font-size: 8pt;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</div>
-              <div style="width: 60px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: right; font-size: 8pt;">$${expense.rate.toFixed(2)}</div>
-              <div style="width: 40px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: center; font-size: 8pt;">${expense.quantity.toFixed(2)}</div>
-              <div style="width: 60px; border-left: 1px solid #ccc; padding: 2px 4px; text-align: right; font-size: 8pt;">$${(expense.quantity * expense.rate).toFixed(2)}</div>
-            </div>
-          `).join('') : [1, 2, 3, 4].map(() => `
-            <div style="display: flex; min-height: 16px; border-bottom: 1px solid #eee;">
-              <div style="flex: 1; padding: 2px 4px;"></div>
-              <div style="width: 60px; border-left: 1px solid #ccc;"></div>
-              <div style="width: 40px; border-left: 1px solid #ccc;"></div>
-              <div style="width: 60px; border-left: 1px solid #ccc;"></div>
-            </div>
-          `).join('')}
-          <div style="display: flex; border-top: 1px solid #000; font-weight: bold;">
-            <div style="flex: 1; padding: 4px 6px; text-align: right;">Total Expenses</div>
-            <div style="width: 60px; border-left: 1px solid #000; padding: 4px; text-align: center;">$${expensesTotal.toFixed(2)}</div>
-          </div>
+        <!-- Travel/Expenses (table for aligned RATE, QTY, SUB; total at bottom, styled like Total Time) -->
+        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column; min-height: 140px;">
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+            <colgroup>
+              <col style="width: auto;" />
+              <col style="width: 60px;" />
+              <col style="width: 40px;" />
+              <col style="width: 60px;" />
+            </colgroup>
+            <thead>
+              <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
+                <td style="padding: 3px 6px;">Travel / Subsistence / Expenses / Equipment</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">RATE</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">QTY</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SUB</td>
+              </tr>
+            </thead>
+            <tbody>
+              ${expenses.length > 0 ? expenses.map((expense) => `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${expense.rate.toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: center; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">${expense.quantity.toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
+              </tr>
+              `).join('') : ''}
+              ${Array.from({ length: Math.max(0, 4 - expenses.length) }).map(() => `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+              </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <div style="flex: 1; min-height: 8px;"></div>
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+            <colgroup>
+              <col style="width: auto;" />
+              <col style="width: 60px;" />
+              <col style="width: 40px;" />
+              <col style="width: 60px;" />
+            </colgroup>
+            <tbody>
+              <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
+                <td style="padding: 4px 6px; text-align: right;">Total Expenses</td>
+                <td style="padding: 4px; border-left: 1px solid #000;"></td>
+                <td style="padding: 4px; border-left: 1px solid #000;"></td>
+                <td style="padding: 4px; border-left: 1px solid #000; text-align: right;">$${expensesTotal.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- Service Ticket Summary -->
