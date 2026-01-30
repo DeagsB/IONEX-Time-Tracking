@@ -29,7 +29,7 @@ export default function Sidebar() {
       position: 'fixed',
       left: 0,
       top: 0,
-      padding: '24px 0',
+      padding: '24px 0 0 0',
       boxShadow: 'var(--shadow-sm)',
       display: 'flex',
       flexDirection: 'column',
