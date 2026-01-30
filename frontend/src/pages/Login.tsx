@@ -217,7 +217,7 @@ export default function Login() {
             fontWeight: '700',
             color: 'var(--text-primary)'
           }}>
-            IONEX Time Tracking
+            Time Tracking
           </h1>
           <h2 style={{ 
             marginBottom: '0',
