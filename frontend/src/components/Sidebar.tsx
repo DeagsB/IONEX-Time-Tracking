@@ -69,6 +69,9 @@ export default function Sidebar() {
           </SidebarLink>
           {!isAdmin && (
             <>
+              <SidebarLink to="/manage" active={isActive('/manage')}>
+                Manage
+              </SidebarLink>
               <SidebarLink to="/projects" active={isActive('/projects')}>
                 Projects
               </SidebarLink>
