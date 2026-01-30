@@ -122,13 +122,61 @@ export default function Login() {
       background: 'linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%)',
       padding: '20px'
     }}>
-      <button 
-        className="theme-toggle" 
-        onClick={toggleTheme} 
-        style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}
+      <button
+        type="button"
+        className="theme-toggle"
+        onClick={toggleTheme}
         title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+        style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          zIndex: 10,
+          width: '64px',
+          height: '32px',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          backgroundColor: 'var(--bg-secondary)',
+          cursor: 'pointer',
+          padding: 0,
+          display: 'flex',
+          alignItems: 'center',
+          overflow: 'hidden',
+          boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06)',
+        }}
       >
-        {theme === 'light' ? '🌙' : '☀️'}
+        <span style={{
+          position: 'absolute',
+          left: '8px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          fontSize: '14px',
+          opacity: theme === 'dark' ? 1 : 0.5,
+          transition: 'opacity 0.2s',
+          zIndex: 1,
+        }}>🌙</span>
+        <span style={{
+          position: 'absolute',
+          right: '8px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          fontSize: '14px',
+          opacity: theme === 'light' ? 1 : 0.5,
+          transition: 'opacity 0.2s',
+          zIndex: 1,
+        }}>☀️</span>
+        <span style={{
+          position: 'absolute',
+          left: theme === 'dark' ? '4px' : 'calc(100% - 28px)',
+          top: '4px',
+          width: '24px',
+          height: '24px',
+          borderRadius: '50%',
+          backgroundColor: 'var(--bg-primary)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          transition: 'left 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+          zIndex: 2,
+        }} />
       </button>
       <div className="card" style={{ 
         width: '100%', 
