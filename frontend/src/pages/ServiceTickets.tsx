@@ -233,7 +233,10 @@ export default function ServiceTickets() {
         }
       }
       await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
-      
+
+      // Mark ticket as PDF exported in workflow
+      await serviceTicketsService.markPdfExported(existingRecord.id, null, isDemoMode);
+
       // Invalidate and refetch queries to refresh the ticket list with the new ticket number
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
