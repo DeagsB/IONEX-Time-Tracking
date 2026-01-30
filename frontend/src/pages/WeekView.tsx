@@ -1514,6 +1514,7 @@ export default function WeekView() {
               borderRadius: '4px',
               backgroundColor: hoveredLegendId === proj.id ? 'var(--bg-tertiary, rgba(255,255,255,0.08))' : 'transparent',
               transition: 'background-color 0.15s ease',
+              cursor: 'default',
             }}
           >
             <div style={{
