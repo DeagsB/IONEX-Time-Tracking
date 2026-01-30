@@ -553,17 +553,16 @@ export default function WeekView() {
       // Calculate hours for each part
       const hoursDay1 = (midnightDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
       const hoursDay2 = (endDate.getTime() - midnightDate.getTime()) / (1000 * 60 * 60);
-      
-      // Format day 2 date string
-      const day2Month = String(midnightDate.getMonth() + 1).padStart(2, '0');
-      const day2Day = String(midnightDate.getDate()).padStart(2, '0');
-      const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
-      
+      const hasSecondPart = hoursDay2 >= 1 / 60; // at least 1 minute to create entry 2
+
       // No project = internal time, not billable
       const isBillableOvernight = isPanelShop ? false : (newEntry.project_id ? newEntry.billable : false);
       const rateTypeOvernight = isPanelShop ? 'Shop Time' : (newEntry.project_id ? newEntry.rate_type : 'Internal');
-      
-      // Entry 1: Start time to midnight on day 1
+
+      // Entry 1: Start time to midnight on day 1 (always create when overnight)
+      const entry1Desc = hasSecondPart
+        ? (newEntry.description ? `${newEntry.description} (overnight 1/2)` : '(overnight 1/2)')
+        : (newEntry.description ? `${newEntry.description} (overnight)` : '(overnight)');
       const entry1: any = {
         user_id: actualUserId,
         date: dateStr,
@@ -571,7 +570,7 @@ export default function WeekView() {
         end_time: midnightDate.toISOString(),
         hours: hoursDay1,
         rate: 0,
-        description: newEntry.description ? `${newEntry.description} (overnight 1/2)` : '(overnight 1/2)',
+        description: entry1Desc,
         billable: isBillableOvernight,
         rate_type: rateTypeOvernight,
         is_demo: isDemoMode,
@@ -580,30 +579,29 @@ export default function WeekView() {
         project_id: newEntry.project_id || null,
       };
 
-      // Entry 2: Midnight to end time on day 2
-      const entry2: any = {
-        user_id: actualUserId,
-        date: dateStrDay2,
-        start_time: midnightDate.toISOString(),
-        end_time: endDate.toISOString(),
-        hours: hoursDay2,
-        rate: 0,
-        description: newEntry.description ? `${newEntry.description} (overnight 2/2)` : '(overnight 2/2)',
-        billable: isBillableOvernight,
-        rate_type: rateTypeOvernight,
-        is_demo: isDemoMode,
-        location: newEntry.location || null,
-        customer_id: newEntry.customer_id || null,
-        project_id: newEntry.project_id || null,
-      };
-      
-      console.log('Submitting overnight entry split into two:');
-      console.log('  Entry 1 (Day 1):', entry1);
-      console.log('  Entry 2 (Day 2):', entry2);
-      
-      // Submit both entries
       createTimeEntryMutation.mutate(entry1);
-      createTimeEntryMutation.mutate(entry2);
+
+      if (hasSecondPart) {
+        const day2Month = String(midnightDate.getMonth() + 1).padStart(2, '0');
+        const day2Day = String(midnightDate.getDate()).padStart(2, '0');
+        const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
+        const entry2: any = {
+          user_id: actualUserId,
+          date: dateStrDay2,
+          start_time: midnightDate.toISOString(),
+          end_time: endDate.toISOString(),
+          hours: hoursDay2,
+          rate: 0,
+          description: newEntry.description ? `${newEntry.description} (overnight 2/2)` : '(overnight 2/2)',
+          billable: isBillableOvernight,
+          rate_type: rateTypeOvernight,
+          is_demo: isDemoMode,
+          location: newEntry.location || null,
+          customer_id: newEntry.customer_id || null,
+          project_id: newEntry.project_id || null,
+        };
+        createTimeEntryMutation.mutate(entry2);
+      }
     } else {
       // Normal entry (same day)
       const endDate = new Date(year, selectedSlot.date.getMonth(), selectedSlot.date.getDate(), endHour, endMin);
@@ -807,23 +805,19 @@ export default function WeekView() {
     const startDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), startHour, startMin);
     
     if (isOvernight) {
-      // Split into two entries: delete original, create two new ones
+      // Split into two entries: delete original, create one or two new ones
       const midnightDate = new Date(year, entryDate.getMonth(), entryDate.getDate() + 1, 0, 0);
       const endDate = new Date(year, entryDate.getMonth(), entryDate.getDate() + 1, endHour, endMin);
       
-      // Calculate hours for each part
       const hoursDay1 = (midnightDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
       const hoursDay2 = (endDate.getTime() - midnightDate.getTime()) / (1000 * 60 * 60);
-      
-      // Format day 2 date string
-      const day2Month = String(midnightDate.getMonth() + 1).padStart(2, '0');
-      const day2Day = String(midnightDate.getDate()).padStart(2, '0');
-      const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
-      
-      // Get user ID from the original entry
+      const hasSecondPart = hoursDay2 >= 1 / 60;
+
       const actualUserId = editingEntry.user_id || user?.id || '235d854a-1b7d-4e00-a5a4-43835c85c086';
-      
-      // Entry 1: Start time to midnight on day 1
+      const entry1Desc = hasSecondPart
+        ? (editedEntry.description ? `${editedEntry.description} (overnight 1/2)` : '(overnight 1/2)')
+        : (editedEntry.description ? `${editedEntry.description} (overnight)` : '(overnight)');
+
       const entry1: any = {
         user_id: actualUserId,
         date: dateStr,
@@ -831,7 +825,7 @@ export default function WeekView() {
         end_time: midnightDate.toISOString(),
         hours: hoursDay1,
         rate: editingEntry.rate || 0,
-        description: editedEntry.description ? `${editedEntry.description} (overnight 1/2)` : '(overnight 1/2)',
+        description: entry1Desc,
         billable: isPanelShop ? false : editedEntry.billable,
         rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
         is_demo: editingEntry.is_demo || isDemoMode,
@@ -840,33 +834,29 @@ export default function WeekView() {
         project_id: editedEntry.project_id || null,
       };
 
-      // Entry 2: Midnight to end time on day 2
-      const entry2: any = {
-        user_id: actualUserId,
-        date: dateStrDay2,
-        start_time: midnightDate.toISOString(),
-        end_time: endDate.toISOString(),
-        hours: hoursDay2,
-        rate: editingEntry.rate || 0,
-        description: editedEntry.description ? `${editedEntry.description} (overnight 2/2)` : '(overnight 2/2)',
-        billable: isPanelShop ? false : editedEntry.billable,
-        rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
-        is_demo: editingEntry.is_demo || isDemoMode,
-        location: editedEntry.location || null,
-        customer_id: editedEntry.customer_id || null,
-        project_id: editedEntry.project_id || null,
-      };
-      
-      console.log('Editing overnight entry - splitting into two:');
-      console.log('  Deleting original:', editingEntry.id);
-      console.log('  Creating Entry 1 (Day 1):', entry1);
-      console.log('  Creating Entry 2 (Day 2):', entry2);
-      
-      // Delete original and create two new entries
       deleteTimeEntryMutation.mutate(editingEntry.id);
       createTimeEntryMutation.mutate(entry1);
-      createTimeEntryMutation.mutate(entry2);
-      
+      if (hasSecondPart) {
+        const day2Month = String(midnightDate.getMonth() + 1).padStart(2, '0');
+        const day2Day = String(midnightDate.getDate()).padStart(2, '0');
+        const dateStrDay2 = `${midnightDate.getFullYear()}-${day2Month}-${day2Day}`;
+        const entry2: any = {
+          user_id: actualUserId,
+          date: dateStrDay2,
+          start_time: midnightDate.toISOString(),
+          end_time: endDate.toISOString(),
+          hours: hoursDay2,
+          rate: editingEntry.rate || 0,
+          description: editedEntry.description ? `${editedEntry.description} (overnight 2/2)` : '(overnight 2/2)',
+          billable: isPanelShop ? false : editedEntry.billable,
+          rate_type: isPanelShop ? 'Shop Time' : editedEntry.rate_type,
+          is_demo: editingEntry.is_demo || isDemoMode,
+          location: editedEntry.location || null,
+          customer_id: editedEntry.customer_id || null,
+          project_id: editedEntry.project_id || null,
+        };
+        createTimeEntryMutation.mutate(entry2);
+      }
       setShowEditModal(false);
       setEditingEntry(null);
     } else {
