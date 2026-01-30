@@ -112,15 +112,19 @@ export default function Sidebar() {
               marginBottom: '10px',
               padding: '0 10px'
             }}>
-              ANALYZE
+              MANAGE
             </div>
-            {isAdmin && (
-              <SidebarLink to="/payroll" active={isActive('/payroll')}>
-                Payroll
-              </SidebarLink>
-            )}
-            <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
-              Employee Reports
+            <SidebarLink to="/projects" active={isActive('/projects')}>
+              Projects
+            </SidebarLink>
+            <SidebarLink to="/customers" active={isActive('/customers')}>
+              Clients
+            </SidebarLink>
+            <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
+              Service Tickets
+            </SidebarLink>
+            <SidebarLink to="/employees" active={isActive('/employees')}>
+              Members
             </SidebarLink>
           </div>
         )}
@@ -136,19 +140,15 @@ export default function Sidebar() {
               marginBottom: '10px',
               padding: '0 10px'
             }}>
-              MANAGE
+              ANALYZE
             </div>
-            <SidebarLink to="/projects" active={isActive('/projects')}>
-              Projects
-            </SidebarLink>
-            <SidebarLink to="/customers" active={isActive('/customers')}>
-              Clients
-            </SidebarLink>
-            <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
-              Service Tickets
-            </SidebarLink>
-            <SidebarLink to="/employees" active={isActive('/employees')}>
-              Members
+            {isAdmin && (
+              <SidebarLink to="/payroll" active={isActive('/payroll')}>
+                Payroll
+              </SidebarLink>
+            )}
+            <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
+              Employee Reports
             </SidebarLink>
           </div>
         )}
