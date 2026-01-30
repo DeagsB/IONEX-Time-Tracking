@@ -120,6 +120,7 @@ export default function WeekView() {
   } | null>(null);
   const didMoveRef = useRef(false);
   const [hoveredEntryId, setHoveredEntryId] = useState<string | null>(null);
+  const [hoveredLegendId, setHoveredLegendId] = useState<string | null>(null);
 
   // Header visibility state (hide on scroll down, show on scroll up)
   const [headerVisible, setHeaderVisible] = useState(true);
@@ -1501,7 +1502,19 @@ export default function WeekView() {
           <div
             key={proj.id}
             title={fullLabel}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}
+            onMouseEnter={() => setHoveredLegendId(proj.id)}
+            onMouseLeave={() => setHoveredLegendId(null)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              flexShrink: 0,
+              padding: '4px 8px',
+              margin: '-4px -8px',
+              borderRadius: '4px',
+              backgroundColor: hoveredLegendId === proj.id ? 'var(--bg-tertiary, rgba(255,255,255,0.08))' : 'transparent',
+              transition: 'background-color 0.15s ease',
+            }}
           >
             <div style={{
               width: '12px',
