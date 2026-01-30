@@ -176,42 +176,42 @@ export default function Sidebar() {
             </SidebarLink>
           </div>
         )}
-
-        {/* Sign Out */}
-        <div style={{ marginBottom: '30px' }}>
-          <button
-            onClick={handleSignOut}
-            style={{
-              display: 'block',
-              width: 'calc(100% - 16px)',
-              padding: '10px 16px',
-              color: 'var(--text-primary)',
-              textDecoration: 'none',
-              borderRadius: '8px',
-              marginBottom: '4px',
-              marginLeft: '8px',
-              marginRight: '8px',
-              backgroundColor: 'transparent',
-              fontWeight: '400',
-              fontSize: '14px',
-              transition: 'all 0.2s ease',
-              border: 'none',
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            Sign Out
-          </button>
-        </div>
       </div>
 
-      {/* Dark mode toggle - iOS-style pill slider, bottom left */}
+      {/* Sign Out - fixed above the dividing line */}
+      <div style={{ padding: '0 15px 16px', flexShrink: 0 }}>
+        <button
+          onClick={handleSignOut}
+          style={{
+            display: 'block',
+            width: 'calc(100% - 16px)',
+            padding: '10px 16px',
+            color: 'var(--text-primary)',
+            textDecoration: 'none',
+            borderRadius: '8px',
+            marginBottom: '4px',
+            marginLeft: '8px',
+            marginRight: '8px',
+            backgroundColor: 'transparent',
+            fontWeight: '400',
+            fontSize: '14px',
+            transition: 'all 0.2s ease',
+            border: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+        >
+          Sign Out
+        </button>
+      </div>
+
+      {/* Dividing line + Dark mode toggle - iOS-style pill slider, bottom left */}
       <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
         <button
           type="button"
