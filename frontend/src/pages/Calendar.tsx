@@ -220,6 +220,56 @@ export default function Calendar() {
         )}
       </div>
 
+      {/* Project legend: number + title with colored square */}
+      {projects && projects.length > 0 && (
+        <div
+          className="card"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '12px 20px',
+            alignItems: 'center',
+            padding: '12px 16px',
+            backgroundColor: 'var(--bg-secondary)',
+            marginBottom: '20px',
+          }}
+        >
+          {projects.map((project: any) => (
+            <div
+              key={project.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <span
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '2px',
+                  flexShrink: 0,
+                  backgroundColor: project.color || '#22c55e',
+                }}
+                aria-hidden
+              />
+              <span>
+                <span style={{ fontWeight: '600' }}>
+                  {project.project_number ? `${project.project_number} - ${project.name}` : project.name}
+                </span>
+                {project.customer?.name && (
+                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 'normal' }}>
+                    {project.customer.name}
+                  </span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Calendar */}
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
