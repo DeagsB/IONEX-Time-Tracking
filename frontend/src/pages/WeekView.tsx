@@ -104,6 +104,22 @@ export default function WeekView() {
     dayContainerTop: number;
   } | null>(null);
 
+  // Move-drag state (drag entry to another day/time)
+  const [moveStart, setMoveStart] = useState<{
+    entry: any;
+    startX: number;
+    startY: number;
+    entryStyle: { top: number; height: number };
+  } | null>(null);
+  const [movingEntry, setMovingEntry] = useState<{
+    entry: any;
+    durationMinutes: number;
+    dropDateStr: string;
+    dropStartMinutes: number;
+  } | null>(null);
+  const didMoveRef = useRef(false);
+  const [hoveredEntryId, setHoveredEntryId] = useState<string | null>(null);
+
   // Header visibility state (hide on scroll down, show on scroll up)
   const [headerVisible, setHeaderVisible] = useState(true);
   const lastScrollTop = useRef(0);
@@ -1064,6 +1080,101 @@ export default function WeekView() {
     };
   }, [draggingEntry, updateTimeEntryMutation]);
 
+  // Handle move-drag: drag entry to another day/time slot
+  const HEADER_HEIGHT = 50;
+  const DRAG_THRESHOLD = 8;
+
+  useEffect(() => {
+    if (!moveStart && !movingEntry) return;
+
+    const getDropTarget = (clientX: number, clientY: number): { dateStr: string; startMinutes: number } | null => {
+      const el = document.elementFromPoint(clientX, clientY);
+      const dayContainer = el?.closest('[data-day-container]') as HTMLElement | null;
+      if (!dayContainer) return null;
+      const dateStr = dayContainer.getAttribute('data-date');
+      if (!dateStr) return null;
+      const rect = dayContainer.getBoundingClientRect();
+      const yInGrid = clientY - rect.top - HEADER_HEIGHT;
+      if (yInGrid < 0) return null;
+      const startMinutes = (yInGrid / rowHeight) * 60;
+      const roundedMinutes = Math.round(startMinutes / 15) * 15;
+      const clamped = Math.max(0, Math.min(24 * 60 - 15, roundedMinutes));
+      return { dateStr, startMinutes: clamped };
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (moveStart) {
+        const dx = e.clientX - moveStart.startX;
+        const dy = e.clientY - moveStart.startY;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+          didMoveRef.current = true;
+          const durationMinutes = (moveStart.entryStyle.height / rowHeight) * 60;
+          const roundedDuration = Math.round(durationMinutes / 15) * 15;
+          const target = getDropTarget(e.clientX, e.clientY);
+          setMovingEntry({
+            entry: moveStart.entry,
+            durationMinutes: roundedDuration || 15,
+            dropDateStr: target?.dateStr ?? moveStart.entry.date,
+            dropStartMinutes: target?.startMinutes ?? 0,
+          });
+          setMoveStart(null);
+        }
+        return;
+      }
+      if (movingEntry) {
+        const target = getDropTarget(e.clientX, e.clientY);
+        if (target)
+          setMovingEntry((prev) => prev ? { ...prev, dropDateStr: target.dateStr, dropStartMinutes: target.startMinutes } : null);
+      }
+    };
+
+    const handleMouseUp = async (e: MouseEvent) => {
+      if (movingEntry) {
+        const { entry, durationMinutes, dropDateStr, dropStartMinutes } = movingEntry;
+        const parseStart = (timeStr: string) => {
+          if (timeStr.includes('T') || timeStr.includes(' ')) {
+            const d = new Date(timeStr);
+            return d.getHours() * 60 + d.getMinutes();
+          }
+          const [h, m] = timeStr.slice(0, 5).split(':').map(Number);
+          return (h ?? 0) * 60 + (m ?? 0);
+        };
+        const originalStart = parseStart(entry.start_time);
+        const moved = entry.date !== dropDateStr || originalStart !== dropStartMinutes;
+        if (moved) {
+          const startH = Math.floor(dropStartMinutes / 60);
+          const startM = dropStartMinutes % 60;
+          const endMinutes = dropStartMinutes + durationMinutes;
+          const endH = Math.floor(endMinutes / 60);
+          const endM = endMinutes % 60;
+          const newStartTime = new Date(`${dropDateStr}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`);
+          const newEndTime = new Date(`${dropDateStr}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`);
+          const updateData: any = {
+            date: dropDateStr,
+            start_time: newStartTime.toISOString(),
+            end_time: newEndTime.toISOString(),
+            hours: durationMinutes / 60,
+          };
+          updateTimeEntryMutation.mutate({ id: entry.id, data: updateData });
+        }
+        setMovingEntry(null);
+      } else if (moveStart) {
+        handleEntryClick(moveStart.entry, e as unknown as React.MouseEvent);
+        setMoveStart(null);
+      }
+      didMoveRef.current = false;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    if (movingEntry) document.body.style.cursor = 'grabbing';
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+    };
+  }, [moveStart, movingEntry, rowHeight, updateTimeEntryMutation]);
+
   // Get time entry position and height for rendering on grid
   const getEntryStyle = (entry: any) => {
     if (!entry.start_time || !entry.end_time) return null;
@@ -1793,6 +1904,7 @@ export default function WeekView() {
               <div
                 key={dayIndex}
                 data-day-container
+                data-date={dateStr}
                 style={{
                   flex: 1,
                   minWidth: '150px',
@@ -1891,12 +2003,15 @@ export default function WeekView() {
                     const style = getEntryStyle(entry);
                     if (!style) return null;
 
+                    // Hide original entry when it's being moved
+                    if (movingEntry?.entry.id === entry.id) return null;
+
                     // Use project from entry relationship if available, otherwise fallback to projects list
                     const project = entry.project || projects?.find((p: any) => p.id === entry.project_id);
                     // Use project color if available, otherwise grey for no project
                     const color = entry.project_id && project?.color ? project.color : '#808080';
                     
-                    // Use preview height if dragging this entry
+                    // Use preview height if dragging this entry (resize)
                     const isDragging = draggingEntry?.entry.id === entry.id;
                     const displayHeight = isDragging && draggingEntry ? draggingEntry.previewHeight : Math.max(style.height, 30);
                     
@@ -1906,6 +2021,8 @@ export default function WeekView() {
                     
                     // Adjust height to stop exactly at the time line (subtract 2px to account for border and ensure no overlap)
                     const adjustedHeight = Math.max(displayHeight - 2, 28);
+
+                    const isHovered = hoveredEntryId === entry.id;
                   
                   return (
                     <div
@@ -1922,15 +2039,31 @@ export default function WeekView() {
                         fontSize: '12px',
                           color: 'white',
                         overflow: 'hidden',
-                        cursor: 'pointer',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                        cursor: 'grab',
+                        boxShadow: isHovered ? '0 4px 12px rgba(0,0,0,0.25)' : '0 2px 4px rgba(0,0,0,0.1)',
+                        transform: isHovered ? 'scale(1.02)' : 'none',
+                        transition: 'box-shadow 0.15s ease, transform 0.15s ease',
                           zIndex: isDragging ? 20 : overlapPos.zIndex,
                           pointerEvents: 'auto',
                           boxSizing: 'border-box'
                         }}
+                        onMouseDown={(e) => {
+                          if ((e.target as HTMLElement).closest('.drag-handle')) return;
+                          e.preventDefault();
+                          if (viewUserId && isAdmin) return;
+                          setMoveStart({
+                            entry,
+                            startX: e.clientX,
+                            startY: e.clientY,
+                            entryStyle: { top: style.top, height: style.height },
+                          });
+                        }}
+                        onMouseEnter={() => setHoveredEntryId(entry.id)}
+                        onMouseLeave={() => setHoveredEntryId(null)}
                         onClick={(e) => {
-                          // Don't open edit modal if clicking on drag handle
-                          if ((e.target as HTMLElement).closest('.drag-handle')) {
+                          if ((e.target as HTMLElement).closest('.drag-handle')) return;
+                          if (didMoveRef.current) {
+                            didMoveRef.current = false;
                             return;
                           }
                           handleEntryClick(entry, e);
@@ -2005,6 +2138,57 @@ export default function WeekView() {
                     </div>
                   );
                 })}
+
+                  {/* Move-drag ghost: show drop preview when dragging entry to this day */}
+                  {movingEntry && movingEntry.dropDateStr === dateStr && (() => {
+                    const ghostEntry = movingEntry.entry;
+                    const ghostProject = ghostEntry.project || projects?.find((p: any) => p.id === ghostEntry.project_id);
+                    const ghostColor = ghostEntry.project_id && ghostProject?.color ? ghostProject.color : '#808080';
+                    const ghostTop = (movingEntry.dropStartMinutes / 60) * rowHeight;
+                    const ghostHeight = Math.max((movingEntry.durationMinutes / 60) * rowHeight - 2, 28);
+                    const endM = movingEntry.dropStartMinutes + movingEntry.durationMinutes;
+                    const startH = Math.floor(movingEntry.dropStartMinutes / 60);
+                    const startMin = movingEntry.dropStartMinutes % 60;
+                    const endH = Math.floor(endM / 60);
+                    const endMin = endM % 60;
+                    const ghostTimeStr = `${String(startH).padStart(2, '0')}:${String(startMin).padStart(2, '0')} - ${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
+                    return (
+                      <div
+                        key="move-ghost"
+                        style={{
+                          position: 'absolute',
+                          top: `${ghostTop}px`,
+                          height: `${ghostHeight}px`,
+                          left: '4px',
+                          right: '4px',
+                          backgroundColor: ghostColor,
+                          borderRadius: '4px',
+                          padding: '6px 8px',
+                          fontSize: '12px',
+                          color: 'white',
+                          overflow: 'hidden',
+                          border: '2px dashed rgba(255,255,255,0.8)',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                          opacity: 0.95,
+                          pointerEvents: 'none',
+                          zIndex: 25,
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        <div style={{ fontWeight: '600', fontSize: '11px', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {ghostProject?.project_number ? `${ghostProject.project_number} - ${ghostProject?.name}` : (ghostProject?.name || '(No Project)')}
+                        </div>
+                        {ghostHeight > 45 && (
+                          <div style={{ fontSize: '10px', marginBottom: '2px', opacity: 0.9 }}>{ghostTimeStr}</div>
+                        )}
+                        {ghostEntry.description && (
+                          <div style={{ fontSize: '10px', opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {ghostEntry.description}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Running timer indicator */}
                   {timerRunning && timerStartTime && day.isToday && (() => {
