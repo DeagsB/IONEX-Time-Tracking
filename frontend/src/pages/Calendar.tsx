@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { projectsService, timeEntriesService } from '../services/supabaseServices';
+import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 
@@ -133,11 +134,8 @@ export default function Calendar() {
 
   const getTimeEntriesForDate = (date: Date) => {
     if (!timeEntries) return [];
-    const dateStr = date.toISOString().split('T')[0];
-    return timeEntries.filter((entry: any) => {
-      const entryDate = new Date(entry.date).toISOString().split('T')[0];
-      return entryDate === dateStr;
-    });
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return timeEntries.filter((entry: any) => getEntryHoursOnDate(entry, dateStr) > 0);
   };
 
   const navigateMonth = (direction: number) => {
@@ -247,7 +245,8 @@ export default function Calendar() {
             }
             
             const entries = getTimeEntriesForDate(date);
-            const totalHours = entries.reduce((sum: number, entry: any) => sum + entry.hours, 0);
+            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            const totalHours = entries.reduce((sum: number, entry: any) => sum + getEntryHoursOnDate(entry, dateStr), 0);
             const isToday = date.toDateString() === new Date().toDateString();
             
             return (

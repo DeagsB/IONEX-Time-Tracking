@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { timeEntriesService, projectsService } from '../services/supabaseServices';
+import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
 
 interface TimeEntry {
   id: string;
@@ -47,9 +48,10 @@ export default function DayDetail() {
   const { data: timeEntries } = useQuery({
     queryKey: ['timeEntries', 'day', date, user?.id],
     queryFn: async () => {
-      // Fetch entries filtered by user_id for privacy - even admins only see their own entries
       const entries = await timeEntriesService.getAll(undefined, user?.id);
-      return entries?.filter((entry: any) => entry.date === date);
+      if (!date || !entries) return [];
+      // Include entries that have any hours on this date (overnight rollover from previous day)
+      return entries.filter((entry: any) => getEntryHoursOnDate(entry, date) > 0);
     },
   });
 
@@ -194,7 +196,23 @@ export default function DayDetail() {
     }
   };
 
-  // Generate time slots
+  // Whether an entry's slice on this date overlaps a given hour (for overnight rollover)
+  const entrySliceOverlapsHour = (entry: any, dateStr: string, hour: number) => {
+    if (!entry.start_time || !entry.end_time) {
+      const entryHour = entry.start_time ? new Date(entry.start_time).getHours() : 0;
+      return entry.date === dateStr && entryHour === hour;
+    }
+    const dayStart = new Date(dateStr + 'T00:00:00').getTime();
+    const hourStartMs = dayStart + hour * 3600 * 1000;
+    const hourEndMs = dayStart + (hour + 1) * 3600 * 1000;
+    const startMs = new Date(entry.start_time).getTime();
+    const endMs = new Date(entry.end_time).getTime();
+    const overlapStart = Math.max(startMs, dayStart);
+    const dayEnd = new Date(dateStr + 'T23:59:59.999').getTime();
+    const overlapEnd = Math.min(endMs, dayEnd);
+    return overlapStart < hourEndMs && overlapEnd > hourStartMs;
+  };
+
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
   return (
@@ -256,12 +274,8 @@ export default function DayDetail() {
                 style={{ flex: 1, cursor: 'pointer' }}
                 onClick={() => handleHourClick(hour)}
               >
-                {/* Render entries for this hour */}
-                {timeEntries?.filter((entry: any) => {
-                  if (!entry.start_time) return false;
-                  const entryHour = new Date(entry.start_time).getHours();
-                  return entryHour === hour;
-                }).map((entry: any) => (
+                {/* Render entries for this hour (include overnight rollover on this date) */}
+                {timeEntries?.filter((entry: any) => date && entrySliceOverlapsHour(entry, date, hour)).map((entry: any) => (
                   <div
                     key={entry.id}
                     onClick={(e) => {

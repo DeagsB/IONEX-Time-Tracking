@@ -7,6 +7,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { timeEntriesService, projectsService, employeesService, customersService } from '../services/supabaseServices';
 import SearchableSelect from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
+import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
 
 interface TimeEntry {
   id: string;
@@ -227,13 +228,23 @@ export default function WeekView() {
     queryFn: async () => {
       // Filter by effectiveUserId (current user's ID, or viewUserId if admin is viewing another employee)
       const allEntries = await timeEntriesService.getAll(isDemoMode, effectiveUserId);
+      const weekStartDate = new Date(weekStart);
+      weekStartDate.setHours(0, 0, 0, 0);
+      const weekEndDate = new Date(weekEnd);
+      weekEndDate.setHours(23, 59, 59, 999);
       return allEntries?.filter((entry: any) => {
         const entryDate = new Date(entry.date + 'T00:00:00'); // Ensure local time comparison
-        const weekStartDate = new Date(weekStart);
-        weekStartDate.setHours(0, 0, 0, 0);
-        const weekEndDate = new Date(weekEnd);
-        weekEndDate.setHours(23, 59, 59, 999);
-        return entryDate >= weekStartDate && entryDate <= weekEndDate;
+        // Include if entry's start date is in week
+        if (entryDate >= weekStartDate && entryDate <= weekEndDate) return true;
+        // Include overnight entries that end in this week (so we show the rollover hours on the next day)
+        if (entry.end_time) {
+          const endDate = new Date(entry.end_time);
+          const endDateOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+          if (endDateOnly >= weekStartDate && endDateOnly <= weekEndDate && entryDate.getTime() !== endDateOnly.getTime()) {
+            return true;
+          }
+        }
+        return false;
       });
     },
   });
@@ -363,17 +374,17 @@ export default function WeekView() {
     return formatTime(Math.floor(totalSeconds));
   };
 
-  // Get day total
+  // Get day total (includes overnight rollover: only hours that fall on this date)
   const getDayTotal = (date: Date) => {
     if (!timeEntries) return '0:00:00';
-    // Format date in local time (YYYY-MM-DD) to match entry.date format
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
-    const totalSeconds = timeEntries
-      .filter((e: any) => e.date === dateStr)
-      .reduce((sum: number, e: any) => sum + Number(e.hours) * 3600, 0);
+    const totalSeconds = timeEntries.reduce(
+      (sum: number, e: any) => sum + getEntryHoursOnDate(e, dateStr) * 3600,
+      0
+    );
     return formatTime(Math.floor(totalSeconds));
   };
 
@@ -1084,34 +1095,46 @@ export default function WeekView() {
     return { top, height, startMinutes, endMinutes };
   };
 
-  // Check if two time ranges overlap
-  const doEntriesOverlap = (entry1: any, entry2: any) => {
-    const style1 = getEntryStyle(entry1);
-    const style2 = getEntryStyle(entry2);
+  // Get position/height for the portion of an entry on a specific date (for overnight rollover)
+  const getEntryStyleForDay = (entry: any, dateStr: string) => {
+    if (!entry.start_time || !entry.end_time) return null;
+    const dayStart = new Date(dateStr + 'T00:00:00').getTime();
+    const dayEnd = new Date(dateStr + 'T23:59:59.999').getTime();
+    const startMs = new Date(entry.start_time).getTime();
+    const endMs = new Date(entry.end_time).getTime();
+    const overlapStart = Math.max(startMs, dayStart);
+    const overlapEnd = Math.min(endMs, dayEnd);
+    if (overlapStart >= overlapEnd) return null;
+    const startMinutes = (overlapStart - dayStart) / (60 * 1000);
+    const durationMinutes = (overlapEnd - overlapStart) / (60 * 1000);
+    const top = (startMinutes / 60) * rowHeight;
+    const height = (durationMinutes / 60) * rowHeight;
+    return { top, height, startMinutes, endMinutes: startMinutes + durationMinutes };
+  };
+
+  // Check if two time ranges overlap (optionally on a specific day for overnight slices)
+  const doEntriesOverlap = (entry1: any, entry2: any, dateStr?: string) => {
+    const style1 = dateStr ? getEntryStyleForDay(entry1, dateStr) : getEntryStyle(entry1);
+    const style2 = dateStr ? getEntryStyleForDay(entry2, dateStr) : getEntryStyle(entry2);
     if (!style1 || !style2) return false;
-    
-    // Check if time ranges overlap
     return !(style1.endMinutes <= style2.startMinutes || style2.endMinutes <= style1.startMinutes);
   };
 
   // Calculate overlap position for an entry within a group of overlapping entries
-  const getOverlapPosition = (entry: any, allEntries: any[], entryIndex: number) => {
-    // Find all entries that overlap with this one
-    const overlappingEntries = allEntries.filter((e, idx) => 
-      idx !== entryIndex && doEntriesOverlap(entry, e)
+  const getOverlapPosition = (entry: any, allEntries: any[], entryIndex: number, dateStr?: string) => {
+    const overlappingEntries = allEntries.filter((e, idx) =>
+      idx !== entryIndex && doEntriesOverlap(entry, e, dateStr)
     );
-    
+
     if (overlappingEntries.length === 0) {
-      // No overlap, use default position
       return { left: '4px', right: '4px', topOffset: 0, zIndex: 10 };
     }
-    
-    // Find the index of this entry within the overlapping group
-    // Sort overlapping entries by start time to determine lane assignment
+
     const allOverlapping = [entry, ...overlappingEntries];
+    const getStyle = (e: any) => (dateStr ? getEntryStyleForDay(e, dateStr) : getEntryStyle(e));
     const sortedOverlapping = allOverlapping.sort((a, b) => {
-      const styleA = getEntryStyle(a);
-      const styleB = getEntryStyle(b);
+      const styleA = getStyle(a);
+      const styleB = getStyle(b);
       if (!styleA || !styleB) return 0;
       return styleA.startMinutes - styleB.startMinutes;
     });
@@ -1477,34 +1500,33 @@ export default function WeekView() {
         <div style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)' }}>
           {timeEntries && timeEntries.length > 0 ? (
             (() => {
-              // Group entries by date
-              const entriesByDate = timeEntries.reduce((acc: any, entry: any) => {
-                const date = entry.date;
-                if (!acc[date]) {
-                  acc[date] = [];
-                }
-                acc[date].push(entry);
-                return acc;
-              }, {});
+              // Build entries per date with hours on that date (overnight rollover)
+              const entriesByDate: Record<string, { entry: any; hoursOnThisDay: number }[]> = {};
+              weekDays.forEach((day) => {
+                const dateStr = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, '0')}-${String(day.date.getDate()).padStart(2, '0')}`;
+                const dayEntries = timeEntries
+                  .filter((e: any) => getEntryHoursOnDate(e, dateStr) > 0)
+                  .map((entry: any) => ({ entry, hoursOnThisDay: getEntryHoursOnDate(entry, dateStr) }));
+                if (dayEntries.length > 0) entriesByDate[dateStr] = dayEntries;
+              });
 
-              // Sort dates descending
-              const sortedDates = Object.keys(entriesByDate).sort((a, b) => 
+              const sortedDates = Object.keys(entriesByDate).sort((a, b) =>
                 new Date(b).getTime() - new Date(a).getTime()
               );
 
               return (
                 <div style={{ padding: '20px' }}>
                   {sortedDates.map((dateStr) => {
-                    const entries = entriesByDate[dateStr];
+                    const dayEntries = entriesByDate[dateStr];
+                    const entries = dayEntries.map((d) => d.entry);
                     const date = new Date(dateStr);
                     const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
                     const dayNum = date.getDate();
                     const monthName = date.toLocaleDateString('en-US', { month: 'short' });
                     const year = date.getFullYear();
                     const isCurrentYear = year === new Date().getFullYear();
-                    
-                    // Calculate day total
-                    const dayTotalSeconds = entries.reduce((sum: number, e: any) => sum + Number(e.hours) * 3600, 0);
+
+                    const dayTotalSeconds = dayEntries.reduce((sum: number, d) => sum + d.hoursOnThisDay * 3600, 0);
                     const dayTotalHours = Math.floor(dayTotalSeconds / 3600);
                     const dayTotalMinutes = Math.floor((dayTotalSeconds % 3600) / 60);
                     const dayTotalSecs = dayTotalSeconds % 60;
@@ -1539,12 +1561,11 @@ export default function WeekView() {
                           </div>
                         </div>
 
-                        {/* Entries */}
-                        {entries.map((entry: any) => {
+                        {/* Entries (hoursOnThisDay for overnight rollover) */}
+                        {dayEntries.map(({ entry, hoursOnThisDay }: { entry: any; hoursOnThisDay: number }) => {
                           const project = projects?.find((p: any) => p.id === entry.project_id) || entry.project;
                           const hasOverlap = entries.some((e: any) => e.id !== entry.id && checkOverlap(entry, e));
-                          
-                          // Format times
+
                           const formatTimeDisplay = (timeStr: string) => {
                             if (!timeStr) return '';
                             const date = new Date(timeStr);
@@ -1630,7 +1651,7 @@ export default function WeekView() {
                                     </div>
                                   )}
                                   <div style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '500' }}>
-                                    {formatDuration(entry.hours)}
+                                    {formatDuration(hoursOnThisDay)}
                                   </div>
                                 </div>
                               </div>
@@ -1765,7 +1786,7 @@ export default function WeekView() {
             const month = String(day.date.getMonth() + 1).padStart(2, '0');
             const dayNum = String(day.date.getDate()).padStart(2, '0');
             const dateStr = `${year}-${month}-${dayNum}`;
-            const dayEntries = timeEntries?.filter((e: any) => e.date === dateStr) || [];
+            const dayEntries = timeEntries?.filter((e: any) => getEntryHoursOnDate(e, dateStr) > 0) || [];
 
             return (
               <div
@@ -1865,9 +1886,9 @@ export default function WeekView() {
                     </div>
                   ))}
 
-                {/* Time entries */}
+                {/* Time entries (use per-day slice for overnight rollover) */}
                   {dayEntries.map((entry: any, entryIndex) => {
-                    const style = getEntryStyle(entry);
+                    const style = getEntryStyleForDay(entry, dateStr);
                     if (!style) return null;
 
                     // Hide original entry when it's being moved
@@ -1883,7 +1904,7 @@ export default function WeekView() {
                     const displayHeight = isDragging && draggingEntry ? draggingEntry.previewHeight : Math.max(style.height, 30);
                     
                     // Calculate overlap position
-                    const overlapPos = getOverlapPosition(entry, dayEntries, entryIndex);
+                    const overlapPos = getOverlapPosition(entry, dayEntries, entryIndex, dateStr);
                     const topPosition = Math.max(0, style.top + overlapPos.topOffset);
                     
                     // Adjust height to stop exactly at the time line (subtract 2px to account for border and ensure no overlap)
