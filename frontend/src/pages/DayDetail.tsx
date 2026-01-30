@@ -321,7 +321,7 @@ export default function DayDetail() {
                   <option value="">Select Project</option>
                   {projects?.map((project: any) => (
                     <option key={project.id} value={project.id}>
-                      {project.name}
+                      {project.project_number ? `${project.project_number} - ${project.name}` : project.name}
                     </option>
                   ))}
                 </select>

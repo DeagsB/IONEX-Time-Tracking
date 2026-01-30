@@ -305,7 +305,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
           <SearchableSelect
             options={filteredProjects.map((project: any) => ({
               value: project.id,
-              label: project.name,
+              label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,
             }))}
             value={selectedProjectId}
             onChange={handleProjectChange}

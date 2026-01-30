@@ -2195,28 +2195,7 @@ export default function WeekView() {
             <div style={{ padding: '20px' }}>
               <h3 style={{ marginBottom: '20px' }}>Add Time Entry</h3>
 
-              {/* 1. Description input */}
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="label">Description</label>
-                <textarea
-                  placeholder="What are you working on?"
-                  value={newEntry.description}
-                  onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
-                  style={{
-                    width: '100%',
-                    minHeight: '80px',
-                    padding: '12px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                    resize: 'none',
-                  }}
-                />
-              </div>
-
-              {/* 2. Time inputs */}
+              {/* 1. Time inputs */}
               <div className="form-group" style={{ marginBottom: '20px' }}>
                 <label className="label">Time</label>
                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
@@ -2341,7 +2320,7 @@ export default function WeekView() {
                           ?.filter((project: any) => project.customer_id === newEntry.customer_id)
                           .map((project: any) => ({
                             value: project.id,
-                            label: project.name,
+                            label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,
                           })) || []}
                         value={newEntry.project_id}
                         onChange={async (projectId) => {
@@ -2432,6 +2411,27 @@ export default function WeekView() {
                   </select>
                 </div>
               )}
+
+              {/* 7. Description input */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Description</label>
+                <textarea
+                  placeholder="What are you working on?"
+                  value={newEntry.description}
+                  onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
+                  style={{
+                    width: '100%',
+                    minHeight: '80px',
+                    padding: '12px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                    resize: 'none',
+                  }}
+                />
+              </div>
 
               {/* Add button */}
               <button
@@ -2542,28 +2542,7 @@ export default function WeekView() {
             </div>
 
             <div>
-              {/* 1. Description input */}
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="label">Description</label>
-                <textarea
-                  placeholder="What are you working on?"
-                  value={editedEntry.description}
-                  onChange={(e) => setEditedEntry({ ...editedEntry, description: e.target.value })}
-                  style={{
-                    width: '100%',
-                    minHeight: '80px',
-                    padding: '12px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                    resize: 'none',
-                  }}
-                />
-              </div>
-
-              {/* 2. Time inputs */}
+              {/* 1. Time inputs */}
               <div className="form-group" style={{ marginBottom: '20px' }}>
                 <label className="label">Time</label>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -2693,7 +2672,7 @@ export default function WeekView() {
                           ?.filter((project: any) => project.customer_id === editedEntry.customer_id)
                           .map((project: any) => ({
                             value: project.id,
-                            label: project.name,
+                            label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,
                           })) || []}
                         value={editedEntry.project_id}
                         onChange={async (projectId) => {
@@ -2785,6 +2764,27 @@ export default function WeekView() {
                   </select>
                 </div>
               )}
+
+              {/* 7. Description input */}
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Description</label>
+                <textarea
+                  placeholder="What are you working on?"
+                  value={editedEntry.description}
+                  onChange={(e) => setEditedEntry({ ...editedEntry, description: e.target.value })}
+                  style={{
+                    width: '100%',
+                    minHeight: '80px',
+                    padding: '12px',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                    resize: 'none',
+                  }}
+                />
+              </div>
 
               {/* Action buttons */}
               <div style={{ display: 'flex', gap: '10px' }}>

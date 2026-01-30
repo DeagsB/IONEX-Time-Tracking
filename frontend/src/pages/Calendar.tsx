@@ -177,7 +177,7 @@ export default function Calendar() {
                   <option value="">Select Project</option>
                   {projects?.map((project: any) => (
                     <option key={project.id} value={project.id}>
-                      {project.name}
+                      {project.project_number ? `${project.project_number} - ${project.name}` : project.name}
                     </option>
                   ))}
                 </select>
@@ -214,7 +214,10 @@ export default function Calendar() {
         </div>
         {timer.projectId && (
           <div style={{ marginTop: '10px', color: 'var(--text-secondary)' }}>
-            Project: {projects?.find((p: any) => p.id === timer.projectId)?.name || 'Unknown'}
+            Project: {(() => {
+            const p = projects?.find((p: any) => p.id === timer.projectId);
+            return p ? (p.project_number ? `${p.project_number} - ${p.name}` : p.name) : 'Unknown';
+          })()}
           </div>
         )}
       </div>
