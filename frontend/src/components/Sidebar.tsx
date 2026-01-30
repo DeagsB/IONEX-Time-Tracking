@@ -93,9 +93,9 @@ export default function Sidebar() {
             </SidebarLink>
             {!isDemoMode && (
               <div style={{ marginTop: '30px' }}>
-                <SidebarLink to="/profile" active={isActive('/profile')}>
-                  Profile
-                </SidebarLink>
+<SidebarLink to="/profile" active={isActive('/profile')}>
+                Settings
+              </SidebarLink>
               </div>
             )}
           </div>
@@ -181,9 +181,9 @@ export default function Sidebar() {
             </SidebarLink>
             {!isDemoMode && (
               <div style={{ marginTop: '30px' }}>
-                <SidebarLink to="/profile" active={isActive('/profile')}>
-                  Profile
-                </SidebarLink>
+<SidebarLink to="/profile" active={isActive('/profile')}>
+                Settings
+              </SidebarLink>
               </div>
             )}
           </div>
