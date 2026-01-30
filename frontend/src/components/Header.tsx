@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
@@ -18,7 +17,6 @@ interface HeaderProps {
 
 export default function Header({ onTimerStart, onTimerStop, timerRunning, timerDisplay, currentEntry, timerStartTime }: HeaderProps) {
   const { user, isDeveloper, effectiveRole, setEffectiveRole } = useAuth();
-  const { theme, toggleTheme } = useTheme();
   const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -333,21 +331,6 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
             }}
           />
         )}
-
-        <button
-          className="theme-toggle"
-          onClick={toggleTheme}
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '20px',
-            cursor: 'pointer',
-            padding: '5px',
-          }}
-          title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-        >
-          {theme === 'light' ? '🌙' : '☀️'}
-        </button>
 
         <div style={{
           display: 'flex',

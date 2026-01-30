@@ -1,11 +1,13 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
+import { useTheme } from '../context/ThemeContext';
 
 export default function Sidebar() {
   const location = useLocation();
   const { user, logout, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
 
@@ -28,10 +30,11 @@ export default function Sidebar() {
       left: 0,
       top: 0,
       padding: '24px 0',
-      overflowY: 'auto',
       boxShadow: 'var(--shadow-sm)',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
-      <div style={{ padding: '0 20px', marginBottom: '32px' }}>
+      <div style={{ padding: '0 20px', marginBottom: '32px', flexShrink: 0 }}>
         <img
           src="/ionex-logo-removebg-preview.png"
           alt="IONEX Time Tracking"
@@ -48,7 +51,7 @@ export default function Sidebar() {
         />
       </div>
 
-      <div style={{ padding: '0 15px' }}>
+      <div style={{ padding: '0 15px', flex: 1, overflowY: 'auto' }}>
         <div style={{ marginBottom: '30px' }}>
           <div style={{ 
             fontSize: '11px', 
@@ -202,6 +205,24 @@ export default function Sidebar() {
             Sign Out
           </button>
         </div>
+      </div>
+
+      {/* Dark mode toggle - bottom left */}
+      <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
+        <button
+          className="theme-toggle"
+          onClick={toggleTheme}
+          style={{
+            background: 'none',
+            border: 'none',
+            fontSize: '20px',
+            cursor: 'pointer',
+            padding: '4px',
+          }}
+          title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+        >
+          {theme === 'light' ? '🌙' : '☀️'}
+        </button>
       </div>
     </div>
   );
