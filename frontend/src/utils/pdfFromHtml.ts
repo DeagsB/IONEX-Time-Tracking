@@ -236,12 +236,12 @@ export async function downloadPdfFromHtml(
           <tbody>
             ${descriptionLines.map(line => `
             <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 2px 4px; font-size: 8pt;">${line.text}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.st || ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.ft || ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.tt || ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.so || ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.fo || ''}</td>
+              <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${line.text || '&nbsp;'}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.st || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.ft || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.tt || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.so || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.fo || ''}</td>
             </tr>
             `).join('')}
           </tbody>
@@ -712,12 +712,12 @@ function buildPdfHtml(
           <tbody>
             ${descriptionLines.map(line => `
             <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 2px 4px; font-size: 8pt;">${line.text}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.st || ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.ft || ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.tt || ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.so || ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.fo || ''}</td>
+              <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${line.text || '&nbsp;'}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.st || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.ft || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.tt || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.so || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.fo || ''}</td>
             </tr>
             `).join('')}
           </tbody>
