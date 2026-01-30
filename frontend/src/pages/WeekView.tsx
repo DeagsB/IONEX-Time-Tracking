@@ -1936,31 +1936,37 @@ export default function WeekView() {
                           handleEntryClick(entry, e);
                         }}
                       >
-                        {/* Description - main text (if exists) */}
+                        {/* Project number and name (bold) */}
+                        <div style={{ 
+                          fontWeight: '600', 
+                          fontSize: '11px', 
+                          marginBottom: '2px',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          {project?.project_number ? `${project.project_number} - ${project?.name}` : (project?.name || '(No Project)')}
+                        </div>
+                        
+                        {/* Time range (not bold) */}
+                        {displayHeight > 45 && (
+                          <div style={{ fontSize: '10px', marginBottom: '2px', opacity: 0.9 }}>
+                            {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
+                          </div>
+                        )}
+                        
+                        {/* Description (not bold) */}
                         {entry.description && (
                           <div style={{ 
-                            fontWeight: '600', 
-                            fontSize: '11px', 
-                            marginBottom: '2px',
+                            fontSize: '10px', 
+                            opacity: 0.9,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis'
                           }}>
                             {entry.description}
-                      </div>
+                          </div>
                         )}
-                        
-                        {/* Project name */}
-                        <div style={{ fontSize: '10px', opacity: 0.9 }}>
-                          {project?.name || '(No Project)'}
-                      </div>
-                        
-                        {/* Time range (only show if there's enough space) */}
-                        {displayHeight > 45 && (
-                          <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.8 }}>
-                            {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
-                        </div>
-                      )}
                         
                         {/* Drag handle - three line icon at bottom middle */}
                         <div
@@ -2085,40 +2091,37 @@ export default function WeekView() {
                           }} />
                         </div>
                         
-                        {/* Timer icon + Description (main text) */}
+                        {/* Project number and name (bold) */}
                         <div style={{ 
                           fontWeight: '600', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '4px', 
                           fontSize: '11px', 
                           marginTop: '12px',
+                          marginBottom: '2px',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
                         }}>
-                          <span style={{ fontSize: '10px', flexShrink: 0 }}>⏱️</span>
-                          <span style={{ 
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}>
-                            {currentEntry?.description || 'Timer Running'}
-                          </span>
-              </div>
+                          {timerProject?.project_number ? `${timerProject.project_number} - ${timerProject?.name}` : (timerProject?.name || '(No Project)')}
+                        </div>
                         
-                        {/* Project name */}
-                        <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.9 }}>
-                          {timerProject?.name || '(No Project)'}
-          </div>
-                        
-                        {/* Time range (only if there's space) */}
+                        {/* Time range (not bold) */}
                         {height > 45 && (
-                          <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.8 }}>
+                          <div style={{ fontSize: '10px', marginBottom: '2px', opacity: 0.9 }}>
                             {startedOnPreviousDay ? '(prev day) ' : ''}
                             {String(displayStartHour).padStart(2, '0')}:{String(displayStartMin).padStart(2, '0')} - Now
                           </div>
                         )}
+                        
+                        {/* Description (not bold) */}
+                        <div style={{ 
+                          fontSize: '10px', 
+                          opacity: 0.9,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>
+                          {currentEntry?.description || 'Timer Running'}
+                        </div>
                       </div>
                     );
                   })()}
