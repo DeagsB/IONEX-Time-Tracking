@@ -1490,18 +1490,23 @@ export default function WeekView() {
         backgroundColor: 'var(--bg-primary)'
       }}>
         {getProjectSummary().map((proj, index) => (
-          <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
             <div style={{
               width: '12px',
               height: '12px',
                 borderRadius: '2px',
+              flexShrink: 0,
               backgroundColor: proj.color || projectColors[index % projectColors.length]
             }} />
             <span style={{ 
               fontSize: '13px', 
               textTransform: 'uppercase',
               fontWeight: '600',
-              letterSpacing: '0.5px'
+              letterSpacing: '0.5px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '200px'
             }}>
               {proj.project_number ? `${proj.project_number} - ${proj.name}` : proj.name}
             </span>
