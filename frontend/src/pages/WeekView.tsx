@@ -737,6 +737,7 @@ export default function WeekView() {
     const [startHour, startMin] = editedEntry.start_time.split(':').map(Number);
     const [endHour, endMin] = editedEntry.end_time.split(':').map(Number);
     
+    const startDate = new Date(year, entryDate.getMonth(), entryDate.getDate(), startHour, startMin);
     // End time: same day or next day (overnight = one continuous entry)
     const isOvernight = (endHour * 60 + endMin) < (startHour * 60 + startMin);
     const endDate = isOvernight
