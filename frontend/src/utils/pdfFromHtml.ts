@@ -269,8 +269,8 @@ export async function downloadPdfFromHtml(
 
       <!-- Travel/Expenses and Summary Row -->
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <!-- Travel/Expenses (table for aligned RATE, QTY, SUB; total at bottom, styled like Total Time) -->
-        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column; min-height: 140px;">
+        <!-- Travel/Expenses (fixed-height box: table + spacer + total at bottom) -->
+        <div style="flex: 1; border: 1px solid #000; min-height: 140px; display: flex; flex-direction: column;">
           <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
             <colgroup>
               <col style="width: auto;" />
@@ -771,8 +771,8 @@ function buildPdfHtml(
 
       <!-- Travel/Expenses and Summary Row -->
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <!-- Travel/Expenses (table for aligned RATE, QTY, SUB; total at bottom, styled like Total Time) -->
-        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column; min-height: 140px;">
+        <!-- Travel/Expenses (fixed-height box: table + spacer + total at bottom) -->
+        <div style="flex: 1; border: 1px solid #000; min-height: 140px; display: flex; flex-direction: column;">
           <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
             <colgroup>
               <col style="width: auto;" />
