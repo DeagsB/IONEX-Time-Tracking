@@ -1483,14 +1483,20 @@ export default function WeekView() {
 
       {/* Project Summary Bars */}
         <div style={{
-          display: 'flex',
-        gap: '20px', 
-        padding: '15px 20px',
-        borderBottom: '1px solid var(--border-color)',
-        backgroundColor: 'var(--bg-primary)'
-      }}>
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          borderBottom: '1px solid var(--border-color)',
+          backgroundColor: 'var(--bg-primary)'
+        }}>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'nowrap',
+            gap: '20px',
+            padding: '15px 20px',
+            minWidth: 'min-content'
+          }}>
         {getProjectSummary().map((proj, index) => (
-          <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             <div style={{
               width: '12px',
               height: '12px',
@@ -1512,6 +1518,7 @@ export default function WeekView() {
             </span>
           </div>
           ))}
+          </div>
         </div>
 
       {/* List View */}
