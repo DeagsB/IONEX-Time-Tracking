@@ -441,6 +441,7 @@ export default function Employees() {
             <button 
               type="submit" 
               className="button button-primary"
+              style={{ marginTop: '20px' }}
               disabled={updateMutation.isPending || createMutation.isPending}
             >
               {updateMutation.isPending || createMutation.isPending 
