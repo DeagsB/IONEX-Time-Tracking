@@ -397,11 +397,13 @@ export default function WeekView() {
       const projectId = entry.project_id || 'no-project';
       const project = projects.find((p: any) => p.id === projectId);
       const projectName = project?.name || '(NO PROJECT)';
+      const projectNumber = project?.project_number;
       
       if (!projectMap.has(projectId)) {
         projectMap.set(projectId, {
           id: projectId,
           name: projectName,
+          project_number: projectNumber,
           color: project?.color || '#666',
           hours: 0,
         });
@@ -1493,7 +1495,7 @@ export default function WeekView() {
               fontWeight: '600',
               letterSpacing: '0.5px'
             }}>
-              {proj.name}
+              {proj.project_number ? `${proj.project_number} - ${proj.name}` : proj.name}
             </span>
           </div>
           ))}
