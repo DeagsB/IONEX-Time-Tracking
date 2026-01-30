@@ -33,7 +33,7 @@ export default function Layout() {
         <div style={{
           flex: 1,
           minHeight: 0,
-          overflow: 'hidden',
+          overflow: isCalendar ? 'hidden' : 'auto',
           padding: isCalendar ? 0 : '20px',
         }}>
           <Outlet />
