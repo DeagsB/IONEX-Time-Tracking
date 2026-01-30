@@ -1289,7 +1289,7 @@ export default function WeekView() {
   };
 
   return (
-    <div style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Banner when viewing another employee's calendar */}
       {viewUserId && isAdmin && viewedEmployee && (
         <div style={{
