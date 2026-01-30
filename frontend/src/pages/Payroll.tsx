@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -136,6 +137,7 @@ const getCurrentPayPeriod = (): { start: string; end: string } => {
 export default function Payroll() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
+  const navigate = useNavigate();
   
   // Default to current pay period based on biweekly schedule
   // Period shown until payday (5 days after period ends) has passed
@@ -528,8 +530,20 @@ export default function Payroll() {
               <tbody>
                 {employeeHours.map((emp) => (
                   <tr key={emp.userId} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '14px 16px' }}>
-                      <div style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{emp.name}</div>
+                    <td
+                      style={{
+                        padding: '14px 16px',
+                        cursor: isAdmin ? 'pointer' : 'default',
+                      }}
+                      onClick={() => {
+                        if (!isAdmin) return;
+                        navigate(`/calendar?viewUserId=${emp.userId}`);
+                      }}
+                      title={isAdmin ? `View ${emp.name}'s calendar and time entries` : undefined}
+                    >
+                      <div style={{ fontWeight: '500', color: isAdmin ? 'var(--link-color, #2563eb)' : 'var(--text-primary)' }}>
+                        {emp.name}
+                      </div>
                       <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{emp.email}</div>
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.internalHours > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
