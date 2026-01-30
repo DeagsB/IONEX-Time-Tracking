@@ -95,6 +95,7 @@ function AppRoutes() {
         <Route path="calendar" element={<WeekView />} />
         <Route path="calendar/:date" element={<DayDetail />} />
         <Route path="time-entries" element={<TimeEntries />} />
+        <Route path="manage" element={<Navigate to="/projects" replace />} />
         <Route path="projects" element={<Projects />} />
         <Route path="payroll" element={<Payroll />} />
         <Route path="profile" element={<Profile />} />
