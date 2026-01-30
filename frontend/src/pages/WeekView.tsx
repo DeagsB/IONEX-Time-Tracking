@@ -1252,21 +1252,21 @@ export default function WeekView() {
     const positionInGroup = sortedOverlapping.findIndex(e => e.id === entry.id);
     const lane = positionInGroup % 2; // Alternate between left (0) and right (1)
     
-    // Position based on lane
+    // Position based on lane - leave a visible gap between overlapping entries
     if (lane === 0) {
-      // Left lane - slightly to the left and up
+      // Left lane
       return { 
         left: '4px', 
-        right: '52%', // Leave space for right lane
-        topOffset: -3, // Move up 3px
+        right: 'calc(50% + 4px)', // 8px gap between lanes
+        topOffset: 0, // Don't use negative offset - avoids overlapping day header for 12:00 AM entries
         zIndex: 10 + positionInGroup 
       };
     } else {
-      // Right lane - slightly to the right and down
+      // Right lane
       return { 
-        left: '48%', // Start from middle
+        left: 'calc(50% - 4px)', // 8px gap between lanes
         right: '4px', 
-        topOffset: 3, // Move down 3px
+        topOffset: 0,
         zIndex: 10 + positionInGroup 
       };
     }
@@ -2017,7 +2017,7 @@ export default function WeekView() {
                     
                     // Calculate overlap position
                     const overlapPos = getOverlapPosition(entry, dayEntries, entryIndex);
-                    const topPosition = style.top + overlapPos.topOffset;
+                    const topPosition = Math.max(0, style.top + overlapPos.topOffset);
                     
                     // Adjust height to stop exactly at the time line (subtract 2px to account for border and ensure no overlap)
                     const adjustedHeight = Math.max(displayHeight - 2, 28);
