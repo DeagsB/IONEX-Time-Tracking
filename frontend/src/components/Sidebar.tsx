@@ -207,21 +207,63 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Dark mode toggle - bottom left */}
+      {/* Dark mode toggle - iOS-style pill slider, bottom left */}
       <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
         <button
+          type="button"
           className="theme-toggle"
           onClick={toggleTheme}
-          style={{
-            background: 'none',
-            border: 'none',
-            fontSize: '20px',
-            cursor: 'pointer',
-            padding: '4px',
-          }}
           title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+          style={{
+            position: 'relative',
+            width: '64px',
+            height: '32px',
+            borderRadius: '16px',
+            border: '1px solid var(--border-color)',
+            backgroundColor: 'var(--bg-secondary)',
+            cursor: 'pointer',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            overflow: 'hidden',
+            boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06)',
+          }}
         >
-          {theme === 'light' ? '🌙' : '☀️'}
+          {/* Moon - left */}
+          <span style={{
+            position: 'absolute',
+            left: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '14px',
+            opacity: theme === 'dark' ? 1 : 0.5,
+            transition: 'opacity 0.2s',
+            zIndex: 1,
+          }}>🌙</span>
+          {/* Sun - right */}
+          <span style={{
+            position: 'absolute',
+            right: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '14px',
+            opacity: theme === 'light' ? 1 : 0.5,
+            transition: 'opacity 0.2s',
+            zIndex: 1,
+          }}>☀️</span>
+          {/* Sliding thumb */}
+          <span style={{
+            position: 'absolute',
+            left: theme === 'dark' ? '4px' : 'calc(100% - 28px)',
+            top: '4px',
+            width: '24px',
+            height: '24px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--bg-primary)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            transition: 'left 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            zIndex: 2,
+          }} />
         </button>
       </div>
     </div>
