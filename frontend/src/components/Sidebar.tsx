@@ -67,13 +67,6 @@ export default function Sidebar() {
           <SidebarLink to="/calendar" active={isActive('/calendar')}>
             Timer
           </SidebarLink>
-          {!isAdmin && !isDemoMode && (
-            <div style={{ marginTop: '30px' }}>
-              <SidebarLink to="/profile" active={isActive('/profile')}>
-                Profile
-              </SidebarLink>
-            </div>
-          )}
         </div>
 
         {!isAdmin && (
@@ -98,6 +91,13 @@ export default function Sidebar() {
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
               Service Tickets
             </SidebarLink>
+            {!isDemoMode && (
+              <div style={{ marginTop: '30px' }}>
+                <SidebarLink to="/profile" active={isActive('/profile')}>
+                  Profile
+                </SidebarLink>
+              </div>
+            )}
           </div>
         )}
 
