@@ -358,7 +358,7 @@ export async function downloadPdfFromHtml(
       filename: `ServiceTicket_${ticket.ticketNumber || ticket.id.substring(0, 8)}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { 
-        scale: 2,
+        scale: 3,
         useCORS: true,
         logging: false,
       },
@@ -474,7 +474,7 @@ export async function generateAndStorePdf(
       filename: filename,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { 
-        scale: 2,
+        scale: 3,
         useCORS: true,
         logging: false,
       },
