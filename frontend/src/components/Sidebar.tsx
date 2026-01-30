@@ -69,15 +69,6 @@ export default function Sidebar() {
           </SidebarLink>
           {!isAdmin && (
             <>
-              <SidebarLink to="/manage" active={isActive('/manage')}>
-                Manage
-              </SidebarLink>
-              <SidebarLink to="/projects" active={isActive('/projects')}>
-                Projects
-              </SidebarLink>
-              <SidebarLink to="/customers" active={isActive('/customers')}>
-                Clients
-              </SidebarLink>
               <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
                 Service Tickets
               </SidebarLink>
@@ -89,6 +80,32 @@ export default function Sidebar() {
                 </div>
               )}
             </>
+          )}
+        </div>
+
+        {/* MANAGE section - same for admin and non-admin (admin also has Members) */}
+        <div style={{ marginBottom: '30px' }}>
+          <div style={{ 
+            fontSize: '11px', 
+            fontWeight: '600', 
+            textTransform: 'uppercase', 
+            letterSpacing: '1px',
+            color: 'var(--text-tertiary)',
+            marginBottom: '10px',
+            padding: '0 10px'
+          }}>
+            MANAGE
+          </div>
+          <SidebarLink to="/projects" active={isActive('/projects')}>
+            Projects
+          </SidebarLink>
+          <SidebarLink to="/customers" active={isActive('/customers')}>
+            Clients
+          </SidebarLink>
+          {isAdmin && (
+            <SidebarLink to="/employees" active={isActive('/employees')}>
+              Members
+            </SidebarLink>
           )}
         </div>
 
@@ -115,31 +132,6 @@ export default function Sidebar() {
             </SidebarLink>
             <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
               Employee Reports
-            </SidebarLink>
-          </div>
-        )}
-
-        {isAdmin && (
-          <div style={{ marginBottom: '30px' }}>
-            <div style={{ 
-              fontSize: '11px', 
-              fontWeight: '600', 
-              textTransform: 'uppercase', 
-              letterSpacing: '1px',
-              color: 'var(--text-tertiary)',
-              marginBottom: '10px',
-              padding: '0 10px'
-            }}>
-              MANAGE
-            </div>
-            <SidebarLink to="/projects" active={isActive('/projects')}>
-              Projects
-            </SidebarLink>
-            <SidebarLink to="/customers" active={isActive('/customers')}>
-              Clients
-            </SidebarLink>
-            <SidebarLink to="/employees" active={isActive('/employees')}>
-              Members
             </SidebarLink>
           </div>
         )}
