@@ -295,7 +295,7 @@ export async function downloadPdfFromHtml(
                 <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
               </tr>
               `).join('') : ''}
-              ${Array.from({ length: Math.max(0, 5 - expenses.length) }).map(() => `
+              ${Array.from({ length: Math.max(0, 6 - expenses.length) }).map(() => `
               <tr style="border-bottom: 1px solid #eee;">
                 <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
                 <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
@@ -797,7 +797,7 @@ function buildPdfHtml(
                 <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
               </tr>
               `).join('') : ''}
-              ${Array.from({ length: Math.max(0, 5 - expenses.length) }).map(() => `
+              ${Array.from({ length: Math.max(0, 6 - expenses.length) }).map(() => `
               <tr style="border-bottom: 1px solid #eee;">
                 <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
                 <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
