@@ -164,6 +164,9 @@ export default function Sidebar() {
                 </SidebarLink>
               </>
             )}
+            <SidebarLink to="/user-archive" active={isActive('/user-archive')}>
+              User Archive
+            </SidebarLink>
             {!isDemoMode && (
               <div style={{ marginTop: '30px' }}>
                 <SidebarLink to="/profile" active={isActive('/profile')}>
@@ -171,9 +174,6 @@ export default function Sidebar() {
                 </SidebarLink>
               </div>
             )}
-            <SidebarLink to="/user-archive" active={isActive('/user-archive')}>
-              User Archive
-            </SidebarLink>
           </div>
         )}
       </div>
