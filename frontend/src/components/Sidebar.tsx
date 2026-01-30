@@ -178,18 +178,20 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Sign Out - fixed above the dividing line (different style so it's obvious it doesn't scroll) */}
+      {/* Sign Out + theme toggle - single compact footer row */}
       <div style={{
-        padding: '12px 15px 16px',
+        padding: '10px 15px 12px',
         flexShrink: 0,
         borderTop: '1px solid var(--border-color)',
         backgroundColor: 'var(--bg-secondary)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
       }}>
         <button
           onClick={handleSignOut}
           style={{
-            display: 'block',
-            width: '100%',
+            flex: 1,
             padding: '10px 14px',
             color: 'var(--text-primary)',
             textDecoration: 'none',
@@ -212,10 +214,6 @@ export default function Sidebar() {
         >
           Sign Out
         </button>
-      </div>
-
-      {/* Dividing line + Dark mode toggle - iOS-style pill slider, bottom left */}
-      <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
         <button
           type="button"
           className="theme-toggle"
@@ -223,51 +221,49 @@ export default function Sidebar() {
           title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
           style={{
             position: 'relative',
-            width: '64px',
-            height: '32px',
-            borderRadius: '16px',
+            width: '48px',
+            height: '26px',
+            borderRadius: '13px',
             border: '1px solid var(--border-color)',
             backgroundColor: 'var(--bg-secondary)',
             cursor: 'pointer',
             padding: 0,
+            flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
             overflow: 'hidden',
             boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06)',
           }}
         >
-          {/* Moon - left */}
           <span style={{
             position: 'absolute',
-            left: '8px',
+            left: '5px',
             top: '50%',
             transform: 'translateY(-50%)',
-            fontSize: '14px',
+            fontSize: '12px',
             opacity: theme === 'dark' ? 1 : 0.5,
             transition: 'opacity 0.2s',
             zIndex: 1,
           }}>🌙</span>
-          {/* Sun - right */}
           <span style={{
             position: 'absolute',
-            right: '8px',
+            right: '5px',
             top: '50%',
             transform: 'translateY(-50%)',
-            fontSize: '14px',
+            fontSize: '12px',
             opacity: theme === 'light' ? 1 : 0.5,
             transition: 'opacity 0.2s',
             zIndex: 1,
           }}>☀️</span>
-          {/* Sliding thumb */}
           <span style={{
             position: 'absolute',
-            left: theme === 'dark' ? '4px' : 'calc(100% - 28px)',
-            top: '4px',
-            width: '24px',
-            height: '24px',
+            left: theme === 'dark' ? '3px' : 'calc(100% - 21px)',
+            top: '3px',
+            width: '18px',
+            height: '18px',
             borderRadius: '50%',
             backgroundColor: 'var(--bg-primary)',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
             transition: 'left 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
             zIndex: 2,
           }} />
