@@ -1674,7 +1674,7 @@ export default function WeekView() {
 
                         {/* Entries */}
                         {entries.map((entry: any) => {
-                          const project = entry.project || projects?.find((p: any) => p.id === entry.project_id);
+                          const project = projects?.find((p: any) => p.id === entry.project_id) || entry.project;
                           const hasOverlap = entries.some((e: any) => e.id !== entry.id && checkOverlap(entry, e));
                           
                           // Format times
@@ -2007,7 +2007,7 @@ export default function WeekView() {
                     if (movingEntry?.entry.id === entry.id) return null;
 
                     // Use project from entry relationship if available, otherwise fallback to projects list
-                    const project = entry.project || projects?.find((p: any) => p.id === entry.project_id);
+                    const project = projects?.find((p: any) => p.id === entry.project_id) || entry.project;
                     // Use project color if available, otherwise grey for no project
                     const color = entry.project_id && project?.color ? project.color : '#808080';
                     
@@ -2148,7 +2148,7 @@ export default function WeekView() {
                   {/* Move-drag ghost: show drop preview when dragging entry to this day */}
                   {movingEntry && movingEntry.dropDateStr === dateStr && (() => {
                     const ghostEntry = movingEntry.entry;
-                    const ghostProject = ghostEntry.project || projects?.find((p: any) => p.id === ghostEntry.project_id);
+                    const ghostProject = projects?.find((p: any) => p.id === ghostEntry.project_id) || ghostEntry.project;
                     const ghostColor = ghostEntry.project_id && ghostProject?.color ? ghostProject.color : '#808080';
                     const ghostTop = (movingEntry.dropStartMinutes / 60) * rowHeight;
                     const ghostHeight = Math.max((movingEntry.durationMinutes / 60) * rowHeight - 2, 28);

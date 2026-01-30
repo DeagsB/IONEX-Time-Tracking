@@ -14,6 +14,7 @@ export const timeEntriesService = {
         project:projects!time_entries_project_id_fkey(
           id,
           name,
+          project_number,
           color,
           customer:customers!projects_customer_id_fkey(
             id,
