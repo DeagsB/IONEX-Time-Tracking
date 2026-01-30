@@ -1164,18 +1164,22 @@ export default function WeekView() {
 
   const projectColors = ['#4ecdc4', '#ff6b6b', '#ffd93d', '#a8e6cf', '#dda0dd'];
 
-  // Format time for display (handles both ISO timestamps and HH:MM format)
+  // Format time for display in 12h format (e.g. 8:16am, 4:34pm)
   const formatTimeDisplay = (timeStr: string) => {
     if (!timeStr) return '';
-    // If it's an ISO timestamp, extract time portion
+    let hours: number, minutes: number;
     if (timeStr.includes('T') || timeStr.includes(' ')) {
       const date = new Date(timeStr);
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${hours}:${minutes}`;
+      hours = date.getHours();
+      minutes = date.getMinutes();
+    } else {
+      const [h, m] = timeStr.slice(0, 5).split(':').map(Number);
+      hours = h ?? 0;
+      minutes = m ?? 0;
     }
-    // Otherwise return first 5 chars (HH:MM)
-    return timeStr.slice(0, 5);
+    const displayHours = hours % 12 || 12;
+    const ampm = hours >= 12 ? 'pm' : 'am';
+    return `${displayHours}:${String(minutes).padStart(2, '0')}${ampm}`;
   };
 
   return (
@@ -2045,7 +2049,12 @@ export default function WeekView() {
                     const startMin = movingEntry.dropStartMinutes % 60;
                     const endH = Math.floor(endM / 60);
                     const endMin = endM % 60;
-                    const ghostTimeStr = `${String(startH).padStart(2, '0')}:${String(startMin).padStart(2, '0')} - ${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
+                    const to12h = (h: number, m: number) => {
+                      const dh = h % 12 || 12;
+                      const ap = h >= 12 ? 'pm' : 'am';
+                      return `${dh}:${String(m).padStart(2, '0')}${ap}`;
+                    };
+                    const ghostTimeStr = `${to12h(startH, startMin)} – ${to12h(endH, endMin)}`;
                     return (
                       <div
                         key="move-ghost"
@@ -2188,11 +2197,17 @@ export default function WeekView() {
                           {timerProject?.project_number ? `${timerProject.project_number} – ${timerProject?.name}` : (timerProject?.name || '(No Project)')}
                         </div>
                         
-                        {/* Time range (not bold) */}
+                        {/* Time range (not bold) - 12h format */}
                         {height > 45 && (
                           <div style={{ fontSize: '10px', marginBottom: '2px', opacity: 0.9 }}>
                             {startedOnPreviousDay ? '(prev day) ' : ''}
-                            {String(displayStartHour).padStart(2, '0')}:{String(displayStartMin).padStart(2, '0')} – Now
+                            {(() => {
+                              const h = startedOnPreviousDay ? 0 : displayStartHour;
+                              const m = startedOnPreviousDay ? 0 : displayStartMin;
+                              const dh = h % 12 || 12;
+                              const ap = h >= 12 ? 'pm' : 'am';
+                              return `${dh}:${String(m).padStart(2, '0')}${ap} – Now`;
+                            })()}
                           </div>
                         )}
                         
