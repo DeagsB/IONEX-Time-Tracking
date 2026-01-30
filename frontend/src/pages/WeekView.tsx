@@ -1495,8 +1495,14 @@ export default function WeekView() {
             padding: '15px 20px',
             minWidth: 'min-content'
           }}>
-        {getProjectSummary().map((proj, index) => (
-          <div key={proj.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+        {getProjectSummary().map((proj, index) => {
+          const fullLabel = proj.project_number ? `${proj.project_number} - ${proj.name}` : proj.name;
+          return (
+          <div
+            key={proj.id}
+            title={fullLabel}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}
+          >
             <div style={{
               width: '12px',
               height: '12px',
@@ -1514,10 +1520,11 @@ export default function WeekView() {
               textOverflow: 'ellipsis',
               maxWidth: '200px'
             }}>
-              {proj.project_number ? `${proj.project_number} - ${proj.name}` : proj.name}
+              {fullLabel}
             </span>
           </div>
-          ))}
+          );
+        })}
           </div>
         </div>
 
