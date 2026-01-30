@@ -2035,11 +2035,13 @@ export default function WeekView() {
                         right: overlapPos.right,
                         backgroundColor: color,
                         borderRadius: '4px',
-                        padding: '6px 8px',
+                        padding: '6px 8px 18px 8px',
                         fontSize: '12px',
                           color: 'white',
                         overflow: 'hidden',
                         cursor: 'grab',
+                        display: 'flex',
+                        flexDirection: 'column',
                         boxShadow: isHovered ? '0 2px 6px rgba(0,0,0,0.15)' : '0 2px 4px rgba(0,0,0,0.1)',
                         transform: isHovered ? 'scale(1.008)' : 'none',
                         transition: 'box-shadow 0.15s ease, transform 0.15s ease',
@@ -2076,26 +2078,31 @@ export default function WeekView() {
                           marginBottom: '2px',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
-                          textOverflow: 'ellipsis'
+                          textOverflow: 'ellipsis',
+                          flexShrink: 0
                         }}>
-                          {project?.project_number ? `${project.project_number} - ${project?.name}` : (project?.name || '(No Project)')}
+                          {project?.project_number ? `${project.project_number} – ${project?.name}` : (project?.name || '(No Project)')}
                         </div>
                         
                         {/* Time range (not bold) */}
                         {displayHeight > 45 && (
-                          <div style={{ fontSize: '10px', marginBottom: '2px', opacity: 0.9 }}>
-                            {formatTimeDisplay(entry.start_time)} - {formatTimeDisplay(entry.end_time)}
+                          <div style={{ fontSize: '10px', marginBottom: '2px', opacity: 0.9, flexShrink: 0 }}>
+                            {formatTimeDisplay(entry.start_time)} – {formatTimeDisplay(entry.end_time)}
                           </div>
                         )}
                         
-                        {/* Description (not bold) */}
+                        {/* Description (not bold) – wraps and fills space below */}
                         {entry.description && (
                           <div style={{ 
                             fontSize: '10px', 
                             opacity: 0.9,
-                            whiteSpace: 'nowrap',
+                            flex: 1,
+                            minHeight: 0,
                             overflow: 'hidden',
-                            textOverflow: 'ellipsis'
+                            wordBreak: 'break-word',
+                            whiteSpace: 'pre-wrap',
+                            overflowWrap: 'break-word',
+                            lineHeight: 1.25
                           }}>
                             {entry.description}
                           </div>
@@ -2163,7 +2170,7 @@ export default function WeekView() {
                           right: '4px',
                           backgroundColor: ghostColor,
                           borderRadius: '4px',
-                          padding: '6px 8px',
+                          padding: '6px 8px 18px 8px',
                           fontSize: '12px',
                           color: 'white',
                           overflow: 'hidden',
@@ -2173,16 +2180,18 @@ export default function WeekView() {
                           pointerEvents: 'none',
                           zIndex: 25,
                           boxSizing: 'border-box',
+                          display: 'flex',
+                          flexDirection: 'column',
                         }}
                       >
                         <div style={{ fontWeight: '600', fontSize: '11px', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {ghostProject?.project_number ? `${ghostProject.project_number} - ${ghostProject?.name}` : (ghostProject?.name || '(No Project)')}
+                          {ghostProject?.project_number ? `${ghostProject.project_number} – ${ghostProject?.name}` : (ghostProject?.name || '(No Project)')}
                         </div>
                         {ghostHeight > 45 && (
                           <div style={{ fontSize: '10px', marginBottom: '2px', opacity: 0.9 }}>{ghostTimeStr}</div>
                         )}
                         {ghostEntry.description && (
-                          <div style={{ fontSize: '10px', opacity: 0.9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ fontSize: '10px', opacity: 0.9, wordBreak: 'break-word', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', lineHeight: 1.25, flex: 1, minHeight: 0, overflow: 'hidden' }}>
                             {ghostEntry.description}
                           </div>
                         )}
@@ -2236,7 +2245,11 @@ export default function WeekView() {
                           border: '2px solid #ff5252',
                           animation: draggingTimer ? 'none' : 'pulse 2s ease-in-out infinite',
                           pointerEvents: 'auto',
-                          cursor: draggingTimer ? 'grabbing' : 'pointer'
+                          cursor: draggingTimer ? 'grabbing' : 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          paddingBottom: '18px',
+                          boxSizing: 'border-box',
                         }}
                       >
                         {/* Draggable handle at the top */}
@@ -2285,24 +2298,28 @@ export default function WeekView() {
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
                         }}>
-                          {timerProject?.project_number ? `${timerProject.project_number} - ${timerProject?.name}` : (timerProject?.name || '(No Project)')}
+                          {timerProject?.project_number ? `${timerProject.project_number} – ${timerProject?.name}` : (timerProject?.name || '(No Project)')}
                         </div>
                         
                         {/* Time range (not bold) */}
                         {height > 45 && (
                           <div style={{ fontSize: '10px', marginBottom: '2px', opacity: 0.9 }}>
                             {startedOnPreviousDay ? '(prev day) ' : ''}
-                            {String(displayStartHour).padStart(2, '0')}:{String(displayStartMin).padStart(2, '0')} - Now
+                            {String(displayStartHour).padStart(2, '0')}:{String(displayStartMin).padStart(2, '0')} – Now
                           </div>
                         )}
                         
-                        {/* Description (not bold) */}
+                        {/* Description (not bold) – can wrap */}
                         <div style={{ 
                           fontSize: '10px', 
                           opacity: 0.9,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
+                          wordBreak: 'break-word',
+                          whiteSpace: 'pre-wrap',
+                          overflowWrap: 'break-word',
+                          lineHeight: 1.25,
+                          flex: 1,
+                          minHeight: 0,
+                          overflow: 'hidden'
                         }}>
                           {currentEntry?.description || 'Timer Running'}
                         </div>
