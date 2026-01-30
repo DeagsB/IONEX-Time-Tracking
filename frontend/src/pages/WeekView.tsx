@@ -411,7 +411,15 @@ export default function WeekView() {
       projectMap.get(projectId).hours += Number(entry.hours);
     });
 
-    return Array.from(projectMap.values());
+    const list = Array.from(projectMap.values());
+    list.sort((a, b) => {
+      if (a.id === 'no-project') return 1;
+      if (b.id === 'no-project') return -1;
+      const numA = a.project_number ?? '';
+      const numB = b.project_number ?? '';
+      return String(numA).localeCompare(String(numB), undefined, { numeric: true });
+    });
+    return list;
   };
 
   const navigateWeek = (direction: 'prev' | 'next') => {
