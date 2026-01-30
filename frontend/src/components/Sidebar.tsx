@@ -79,9 +79,11 @@ export default function Sidebar() {
                 Service Tickets
               </SidebarLink>
               {!isDemoMode && (
-                <SidebarLink to="/profile" active={isActive('/profile')}>
-                  Profile
-                </SidebarLink>
+                <div style={{ marginTop: '30px' }}>
+                  <SidebarLink to="/profile" active={isActive('/profile')}>
+                    Profile
+                  </SidebarLink>
+                </div>
               )}
             </>
           )}
@@ -163,9 +165,11 @@ export default function Sidebar() {
               </>
             )}
             {!isDemoMode && (
-              <SidebarLink to="/profile" active={isActive('/profile')}>
-                Profile
-              </SidebarLink>
+              <div style={{ marginTop: '30px' }}>
+                <SidebarLink to="/profile" active={isActive('/profile')}>
+                  Profile
+                </SidebarLink>
+              </div>
             )}
             <SidebarLink to="/user-archive" active={isActive('/user-archive')}>
               User Archive
