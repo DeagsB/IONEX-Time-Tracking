@@ -212,35 +212,50 @@ export async function downloadPdfFromHtml(
         </div>
       </div>
 
-      <!-- Service Description -->
+      <!-- Service Description (table for aligned ST, FT, TT, SO, FO columns) -->
       <div style="border: 1px solid #000; margin-bottom: 10px;">
-        <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000; display: flex;">
-          <div style="flex: 1;">Service Description</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">ST</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">FT</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">TT</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">SO</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">FO</div>
-        </div>
-        ${descriptionLines.map(line => `
-          <div style="display: flex; border-bottom: 1px solid #eee; min-height: 16px;">
-            <div style="flex: 1; padding: 2px 4px; font-size: 8pt;">${line.text}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.st || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.ft || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.tt || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.so || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.fo || ''}</div>
-          </div>
-        `).join('')}
-        <!-- Totals row -->
-        <div style="display: flex; border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
-          <div style="flex: 1; padding: 4px 6px; text-align: right;">Total Time</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${rtHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ftHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ttHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${shopOtHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${fieldOtHours || ''}</div>
-        </div>
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+          <colgroup>
+            <col style="width: auto;" />
+            <col style="width: 40px;" />
+            <col style="width: 40px;" />
+            <col style="width: 40px;" />
+            <col style="width: 40px;" />
+            <col style="width: 40px;" />
+          </colgroup>
+          <thead>
+            <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
+              <td style="padding: 3px 6px;">Service Description</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">ST</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">FT</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">TT</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SO</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">FO</td>
+            </tr>
+          </thead>
+          <tbody>
+            ${descriptionLines.map(line => `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 2px 4px; font-size: 8pt;">${line.text}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.st || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.ft || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.tt || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.so || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.fo || ''}</td>
+            </tr>
+            `).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
+              <td style="padding: 4px 6px; text-align: right;">Total Time</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${rtHours || ''}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${ftHours || ''}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${ttHours || ''}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${shopOtHours || ''}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${fieldOtHours || ''}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
 
       <!-- Rates Row -->
@@ -673,35 +688,50 @@ function buildPdfHtml(
         </div>
       </div>
 
-      <!-- Service Description -->
+      <!-- Service Description (table for aligned ST, FT, TT, SO, FO columns) -->
       <div style="border: 1px solid #000; margin-bottom: 10px;">
-        <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000; display: flex;">
-          <div style="flex: 1;">Service Description</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">ST</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">FT</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">TT</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">SO</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000;">FO</div>
-        </div>
-        ${descriptionLines.map(line => `
-          <div style="display: flex; border-bottom: 1px solid #eee; min-height: 16px;">
-            <div style="flex: 1; padding: 2px 4px; font-size: 8pt;">${line.text}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.st || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.ft || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.tt || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.so || ''}</div>
-            <div style="width: 40px; text-align: center; border-left: 1px solid #ccc; padding: 2px;">${line.fo || ''}</div>
-          </div>
-        `).join('')}
-        <!-- Totals row -->
-        <div style="display: flex; border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
-          <div style="flex: 1; padding: 4px 6px; text-align: right;">Total Time</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${rtHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ftHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${ttHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${shopOtHours || ''}</div>
-          <div style="width: 40px; text-align: center; border-left: 1px solid #000; padding: 4px;">${fieldOtHours || ''}</div>
-        </div>
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+          <colgroup>
+            <col style="width: auto;" />
+            <col style="width: 40px;" />
+            <col style="width: 40px;" />
+            <col style="width: 40px;" />
+            <col style="width: 40px;" />
+            <col style="width: 40px;" />
+          </colgroup>
+          <thead>
+            <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
+              <td style="padding: 3px 6px;">Service Description</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">ST</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">FT</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">TT</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SO</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">FO</td>
+            </tr>
+          </thead>
+          <tbody>
+            ${descriptionLines.map(line => `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 2px 4px; font-size: 8pt;">${line.text}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.st || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.ft || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.tt || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.so || ''}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc;">${line.fo || ''}</td>
+            </tr>
+            `).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
+              <td style="padding: 4px 6px; text-align: right;">Total Time</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${rtHours || ''}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${ftHours || ''}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${ttHours || ''}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${shopOtHours || ''}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${fieldOtHours || ''}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
 
       <!-- Rates Row -->
