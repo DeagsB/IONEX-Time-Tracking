@@ -24,6 +24,16 @@ const WORKFLOW_STATUSES = {
 
 type WorkflowStatus = keyof typeof WORKFLOW_STATUSES;
 
+/** Format a date-only string (YYYY-MM-DD) as local date to avoid timezone shifting the day */
+function formatDateOnlyLocal(dateStr: string): string {
+  if (!dateStr) return '';
+  const datePart = dateStr.split('T')[0].split(' ')[0];
+  const parts = datePart.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return dateStr;
+  const [y, m, d] = parts;
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export default function ServiceTickets() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -831,9 +841,10 @@ export default function ServiceTickets() {
       }
       
       // Otherwise, show XXX placeholder
+      const yearPart = ticket.date ? String(parseInt(ticket.date.slice(0, 4), 10) % 100) : '';
       return {
         ...ticket,
-        displayTicketNumber: `${ticket.userInitials}_${new Date(ticket.date).getFullYear() % 100}XXX`
+        displayTicketNumber: `${ticket.userInitials}_${yearPart}XXX`
       };
     });
   }, [tickets, existingTickets]);
@@ -1329,11 +1340,7 @@ export default function ServiceTickets() {
                     {ticket.displayTicketNumber}
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-primary)' }}>
-                    {new Date(ticket.date).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
+                    {formatDateOnlyLocal(ticket.date)}
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontWeight: '500' }}>
                     {ticket.customerName}
