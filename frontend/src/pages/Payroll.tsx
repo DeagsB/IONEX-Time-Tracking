@@ -134,6 +134,17 @@ const getCurrentPayPeriod = (): { start: string; end: string } => {
   };
 };
 
+// Payday is Friday, 5 days after period end. For selected range, show its payday when it's a 14-day period.
+const getPaydayForRange = (start: string, end: string): string | null => {
+  const startD = new Date(start + 'T12:00:00');
+  const endD = new Date(end + 'T12:00:00');
+  const days = Math.round((endD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  if (days !== 14) return null;
+  const payday = new Date(endD);
+  payday.setDate(payday.getDate() + 5);
+  return payday.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 /** Get start/end date strings for a preset (for comparing to current range) */
 const getPresetRange = (preset: string): { start: string; end: string } | null => {
   const today = new Date();
@@ -423,13 +434,14 @@ export default function Payroll() {
     setEndDate(end.toISOString().split('T')[0]);
   };
   
-  // Payday is always the current pay period's payday (Friday, 5 days after current period end)
-  const getPayday = () => {
-    const period = getCurrentPayPeriod();
-    const end = new Date(period.end + 'T12:00:00'); // current pay period end, parse as local
-    end.setDate(end.getDate() + 5);
-    return end.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
-  };
+  // Payday for selected range (if it's a 14-day period) or current pay period's payday
+  const paydayLabel = getPaydayForRange(startDate, endDate)
+    ?? (() => {
+        const period = getCurrentPayPeriod();
+        const end = new Date(period.end + 'T12:00:00');
+        end.setDate(end.getDate() + 5);
+        return end.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+      })();
 
   if (!isAdmin) {
     return (
@@ -518,7 +530,7 @@ export default function Payroll() {
             border: '1px solid rgba(76, 175, 80, 0.3)',
           }}>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Payday:</span>
-            <span style={{ fontSize: '12px', fontWeight: '600', color: '#4caf50' }}>{getPayday()}</span>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: '#4caf50' }}>{paydayLabel}</span>
           </div>
         </div>
       </div>
