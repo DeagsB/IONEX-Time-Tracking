@@ -134,6 +134,60 @@ const getCurrentPayPeriod = (): { start: string; end: string } => {
   };
 };
 
+/** Get start/end date strings for a preset (for comparing to current range) */
+const getPresetRange = (preset: string): { start: string; end: string } | null => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const formatDate = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  let start: Date;
+  let end: Date;
+  switch (preset) {
+    case 'currentPayPeriod': {
+      const period = getCurrentPayPeriod();
+      return period;
+    }
+    case 'previousPayPeriod': {
+      const period = getCurrentPayPeriod();
+      start = new Date(period.start + 'T12:00:00');
+      end = new Date(period.end + 'T12:00:00');
+      start.setDate(start.getDate() - 14);
+      end.setDate(end.getDate() - 14);
+      return { start: formatDate(start), end: formatDate(end) };
+    }
+    case 'thisWeek':
+      start = new Date(today);
+      start.setDate(today.getDate() - today.getDay());
+      return { start: formatDate(start), end: formatDate(today) };
+    case 'lastWeek':
+      start = new Date(today);
+      start.setDate(today.getDate() - today.getDay() - 7);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      return { start: formatDate(start), end: formatDate(end) };
+    case 'last2Weeks':
+      start = new Date(today);
+      start.setDate(today.getDate() - 14);
+      return { start: formatDate(start), end: formatDate(today) };
+    case 'thisMonth':
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      return { start: formatDate(start), end: formatDate(end) };
+    case 'lastMonth':
+      start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      end = new Date(today.getFullYear(), today.getMonth(), 0);
+      return { start: formatDate(start), end: formatDate(end) };
+    default:
+      return null;
+  }
+};
+
+const PRESET_KEYS = ['currentPayPeriod', 'previousPayPeriod', 'thisWeek', 'lastWeek', 'last2Weeks', 'thisMonth', 'lastMonth'] as const;
+
 export default function Payroll() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -307,6 +361,15 @@ export default function Payroll() {
     );
   }, [employeeHours]);
 
+  // Which preset (if any) matches the current date range — used to highlight the active button
+  const activePreset = useMemo(() => {
+    for (const key of PRESET_KEYS) {
+      const range = getPresetRange(key);
+      if (range && range.start === startDate && range.end === endDate) return key;
+    }
+    return null;
+  }, [startDate, endDate]);
+
   // Quick date range presets
   const setDatePreset = (preset: string) => {
     const today = new Date();
@@ -425,15 +488,22 @@ export default function Payroll() {
             />
           </div>
 
-          {/* Quick Presets */}
+          {/* Quick Presets — active preset is highlighted */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button className="button button-primary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('currentPayPeriod')}>Current Pay Period</button>
-            <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('previousPayPeriod')}>Previous Pay Period</button>
-            <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('thisWeek')}>This Week</button>
-            <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('lastWeek')}>Last Week</button>
-            <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('last2Weeks')}>Last 2 Weeks</button>
-            <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('thisMonth')}>This Month</button>
-            <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('lastMonth')}>Last Month</button>
+            {PRESET_KEYS.map((key) => {
+              const label = key === 'currentPayPeriod' ? 'Current Pay Period' : key === 'previousPayPeriod' ? 'Previous Pay Period' : key === 'last2Weeks' ? 'Last 2 Weeks' : key === 'thisWeek' ? 'This Week' : key === 'lastWeek' ? 'Last Week' : key === 'thisMonth' ? 'This Month' : 'Last Month';
+              const isActive = activePreset === key;
+              return (
+                <button
+                  key={key}
+                  className={isActive ? 'button button-primary' : 'button button-secondary'}
+                  style={{ padding: '8px 12px', fontSize: '12px' }}
+                  onClick={() => setDatePreset(key)}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
           
           {/* Payday indicator */}
