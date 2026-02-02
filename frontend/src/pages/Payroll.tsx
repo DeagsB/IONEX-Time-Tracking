@@ -423,9 +423,10 @@ export default function Payroll() {
     setEndDate(end.toISOString().split('T')[0]);
   };
   
-  // Payday is the Friday, 5 days after period end (e.g. Friday 6 Feb 2026)
+  // Payday is always the current pay period's payday (Friday, 5 days after current period end)
   const getPayday = () => {
-    const end = new Date(endDate + 'T12:00:00'); // parse as local date
+    const period = getCurrentPayPeriod();
+    const end = new Date(period.end + 'T12:00:00'); // current pay period end, parse as local
     end.setDate(end.getDate() + 5);
     return end.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
   };
