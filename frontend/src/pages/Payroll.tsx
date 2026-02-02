@@ -320,6 +320,16 @@ export default function Payroll() {
         setEndDate(period.end);
         return;
       }
+      case 'previousPayPeriod': {
+        const period = getCurrentPayPeriod();
+        const start = new Date(period.start + 'T12:00:00');
+        const end = new Date(period.end + 'T12:00:00');
+        start.setDate(start.getDate() - 14);
+        end.setDate(end.getDate() - 14);
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(end.toISOString().split('T')[0]);
+        return;
+      }
       case 'thisWeek':
         start = new Date(today);
         start.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
@@ -418,6 +428,7 @@ export default function Payroll() {
           {/* Quick Presets */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button className="button button-primary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('currentPayPeriod')}>Current Pay Period</button>
+            <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('previousPayPeriod')}>Previous Pay Period</button>
             <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('thisWeek')}>This Week</button>
             <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('lastWeek')}>Last Week</button>
             <button className="button button-secondary" style={{ padding: '8px 12px', fontSize: '12px' }} onClick={() => setDatePreset('last2Weeks')}>Last 2 Weeks</button>
