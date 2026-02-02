@@ -148,11 +148,20 @@ export const customersService = {
     // Get current user from auth
     const { data: { user: authUser } } = await supabase.auth.getUser();
     
-    const customerData = {
+    const numericRateFields = ['rate_shop_junior', 'rate_shop_senior', 'rate_field_junior', 'rate_field_senior', 'rate_travel'];
+    const customerData: any = {
       ...customer,
       created_by: authUser?.id || null, // Set created_by to current user
       is_private: false, // Always set to false (private option removed)
     };
+    for (const key of numericRateFields) {
+      if (key in customerData && (customerData[key] === '' || customerData[key] === undefined)) {
+        customerData[key] = null;
+      } else if (key in customerData && customerData[key] !== null) {
+        const num = parseFloat(customerData[key]);
+        customerData[key] = Number.isNaN(num) ? null : num;
+      }
+    }
 
     const { data, error } = await supabase
       .from('customers')
@@ -170,10 +179,20 @@ export const customersService = {
     
     // Don't allow changing created_by or is_private fields
     const { created_by, is_private, ...updateData } = updates;
-    const finalUpdates = {
+    const numericRateFields = ['rate_shop_junior', 'rate_shop_senior', 'rate_field_junior', 'rate_field_senior', 'rate_travel'];
+    const finalUpdates: any = {
       ...updateData,
       is_private: false, // Always set to false (private option removed)
     };
+    // Convert empty string rate fields to null so PostgreSQL numeric columns accept them
+    for (const key of numericRateFields) {
+      if (key in finalUpdates && (finalUpdates[key] === '' || finalUpdates[key] === undefined)) {
+        finalUpdates[key] = null;
+      } else if (key in finalUpdates && finalUpdates[key] !== null) {
+        const num = parseFloat(finalUpdates[key]);
+        finalUpdates[key] = Number.isNaN(num) ? null : num;
+      }
+    }
     
     const { data, error } = await supabase
       .from('customers')
