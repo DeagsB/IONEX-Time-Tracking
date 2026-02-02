@@ -53,85 +53,52 @@ const roundToQuarterHour = (hours: number): number => {
   return Math.ceil(hours * 10) / 10;
 };
 
-// Calculate the current payroll period based on biweekly schedule
-// Pay periods are 2 weeks; payday is the Friday 5 days after the period ends
-// Reference: Pay period 19 Jan 2026 to 1 Feb 2026 → payday Friday 6 Feb 2026
+// Fallback period: 19 Jan 2026 to 1 Feb 2026 (payday Friday 6 Feb 2026)
+const FALLBACK_PERIOD = { start: '2026-01-19', end: '2026-02-01' };
+
+const formatPeriodDate = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Current payroll period: 2 weeks, payday Friday 5 days after period end.
+// Reference: 19 Jan–1 Feb 2026 → payday Friday 6 Feb 2026.
 const getCurrentPayPeriod = (): { start: string; end: string } => {
-  // Reference pay period start date (19 Jan 2026)
-  const referenceStart = new Date(2026, 0, 19); // Jan 19, 2026
-  const periodLengthDays = 14; // 2 weeks
-  const daysUntilPayday = 5; // Payday is Friday, 5 days after period end (e.g. Fri 6 Feb 2026)
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  // Calculate how many days since the reference period start
-  const daysSinceReference = Math.floor((today.getTime() - referenceStart.getTime()) / (1000 * 60 * 60 * 24));
-  
-  // Find which pay period we're in (including the payday buffer)
-  // We show a pay period until its payday has passed
-  // Period ends at day 13 (0-indexed), payday is at day 18 (13 + 5)
-  const totalCycleDays = periodLengthDays + daysUntilPayday; // 19 days total cycle before switching view
-  
-  // Calculate which period to show
-  // If we're within the first 19 days of a cycle, show that period
-  // After payday (day 19+), show the next period
-  let periodNumber: number;
-  
-  if (daysSinceReference >= 0) {
-    // After or on reference date
-    periodNumber = Math.floor(daysSinceReference / periodLengthDays);
-    
-    // Check if we're past payday for this period
-    const daysIntoPeriod = daysSinceReference % periodLengthDays;
-    const periodStartDays = periodNumber * periodLengthDays;
-    const periodEndDays = periodStartDays + periodLengthDays - 1;
-    const paydayDays = periodEndDays + daysUntilPayday;
-    
-    // If today is past the payday for the current calculated period, show that period
-    // If today is before payday, show the previous period (whose payday hasn't passed)
-    if (daysSinceReference <= paydayDays) {
-      // We're before or on payday, this is the correct period to show
+  try {
+    const referenceStart = new Date(2026, 0, 19); // Jan 19, 2026
+    const periodLengthDays = 14;
+    const daysUntilPayday = 5;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysSinceReference = Math.floor((today.getTime() - referenceStart.getTime()) / msPerDay);
+
+    let periodNumber: number;
+    if (daysSinceReference >= 0) {
+      periodNumber = Math.floor(daysSinceReference / periodLengthDays);
+      const periodEndDate = new Date(referenceStart.getTime() + (periodNumber + 1) * periodLengthDays * msPerDay);
+      periodEndDate.setDate(periodEndDate.getDate() - 1); // last day of period
+      const paydayDate = new Date(periodEndDate);
+      paydayDate.setDate(paydayDate.getDate() + daysUntilPayday);
+      if (today > paydayDate) periodNumber++;
     } else {
-      // We're past payday, but the period calculation already accounts for this
-      // Actually we need to check if we've passed payday for the current period
+      periodNumber = Math.floor(daysSinceReference / periodLengthDays);
     }
-    
-    // Simpler approach: show the period whose payday hasn't passed yet
-    // For any given day, find the most recent period whose payday is >= today
-    const currentPeriodEnd = new Date(referenceStart);
-    currentPeriodEnd.setDate(referenceStart.getDate() + (periodNumber + 1) * periodLengthDays - 1);
-    
-    const currentPayday = new Date(currentPeriodEnd);
-    currentPayday.setDate(currentPayday.getDate() + daysUntilPayday);
-    
-    if (today > currentPayday) {
-      // Payday has passed, move to next period
-      periodNumber++;
-    }
-  } else {
-    // Before reference date, go backwards
-    periodNumber = Math.floor(daysSinceReference / periodLengthDays);
+
+    const periodStart = new Date(referenceStart.getTime() + periodNumber * periodLengthDays * msPerDay);
+    const periodEnd = new Date(periodStart.getTime() + (periodLengthDays - 1) * msPerDay);
+
+    const start = formatPeriodDate(periodStart);
+    const end = formatPeriodDate(periodEnd);
+    if (!start || !end || start.length !== 10 || end.length !== 10) return FALLBACK_PERIOD;
+    return { start, end };
+  } catch {
+    return FALLBACK_PERIOD;
   }
-  
-  // Calculate the period start and end dates
-  const periodStart = new Date(referenceStart);
-  periodStart.setDate(referenceStart.getDate() + periodNumber * periodLengthDays);
-  
-  const periodEnd = new Date(periodStart);
-  periodEnd.setDate(periodStart.getDate() + periodLengthDays - 1);
-  
-  const formatDate = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-  
-  return {
-    start: formatDate(periodStart),
-    end: formatDate(periodEnd),
-  };
 };
 
 // Payday is Friday, 5 days after period end. For selected range, show its payday when it's a 14-day period.
@@ -204,15 +171,14 @@ export default function Payroll() {
   const { isDemoMode } = useDemoMode();
   const navigate = useNavigate();
   
-  // Default to current pay period based on biweekly schedule
-  // Period shown until payday (5 days after period ends) has passed
+  // Default to current pay period (19 Jan–1 Feb 2026 until payday 6 Feb, then next period)
   const [startDate, setStartDate] = useState(() => {
     const period = getCurrentPayPeriod();
-    return period.start;
+    return period?.start || FALLBACK_PERIOD.start;
   });
   const [endDate, setEndDate] = useState(() => {
     const period = getCurrentPayPeriod();
-    return period.end;
+    return period?.end || FALLBACK_PERIOD.end;
   });
   // Fetch all time entries for the date range (filtered by demo mode)
   const { data: timeEntries, isLoading, error } = useQuery({
