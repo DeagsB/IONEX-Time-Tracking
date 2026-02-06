@@ -2443,14 +2443,16 @@ export default function WeekView() {
                         billable: false
                       }));
                     } else {
-                      // Customer selected = billable work, clear project when customer changes
+                      // IONEX Systems = internal, default to Internal rate type; others = billable Shop Time
+                      const customer = customers?.find((c: any) => c.id === customerId);
+                      const isIonexSystems = customer?.name?.trim().toLowerCase() === 'ionex systems';
                       setNewEntry(prev => ({ 
                         ...prev, 
                         customer_id: customerId,
                         project_id: '',
                         location: '',
-                        rate_type: 'Shop Time',
-                        billable: true
+                        rate_type: isIonexSystems ? 'Internal' : 'Shop Time',
+                        billable: !isIonexSystems
                       }));
                     }
                   }}
@@ -2507,105 +2509,101 @@ export default function WeekView() {
                 </div>
               )}
 
-              {/* 5. Location input (only shown when customer is selected - for service tickets) */}
-              {newEntry.customer_id && (
-                <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="label">Location</label>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', marginBottom: '4px', display: 'block' }}>
-                    Different locations create separate service tickets
-                  </span>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="Work location (e.g., Site A, Building 3)"
-                    value={newEntry.location}
-                    onChange={(e) => setNewEntry({ ...newEntry, location: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
-                    }}
-                  />
-                </div>
-              )}
+              {/* 5. Location, PO/AFE, Rate Type, Description - only when project is selected */}
+              {newEntry.project_id && (
+                <>
+                  <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label className="label">Location</label>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', marginBottom: '4px', display: 'block' }}>
+                      Different locations create separate service tickets
+                    </span>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Work location (e.g., Site A, Building 3)"
+                      value={newEntry.location}
+                      onChange={(e) => setNewEntry({ ...newEntry, location: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        backgroundColor: 'var(--bg-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)',
+                      }}
+                    />
+                  </div>
 
-              {/* 5b. PO/AFE input (only shown when customer is selected) */}
-              {newEntry.customer_id && (
-                <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="label">PO/AFE</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="PO or AFE number"
-                    value={newEntry.po_afe}
-                    onChange={(e) => setNewEntry({ ...newEntry, po_afe: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
-                    }}
-                  />
-                </div>
-              )}
+                  <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label className="label">PO/AFE</label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="PO or AFE number"
+                      value={newEntry.po_afe}
+                      onChange={(e) => setNewEntry({ ...newEntry, po_afe: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        backgroundColor: 'var(--bg-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)',
+                      }}
+                    />
+                  </div>
 
-              {/* 6. Rate Type dropdown - only shown when customer selected (otherwise Internal) */}
-              {!isPanelShop && newEntry.customer_id && (
-                <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="label">Rate Type</label>
-                  <select
-                    className="input"
-                    value={newEntry.rate_type}
-                    onChange={(e) => {
-                      const rateType = e.target.value;
-                      // Internal = not billable, everything else = billable
-                      const isBillable = rateType !== 'Internal';
-                      setNewEntry({ ...newEntry, rate_type: rateType, billable: isBillable });
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    <option value="Internal">Internal</option>
-                    <option value="Shop Time">Shop Time</option>
-                    <option value="Shop Overtime">Shop Overtime</option>
-                    <option value="Travel Time">Travel Time</option>
-                    <option value="Field Time">Field Time</option>
-                    <option value="Field Overtime">Field Overtime</option>
-                  </select>
-                </div>
-              )}
+                  {!isPanelShop && (
+                    <div className="form-group" style={{ marginBottom: '20px' }}>
+                      <label className="label">Rate Type</label>
+                      <select
+                        className="input"
+                        value={newEntry.rate_type}
+                        onChange={(e) => {
+                          const rateType = e.target.value;
+                          const isBillable = rateType !== 'Internal';
+                          setNewEntry({ ...newEntry, rate_type: rateType, billable: isBillable });
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px',
+                          backgroundColor: 'var(--bg-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        <option value="Internal">Internal</option>
+                        <option value="Shop Time">Shop Time</option>
+                        <option value="Shop Overtime">Shop Overtime</option>
+                        <option value="Travel Time">Travel Time</option>
+                        <option value="Field Time">Field Time</option>
+                        <option value="Field Overtime">Field Overtime</option>
+                      </select>
+                    </div>
+                  )}
 
-              {/* 7. Description input */}
-              <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="label">Description</label>
-                <textarea
-                  placeholder="What are you working on?"
-                  value={newEntry.description}
-                  onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
-                  style={{
-                    width: '100%',
-                    minHeight: '80px',
-                    padding: '12px',
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '14px',
-                    resize: 'none',
-                  }}
-                />
-              </div>
+                  <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label className="label">Description</label>
+                    <textarea
+                      placeholder="What are you working on?"
+                      value={newEntry.description}
+                      onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })}
+                      style={{
+                        width: '100%',
+                        minHeight: '80px',
+                        padding: '12px',
+                        backgroundColor: 'var(--bg-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        resize: 'none',
+                      }}
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Add button - disabled until customer and project are selected */}
               {(() => {
@@ -2816,18 +2814,17 @@ export default function WeekView() {
                         billable: false
                       }));
                     } else {
-                      // Customer selected = billable work, clear project when customer changes
-                      setEditedEntry(prev => {
-                        const newRateType = prev.rate_type === 'Internal' ? 'Shop Time' : prev.rate_type;
-                        return { 
-                          ...prev, 
-                          customer_id: customerId,
-                          project_id: '',
-                          location: '',
-                          rate_type: newRateType,
-                          billable: newRateType !== 'Internal'
-                        };
-                      });
+                      // IONEX Systems = internal, default to Internal rate type; others = billable Shop Time
+                      const customer = customers?.find((c: any) => c.id === customerId);
+                      const isIonexSystems = customer?.name?.trim().toLowerCase() === 'ionex systems';
+                      setEditedEntry(prev => ({ 
+                        ...prev, 
+                        customer_id: customerId,
+                        project_id: '',
+                        location: '',
+                        rate_type: isIonexSystems ? 'Internal' : (prev.rate_type === 'Internal' ? 'Shop Time' : prev.rate_type),
+                        billable: !isIonexSystems
+                      }));
                     }
                   }}
                   placeholder="Search customers..."

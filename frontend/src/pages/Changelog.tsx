@@ -1,6 +1,14 @@
 
 const CHANGELOG_ENTRIES = [
   {
+    version: '1.2.0',
+    date: '2026-01-30',
+    changes: [
+      '**Manual Add Time Entry:** Progressive form – only Time and Customer show first; after selecting a customer, Project appears; after selecting a project, Location, PO/AFE, Rate type, and Description are shown.',
+      '**IONEX Systems:** When IONEX Systems is selected as the customer, rate type defaults to Internal (and pay is non-billable) in both Add and Edit time entry modals.',
+    ],
+  },
+  {
     version: '1.1.0',
     date: '2026-01-30',
     changes: [
