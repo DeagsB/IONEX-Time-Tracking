@@ -270,8 +270,8 @@ export async function downloadPdfFromHtml(
       <!-- Travel/Expenses and Summary Row -->
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
         <!-- Travel/Expenses (single table, no spacer, so no gap below Total Expenses) -->
-        <div style="flex: 1; border: 1px solid #000;">
-          <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column;">
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed; flex: 1;">
             <colgroup>
               <col style="width: auto;" />
               <col style="width: 60px;" />
@@ -305,11 +305,11 @@ export async function downloadPdfFromHtml(
               `).join('')}
             </tbody>
             <tfoot>
-              <tr style="border-top: 2px solid #000; font-weight: bold; min-height: 24px;">
-                <td style="padding: 4px 6px; text-align: right; background: #f5f5f5; vertical-align: middle; min-height: 24px;">Total Expenses</td>
-                <td style="padding: 4px 4px; border-left: 1px solid #000; background: #f5f5f5; vertical-align: middle; min-height: 24px;"></td>
-                <td style="padding: 4px 4px; border-left: 1px solid #000; background: #f5f5f5; vertical-align: middle; min-height: 24px;"></td>
-                <td style="padding: 4px 4px; border-left: 1px solid #000; text-align: right; background: #f5f5f5; vertical-align: middle; min-height: 24px;">$${expensesTotal.toFixed(2)}</td>
+              <tr style="border-top: 2px solid #000; font-weight: bold; background: #f0f0f0;">
+                <td style="padding: 4px 6px; text-align: right; vertical-align: bottom;">Total Expenses</td>
+                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
+                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
+                <td style="padding: 4px 6px; border-left: 1px solid #000; text-align: right; vertical-align: bottom; font-size: 10pt;">$${expensesTotal.toFixed(2)}</td>
               </tr>
             </tfoot>
           </table>
@@ -763,8 +763,8 @@ function buildPdfHtml(
       <!-- Travel/Expenses and Summary Row -->
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
         <!-- Travel/Expenses (single table, no spacer, so no gap below Total Expenses) -->
-        <div style="flex: 1; border: 1px solid #000;">
-          <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column;">
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed; flex: 1;">
             <colgroup>
               <col style="width: auto;" />
               <col style="width: 60px;" />
@@ -798,11 +798,11 @@ function buildPdfHtml(
               `).join('')}
             </tbody>
             <tfoot>
-              <tr style="border-top: 2px solid #000; font-weight: bold; min-height: 24px;">
-                <td style="padding: 4px 6px; text-align: right; background: #f5f5f5; vertical-align: middle; min-height: 24px;">Total Expenses</td>
-                <td style="padding: 4px 4px; border-left: 1px solid #000; background: #f5f5f5; vertical-align: middle; min-height: 24px;"></td>
-                <td style="padding: 4px 4px; border-left: 1px solid #000; background: #f5f5f5; vertical-align: middle; min-height: 24px;"></td>
-                <td style="padding: 4px 4px; border-left: 1px solid #000; text-align: right; background: #f5f5f5; vertical-align: middle; min-height: 24px;">$${expensesTotal.toFixed(2)}</td>
+              <tr style="border-top: 2px solid #000; font-weight: bold; background: #f0f0f0;">
+                <td style="padding: 4px 6px; text-align: right; vertical-align: bottom;">Total Expenses</td>
+                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
+                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
+                <td style="padding: 4px 6px; border-left: 1px solid #000; text-align: right; vertical-align: bottom; font-size: 10pt;">$${expensesTotal.toFixed(2)}</td>
               </tr>
             </tfoot>
           </table>
