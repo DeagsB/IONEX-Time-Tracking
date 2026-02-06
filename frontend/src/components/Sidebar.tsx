@@ -69,6 +69,28 @@ export default function Sidebar() {
           </SidebarLink>
         </div>
 
+        <div style={{ marginBottom: '30px' }}>
+          <div style={{ 
+            fontSize: '11px', 
+            fontWeight: '600', 
+            textTransform: 'uppercase', 
+            letterSpacing: '1px',
+            color: 'var(--text-tertiary)',
+            marginBottom: '10px',
+            padding: '0 10px'
+          }}>
+            ANALYZE
+          </div>
+          <SidebarLink to="/payroll" active={isActive('/payroll')}>
+            Payroll
+          </SidebarLink>
+          {isAdmin && (
+            <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
+              Employee Reports
+            </SidebarLink>
+          )}
+        </div>
+
         {!isAdmin && (
           <div style={{ marginBottom: '30px' }}>
             <div style={{
@@ -93,9 +115,9 @@ export default function Sidebar() {
             </SidebarLink>
             {!isDemoMode && (
               <div style={{ marginTop: '30px' }}>
-<SidebarLink to="/profile" active={isActive('/profile')}>
-                Settings
-              </SidebarLink>
+                <SidebarLink to="/profile" active={isActive('/profile')}>
+                  Settings
+                </SidebarLink>
               </div>
             )}
           </div>
@@ -128,28 +150,6 @@ export default function Sidebar() {
             </SidebarLink>
           </div>
         )}
-
-        <div style={{ marginBottom: '30px' }}>
-          <div style={{ 
-            fontSize: '11px', 
-            fontWeight: '600', 
-            textTransform: 'uppercase', 
-            letterSpacing: '1px',
-            color: 'var(--text-tertiary)',
-            marginBottom: '10px',
-            padding: '0 10px'
-          }}>
-            ANALYZE
-          </div>
-          <SidebarLink to="/payroll" active={isActive('/payroll')}>
-            Payroll
-          </SidebarLink>
-          {isAdmin && (
-            <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
-              Employee Reports
-            </SidebarLink>
-          )}
-        </div>
 
         {isAdmin && (
           <div style={{ marginBottom: '30px' }}>
