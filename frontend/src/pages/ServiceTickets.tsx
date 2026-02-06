@@ -2579,7 +2579,11 @@ export default function ServiceTickets() {
                                   if (editingExpense.id) {
                                     await updateExpenseMutation.mutateAsync({
                                       id: editingExpense.id,
-                                      ...editingExpense,
+                                      expense_type: editingExpense.expense_type,
+                                      description: editingExpense.description.trim(),
+                                      quantity: Number(editingExpense.quantity) || 0,
+                                      rate: Number(editingExpense.rate) || 0,
+                                      unit: editingExpense.unit?.trim() || undefined,
                                     });
                                   } else {
                                     await createExpenseMutation.mutateAsync({
