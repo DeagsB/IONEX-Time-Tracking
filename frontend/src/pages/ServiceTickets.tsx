@@ -2446,8 +2446,8 @@ export default function ServiceTickets() {
 
                       {editingExpense && currentTicketRecordId && (
                         <div style={{
-                          backgroundColor: 'rgba(199, 112, 240, 0.1)',
-                          border: '1px solid rgba(199, 112, 240, 0.3)',
+                          backgroundColor: 'rgba(255, 152, 0, 0.08)',
+                          border: '1px solid rgba(255, 152, 0, 0.35)',
                           borderRadius: '6px',
                           padding: '12px',
                           marginBottom: '12px',
@@ -2594,11 +2594,12 @@ export default function ServiceTickets() {
                                   setEditingExpense(null);
                                 } catch (err: unknown) {
                                   console.error('Expense save error:', err);
-                                  let message = err instanceof Error ? err.message : 'Failed to save expense. Please try again.';
+                                  const raw = err instanceof Error ? err.message : String(err);
+                                  let message = raw || 'Failed to save expense. Please try again.';
                                   if (typeof message === 'string' && (message.includes('row-level security') || message.includes('policy') || message.includes('permission') || message.includes('403'))) {
-                                    message = "You don't have permission to add or edit expenses. Only administrators can manage expenses.";
+                                    message = "Permission denied. This may be an RLS policy issue. Please check that the expense migrations have been applied.";
                                   }
-                                  alert(message);
+                                  alert(`Failed to save expense:\n${message}`);
                                 }
                               }}
                               style={{
