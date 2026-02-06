@@ -33,6 +33,9 @@ export interface ServiceTicket {
   projectLocation?: string;
   projectApproverPoAfe?: string;
   projectOther?: string;
+  // Entry-level overrides (from time entry form - take priority over project/customer defaults)
+  entryLocation?: string;
+  entryPoAfe?: string;
   ticketNumber?: string; // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
   totalHours: number;
   entries: TimeEntryWithRelations[];
@@ -62,6 +65,7 @@ export interface TimeEntryWithRelations {
   start_time?: string;
   end_time?: string;
   location?: string; // Work location for grouping into service tickets
+  po_afe?: string; // PO/AFE entered on the time entry
   is_demo?: boolean;
   user?: {
     id: string;
@@ -269,6 +273,8 @@ export function groupEntriesIntoTickets(
         projectLocation: entry.project?.location,
         projectApproverPoAfe: entry.project?.approver_po_afe,
         projectOther: entry.project?.other,
+        entryLocation: entry.location || undefined,
+        entryPoAfe: entry.po_afe || undefined,
         totalHours: 0,
         entries: [],
         hoursByRateType: {
