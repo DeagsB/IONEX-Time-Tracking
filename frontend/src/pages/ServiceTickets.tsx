@@ -196,6 +196,13 @@ export default function ServiceTickets() {
     rate: number;
     unit?: string;
   } | null>(null);
+  const [showInlineCreateCustomer, setShowInlineCreateCustomer] = useState(false);
+  const [inlineCustomerName, setInlineCustomerName] = useState('');
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  const [showInlineCreateProject, setShowInlineCreateProject] = useState(false);
+  const [inlineProjectName, setInlineProjectName] = useState('');
+  const [inlineProjectNumber, setInlineProjectNumber] = useState('');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
 
   // Round to nearest 0.5 hour (always round up)
   const roundToHalfHour = (hours: number): number => {
@@ -1223,6 +1230,11 @@ export default function ServiceTickets() {
     setCreateServiceRows([{ id: 'new-1', description: '', st: 0, tt: 0, ft: 0, so: 0, fo: 0 }]);
     setCreateExpenses([]);
     setCreateEditingExpense(null);
+    setShowInlineCreateCustomer(false);
+    setInlineCustomerName('');
+    setShowInlineCreateProject(false);
+    setInlineProjectName('');
+    setInlineProjectNumber('');
     setShowCreatePanel(true);
   };
 
@@ -1286,6 +1298,58 @@ export default function ServiceTickets() {
         approverName: project.approver_po_afe || prev.approverName,
         other: project.other || prev.other,
       }));
+    }
+  };
+
+  // Inline create customer
+  const handleInlineCreateCustomer = async () => {
+    if (!inlineCustomerName.trim()) return;
+    setIsCreatingCustomer(true);
+    try {
+      const newCustomer = await customersService.create({ name: inlineCustomerName.trim() });
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      await queryClient.refetchQueries({ queryKey: ['customers'] });
+      setCreateCustomerId(newCustomer.id);
+      setCreateData(prev => ({ ...prev, customerName: newCustomer.name || '' }));
+      setShowInlineCreateCustomer(false);
+      setInlineCustomerName('');
+    } catch (err) {
+      console.error('Error creating customer:', err);
+      alert('Failed to create customer. ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsCreatingCustomer(false);
+    }
+  };
+
+  // Inline create project
+  const handleInlineCreateProject = async () => {
+    if (!inlineProjectName.trim() || !createCustomerId || !user?.id) return;
+    setIsCreatingProject(true);
+    try {
+      const newProject = await projectsService.create({
+        name: inlineProjectName.trim(),
+        project_number: inlineProjectNumber.trim() || null,
+        customer_id: createCustomerId,
+        status: 'active',
+      }, user.id);
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
+      await queryClient.refetchQueries({ queryKey: ['projects'] });
+      setCreateProjectId(newProject.id);
+      setCreateData(prev => ({
+        ...prev,
+        projectNumber: newProject.project_number || '',
+        serviceLocation: newProject.location || prev.serviceLocation,
+        approverName: newProject.approver_po_afe || prev.approverName,
+        other: newProject.other || prev.other,
+      }));
+      setShowInlineCreateProject(false);
+      setInlineProjectName('');
+      setInlineProjectNumber('');
+    } catch (err) {
+      console.error('Error creating project:', err);
+      alert('Failed to create project. ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsCreatingProject(false);
     }
   };
 
@@ -3664,14 +3728,51 @@ export default function ServiceTickets() {
                 <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
                   <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Customer Information</h3>
 
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Customer Name</label>
-                  <SearchableSelect
-                    options={customers?.map((c: any) => ({ value: c.id, label: c.name })) || []}
-                    value={createCustomerId}
-                    onChange={handleCreateCustomerSelect}
-                    placeholder="Search customers..."
-                    emptyOption={{ value: '', label: 'Select a customer...' }}
-                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Customer Name</label>
+                    {!showInlineCreateCustomer && (
+                      <button
+                        onClick={() => setShowInlineCreateCustomer(true)}
+                        style={{ background: 'none', border: 'none', color: 'var(--primary-color)', fontSize: '12px', fontWeight: '600', cursor: 'pointer', padding: 0 }}
+                      >
+                        + New Customer
+                      </button>
+                    )}
+                  </div>
+                  {showInlineCreateCustomer ? (
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                      <input
+                        type="text"
+                        placeholder="Customer name..."
+                        value={inlineCustomerName}
+                        onChange={(e) => setInlineCustomerName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleInlineCreateCustomer(); }}
+                        autoFocus
+                        style={{ flex: 1, padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--primary-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                      <button
+                        onClick={handleInlineCreateCustomer}
+                        disabled={isCreatingCustomer || !inlineCustomerName.trim()}
+                        style={{ padding: '8px 12px', backgroundColor: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        {isCreatingCustomer ? '...' : 'Create'}
+                      </button>
+                      <button
+                        onClick={() => { setShowInlineCreateCustomer(false); setInlineCustomerName(''); }}
+                        style={{ padding: '8px 10px', background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer' }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <SearchableSelect
+                      options={customers?.map((c: any) => ({ value: c.id, label: c.name })) || []}
+                      value={createCustomerId}
+                      onChange={handleCreateCustomerSelect}
+                      placeholder="Search customers..."
+                      emptyOption={{ value: '', label: 'Select a customer...' }}
+                    />
+                  )}
 
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Address</label>
                   <input
@@ -3744,14 +3845,62 @@ export default function ServiceTickets() {
                     style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
                   />
 
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Project Number</label>
-                  <SearchableSelect
-                    options={createProjectOptions}
-                    value={createProjectId}
-                    onChange={handleCreateProjectSelect}
-                    placeholder={createCustomerId ? 'Search projects...' : 'Select a customer first'}
-                    emptyOption={{ value: '', label: createCustomerId ? 'No project' : 'Select a customer first' }}
-                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Project</label>
+                    {!showInlineCreateProject && createCustomerId && (
+                      <button
+                        onClick={() => setShowInlineCreateProject(true)}
+                        style={{ background: 'none', border: 'none', color: 'var(--primary-color)', fontSize: '12px', fontWeight: '600', cursor: 'pointer', padding: 0 }}
+                      >
+                        + New Project
+                      </button>
+                    )}
+                  </div>
+                  {showInlineCreateProject ? (
+                    <div style={{ padding: '10px', marginBottom: '4px', backgroundColor: 'rgba(37, 99, 235, 0.05)', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.2)' }}>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                        <input
+                          type="text"
+                          placeholder="Project name..."
+                          value={inlineProjectName}
+                          onChange={(e) => setInlineProjectName(e.target.value)}
+                          autoFocus
+                          style={{ flex: 2, padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--primary-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Project #..."
+                          value={inlineProjectNumber}
+                          onChange={(e) => setInlineProjectNumber(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleInlineCreateProject(); }}
+                          style={{ flex: 1, padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={() => { setShowInlineCreateProject(false); setInlineProjectName(''); setInlineProjectNumber(''); }}
+                          style={{ padding: '6px 12px', background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleInlineCreateProject}
+                          disabled={isCreatingProject || !inlineProjectName.trim()}
+                          style={{ padding: '6px 12px', backgroundColor: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          {isCreatingProject ? 'Creating...' : 'Create Project'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <SearchableSelect
+                      options={createProjectOptions}
+                      value={createProjectId}
+                      onChange={handleCreateProjectSelect}
+                      placeholder={createCustomerId ? 'Search projects...' : 'Select a customer first'}
+                      emptyOption={{ value: '', label: createCustomerId ? 'No project' : 'Select a customer first' }}
+                    />
+                  )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
                     <div>
