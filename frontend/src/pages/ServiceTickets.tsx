@@ -117,6 +117,10 @@ export default function ServiceTickets() {
   }
   const [serviceRows, setServiceRows] = useState<ServiceRow[]>([]);
   const [isTicketEdited, setIsTicketEdited] = useState(false);
+  // Refs to track initial values when ticket opened (for highlighting pending changes)
+  type EditableTicketSnapshot = NonNullable<typeof editableTicket>;
+  const initialEditableTicketRef = useRef<EditableTicketSnapshot | null>(null);
+  const initialServiceRowsRef = useRef<ServiceRow[]>([]);
   const [isLockedForEditing, setIsLockedForEditing] = useState(false); // True when admin has approved
   const [showLockNotification, setShowLockNotification] = useState(false);
   const lockNotificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -174,6 +178,9 @@ export default function ServiceTickets() {
       }
       setIsTicketEdited(false);
       queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      // Update initial snapshots so pending highlights clear after save
+      if (editableTicket) initialEditableTicketRef.current = { ...editableTicket };
+      initialServiceRowsRef.current = serviceRows.map(r => ({ ...r }));
       return true;
     } finally {
       setIsSavingTicket(false);
@@ -188,7 +195,23 @@ export default function ServiceTickets() {
     setEditedDescriptions({});
     setEditedHours({});
     setIsTicketEdited(false);
+    initialEditableTicketRef.current = null;
+    initialServiceRowsRef.current = [];
   };
+
+  const hasPendingChanges = useMemo(() => {
+    if (!editableTicket || !initialEditableTicketRef.current) return false;
+    const init = initialEditableTicketRef.current;
+    const headerDirty = (Object.keys(editableTicket) as (keyof EditableTicketSnapshot)[]).some(k => String(editableTicket[k] ?? '') !== String(init[k] ?? ''));
+    const initRows = initialServiceRowsRef.current;
+    const serviceDirty = serviceRows.some((row, i) => {
+      if (i >= initRows.length) return true;
+      const inital = initRows[i];
+      if (!inital) return true;
+      return row.description !== inital.description || row.st !== inital.st || row.tt !== inital.tt || row.ft !== inital.ft || row.so !== inital.so || row.fo !== inital.fo;
+    });
+    return headerDirty || serviceDirty;
+  }, [editableTicket, serviceRows]);
   
   // Legacy state for backward compatibility (used in some exports)
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
@@ -1284,7 +1307,7 @@ export default function ServiceTickets() {
                   setIsLockedForEditing(isAdminApproved && !isAdmin); // Lock for non-admins when admin approved
                   
                   setSelectedTicket(ticket);
-                  setEditableTicket({
+                  const initialEditable = {
                     customerName: ticket.customerInfo.name || '',
                     address: ticket.customerInfo.address || '',
                     cityState: ticket.customerInfo.city && ticket.customerInfo.state 
@@ -1294,7 +1317,6 @@ export default function ServiceTickets() {
                     phone: ticket.customerInfo.phone || '',
                     email: ticket.customerInfo.email || '',
                     contactName: ticket.customerInfo.contact_name || '',
-                    // Use project location, then customer service_location only (do not default to address so user can override)
                     serviceLocation: ticket.projectLocation || ticket.customerInfo.service_location || '',
                     locationCode: ticket.customerInfo.location_code || '',
                     poNumber: ticket.customerInfo.po_number || '',
@@ -1303,7 +1325,9 @@ export default function ServiceTickets() {
                     techName: ticket.userName || '',
                     projectNumber: ticket.projectNumber || '',
                     date: ticket.date || '',
-                  });
+                  };
+                  setEditableTicket(initialEditable);
+                  initialEditableTicketRef.current = { ...initialEditable };
                   
                   // Set display ticket number (will be XXX until exported)
                   setDisplayTicketNumber(ticket.displayTicketNumber);
@@ -1354,7 +1378,9 @@ export default function ServiceTickets() {
                         });
                       });
                       
-                      setServiceRows(Array.from(rowMap.values()));
+                      const loadedRows = Array.from(rowMap.values());
+                      setServiceRows(loadedRows);
+                      initialServiceRowsRef.current = loadedRows.map(r => ({ ...r }));
                       setEditedDescriptions(loadedDescriptions);
                       setEditedHours(
                         Object.keys(loadedHours).reduce((acc, rateType) => {
@@ -1365,8 +1391,9 @@ export default function ServiceTickets() {
                       );
                     } else {
                       setIsTicketEdited(false);
-                      // Initialize service rows from time entries
-                      setServiceRows(entriesToServiceRows(ticket.entries));
+                      const initialRows = entriesToServiceRows(ticket.entries);
+                      setServiceRows(initialRows);
+                      initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
                       setEditedDescriptions({});
                       setEditedHours({});
                     }
@@ -1374,7 +1401,9 @@ export default function ServiceTickets() {
                     console.error('Error loading ticket data:', error);
                     setExpenses([]);
                     setIsTicketEdited(false);
-                    setServiceRows(entriesToServiceRows(ticket.entries));
+                    const fallbackRows = entriesToServiceRows(ticket.entries);
+                    setServiceRows(fallbackRows);
+                    initialServiceRowsRef.current = fallbackRows.map(r => ({ ...r }));
                     setEditedDescriptions({});
                     setEditedHours({});
                   }
@@ -1817,6 +1846,24 @@ export default function ServiceTickets() {
                   marginBottom: '16px',
                   letterSpacing: '1px',
                 };
+                const pendingChangeHighlight: React.CSSProperties = {
+                  backgroundColor: 'rgba(255, 193, 7, 0.22)',
+                  borderColor: 'rgba(255, 152, 0, 0.75)',
+                  boxShadow: 'inset 0 0 0 1px rgba(255, 152, 0, 0.35)',
+                };
+                const isHeaderFieldDirty = (field: keyof EditableTicketSnapshot): boolean => {
+                  if (!editableTicket || !initialEditableTicketRef.current) return false;
+                  return String(editableTicket[field] ?? '') !== String(initialEditableTicketRef.current[field] ?? '');
+                };
+                const isServiceRowDirty = (i: number): boolean => {
+                  const init = initialServiceRowsRef.current;
+                  if (!init || i >= serviceRows.length) return false;
+                  if (i >= init.length) return true;
+                  const cur = serviceRows[i];
+                  const inital = init[i];
+                  if (!inital) return true;
+                  return cur.description !== inital.description || cur.st !== inital.st || cur.tt !== inital.tt || cur.ft !== inital.ft || cur.so !== inital.so || cur.fo !== inital.fo;
+                };
 
                 return (
                   <>
@@ -1829,7 +1876,7 @@ export default function ServiceTickets() {
                           <div>
                             <label style={labelStyle}>Customer Name</label>
                             <input
-                              style={inputStyle}
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('customerName') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.customerName}
                               onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, customerName: e.target.value })}
                               readOnly={isLockedForEditing}
@@ -1838,7 +1885,7 @@ export default function ServiceTickets() {
                           <div>
                             <label style={labelStyle}>Address</label>
                             <input
-                              style={inputStyle}
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('address') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.address}
                               onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, address: e.target.value })}
                               readOnly={isLockedForEditing}
@@ -1848,7 +1895,7 @@ export default function ServiceTickets() {
                             <div>
                               <label style={labelStyle}>City, Province</label>
                               <input
-                                style={inputStyle}
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('cityState') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.cityState}
                                 onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, cityState: e.target.value })}
                                 readOnly={isLockedForEditing}
@@ -1857,7 +1904,7 @@ export default function ServiceTickets() {
                             <div>
                               <label style={labelStyle}>Postal Code</label>
                               <input
-                                style={inputStyle}
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('zipCode') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.zipCode}
                                 onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, zipCode: e.target.value })}
                                 readOnly={isLockedForEditing}
@@ -1867,7 +1914,7 @@ export default function ServiceTickets() {
                           <div>
                             <label style={labelStyle}>Contact Name</label>
                             <input
-                              style={inputStyle}
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('contactName') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.contactName}
                               onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, contactName: e.target.value })}
                               readOnly={isLockedForEditing}
@@ -1877,7 +1924,7 @@ export default function ServiceTickets() {
                             <div>
                               <label style={labelStyle}>Phone</label>
                               <input
-                                style={inputStyle}
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('phone') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.phone}
                                 onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, phone: e.target.value })}
                                 readOnly={isLockedForEditing}
@@ -1886,7 +1933,7 @@ export default function ServiceTickets() {
                             <div>
                               <label style={labelStyle}>Email</label>
                               <input
-                                style={inputStyle}
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('email') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.email}
                                 onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, email: e.target.value })}
                                 readOnly={isLockedForEditing}
@@ -1903,7 +1950,7 @@ export default function ServiceTickets() {
                           <div>
                             <label style={labelStyle}>Technician</label>
                             <input
-                              style={inputStyle}
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('techName') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.techName}
                               onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, techName: e.target.value })}
                               readOnly={isLockedForEditing}
@@ -1913,7 +1960,7 @@ export default function ServiceTickets() {
                             <div>
                               <label style={labelStyle}>Project Number</label>
                               <input
-                                style={inputStyle}
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('projectNumber') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.projectNumber}
                                 onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, projectNumber: e.target.value })}
                                 readOnly={isLockedForEditing}
@@ -1923,7 +1970,7 @@ export default function ServiceTickets() {
                               <label style={labelStyle}>Date</label>
                               <input
                                 type="date"
-                                style={inputStyle}
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('date') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.date}
                                 onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, date: e.target.value })}
                                 readOnly={isLockedForEditing}
@@ -1933,7 +1980,7 @@ export default function ServiceTickets() {
                           <div>
                             <label style={labelStyle}>Service Location</label>
                             <input
-                              style={inputStyle}
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('serviceLocation') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.serviceLocation}
                               onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, serviceLocation: e.target.value })}
                               readOnly={isLockedForEditing}
@@ -1942,7 +1989,7 @@ export default function ServiceTickets() {
                           <div>
                             <label style={labelStyle}>Approver / PO / AFE</label>
                             <input
-                              style={inputStyle}
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('approverName') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.approverName}
                               onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, approverName: e.target.value })}
                               readOnly={isLockedForEditing}
@@ -1951,7 +1998,7 @@ export default function ServiceTickets() {
                           <div>
                             <label style={labelStyle}>Other</label>
                             <input
-                              style={inputStyle}
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('other') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.other}
                               onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, other: e.target.value })}
                               readOnly={isLockedForEditing}
@@ -2008,7 +2055,8 @@ export default function ServiceTickets() {
                               gap: '8px',
                               alignItems: 'center',
                               padding: '8px',
-                              backgroundColor: 'var(--bg-tertiary)',
+                              backgroundColor: isServiceRowDirty(index) ? 'rgba(255, 193, 7, 0.22)' : 'var(--bg-tertiary)',
+                              border: isServiceRowDirty(index) ? '1px solid rgba(255, 152, 0, 0.75)' : '1px solid transparent',
                               borderRadius: '6px'
                             }}
                           >
@@ -2798,6 +2846,11 @@ export default function ServiceTickets() {
                 </div>
               )}
 
+              {hasPendingChanges && (
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '16px', marginBottom: '4px' }}>
+                  Amber highlight = unsaved changes
+                </p>
+              )}
               {/* Action Buttons */}
               <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
                 {isTicketEdited && !isLockedForEditing && (
