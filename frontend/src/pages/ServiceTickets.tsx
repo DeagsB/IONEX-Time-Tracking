@@ -2462,18 +2462,35 @@ export default function ServiceTickets() {
                                   alert('Please enter a description');
                                   return;
                                 }
-                                if (editingExpense.id) {
-                                  await updateExpenseMutation.mutateAsync({
-                                    id: editingExpense.id,
-                                    ...editingExpense,
-                                  });
-                                } else {
-                                  await createExpenseMutation.mutateAsync({
-                                    service_ticket_id: currentTicketRecordId,
-                                    ...editingExpense,
-                                  });
+                                if (!currentTicketRecordId) {
+                                  alert('Cannot add expense: ticket record not ready. Please close and reopen the ticket.');
+                                  return;
                                 }
-                                setEditingExpense(null);
+                                try {
+                                  if (editingExpense.id) {
+                                    await updateExpenseMutation.mutateAsync({
+                                      id: editingExpense.id,
+                                      ...editingExpense,
+                                    });
+                                  } else {
+                                    await createExpenseMutation.mutateAsync({
+                                      service_ticket_id: currentTicketRecordId,
+                                      expense_type: editingExpense.expense_type,
+                                      description: editingExpense.description.trim(),
+                                      quantity: Number(editingExpense.quantity) || 0,
+                                      rate: Number(editingExpense.rate) || 0,
+                                      unit: editingExpense.unit?.trim() || undefined,
+                                    });
+                                  }
+                                  setEditingExpense(null);
+                                } catch (err: unknown) {
+                                  console.error('Expense save error:', err);
+                                  let message = err instanceof Error ? err.message : 'Failed to save expense. Please try again.';
+                                  if (typeof message === 'string' && (message.includes('row-level security') || message.includes('policy') || message.includes('permission') || message.includes('403'))) {
+                                    message = "You don't have permission to add or edit expenses. Only administrators can manage expenses.";
+                                  }
+                                  alert(message);
+                                }
                               }}
                               style={{
                                 padding: '6px 12px',
