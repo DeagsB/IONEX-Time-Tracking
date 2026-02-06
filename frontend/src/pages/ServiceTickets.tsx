@@ -2828,12 +2828,38 @@ export default function ServiceTickets() {
               )}
 
               {hasPendingChanges && (
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '16px', marginBottom: '4px' }}>
-                  Amber highlight = unsaved changes
-                </p>
+                <div style={{
+                  marginTop: '16px',
+                  marginBottom: '4px',
+                  padding: '12px 16px',
+                  backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                  border: '1px solid #ff9800',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: '600' }}>
+                    Amber highlight = unsaved changes
+                  </span>
+                </div>
               )}
-              {/* Action Buttons */}
-              <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+              {/* Action Buttons - Close on far left, others on right */}
+              <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <button
+                  className="button button-secondary"
+                  onClick={() => { 
+                    if (isTicketEdited || hasPendingChanges) {
+                      setShowCloseConfirm(true);
+                    } else {
+                      closePanel();
+                    }
+                  }}
+                  style={{ padding: '10px 24px' }}
+                  disabled={isExportingExcel || isExportingPdf}
+                >
+                  Close
+                </button>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 {(isTicketEdited || hasPendingChanges) && !isLockedForEditing && (
                   <button
                     onClick={async () => {
@@ -2854,20 +2880,6 @@ export default function ServiceTickets() {
                     {isSavingTicket ? 'Saving...' : 'Save Changes'}
                   </button>
                 )}
-                <button
-                  className="button button-secondary"
-                  onClick={() => { 
-                    if (isTicketEdited || hasPendingChanges) {
-                      setShowCloseConfirm(true);
-                    } else {
-                      closePanel();
-                    }
-                  }}
-                  style={{ padding: '10px 24px' }}
-                  disabled={isExportingExcel || isExportingPdf}
-                >
-                  Close
-                </button>
                 {isAdmin ? (
                   <button
                     className="button button-primary"
@@ -3017,6 +3029,7 @@ export default function ServiceTickets() {
                     </button>
                   );
                 })()}
+                </div>
               </div>
             </div>
           </div>
