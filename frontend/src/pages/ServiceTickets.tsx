@@ -157,6 +157,9 @@ export default function ServiceTickets() {
     return Math.abs((a || 0) - (b || 0)) < tol;
   };
 
+  // Normalize for comparison so legacy autosave-era data (empty vs undefined, whitespace, number vs string) doesn't cause false "pending"
+  const normStr = (v: unknown): string => String(v ?? '').trim();
+
   const performSave = async (): Promise<boolean> => {
     if (!currentTicketRecordId || !selectedTicket) return false;
     setIsSavingTicket(true);
@@ -217,13 +220,13 @@ export default function ServiceTickets() {
   const hasPendingChanges = useMemo(() => {
     if (!editableTicket || !initialEditableTicketRef.current) return false;
     const init = initialEditableTicketRef.current;
-    const headerDirty = (Object.keys(editableTicket) as (keyof EditableTicketSnapshot)[]).some(k => String(editableTicket[k] ?? '') !== String(init[k] ?? ''));
+    const headerDirty = (Object.keys(editableTicket) as (keyof EditableTicketSnapshot)[]).some(k => normStr(editableTicket[k]) !== normStr(init[k]));
     const initRows = initialServiceRowsRef.current;
     const serviceDirty = serviceRows.some((row, i) => {
       if (i >= initRows.length) return true;
       const inital = initRows[i];
       if (!inital) return true;
-      return row.description !== inital.description
+      return normStr(row.description) !== normStr(inital.description)
         || !hoursEq(row.st, inital.st) || !hoursEq(row.tt, inital.tt) || !hoursEq(row.ft, inital.ft)
         || !hoursEq(row.so, inital.so) || !hoursEq(row.fo, inital.fo);
     });
@@ -1865,7 +1868,7 @@ export default function ServiceTickets() {
                 };
                 const isHeaderFieldDirty = (field: keyof EditableTicketSnapshot): boolean => {
                   if (!editableTicket || !initialEditableTicketRef.current) return false;
-                  return String(editableTicket[field] ?? '') !== String(initialEditableTicketRef.current[field] ?? '');
+                  return normStr(editableTicket[field]) !== normStr(initialEditableTicketRef.current[field]);
                 };
                 const isServiceRowDirty = (i: number): boolean => {
                   const init = initialServiceRowsRef.current;
@@ -1874,7 +1877,7 @@ export default function ServiceTickets() {
                   const cur = serviceRows[i];
                   const inital = init[i];
                   if (!inital) return true;
-                  return cur.description !== inital.description
+                  return normStr(cur.description) !== normStr(inital.description)
                   || !hoursEq(cur.st, inital.st) || !hoursEq(cur.tt, inital.tt) || !hoursEq(cur.ft, inital.ft)
                   || !hoursEq(cur.so, inital.so) || !hoursEq(cur.fo, inital.fo);
                 };
