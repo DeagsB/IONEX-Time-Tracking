@@ -1867,6 +1867,10 @@ export default function ServiceTickets() {
 
                 return (
                   <>
+                    {/* No auto-save notice */}
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                      Changes here are not saved automatically. Click Save Changes at the bottom to save your edits.
+                    </p>
                     {/* Customer & Service Info Section */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                       {/* Customer Info */}
