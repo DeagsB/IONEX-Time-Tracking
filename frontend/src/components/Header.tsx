@@ -106,17 +106,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     
     const project = projects?.find((p: any) => p.id === projectId);
     
-    // Try to get the last used location for this user and project
-    if (user?.id) {
-      const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
-      if (lastLocation) {
-        setLocation(lastLocation);
-        setPoAfe(project?.approver_po_afe || '');
-        return;
-      }
-    }
-    
-    // Fallback to project defaults
+    // Set project defaults (don't auto-populate from last used location)
     setLocation(project?.location || '');
     setPoAfe(project?.approver_po_afe || '');
   };

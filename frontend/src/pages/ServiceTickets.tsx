@@ -952,12 +952,13 @@ export default function ServiceTickets() {
     let mergedTickets = baseTickets;
     if (existingTickets && existingTickets.length > 0) {
       mergedTickets = baseTickets.map(ticket => {
-        // Find matching ticket record in database
-        const ticketRecord = existingTickets.find(
+        // Find matching ticket record in database (prefer non-discarded)
+        const matchingRecords = existingTickets.filter(
           et => et.date === ticket.date && 
                 et.user_id === ticket.userId && 
                 (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
         );
+        const ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         
         // If ticket has been edited, use edited hours instead of original
         if (ticketRecord?.is_edited && ticketRecord.edited_hours) {
@@ -1105,14 +1106,24 @@ export default function ServiceTickets() {
     }
   };
 
-  // Get or create service ticket record ID when a ticket is selected
-  const getOrCreateTicketRecord = async (ticket: ServiceTicket): Promise<string> => {
-    // Try to find existing ticket record
-    const existing = existingTickets?.find(
+  /**
+   * Find a matching existing ticket record for a computed ticket.
+   * Prefers non-discarded records to avoid stale discarded matches hiding real tickets.
+   */
+  const findMatchingTicketRecord = (ticket: { date: string; userId: string; customerId: string }) => {
+    const matches = existingTickets?.filter(
       et => et.date === ticket.date && 
             et.user_id === ticket.userId && 
             (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-    );
+    ) || [];
+    // Prefer non-discarded records; fall back to first match
+    return matches.find(et => !(et as any).is_discarded) || matches[0] || null;
+  };
+
+  // Get or create service ticket record ID when a ticket is selected
+  const getOrCreateTicketRecord = async (ticket: ServiceTicket): Promise<string> => {
+    // Try to find existing ticket record
+    const existing = findMatchingTicketRecord(ticket);
 
     if (existing) {
       return existing.id;
@@ -1212,14 +1223,34 @@ export default function ServiceTickets() {
     }
     
     // Filter out discarded tickets unless showDiscarded is active
+    // For computed tickets (with time entries), prefer non-discarded matching records
+    // and don't hide them if only stale discarded records exist
     result = result.filter(t => {
-      const existing = existingTickets?.find(
+      const matchingRecords = existingTickets?.filter(
         et => et.date === t.date && 
               et.user_id === t.userId && 
               (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
-      );
+      ) || [];
+      // Prefer a non-discarded record if one exists; fall back to first match
+      const existing = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
       const isDiscarded = !!(existing as any)?.is_discarded;
-      return showDiscarded ? isDiscarded : !isDiscarded;
+
+      if (!showDiscarded) {
+        // In normal view: always show computed tickets that have real time entries,
+        // even if stale discarded records exist for the same date/customer/user.
+        // Only hide tickets that were explicitly discarded AND have no time entries (standalone).
+        if (isDiscarded && t.entries.length > 0) {
+          return true; // Don't hide computed tickets with active entries
+        }
+        return !isDiscarded;
+      } else {
+        // In discarded view: show discarded tickets, but only standalone ones
+        // (computed tickets with entries always appear in normal view instead)
+        if (isDiscarded && t.entries.length > 0) {
+          return false; // These show in normal view, not discarded view
+        }
+        return isDiscarded;
+      }
     });
     
     if (selectedCustomerId) {
