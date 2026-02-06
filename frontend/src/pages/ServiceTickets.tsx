@@ -84,6 +84,7 @@ export default function ServiceTickets() {
     rate: number;
     unit?: string;
   } | null>(null);
+  const [pendingDeleteExpenseIds, setPendingDeleteExpenseIds] = useState<Set<string>>(new Set());
   
   // Editable ticket fields state
   const [editableTicket, setEditableTicket] = useState<{
@@ -221,6 +222,14 @@ export default function ServiceTickets() {
           console.warn('Header overrides not saved (run migration_add_service_ticket_header_overrides to enable):', overrideError);
         }
       }
+      // Apply pending expense deletes (expenses marked for removal)
+      for (const expenseId of pendingDeleteExpenseIds) {
+        await serviceTicketExpensesService.delete(expenseId);
+      }
+      if (pendingDeleteExpenseIds.size > 0) {
+        setPendingDeleteExpenseIds(new Set());
+        if (currentTicketRecordId) await loadExpenses(currentTicketRecordId);
+      }
       setIsTicketEdited(false);
       queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       // Update initial snapshots so pending highlights and Save Changes button clear after save
@@ -241,6 +250,7 @@ export default function ServiceTickets() {
     setEditedDescriptions({});
     setEditedHours({});
     setIsTicketEdited(false);
+    setPendingDeleteExpenseIds(new Set());
     setPendingChangesVersion(v => v + 1); // force hasPendingChanges to re-evaluate on next open
     initialEditableTicketRef.current = null;
     initialServiceRowsRef.current = [];
@@ -251,7 +261,8 @@ export default function ServiceTickets() {
     const init = initialEditableTicketRef.current;
     const headerDirty = (Object.keys(editableTicket) as (keyof EditableTicketSnapshot)[]).some(k => normStr(editableTicket[k]) !== normStr(init[k]));
     const initRows = initialServiceRowsRef.current;
-    const serviceDirty = serviceRows.some((row, i) => {
+    const rowCountChanged = serviceRows.length !== initRows.length;
+    const serviceDirty = rowCountChanged || serviceRows.some((row, i) => {
       if (i >= initRows.length) return true;
       const inital = initRows[i];
       if (!inital) return true;
@@ -259,8 +270,9 @@ export default function ServiceTickets() {
         || !hoursEq(row.st, inital.st) || !hoursEq(row.tt, inital.tt) || !hoursEq(row.ft, inital.ft)
         || !hoursEq(row.so, inital.so) || !hoursEq(row.fo, inital.fo);
     });
-    return headerDirty || serviceDirty;
-  }, [editableTicket, serviceRows, pendingChangesVersion]);
+    const hasPendingExpenseDeletes = pendingDeleteExpenseIds.size > 0;
+    return headerDirty || serviceDirty || hasPendingExpenseDeletes;
+  }, [editableTicket, serviceRows, pendingChangesVersion, pendingDeleteExpenseIds.size]);
   
   // Legacy state for backward compatibility (used in some exports)
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
@@ -1351,6 +1363,7 @@ export default function ServiceTickets() {
                   setIsLockedForEditing(isAdminApproved && !isAdmin); // Lock for non-admins when admin approved
                   
                   setSelectedTicket(ticket);
+                  setPendingDeleteExpenseIds(new Set());
                   const initialEditable = {
                     customerName: ticket.customerInfo.name || '',
                     address: ticket.customerInfo.address || '',
@@ -2438,7 +2451,7 @@ export default function ServiceTickets() {
                         )}
                       </div>
                       
-                      {expenses.length === 0 && !editingExpense && (
+                      {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length === 0 && !editingExpense && (
                         <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
                           No expenses added yet.
                         </p>
@@ -2630,9 +2643,9 @@ export default function ServiceTickets() {
                         </div>
                       )}
 
-                      {expenses.map((expense) => (
+                      {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).map((expense) => (
                         <div
-                          key={expense.id}
+                          key={expense.id ?? expense.description + expense.expense_type}
                           style={{
                             display: 'grid',
                             gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr auto',
@@ -2680,9 +2693,9 @@ export default function ServiceTickets() {
                               Edit
                             </button>
                             <button
-                              onClick={async () => {
-                                if (expense.id && confirm('Delete this expense?')) {
-                                  await deleteExpenseMutation.mutateAsync(expense.id);
+                              onClick={() => {
+                                if (expense.id && confirm('Delete this expense? It will be removed when you click Save Changes.')) {
+                                  setPendingDeleteExpenseIds((prev) => new Set(prev).add(expense.id!));
                                 }
                               }}
                               style={{
@@ -2702,7 +2715,7 @@ export default function ServiceTickets() {
                         </div>
                       ))}
 
-                      {expenses.length > 0 && (
+                      {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length > 0 && (
                         <div
                           style={{
                             display: 'flex',
@@ -2715,7 +2728,7 @@ export default function ServiceTickets() {
                         >
                           <span style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>TOTAL EXPENSES:</span>
                           <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: '700' }}>
-                            ${expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0).toFixed(2)}
+                            ${expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).reduce((sum, e) => sum + (e.quantity * e.rate), 0).toFixed(2)}
                           </span>
                         </div>
                       )}
