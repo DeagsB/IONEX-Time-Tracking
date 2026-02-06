@@ -1,0 +1,69 @@
+# Changelog
+
+Notable changes to **IONEX Time Tracking** are listed here in plain language. The format is inspired by [Keep a Changelog](https://keepachangelog.com/).
+
+---
+
+## Latest changes
+
+### Added
+
+- **Create service ticket from scratch**  
+  You can create a new service ticket without any time entries. In the form, choosing a customer fills in address, contact, and related info; choosing a project filters by that customer. Technician name is pre-filled. Ticket number is assigned when an admin approves.
+
+- **Inline create Customer and Project**  
+  In the “Create Service Ticket” panel, the Customer and Project dropdowns include options to add a new customer or a new project without leaving the form.
+
+- **Bulk “Mark as Submitted”**  
+  On the Service Tickets page you can select multiple tickets and use a single action to mark them all as Submitted (workflow status set to approved).
+
+- **Discard / Restore service tickets**  
+  Service tickets can be “discarded” (hidden from the main list but not deleted). A “Show Discarded” filter reveals them so they can be restored. This is available to all signed-in users, not only admins.
+
+- **PO/AFE on time entries**  
+  When adding or editing a time entry and a customer is selected, a **PO/AFE** field appears between Location and Rate Type. It is pre-filled from the selected project’s Approver/PO/AFE and can be edited; the value is saved with the time entry.
+
+- **“Other” on service ticket PDF**  
+  The exported service ticket PDF now has an “Other” column on the same row as PO/CC/AFE (same style as the Job ID / Job Type row).
+
+### Changed
+
+- **Service ticket form**  
+  The label “Project Number” in the create-ticket form has been renamed to **“Project”**.
+
+- **Time entry form**  
+  The note “Different locations create separate service tickets” now appears **above** the Location input instead of below it.
+
+- **Customers and projects**  
+  Any authenticated user can edit and delete customers and projects (previous restrictions were removed).
+
+### Fixed
+
+- **Service tickets**
+  - Manually created (standalone) service tickets now show up in the main ticket list.
+  - Date range and employee filters now apply to all tickets, including standalone ones.
+  - Admins can approve manually created service tickets (they were previously mis-treated as demo tickets and failed to approve).
+  - PO/CC/AFE and Other values now appear correctly on the service ticket PDF export.
+
+- **Time entries**  
+  Opening the edit modal for a running timer no longer causes a build/TypeScript error (missing `po_afe` in state).
+
+- **Expenses**  
+  The confirmation dialog when deleting an expense has been removed; deletion happens immediately when you choose delete.
+
+---
+
+## Earlier improvements (summary)
+
+- **Service tickets**  
+  Save Changes and unsaved-changes confirmation; pending changes highlighted; header fields (customer/service info, Service Location, Approver/PO/AFE, Other) saved in `header_overrides`; expenses can be added/edited/removed with changes applied on Save; PDF export layout and styling improvements; lock message when editing another user’s ticket.
+
+- **Payroll / Week view**  
+  Current and Previous Pay Period buttons; payday shown for the selected period; project legend with numbers and full name on hover; horizontal scroll when there are many projects.
+
+- **General**  
+  Bug fixes for customer updates, service ticket date handling, and expense error messages.
+
+---
+
+*For exact commit history, use `git log` in the repository.*
