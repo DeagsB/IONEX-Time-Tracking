@@ -2830,13 +2830,20 @@ export default function ServiceTickets() {
               <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
                 {isTicketEdited && !isLockedForEditing && (
                   <button
-                    className="button button-primary"
                     onClick={async () => {
-                      const ok = await performSave();
-                      if (ok) alert('Changes saved successfully.');
+                      await performSave();
                     }}
                     disabled={isSavingTicket}
-                    style={{ padding: '10px 24px' }}
+                    style={{
+                      padding: '10px 24px',
+                      backgroundColor: '#ff9800',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      cursor: isSavingTicket ? 'wait' : 'pointer',
+                    }}
                   >
                     {isSavingTicket ? 'Saving...' : 'Save Changes'}
                   </button>
