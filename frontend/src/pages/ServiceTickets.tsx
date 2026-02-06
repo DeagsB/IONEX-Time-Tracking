@@ -49,6 +49,7 @@ export default function ServiceTickets() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [selectedWorkflowStatus, setSelectedWorkflowStatus] = useState<string>('');
+  const [showDiscarded, setShowDiscarded] = useState(false);
   
   // Sorting state - persisted per user in localStorage
   const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>(() => {
@@ -65,6 +66,7 @@ export default function ServiceTickets() {
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
   const [currentTicketRecordId, setCurrentTicketRecordId] = useState<string | null>(null);
   
   // Expense management state
@@ -839,14 +841,14 @@ export default function ServiceTickets() {
       const { data, error } = await supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status, approved_by_admin_id,
+          id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `);
       if (error) {
         // If the join fails (column doesn't exist yet), try without the join
         const { data: fallbackData, error: fallbackError } = await supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status, approved_by_admin_id');
+          .select('id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded');
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
@@ -1033,6 +1035,19 @@ export default function ServiceTickets() {
       result = result.filter(t => t.userId === user.id);
     }
     
+    // Filter out discarded tickets unless showDiscarded is active
+    if (isAdmin) {
+      result = result.filter(t => {
+        const existing = existingTickets?.find(
+          et => et.date === t.date && 
+                et.user_id === t.userId && 
+                (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
+        );
+        const isDiscarded = !!(existing as any)?.is_discarded;
+        return showDiscarded ? isDiscarded : !isDiscarded;
+      });
+    }
+    
     if (selectedCustomerId) {
       result = result.filter(t => t.customerId === selectedCustomerId);
     }
@@ -1086,7 +1101,7 @@ export default function ServiceTickets() {
     });
     
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId, selectedWorkflowStatus, existingTickets, sortField, sortDirection, isAdmin, user?.id]);
+  }, [ticketsWithNumbers, selectedCustomerId, selectedWorkflowStatus, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded]);
   
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
@@ -1194,8 +1209,43 @@ export default function ServiceTickets() {
               />
             </div>
           )}
+          {/* Show Discarded toggle - only visible to admins */}
+          {isAdmin && (
+            <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '4px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: showDiscarded ? '#ef5350' : 'var(--text-secondary)', fontWeight: showDiscarded ? '600' : '400' }}>
+                <input
+                  type="checkbox"
+                  checked={showDiscarded}
+                  onChange={(e) => setShowDiscarded(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#ef5350', cursor: 'pointer' }}
+                />
+                Show Discarded
+              </label>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Discarded banner */}
+      {showDiscarded && isAdmin && (
+        <div style={{
+          padding: '10px 16px',
+          marginBottom: '12px',
+          backgroundColor: 'rgba(239, 83, 80, 0.08)',
+          border: '1px solid rgba(239, 83, 80, 0.3)',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <span style={{ fontSize: '13px', color: '#ef5350', fontWeight: '600' }}>
+            Viewing discarded tickets
+          </span>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+            &mdash; These tickets are hidden from the default view. Open a ticket and click &quot;Restore Ticket&quot; to move it back.
+          </span>
+        </div>
+      )}
 
       {/* Tickets List */}
       {entriesError ? (
@@ -1214,7 +1264,7 @@ export default function ServiceTickets() {
       ) : filteredTickets.length === 0 ? (
         <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-secondary)' }}>
-            No billable time entries found for the selected filters.
+            {showDiscarded ? 'No discarded tickets found for the selected filters.' : 'No billable time entries found for the selected filters.'}
           </p>
         </div>
       ) : (
@@ -1535,13 +1585,14 @@ export default function ServiceTickets() {
                     borderBottom: '1px solid var(--border-color)',
                     transition: 'background-color 0.2s',
                     cursor: 'pointer',
-                    backgroundColor: selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
+                    backgroundColor: selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : 'transparent'),
+                    opacity: showDiscarded ? 0.75 : 1,
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : 'var(--hover-bg)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : 'transparent';
+                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : 'transparent');
                   }}
                   onClick={handleRowClick}
                 >
@@ -1556,7 +1607,24 @@ export default function ServiceTickets() {
                     </td>
                   )}
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
-                    {ticket.displayTicketNumber}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {ticket.displayTicketNumber}
+                      {showDiscarded && (
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          fontFamily: 'system-ui, sans-serif',
+                          color: '#ef5350',
+                          backgroundColor: 'rgba(239, 83, 80, 0.12)',
+                          border: '1px solid rgba(239, 83, 80, 0.3)',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }}>Discarded</span>
+                      )}
+                    </div>
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-primary)' }}>
                     {formatDateOnlyLocal(ticket.date)}
@@ -2990,20 +3058,70 @@ export default function ServiceTickets() {
               )}
               {/* Action Buttons - Close on far left, others on right */}
               <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <button
-                  className="button button-secondary"
-                  onClick={() => { 
-                    if (hasPendingChanges) {
-                      setShowCloseConfirm(true);
-                    } else {
-                      closePanel();
-                    }
-                  }}
-                  style={{ padding: '10px 24px' }}
-                  disabled={isExportingExcel || isExportingPdf}
-                >
-                  Close
-                </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <button
+                    className="button button-secondary"
+                    onClick={() => { 
+                      if (hasPendingChanges) {
+                        setShowCloseConfirm(true);
+                      } else {
+                        closePanel();
+                      }
+                    }}
+                    style={{ padding: '10px 24px' }}
+                    disabled={isExportingExcel || isExportingPdf}
+                  >
+                    Close
+                  </button>
+                  {/* Discard / Restore button - admin only */}
+                  {isAdmin && selectedTicket && (() => {
+                    const existingRecord = existingTickets?.find(
+                      et => et.date === selectedTicket.date && 
+                            et.user_id === selectedTicket.userId && 
+                            (et.customer_id === selectedTicket.customerId || (!et.customer_id && selectedTicket.customerId === 'unassigned'))
+                    );
+                    const isCurrentlyDiscarded = !!(existingRecord as any)?.is_discarded;
+                    return (
+                      <button
+                        onClick={async () => {
+                          if (!currentTicketRecordId) return;
+                          const action = isCurrentlyDiscarded ? 'restore' : 'discard';
+                          if (!isCurrentlyDiscarded && !confirm('Discard this service ticket? It will be hidden from the default view but can be restored later.')) return;
+                          setIsDiscarding(true);
+                          try {
+                            const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                            const { error } = await supabase
+                              .from(tableName)
+                              .update({ is_discarded: !isCurrentlyDiscarded })
+                              .eq('id', currentTicketRecordId);
+                            if (error) throw error;
+                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+                            closePanel();
+                          } catch (err) {
+                            console.error(`Error ${action}ing ticket:`, err);
+                            alert(`Failed to ${action} ticket.`);
+                          } finally {
+                            setIsDiscarding(false);
+                          }
+                        }}
+                        disabled={isDiscarding || !currentTicketRecordId}
+                        style={{
+                          padding: '10px 24px',
+                          backgroundColor: isCurrentlyDiscarded ? '#10b981' : 'transparent',
+                          color: isCurrentlyDiscarded ? 'white' : '#ef5350',
+                          border: isCurrentlyDiscarded ? '1px solid #10b981' : '1px solid #ef5350',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          cursor: isDiscarding ? 'wait' : 'pointer',
+                        }}
+                      >
+                        {isDiscarding ? (isCurrentlyDiscarded ? 'Restoring...' : 'Discarding...') : (isCurrentlyDiscarded ? 'Restore Ticket' : 'Discard')}
+                      </button>
+                    );
+                  })()}
+                </div>
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 {hasPendingChanges && !isLockedForEditing && (
                   <button
