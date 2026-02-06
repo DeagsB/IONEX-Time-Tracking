@@ -146,8 +146,19 @@ export default function Sidebar() {
 
         {!isAdmin && !isDemoMode && (
           <div style={{ marginBottom: '30px' }}>
+            <div style={{
+              fontSize: '11px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              color: 'var(--text-tertiary)',
+              marginBottom: '10px',
+              padding: '0 10px',
+            }}>
+              SETTINGS
+            </div>
             <SidebarLink to="/profile" active={isActive('/profile')}>
-              Settings
+              Profile
             </SidebarLink>
           </div>
         )}
@@ -180,9 +191,23 @@ export default function Sidebar() {
             </SidebarLink>
             {!isDemoMode && (
               <div style={{ marginTop: '30px' }}>
-<SidebarLink to="/profile" active={isActive('/profile')}>
-                Settings
-              </SidebarLink>
+                <div style={{
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                  color: 'var(--text-tertiary)',
+                  marginBottom: '10px',
+                  padding: '0 10px',
+                }}>
+                  SETTINGS
+                </div>
+                <SidebarLink to="/profile" active={isActive('/profile')}>
+                  Profile
+                </SidebarLink>
+                <SidebarLink to="/changelog" active={isActive('/changelog')}>
+                  Changelog
+                </SidebarLink>
               </div>
             )}
           </div>

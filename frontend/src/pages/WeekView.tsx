@@ -2455,7 +2455,7 @@ export default function WeekView() {
                     }
                   }}
                   placeholder="Search customers..."
-                  emptyOption={{ value: '', label: 'No Customer (Internal)' }}
+                  emptyOption={{ value: '', label: 'Select customer' }}
                 />
               </div>
 
@@ -2500,7 +2500,7 @@ export default function WeekView() {
                           }));
                         }}
                         placeholder="Search projects..."
-                        emptyOption={{ value: '', label: 'No Project' }}
+                        emptyOption={{ value: '', label: 'Select project' }}
                       />
                     </div>
                   </div>
@@ -2618,14 +2618,14 @@ export default function WeekView() {
                 style={{
                   width: '100%',
                   padding: '12px',
-                  backgroundColor: canAdd ? '#dc2626' : 'var(--bg-secondary)',
-                  color: canAdd ? 'white' : 'var(--text-secondary)',
-                  border: 'none',
+                  backgroundColor: canAdd ? '#dc2626' : '#6b7280',
+                  color: 'white',
+                  border: canAdd ? 'none' : '1px solid #4b5563',
                   borderRadius: '6px',
                   fontSize: '15px',
                   fontWeight: '600',
                   cursor: canAdd && !createTimeEntryMutation.isPending ? 'pointer' : 'not-allowed',
-                  opacity: canAdd ? 1 : 0.6,
+                  opacity: canAdd ? 1 : 0.85,
                 }}
               >
                 {createTimeEntryMutation.isPending ? 'Adding...' : 'Add'}
@@ -2831,7 +2831,7 @@ export default function WeekView() {
                     }
                   }}
                   placeholder="Search customers..."
-                  emptyOption={{ value: '', label: 'No Customer (Internal)' }}
+                  emptyOption={{ value: '', label: 'Select customer' }}
                 />
               </div>
 
@@ -2876,7 +2876,7 @@ export default function WeekView() {
                           }));
                         }}
                         placeholder="Search projects..."
-                        emptyOption={{ value: '', label: 'No Project' }}
+                        emptyOption={{ value: '', label: 'Select project' }}
                       />
                     </div>
                   </div>

@@ -176,10 +176,15 @@ export function groupEntriesIntoTickets(
     if (!entry.project || !entry.project.customer) {
       continue;
     }
+
+    // Skip IONEX Systems (internal) - do not create service tickets for internal hours
+    const customerName = entry.project.customer.name;
+    if (customerName && customerName.trim().toLowerCase() === 'ionex systems') {
+      continue;
+    }
     
     // Get customer info from project (entry.project and entry.project.customer are guaranteed to exist here)
     const customerId = entry.project.customer.id;
-    const customerName = entry.project.customer.name;
     const customerInfo: ServiceTicket['customerInfo'] = {
       name: entry.project.customer.name,
       contact_name: entry.project.customer.contact_name,
