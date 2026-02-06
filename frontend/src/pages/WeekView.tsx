@@ -2362,11 +2362,24 @@ export default function WeekView() {
               {/* 1. Time inputs */}
               <div className="form-group" style={{ marginBottom: '20px' }}>
                 <label className="label">Time</label>
-                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <input
                     type="time"
                     value={selectedSlot.startTime}
-                    onChange={(e) => setSelectedSlot({ ...selectedSlot, startTime: e.target.value })}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setSelectedSlot({ ...selectedSlot, startTime: newStart });
+                      // Recalculate hours from new start and current end
+                      const [startH, startM] = newStart.split(':').map(Number);
+                      const [endH, endM] = selectedSlot.endTime.split(':').map(Number);
+                      const startMinutes = startH * 60 + startM;
+                      const endMinutes = endH * 60 + endM;
+                      let hours = endMinutes >= startMinutes
+                        ? (endMinutes - startMinutes) / 60
+                        : (endMinutes + 24 * 60 - startMinutes) / 60;
+                      hours = Math.max(0, Math.min(24, hours));
+                      setNewEntry(prev => ({ ...prev, hours }));
+                    }}
                     style={{
                       padding: '10px',
                       backgroundColor: 'var(--bg-primary)',
@@ -2382,22 +2395,15 @@ export default function WeekView() {
                     value={selectedSlot.endTime}
                     onChange={(e) => {
                       setSelectedSlot({ ...selectedSlot, endTime: e.target.value });
-                      // Calculate hours
                       const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
                       const [endH, endM] = e.target.value.split(':').map(Number);
                       const startMinutes = startH * 60 + startM;
                       const endMinutes = endH * 60 + endM;
-                      
-                      // Handle overnight entries (end time is earlier than start time)
-                      let hours;
-                      if (endMinutes < startMinutes) {
-                        hours = (endMinutes + 24 * 60 - startMinutes) / 60;
-                      } else {
-                        hours = (endMinutes - startMinutes) / 60;
-                      }
-                      
+                      let hours = endMinutes >= startMinutes
+                        ? (endMinutes - startMinutes) / 60
+                        : (endMinutes + 24 * 60 - startMinutes) / 60;
                       hours = Math.max(0, Math.min(24, hours));
-                      setNewEntry({ ...newEntry, hours });
+                      setNewEntry(prev => ({ ...prev, hours }));
                     }}
                     style={{
                       padding: '10px',
@@ -2408,16 +2414,40 @@ export default function WeekView() {
                       fontSize: '14px',
                     }}
                   />
-                  <div
-                    style={{
-                      padding: '10px 15px',
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                    }}
-                  >
-                    {newEntry.hours.toFixed(2)}h
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={24}
+                      step={0.25}
+                      value={newEntry.hours}
+                      onChange={(e) => {
+                        const raw = parseFloat(e.target.value);
+                        const hours = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(24, raw));
+                        setNewEntry(prev => ({ ...prev, hours }));
+                        // Set end time from start + hours
+                        const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
+                        const startMinutes = startH * 60 + startM;
+                        const endMinutes = Math.min(24 * 60 - 1, startMinutes + Math.round(hours * 60));
+                        const endH = Math.floor(endMinutes / 60) % 24;
+                        const endM = endMinutes % 60;
+                        setSelectedSlot({
+                          ...selectedSlot,
+                          endTime: `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`,
+                        });
+                      }}
+                      style={{
+                        width: '70px',
+                        padding: '10px',
+                        backgroundColor: 'var(--bg-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        textAlign: 'center',
+                      }}
+                    />
+                    <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>h</span>
                   </div>
                 </div>
               </div>
