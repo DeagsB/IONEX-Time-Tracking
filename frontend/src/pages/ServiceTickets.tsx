@@ -177,13 +177,7 @@ export default function ServiceTickets() {
       });
       totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-      const headerOverrides = editableTicket
-        ? {
-            service_location: editableTicket.serviceLocation ?? '',
-            approver_po_afe: editableTicket.approverName ?? '',
-            other: editableTicket.other ?? '',
-          }
-        : undefined;
+      // Core fields first (always exist); header_overrides in a second update so save works before migration is run
       const { error } = await supabase
         .from(tableName)
         .update({
@@ -192,13 +186,28 @@ export default function ServiceTickets() {
           edited_hours: legacy.hours,
           total_hours: totalEditedHours,
           total_amount: totalAmount,
-          ...(headerOverrides && { header_overrides: headerOverrides }),
         })
         .eq('id', currentTicketRecordId);
       if (error) {
         console.error('Error saving edited ticket:', error);
         alert('Failed to save edited ticket data.');
         return false;
+      }
+      // Persist Service Location, Approver/PO/AFE, Other (requires migration_add_service_ticket_header_overrides)
+      if (editableTicket) {
+        const { error: overrideError } = await supabase
+          .from(tableName)
+          .update({
+            header_overrides: {
+              service_location: editableTicket.serviceLocation ?? '',
+              approver_po_afe: editableTicket.approverName ?? '',
+              other: editableTicket.other ?? '',
+            },
+          })
+          .eq('id', currentTicketRecordId);
+        if (overrideError) {
+          console.warn('Header overrides not saved (run migration_add_service_ticket_header_overrides to enable):', overrideError);
+        }
       }
       setIsTicketEdited(false);
       queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
@@ -1361,13 +1370,24 @@ export default function ServiceTickets() {
                     setCurrentTicketRecordId(ticketRecordId);
                     await loadExpenses(ticketRecordId);
                     
-                    // Load edited descriptions and hours
+                    // Load edited descriptions and hours (header_overrides optional until migration is run)
                     const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                    const { data: ticketRecord } = await supabase
+                    let ticketRecord: { is_edited?: boolean; edited_descriptions?: unknown; edited_hours?: unknown; header_overrides?: unknown } | null = null;
+                    const { data: dataWithOverrides, error: selectError } = await supabase
                       .from(tableName)
                       .select('is_edited, edited_descriptions, edited_hours, header_overrides')
                       .eq('id', ticketRecordId)
                       .single();
+                    if (selectError) {
+                      const { data: dataWithout } = await supabase
+                        .from(tableName)
+                        .select('is_edited, edited_descriptions, edited_hours')
+                        .eq('id', ticketRecordId)
+                        .single();
+                      ticketRecord = dataWithout ?? null;
+                    } else {
+                      ticketRecord = dataWithOverrides;
+                    }
                     
                     // Apply saved header overrides (Service Location, Approver/PO/AFE, Other) so they persist on reopen
                     const overrides = ticketRecord?.header_overrides as { service_location?: string; approver_po_afe?: string; other?: string } | null;
