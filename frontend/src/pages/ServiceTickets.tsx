@@ -430,11 +430,7 @@ export default function ServiceTickets() {
     try {
       // Check if a ticket number already exists in the database
       // In demo mode, existingTickets will already be from the demo table
-      const existingRecord = existingTickets?.find(
-        et => et.date === ticket.date && 
-              et.user_id === ticket.userId && 
-              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-      );
+      const existingRecord = findMatchingTicketRecord(ticket);
       
       // Debug logging
       if (isDemoMode) {
@@ -454,11 +450,7 @@ export default function ServiceTickets() {
       let ticketExpenses = expenses;
       if (!currentTicketRecordId || ticket.id !== selectedTicket?.id) {
         try {
-          const existing = existingTickets?.find(
-            et => et.date === ticket.date && 
-                  et.user_id === ticket.userId && 
-                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-          );
+          const existing = findMatchingTicketRecord(ticket);
           if (existing) {
             ticketExpenses = await serviceTicketExpensesService.getByTicketId(existing.id);
           }
@@ -489,11 +481,7 @@ export default function ServiceTickets() {
     try {
       // Check if a ticket number already exists in the database
       // In demo mode, existingTickets will already be from the demo table
-      const existingRecord = existingTickets?.find(
-        et => et.date === ticket.date && 
-              et.user_id === ticket.userId && 
-              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-      );
+      const existingRecord = findMatchingTicketRecord(ticket);
       
       // Debug logging
       if (isDemoMode) {
@@ -516,11 +504,7 @@ export default function ServiceTickets() {
       } else {
         // Load expenses for this ticket
         try {
-          const existing = existingTickets?.find(
-            et => et.date === ticket.date && 
-                  et.user_id === ticket.userId && 
-                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-          );
+          const existing = findMatchingTicketRecord(ticket);
           if (existing) {
             ticketExpenses = await serviceTicketExpensesService.getByTicketId(existing.id);
           }
@@ -635,11 +619,7 @@ export default function ServiceTickets() {
   const handleAssignTicketNumber = async (ticket: ServiceTicket) => {
     try {
       // Find or create ticket record
-      const existing = existingTickets?.find(
-            et => et.date === ticket.date && 
-                  et.user_id === ticket.userId && 
-                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-          );
+      const existing = findMatchingTicketRecord(ticket);
           
       let ticketRecordId: string;
       // Empty entries array (standalone tickets) should NOT be treated as demo
@@ -678,6 +658,7 @@ export default function ServiceTickets() {
           customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
           userId: ticket.userId,
           projectId: ticket.projectId,
+          location: ticket.location || '',
           totalHours: ticket.totalHours,
           totalAmount,
           isDemo: isDemoTicket,
@@ -697,11 +678,7 @@ export default function ServiceTickets() {
   // Unassign ticket number from a single ticket
   const handleUnassignTicketNumber = async (ticket: ServiceTicket) => {
     try {
-      const existing = existingTickets?.find(
-        et => et.date === ticket.date && 
-              et.user_id === ticket.userId && 
-              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-      );
+      const existing = findMatchingTicketRecord(ticket);
 
       if (!existing || !existing.ticket_number) {
         return;
@@ -724,11 +701,7 @@ export default function ServiceTickets() {
         .map(id => getTicketById(id))
         .filter((t): t is ServiceTicket & { displayTicketNumber: string } => {
           if (!t) return false;
-          const existing = existingTickets?.find(
-            et => et.date === t.date && 
-                  et.user_id === t.userId && 
-                  (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
-          );
+          const existing = findMatchingTicketRecord(t);
           return !existing?.ticket_number; // Only tickets without ticket numbers
         });
 
@@ -753,11 +726,7 @@ export default function ServiceTickets() {
         .map(id => getTicketById(id))
         .filter((t): t is ServiceTicket & { displayTicketNumber: string } => {
           if (!t) return false;
-          const existing = existingTickets?.find(
-            et => et.date === t.date && 
-                  et.user_id === t.userId && 
-                  (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
-          );
+          const existing = findMatchingTicketRecord(t);
           return existing?.ticket_number !== undefined && existing.ticket_number !== null;
         });
 
@@ -782,11 +751,7 @@ export default function ServiceTickets() {
         .map(id => getTicketById(id))
         .filter((t): t is ServiceTicket & { displayTicketNumber: string } => {
           if (!t) return false;
-          const existing = existingTickets?.find(
-            et => et.date === t.date && 
-                  et.user_id === t.userId && 
-                  (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
-          );
+          const existing = findMatchingTicketRecord(t);
           return existing?.workflow_status !== 'approved';
         });
 
@@ -797,6 +762,7 @@ export default function ServiceTickets() {
           date: ticket.date,
           userId: ticket.userId,
           customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+          location: ticket.location || '',
         }, isDemoMode);
         await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, 'approved', isDemoMode);
       }
@@ -930,14 +896,14 @@ export default function ServiceTickets() {
       const { data, error } = await supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded,
+          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `);
       if (error) {
         // If the join fails (column doesn't exist yet), try without the join
         const { data: fallbackData, error: fallbackError } = await supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded');
+          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded');
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
@@ -952,11 +918,13 @@ export default function ServiceTickets() {
     let mergedTickets = baseTickets;
     if (existingTickets && existingTickets.length > 0) {
       mergedTickets = baseTickets.map(ticket => {
-        // Find matching ticket record in database (prefer non-discarded)
+        // Find matching ticket record in database by date+user+customer+location (prefer non-discarded)
+        const ticketLocation = ticket.location || '';
         const matchingRecords = existingTickets.filter(
           et => et.date === ticket.date && 
                 et.user_id === ticket.userId && 
-                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+                (et.location || '') === ticketLocation
         );
         const ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         
@@ -992,10 +960,11 @@ export default function ServiceTickets() {
       const standaloneTickets = existingTickets.filter(et => {
         // Skip records without a customer_id — these can't be standalone
         if (!et.customer_id) return false;
-        // Check if any base ticket already matches this record
+        // Check if any base ticket already matches this record (including location)
         return !baseTickets.some(
           bt => bt.date === et.date && bt.userId === et.user_id &&
-                (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned'))
+                (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
+                (bt.location || '') === (et.location || '')
         );
       });
 
@@ -1108,13 +1077,16 @@ export default function ServiceTickets() {
 
   /**
    * Find a matching existing ticket record for a computed ticket.
+   * Matches on date + user + customer + location (the full composite key).
    * Prefers non-discarded records to avoid stale discarded matches hiding real tickets.
    */
-  const findMatchingTicketRecord = (ticket: { date: string; userId: string; customerId: string }) => {
+  const findMatchingTicketRecord = (ticket: { date: string; userId: string; customerId: string; location?: string }) => {
+    const ticketLocation = ticket.location || '';
     const matches = existingTickets?.filter(
       et => et.date === ticket.date && 
             et.user_id === ticket.userId && 
-            (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
+            (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+            (et.location || '') === ticketLocation
     ) || [];
     // Prefer non-discarded records; fall back to first match
     return matches.find(et => !(et as any).is_discarded) || matches[0] || null;
@@ -1157,6 +1129,7 @@ export default function ServiceTickets() {
         customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
         userId: ticket.userId,
         projectId: ticket.projectId,
+        location: ticket.location || '',
         totalHours: ticket.totalHours,
         totalAmount,
         approvedByAdminId: user?.id,
@@ -1170,6 +1143,7 @@ export default function ServiceTickets() {
       date: ticket.date,
       userId: ticket.userId,
       customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+      location: ticket.location || '',
     }, isDemoMode);
 
     return record.id;
@@ -1182,11 +1156,7 @@ export default function ServiceTickets() {
       const isDemoTicket = ticket.entries.length > 0 && ticket.entries.every(entry => entry.is_demo === true);
       
       // Try to find an existing ticket number for this ticket
-      const existing = existingTickets?.find(
-        et => et.date === ticket.date && 
-              et.user_id === ticket.userId && 
-              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-      );
+      const existing = findMatchingTicketRecord(ticket);
       
       // If there's an existing ticket number, use it (even for demo tickets)
       if (existing?.ticket_number) {
@@ -1226,13 +1196,7 @@ export default function ServiceTickets() {
     // For computed tickets (with time entries), prefer non-discarded matching records
     // and don't hide them if only stale discarded records exist
     result = result.filter(t => {
-      const matchingRecords = existingTickets?.filter(
-        et => et.date === t.date && 
-              et.user_id === t.userId && 
-              (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
-      ) || [];
-      // Prefer a non-discarded record if one exists; fall back to first match
-      const existing = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
+      const existing = findMatchingTicketRecord(t);
       const isDiscarded = !!(existing as any)?.is_discarded;
 
       if (!showDiscarded) {
@@ -1265,11 +1229,7 @@ export default function ServiceTickets() {
     // Filter by workflow status (only for admins)
     if (isAdmin && selectedWorkflowStatus) {
       result = result.filter(t => {
-        const existing = existingTickets?.find(
-          et => et.date === t.date && 
-                et.user_id === t.userId && 
-                (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
-        );
+        const existing = findMatchingTicketRecord(t);
         const workflowStatus = existing?.workflow_status || 'draft';
         return workflowStatus === selectedWorkflowStatus;
       });
@@ -1925,11 +1885,7 @@ export default function ServiceTickets() {
               {filteredTickets.map((ticket) => {
                 const handleRowClick = async () => {
                   // Check if admin has approved this ticket (has ticket_number)
-                  const existingRecord = existingTickets?.find(
-                    et => et.date === ticket.date && 
-                          et.user_id === ticket.userId && 
-                          (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-                  );
+                  const existingRecord = findMatchingTicketRecord(ticket);
                   const isAdminApproved = !!existingRecord?.ticket_number;
                   setIsLockedForEditing(isAdminApproved && !isAdmin); // Lock for non-admins when admin approved
                   
@@ -2151,11 +2107,7 @@ export default function ServiceTickets() {
                   </td>
                   <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                     {(() => {
-                      const existing = existingTickets?.find(
-                        et => et.date === ticket.date && 
-                              et.user_id === ticket.userId && 
-                              (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-                      );
+                      const existing = findMatchingTicketRecord(ticket);
                       
                       // Check both ticket_number and workflow_status for approval
                       const hasTicketNumber = !!existing?.ticket_number;
@@ -2261,6 +2213,7 @@ export default function ServiceTickets() {
                                   date: ticket.date,
                                   userId: ticket.userId,
                                   customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+                                  location: ticket.location || '',
                                 }, isDemoMode);
                                 const newStatus = isApproved ? 'draft' : 'approved';
                                 await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
@@ -2289,11 +2242,7 @@ export default function ServiceTickets() {
                   {isAdmin && (
                     <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                       {(() => {
-                        const existing = existingTickets?.find(
-                          et => et.date === ticket.date && 
-                                et.user_id === ticket.userId && 
-                                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-                        );
+                        const existing = findMatchingTicketRecord(ticket);
                         const workflowStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
                         const statusInfo = WORKFLOW_STATUSES[workflowStatus] || WORKFLOW_STATUSES.draft;
                         
@@ -3343,11 +3292,7 @@ export default function ServiceTickets() {
 
               {/* Workflow Status Section - only visible to admins */}
               {isAdmin && (() => {
-                const existing = existingTickets?.find(
-                  et => et.date === selectedTicket.date && 
-                        et.user_id === selectedTicket.userId && 
-                        (et.customer_id === selectedTicket.customerId || (!et.customer_id && selectedTicket.customerId === 'unassigned'))
-                );
+                const existing = findMatchingTicketRecord(selectedTicket);
                 const currentStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
                 const hasTicketNumber = !!existing?.ticket_number;
                 
@@ -3571,11 +3516,7 @@ export default function ServiceTickets() {
                   </button>
                   {/* Discard / Restore button */}
                   {selectedTicket && (() => {
-                    const existingRecord = existingTickets?.find(
-                      et => et.date === selectedTicket.date && 
-                            et.user_id === selectedTicket.userId && 
-                            (et.customer_id === selectedTicket.customerId || (!et.customer_id && selectedTicket.customerId === 'unassigned'))
-                    );
+                    const existingRecord = findMatchingTicketRecord(selectedTicket);
                     const isCurrentlyDiscarded = !!(existingRecord as any)?.is_discarded;
                     return (
                       <button
@@ -3717,11 +3658,7 @@ export default function ServiceTickets() {
                   </button>
                 ) : (() => {
                   // Check if ticket is already approved
-                  const existingTicketRecord = existingTickets?.find(
-                    et => et.date === selectedTicket.date && 
-                          et.user_id === selectedTicket.userId && 
-                          (et.customer_id === selectedTicket.customerId || (!et.customer_id && selectedTicket.customerId === 'unassigned'))
-                  );
+                  const existingTicketRecord = findMatchingTicketRecord(selectedTicket);
                   const isTicketApproved = existingTicketRecord?.workflow_status === 'approved';
                   const isAdminApproved = !!existingTicketRecord?.ticket_number; // Admin has assigned a ticket number
                   
@@ -3762,6 +3699,7 @@ export default function ServiceTickets() {
                             date: selectedTicket.date,
                             userId: selectedTicket.userId,
                             customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                            location: selectedTicket.location || '',
                           }, isDemoMode);
                           
                           // Toggle workflow status

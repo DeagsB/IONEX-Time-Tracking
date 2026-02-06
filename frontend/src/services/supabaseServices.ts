@@ -904,6 +904,7 @@ export const serviceTicketsService = {
     customerId?: string;
     userId: string;
     projectId?: string;
+    location?: string;
     totalHours: number;
     totalAmount: number;
     isDemo?: boolean;
@@ -935,6 +936,7 @@ export const serviceTicketsService = {
           customer_id: ticket.customerId,
           user_id: ticket.userId,
           project_id: ticket.projectId,
+          location: ticket.location || '',
           total_hours: ticket.totalHours,
           total_amount: ticket.totalAmount,
           status: 'draft',
@@ -1075,6 +1077,7 @@ export const serviceTicketsService = {
     date: string;
     userId: string;
     customerId: string | null;
+    location?: string;
   }, isDemo: boolean = false): Promise<{ id: string }> {
     // Don't create tickets without a customer - they need a project/customer to be valid
     if (!params.customerId) {
@@ -1082,14 +1085,16 @@ export const serviceTicketsService = {
     }
     
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const ticketLocation = params.location || '';
     
-    // First try to find an existing ticket
+    // First try to find an existing ticket (matching on location too)
     const { data: existing, error: findError } = await supabase
       .from(tableName)
       .select('id')
       .eq('date', params.date)
       .eq('user_id', params.userId)
       .eq('customer_id', params.customerId)
+      .eq('location', ticketLocation)
       .maybeSingle();
     
     if (findError) {
@@ -1120,6 +1125,7 @@ export const serviceTicketsService = {
         date: params.date,
         user_id: params.userId,
         customer_id: params.customerId,
+        location: ticketLocation,
         workflow_status: 'draft',
         employee_initials: employeeInitials,
       })
