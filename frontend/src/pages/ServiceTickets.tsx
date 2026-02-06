@@ -136,6 +136,59 @@ export default function ServiceTickets() {
       if (lockNotificationTimeoutRef.current) clearTimeout(lockNotificationTimeoutRef.current);
     };
   }, []);
+
+  const [isSavingTicket, setIsSavingTicket] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
+  const performSave = async (): Promise<boolean> => {
+    if (!currentTicketRecordId || !selectedTicket) return false;
+    setIsSavingTicket(true);
+    try {
+      const legacy = serviceRowsToLegacyFormat(serviceRows);
+      let totalEditedHours = 0;
+      let totalAmount = 0;
+      serviceRows.forEach(row => {
+        totalEditedHours += row.st + row.tt + row.ft + row.so + row.fo;
+        totalAmount += row.st * (selectedTicket.rates.rt || 0);
+        totalAmount += row.tt * (selectedTicket.rates.tt || 0);
+        totalAmount += row.ft * (selectedTicket.rates.ft || 0);
+        totalAmount += row.so * (selectedTicket.rates.shop_ot || 0);
+        totalAmount += row.fo * (selectedTicket.rates.field_ot || 0);
+      });
+      totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
+      const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+      const { error } = await supabase
+        .from(tableName)
+        .update({
+          is_edited: true,
+          edited_descriptions: legacy.descriptions,
+          edited_hours: legacy.hours,
+          total_hours: totalEditedHours,
+          total_amount: totalAmount,
+        })
+        .eq('id', currentTicketRecordId);
+      if (error) {
+        console.error('Error saving edited ticket:', error);
+        alert('Failed to save edited ticket data.');
+        return false;
+      }
+      setIsTicketEdited(false);
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      return true;
+    } finally {
+      setIsSavingTicket(false);
+    }
+  };
+
+  const closePanel = () => {
+    setShowCloseConfirm(false);
+    setSelectedTicket(null);
+    setEditableTicket(null);
+    setServiceRows([]);
+    setEditedDescriptions({});
+    setEditedHours({});
+    setIsTicketEdited(false);
+  };
   
   // Legacy state for backward compatibility (used in some exports)
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
@@ -1580,13 +1633,8 @@ export default function ServiceTickets() {
             padding: '20px',
           }}
           onClick={() => { 
-            setSelectedTicket(null); 
-            setEditableTicket(null);
-            setServiceRows([]);
-            setEditedDescriptions({});
-            setEditedHours({});
-            setIsTicketEdited(false);
-            setIsLockedForEditing(false);
+            if (isTicketEdited) setShowCloseConfirm(true);
+            else closePanel();
           }}
         >
           <div
@@ -1637,12 +1685,8 @@ export default function ServiceTickets() {
               </div>
               <button
                 onClick={() => { 
-                  setSelectedTicket(null); 
-                  setEditableTicket(null);
-                  setServiceRows([]);
-                  setEditedDescriptions({});
-                  setEditedHours({});
-                  setIsTicketEdited(false);
+                  if (isTicketEdited) setShowCloseConfirm(true);
+                  else closePanel();
                 }}
                 style={{
                   background: 'transparent',
@@ -2228,52 +2272,15 @@ export default function ServiceTickets() {
                         </div>
                       </div>
                       
-                      {/* Save Button */}
+                      {/* Save Button (in-section - same as footer Save Changes) */}
                       {isTicketEdited && (
                         <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
                           <button
                             onClick={async () => {
-                              if (!currentTicketRecordId || !selectedTicket) return;
-                              
-                              // Convert service rows to legacy format for storage
-                              const legacy = serviceRowsToLegacyFormat(serviceRows);
-                              
-                              // Calculate total hours and total amount
-                              let totalEditedHours = 0;
-                              let totalAmount = 0;
-                              
-                              serviceRows.forEach(row => {
-                                totalEditedHours += row.st + row.tt + row.ft + row.so + row.fo;
-                                totalAmount += row.st * (selectedTicket.rates.rt || 0);
-                                totalAmount += row.tt * (selectedTicket.rates.tt || 0);
-                                totalAmount += row.ft * (selectedTicket.rates.ft || 0);
-                                totalAmount += row.so * (selectedTicket.rates.shop_ot || 0);
-                                totalAmount += row.fo * (selectedTicket.rates.field_ot || 0);
-                              });
-                              
-                              // Round up hours to nearest 0.5
-                              totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
-                              
-                              const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                              const { error } = await supabase
-                                .from(tableName)
-                                .update({
-                                  is_edited: true,
-                                  edited_descriptions: legacy.descriptions,
-                                  edited_hours: legacy.hours,
-                                  total_hours: totalEditedHours,
-                                  total_amount: totalAmount,
-                                })
-                                .eq('id', currentTicketRecordId);
-                              
-                              if (error) {
-                                console.error('Error saving edited ticket:', error);
-                                alert('Failed to save edited ticket data.');
-                              } else {
-                                alert('Service ticket saved successfully.');
-                                queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                              }
+                              const ok = await performSave();
+                              if (ok) alert('Service ticket saved successfully.');
                             }}
+                            disabled={isSavingTicket}
                             style={{
                               padding: '10px 20px',
                               backgroundColor: 'var(--primary-color)',
@@ -2282,10 +2289,10 @@ export default function ServiceTickets() {
                               borderRadius: '6px',
                               fontSize: '13px',
                               fontWeight: '600',
-                              cursor: 'pointer',
+                              cursor: isSavingTicket ? 'wait' : 'pointer',
                             }}
                           >
-                            Save Service Ticket
+                            {isSavingTicket ? 'Saving...' : 'Save Service Ticket'}
                           </button>
                         </div>
                       )}
@@ -2714,17 +2721,89 @@ export default function ServiceTickets() {
                 );
               })()}
 
+              {/* Unsaved changes confirm modal */}
+              {showCloseConfirm && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 10001,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onClick={() => setShowCloseConfirm(false)}
+                >
+                  <div
+                    style={{
+                      backgroundColor: 'var(--bg-primary)',
+                      borderRadius: '8px',
+                      padding: '24px',
+                      maxWidth: '400px',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <p style={{ margin: '0 0 20px', color: 'var(--text-primary)', fontSize: '15px' }}>
+                      You have unsaved changes. Do you want to save before closing?
+                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button
+                        className="button button-secondary"
+                        onClick={() => setShowCloseConfirm(false)}
+                        style={{ padding: '8px 16px' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="button button-secondary"
+                        onClick={() => closePanel()}
+                        style={{ padding: '8px 16px' }}
+                      >
+                        Don&apos;t Save
+                      </button>
+                      <button
+                        className="button button-primary"
+                        onClick={async () => {
+                          const ok = await performSave();
+                          if (ok) {
+                            closePanel();
+                          }
+                        }}
+                        disabled={isSavingTicket}
+                        style={{ padding: '8px 16px' }}
+                      >
+                        {isSavingTicket ? 'Saving...' : 'Save and Close'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
-              <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                {isTicketEdited && !isLockedForEditing && (
+                  <button
+                    className="button button-primary"
+                    onClick={async () => {
+                      const ok = await performSave();
+                      if (ok) alert('Changes saved successfully.');
+                    }}
+                    disabled={isSavingTicket}
+                    style={{ padding: '10px 24px' }}
+                  >
+                    {isSavingTicket ? 'Saving...' : 'Save Changes'}
+                  </button>
+                )}
                 <button
                   className="button button-secondary"
                   onClick={() => { 
-                    setSelectedTicket(null); 
-                    setEditableTicket(null);
-                    setServiceRows([]);
-                    setEditedDescriptions({});
-                    setEditedHours({});
-                    setIsTicketEdited(false);
+                    if (isTicketEdited) {
+                      setShowCloseConfirm(true);
+                    } else {
+                      closePanel();
+                    }
                   }}
                   style={{ padding: '10px 24px' }}
                   disabled={isExportingExcel || isExportingPdf}
