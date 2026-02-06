@@ -2324,9 +2324,12 @@ export default function WeekView() {
             className="card"
             style={{
               width: '500px',
+              maxHeight: '90vh',
               padding: '0',
               backgroundColor: 'var(--bg-secondary)',
               position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -2343,12 +2346,13 @@ export default function WeekView() {
                   cursor: 'pointer',
                 color: 'var(--text-secondary)',
                 padding: '5px',
+                zIndex: 1,
               }}
             >
               ✕
               </button>
 
-            <div style={{ padding: '20px' }}>
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
               <h3 style={{ marginBottom: '20px' }}>Add Time Entry</h3>
 
               {/* 1. Time inputs */}
@@ -2673,6 +2677,8 @@ export default function WeekView() {
               padding: '25px',
               width: '500px',
               maxWidth: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
               border: '1px solid var(--border-color)',
             }}
