@@ -726,6 +726,40 @@ export default function ServiceTickets() {
     }
   };
 
+  // Bulk mark as submitted (set workflow_status to 'approved')
+  const handleBulkMarkSubmitted = async () => {
+    try {
+      const ticketsToSubmit = Array.from(selectedTicketIds)
+        .map(id => getTicketById(id))
+        .filter((t): t is ServiceTicket & { displayTicketNumber: string } => {
+          if (!t) return false;
+          const existing = existingTickets?.find(
+            et => et.date === t.date && 
+                  et.user_id === t.userId && 
+                  (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
+          );
+          return existing?.workflow_status !== 'approved';
+        });
+
+      if (ticketsToSubmit.length === 0) return;
+
+      for (const ticket of ticketsToSubmit) {
+        const ticketRecord = await serviceTicketsService.getOrCreateTicket({
+          date: ticket.date,
+          userId: ticket.userId,
+          customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+        }, isDemoMode);
+        await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, 'approved', isDemoMode);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+      setSelectedTicketIds(new Set());
+    } catch (error) {
+      console.error('Error in bulk mark submitted:', error);
+    }
+  };
+
   // Bulk export to PDF
   const handleBulkExportPdf = async () => {
     setIsBulkExporting(true);
@@ -1284,6 +1318,23 @@ export default function ServiceTickets() {
               {selectedTicketIds.size} ticket{selectedTicketIds.size > 1 ? 's' : ''} selected
             </span>
             <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={handleBulkMarkSubmitted}
+                disabled={isBulkExporting}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                  opacity: isBulkExporting ? 0.6 : 1,
+                }}
+              >
+                ✓ Mark as Submitted
+              </button>
               <button
                 onClick={handleBulkAssignTicketNumbers}
                 disabled={isBulkExporting}
