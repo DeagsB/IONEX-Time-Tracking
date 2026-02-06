@@ -683,6 +683,7 @@ export default function WeekView() {
       billable: true,
       rate_type: 'Shop Time',
       location: (currentEntry as any).location || '',
+      po_afe: (currentEntry as any).po_afe || '',
     });
     setShowEditModal(true);
   };
