@@ -145,6 +145,18 @@ export default function ServiceTickets() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
 
+  // Round to nearest 0.5 hour (always round up)
+  const roundToHalfHour = (hours: number): number => {
+    return Math.ceil(hours * 2) / 2;
+  };
+
+  // Compare hours with tolerance to avoid false "pending" after save/reopen (floating-point drift)
+  const hoursEq = (a: number, b: number): boolean => {
+    if (a === b) return true;
+    const tol = 1e-6;
+    return Math.abs((a || 0) - (b || 0)) < tol;
+  };
+
   const performSave = async (): Promise<boolean> => {
     if (!currentTicketRecordId || !selectedTicket) return false;
     setIsSavingTicket(true);
@@ -228,18 +240,6 @@ export default function ServiceTickets() {
   // Bulk selection state
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
   const [isBulkExporting, setIsBulkExporting] = useState(false);
-
-  // Round to nearest 0.5 hour (always round up)
-  const roundToHalfHour = (hours: number): number => {
-    return Math.ceil(hours * 2) / 2;
-  };
-
-  // Compare hours with tolerance to avoid false "pending" after save/reopen (floating-point drift)
-  const hoursEq = (a: number, b: number): boolean => {
-    if (a === b) return true;
-    const tol = 1e-6;
-    return Math.abs((a || 0) - (b || 0)) < tol;
-  };
 
   // Convert time entries to service rows (description + 5 hour columns)
   const entriesToServiceRows = (entries: ServiceTicket['entries']): ServiceRow[] => {
