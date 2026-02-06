@@ -26,7 +26,13 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 - **“Other” on service ticket PDF**  
   The exported service ticket PDF now has an “Other” column on the same row as PO/CC/AFE (same style as the Job ID / Job Type row).
 
+- **Payroll for all users**  
+  The Payroll page is now available to every signed-in user. Non-admins see only their own payroll data (“My Payroll”) and cannot click through to another user’s calendar from the table.
+
 ### Changed
+
+- **Sidebar for non-admin users**  
+  The **ANALYZE** section (with Payroll) is visible to all users. Payroll appears above the MANAGE section (Projects, Clients, Service Tickets, Settings) in the sidebar.
 
 - **Service ticket form**  
   The label “Project Number” in the create-ticket form has been renamed to **“Project”**.
@@ -50,6 +56,9 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 - **Expenses**  
   The confirmation dialog when deleting an expense has been removed; deletion happens immediately when you choose delete.
+
+- **Calendar (admin viewing another user)**  
+  When an admin views another user’s calendar, the current user’s live timer no longer appears on that calendar; only the viewed user’s entries are shown.
 
 ---
 
