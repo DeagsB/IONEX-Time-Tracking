@@ -1190,6 +1190,14 @@ export default function ServiceTickets() {
       result = result.filter(t => t.userId === user.id);
     }
     
+    // Filter by date range (applies to all tickets including standalone)
+    if (startDate) {
+      result = result.filter(t => t.date >= startDate);
+    }
+    if (endDate) {
+      result = result.filter(t => t.date <= endDate);
+    }
+    
     // Filter out discarded tickets unless showDiscarded is active
     result = result.filter(t => {
       const existing = existingTickets?.find(
@@ -1203,6 +1211,11 @@ export default function ServiceTickets() {
     
     if (selectedCustomerId) {
       result = result.filter(t => t.customerId === selectedCustomerId);
+    }
+
+    // Filter by employee (admin only)
+    if (isAdmin && selectedUserId) {
+      result = result.filter(t => t.userId === selectedUserId);
     }
     
     // Filter by workflow status (only for admins)
@@ -1254,7 +1267,7 @@ export default function ServiceTickets() {
     });
     
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId, selectedWorkflowStatus, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded]);
+  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, selectedWorkflowStatus, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
   
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
