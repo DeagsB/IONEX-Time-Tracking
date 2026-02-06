@@ -197,6 +197,7 @@ export default function ServiceTickets() {
     setEditedDescriptions({});
     setEditedHours({});
     setIsTicketEdited(false);
+    setPendingChangesVersion(v => v + 1); // force hasPendingChanges to re-evaluate on next open
     initialEditableTicketRef.current = null;
     initialServiceRowsRef.current = [];
   };
@@ -210,7 +211,9 @@ export default function ServiceTickets() {
       if (i >= initRows.length) return true;
       const inital = initRows[i];
       if (!inital) return true;
-      return row.description !== inital.description || row.st !== inital.st || row.tt !== inital.tt || row.ft !== inital.ft || row.so !== inital.so || row.fo !== inital.fo;
+      return row.description !== inital.description
+        || !hoursEq(row.st, inital.st) || !hoursEq(row.tt, inital.tt) || !hoursEq(row.ft, inital.ft)
+        || !hoursEq(row.so, inital.so) || !hoursEq(row.fo, inital.fo);
     });
     return headerDirty || serviceDirty;
   }, [editableTicket, serviceRows, pendingChangesVersion]);
@@ -229,6 +232,13 @@ export default function ServiceTickets() {
   // Round to nearest 0.5 hour (always round up)
   const roundToHalfHour = (hours: number): number => {
     return Math.ceil(hours * 2) / 2;
+  };
+
+  // Compare hours with tolerance to avoid false "pending" after save/reopen (floating-point drift)
+  const hoursEq = (a: number, b: number): boolean => {
+    if (a === b) return true;
+    const tol = 1e-6;
+    return Math.abs((a || 0) - (b || 0)) < tol;
   };
 
   // Convert time entries to service rows (description + 5 hour columns)
@@ -1864,7 +1874,9 @@ export default function ServiceTickets() {
                   const cur = serviceRows[i];
                   const inital = init[i];
                   if (!inital) return true;
-                  return cur.description !== inital.description || cur.st !== inital.st || cur.tt !== inital.tt || cur.ft !== inital.ft || cur.so !== inital.so || cur.fo !== inital.fo;
+                  return cur.description !== inital.description
+                  || !hoursEq(cur.st, inital.st) || !hoursEq(cur.tt, inital.tt) || !hoursEq(cur.ft, inital.ft)
+                  || !hoursEq(cur.so, inital.so) || !hoursEq(cur.fo, inital.fo);
                 };
 
                 return (
