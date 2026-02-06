@@ -174,39 +174,41 @@ export async function downloadPdfFromHtml(
           <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 100px;">Customer Name</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-weight: bold;">${ticket.customerInfo.name}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-weight: bold;">${ticket.customerInfo.name}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Billing Address</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.address || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.address || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">City/Province</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.city || ''}${ticket.customerInfo.state ? ', ' + ticket.customerInfo.state : ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.city || ''}${ticket.customerInfo.state ? ', ' + ticket.customerInfo.state : ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Postal Code</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.zip_code || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.zip_code || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Name</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Email</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px;">PO/CC/AFE</td>
-              <td style="padding: 2px 4px;">${ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? ''}</td>
+              <td style="padding: 2px 4px; width: 100px;">PO/CC/AFE</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? ''}</td>
+              <td style="padding: 2px 4px; width: 40px;">Other</td>
+              <td style="padding: 2px 4px;">${ticket.projectOther ?? ticket.customerInfo.location_code ?? ''}</td>
             </tr>
           </table>
         </div>
@@ -667,39 +669,41 @@ function buildPdfHtml(
           <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 100px;">Customer Name</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-weight: bold;">${ticket.customerInfo.name}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-weight: bold;">${ticket.customerInfo.name}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Billing Address</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.address || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.address || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">City/Province</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.city || ''}${ticket.customerInfo.state ? ', ' + ticket.customerInfo.state : ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.city || ''}${ticket.customerInfo.state ? ', ' + ticket.customerInfo.state : ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Postal Code</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.zip_code || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.zip_code || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Name</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Email</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px;">PO/CC/AFE</td>
-              <td style="padding: 2px 4px;">${ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? ''}</td>
+              <td style="padding: 2px 4px; width: 100px;">PO/CC/AFE</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? ''}</td>
+              <td style="padding: 2px 4px; width: 40px;">Other</td>
+              <td style="padding: 2px 4px;">${ticket.projectOther ?? ticket.customerInfo.location_code ?? ''}</td>
             </tr>
           </table>
         </div>
