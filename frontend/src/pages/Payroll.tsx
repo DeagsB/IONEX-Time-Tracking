@@ -180,11 +180,11 @@ export default function Payroll() {
     const period = getCurrentPayPeriod();
     return period?.end || FALLBACK_PERIOD.end;
   });
-  // Fetch all time entries for the date range (filtered by demo mode)
+  // Fetch time entries for the date range (filtered by demo mode, and by user for non-admins)
   const { data: timeEntries, isLoading, error } = useQuery({
-    queryKey: ['payrollReport', startDate, endDate, isDemoMode],
+    queryKey: ['payrollReport', startDate, endDate, isDemoMode, isAdmin, user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('time_entries')
         .select(`
           *,
@@ -196,8 +196,14 @@ export default function Payroll() {
         `)
         .gte('date', startDate)
         .lte('date', endDate)
-        .eq('is_demo', isDemoMode) // Only show demo entries in demo mode
-        .order('date', { ascending: true });
+        .eq('is_demo', isDemoMode); // Only show demo entries in demo mode
+      
+      // Non-admins can only see their own payroll data
+      if (!isAdmin && user?.id) {
+        query = query.eq('user_id', user.id);
+      }
+
+      const { data, error } = await query.order('date', { ascending: true });
       if (error) throw error;
       return data as TimeEntry[];
     },
@@ -409,22 +415,11 @@ export default function Payroll() {
         return end.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
       })();
 
-  if (!isAdmin) {
-    return (
-      <div>
-        <h2>Reports</h2>
-        <div className="card">
-          <p>You don't have permission to view this page.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-          Payroll Report
+          {isAdmin ? 'Payroll Report' : 'My Payroll'}
         </h2>
       </div>
 
@@ -552,10 +547,10 @@ export default function Payroll() {
           <div className="card" style={{ overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                Employee Hours by Rate Type
+                {isAdmin ? 'Employee Hours by Rate Type' : 'Hours by Rate Type'}
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                {startDate} to {endDate} • {employeeHours.length} employee{employeeHours.length !== 1 ? 's' : ''}
+                {startDate} to {endDate}{isAdmin ? ` • ${employeeHours.length} employee${employeeHours.length !== 1 ? 's' : ''}` : ''}
               </p>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>

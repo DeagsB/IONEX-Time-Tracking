@@ -142,11 +142,9 @@ export default function Sidebar() {
             }}>
               ANALYZE
             </div>
-            {isAdmin && (
-              <SidebarLink to="/payroll" active={isActive('/payroll')}>
-                Payroll
-              </SidebarLink>
-            )}
+            <SidebarLink to="/payroll" active={isActive('/payroll')}>
+              Payroll
+            </SidebarLink>
             <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
               Employee Reports
             </SidebarLink>
