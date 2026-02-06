@@ -177,6 +177,13 @@ export default function ServiceTickets() {
       });
       totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+      const headerOverrides = editableTicket
+        ? {
+            service_location: editableTicket.serviceLocation ?? '',
+            approver_po_afe: editableTicket.approverName ?? '',
+            other: editableTicket.other ?? '',
+          }
+        : undefined;
       const { error } = await supabase
         .from(tableName)
         .update({
@@ -185,6 +192,7 @@ export default function ServiceTickets() {
           edited_hours: legacy.hours,
           total_hours: totalEditedHours,
           total_amount: totalAmount,
+          ...(headerOverrides && { header_overrides: headerOverrides }),
         })
         .eq('id', currentTicketRecordId);
       if (error) {
@@ -1357,9 +1365,22 @@ export default function ServiceTickets() {
                     const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
                     const { data: ticketRecord } = await supabase
                       .from(tableName)
-                      .select('is_edited, edited_descriptions, edited_hours')
+                      .select('is_edited, edited_descriptions, edited_hours, header_overrides')
                       .eq('id', ticketRecordId)
                       .single();
+                    
+                    // Apply saved header overrides (Service Location, Approver/PO/AFE, Other) so they persist on reopen
+                    const overrides = ticketRecord?.header_overrides as { service_location?: string; approver_po_afe?: string; other?: string } | null;
+                    if (overrides && (overrides.service_location !== undefined || overrides.approver_po_afe !== undefined || overrides.other !== undefined)) {
+                      const merged = {
+                        ...initialEditable,
+                        serviceLocation: overrides.service_location ?? initialEditable.serviceLocation,
+                        approverName: overrides.approver_po_afe ?? initialEditable.approverName,
+                        other: overrides.other ?? initialEditable.other,
+                      };
+                      setEditableTicket(merged);
+                      initialEditableTicketRef.current = { ...merged };
+                    }
                     
                     if (ticketRecord && ticketRecord.is_edited) {
                       setIsTicketEdited(true);
