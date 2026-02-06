@@ -1118,36 +1118,48 @@ export default function ServiceTickets() {
       return existing.id;
     }
 
-    // Create new ticket record
-    const ticketNumber = displayTicketNumber && !displayTicketNumber.includes('XXX')
-      ? displayTicketNumber
-      : await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
-    
-    const year = new Date().getFullYear() % 100;
-    const sequenceMatch = ticketNumber.match(/\d{3}$/);
-    const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-    
-    const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
-    const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-    const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-    const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-    const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
-    const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
-    const otAmount = shopOtAmount + fieldOtAmount;
-    const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
+    // For admins, create with a ticket number (approval flow)
+    if (isAdmin) {
+      const ticketNumber = displayTicketNumber && !displayTicketNumber.includes('XXX')
+        ? displayTicketNumber
+        : await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
+      
+      const year = new Date().getFullYear() % 100;
+      const sequenceMatch = ticketNumber.match(/\d{3}$/);
+      const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
+      
+      const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
+      const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
+      const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
+      const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
+      const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
+      const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
+      const otAmount = shopOtAmount + fieldOtAmount;
+      const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
 
-    const record = await serviceTicketsService.createTicketRecord({
-      ticketNumber,
-      employeeInitials: ticket.userInitials,
-      year,
-      sequenceNumber,
+      const record = await serviceTicketsService.createTicketRecord({
+        ticketNumber,
+        employeeInitials: ticket.userInitials,
+        year,
+        sequenceNumber,
+        date: ticket.date,
+        customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
+        userId: ticket.userId,
+        projectId: ticket.projectId,
+        totalHours: ticket.totalHours,
+        totalAmount,
+        approvedByAdminId: user?.id,
+      });
+
+      return record.id;
+    }
+
+    // For non-admins, create a draft record without a ticket number
+    const record = await serviceTicketsService.getOrCreateTicket({
       date: ticket.date,
-      customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
       userId: ticket.userId,
-      projectId: ticket.projectId,
-      totalHours: ticket.totalHours,
-      totalAmount,
-    });
+      customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+    }, isDemoMode);
 
     return record.id;
   };
