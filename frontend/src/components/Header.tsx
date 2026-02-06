@@ -78,9 +78,17 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       return;
     }
 
-    // Start timer - need description and optionally project
+    // Start timer - need description, customer, and project
     if (!description.trim()) {
       alert('Please enter a description');
+      return;
+    }
+    if (!selectedCustomerId) {
+      alert('Please select a customer');
+      return;
+    }
+    if (!selectedProjectId) {
+      alert('Please select a project');
       return;
     }
 
@@ -309,6 +317,9 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
             {timerDisplay}
           </div>
 
+          {(() => {
+            const canStart = !timerRunning && description.trim() && selectedCustomerId && selectedProjectId;
+            return (
           <button
             onClick={() => {
               if (timerRunning) {
@@ -317,7 +328,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
                 handleStart();
               }
             }}
-            disabled={!timerRunning && !description.trim()}
+            disabled={!timerRunning && !canStart}
             style={{
               backgroundColor: timerRunning ? 'var(--error-color)' : 'var(--primary-color)',
               color: 'white',
@@ -328,14 +339,14 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: (!timerRunning && !description.trim()) ? 'not-allowed' : 'pointer',
+              cursor: (!timerRunning && !canStart) ? 'not-allowed' : 'pointer',
               fontSize: '18px',
               transition: 'all 0.2s ease',
-              opacity: (!timerRunning && !description.trim()) ? 0.5 : 1,
+              opacity: (!timerRunning && !canStart) ? 0.5 : 1,
               boxShadow: 'var(--shadow-sm)',
             }}
             onMouseEnter={(e) => {
-              if (!(!timerRunning && !description.trim())) {
+              if (timerRunning || canStart) {
                 e.currentTarget.style.boxShadow = 'var(--shadow-md)';
                 e.currentTarget.style.transform = 'translateY(-2px)';
               }
@@ -344,10 +355,12 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
               e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
               e.currentTarget.style.transform = 'translateY(0)';
             }}
-            title={timerRunning ? 'Stop timer' : 'Start timer'}
+            title={timerRunning ? 'Stop timer' : !canStart ? 'Select customer and project to start' : 'Start timer'}
           >
             {timerRunning ? '⏹' : '▶'}
           </button>
+            );
+          })()}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {/* Developer Role Switcher */}

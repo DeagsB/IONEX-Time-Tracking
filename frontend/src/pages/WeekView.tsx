@@ -545,6 +545,10 @@ export default function WeekView() {
   // Handle submitting the new time entry
   const handleSubmitTimeEntry = async () => {
     if (!selectedSlot) return;
+    if (!newEntry.customer_id || !newEntry.project_id) {
+      alert('Please select both a customer and a project');
+      return;
+    }
     
     // Validate hours are within reasonable range (0 to 24)
     if (newEntry.hours <= 0 || newEntry.hours > 24) {
@@ -2603,25 +2607,31 @@ export default function WeekView() {
                 />
               </div>
 
-              {/* Add button */}
+              {/* Add button - disabled until customer and project are selected */}
+              {(() => {
+                const canAdd = !!newEntry.customer_id && !!newEntry.project_id;
+                return (
               <button
                 className="button button-primary"
                 onClick={handleSubmitTimeEntry}
-                disabled={createTimeEntryMutation.isPending}
+                disabled={createTimeEntryMutation.isPending || !canAdd}
                 style={{
                   width: '100%',
                   padding: '12px',
-                  backgroundColor: '#dc2626',
-                  color: 'white',
+                  backgroundColor: canAdd ? '#dc2626' : 'var(--bg-secondary)',
+                  color: canAdd ? 'white' : 'var(--text-secondary)',
                   border: 'none',
                   borderRadius: '6px',
                   fontSize: '15px',
                   fontWeight: '600',
-                  cursor: 'pointer',
+                  cursor: canAdd && !createTimeEntryMutation.isPending ? 'pointer' : 'not-allowed',
+                  opacity: canAdd ? 1 : 0.6,
                 }}
               >
                 {createTimeEntryMutation.isPending ? 'Adding...' : 'Add'}
               </button>
+                );
+              })()}
             </div>
           </div>
         </div>
