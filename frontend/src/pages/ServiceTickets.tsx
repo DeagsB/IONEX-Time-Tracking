@@ -642,7 +642,8 @@ export default function ServiceTickets() {
           );
           
       let ticketRecordId: string;
-      const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+      // Empty entries array (standalone tickets) should NOT be treated as demo
+      const isDemoTicket = ticket.entries.length > 0 && ticket.entries.every(entry => entry.is_demo === true);
       
       // Get the next available ticket number ONCE before any database operations
       const ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
@@ -1154,8 +1155,8 @@ export default function ServiceTickets() {
   // Match tickets with existing ticket numbers or generate preview
   const ticketsWithNumbers = useMemo(() => {
     return tickets.map(ticket => {
-      // Check if this is a demo ticket (all entries are demo)
-      const isDemoTicket = ticket.entries.every(entry => entry.is_demo === true);
+      // Check if this is a demo ticket (all entries are demo; empty = not demo)
+      const isDemoTicket = ticket.entries.length > 0 && ticket.entries.every(entry => entry.is_demo === true);
       
       // Try to find an existing ticket number for this ticket
       const existing = existingTickets?.find(
