@@ -2145,8 +2145,8 @@ export default function WeekView() {
                     );
                   })()}
 
-                  {/* Running timer indicator */}
-                  {timerRunning && timerStartTime && day.isToday && (() => {
+                  {/* Running timer indicator (hide when viewing another user's calendar) */}
+                  {timerRunning && timerStartTime && day.isToday && !viewUserId && (() => {
                     const startDate = new Date(timerStartTime);
                     const now = new Date(currentTime);
                     
