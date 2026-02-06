@@ -2594,10 +2594,17 @@ export default function ServiceTickets() {
                                   setEditingExpense(null);
                                 } catch (err: unknown) {
                                   console.error('Expense save error:', err);
-                                  const raw = err instanceof Error ? err.message : String(err);
+                                  // Extract message from Error, Supabase error object, or plain string
+                                  const raw = err instanceof Error
+                                    ? err.message
+                                    : (err && typeof err === 'object' && 'message' in err)
+                                      ? String((err as { message: unknown }).message)
+                                      : (err && typeof err === 'object' && 'details' in err)
+                                        ? String((err as { details: unknown }).details)
+                                        : JSON.stringify(err);
                                   let message = raw || 'Failed to save expense. Please try again.';
-                                  if (typeof message === 'string' && (message.includes('row-level security') || message.includes('policy') || message.includes('permission') || message.includes('403'))) {
-                                    message = "Permission denied. This may be an RLS policy issue. Please check that the expense migrations have been applied.";
+                                  if (typeof message === 'string' && (message.includes('row-level security') || message.includes('policy') || message.includes('permission') || message.includes('403') || message.includes('violates'))) {
+                                    message = "Permission denied — RLS policy blocked the insert. Ensure the expense migration has been applied and your user has access to this ticket's expenses.";
                                   }
                                   alert(`Failed to save expense:\n${message}`);
                                 }
