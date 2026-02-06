@@ -2319,31 +2319,6 @@ export default function ServiceTickets() {
                           </div>
                         )}
                       </div>
-                      
-                      {/* Save Button (in-section - same as footer Save Changes) */}
-                      {isTicketEdited && (
-                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                          <button
-                            onClick={async () => {
-                              const ok = await performSave();
-                              if (ok) alert('Service ticket saved successfully.');
-                            }}
-                            disabled={isSavingTicket}
-                            style={{
-                              padding: '10px 20px',
-                              backgroundColor: 'var(--primary-color)',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                              fontWeight: '600',
-                              cursor: isSavingTicket ? 'wait' : 'pointer',
-                            }}
-                          >
-                            {isSavingTicket ? 'Saving...' : 'Save Service Ticket'}
-                          </button>
-                        </div>
-                      )}
                     </div>
 
                     {/* Expenses Section */}
