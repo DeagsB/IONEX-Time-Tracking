@@ -85,6 +85,14 @@ export default function ServiceTickets() {
     unit?: string;
   } | null>(null);
   const [pendingDeleteExpenseIds, setPendingDeleteExpenseIds] = useState<Set<string>>(new Set());
+  const [pendingAddExpenses, setPendingAddExpenses] = useState<Array<{
+    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+    tempId?: string;
+  }>>([]);
   
   // Editable ticket fields state
   const [editableTicket, setEditableTicket] = useState<{
@@ -223,12 +231,27 @@ export default function ServiceTickets() {
         }
       }
       // Apply pending expense deletes (expenses marked for removal)
+      const hadPendingExpenseChanges = pendingDeleteExpenseIds.size > 0 || pendingAddExpenses.length > 0;
       for (const expenseId of pendingDeleteExpenseIds) {
         await serviceTicketExpensesService.delete(expenseId);
       }
-      if (pendingDeleteExpenseIds.size > 0) {
-        setPendingDeleteExpenseIds(new Set());
-        if (currentTicketRecordId) await loadExpenses(currentTicketRecordId);
+      if (pendingDeleteExpenseIds.size > 0) setPendingDeleteExpenseIds(new Set());
+      // Apply pending expense adds (new expenses not yet saved)
+      if (currentTicketRecordId && pendingAddExpenses.length > 0) {
+        for (const exp of pendingAddExpenses) {
+          await serviceTicketExpensesService.create({
+            service_ticket_id: currentTicketRecordId,
+            expense_type: exp.expense_type,
+            description: exp.description,
+            quantity: exp.quantity,
+            rate: exp.rate,
+            unit: exp.unit,
+          });
+        }
+        setPendingAddExpenses([]);
+      }
+      if (currentTicketRecordId && hadPendingExpenseChanges) {
+        await loadExpenses(currentTicketRecordId);
       }
       setIsTicketEdited(false);
       queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
@@ -251,6 +274,7 @@ export default function ServiceTickets() {
     setEditedHours({});
     setIsTicketEdited(false);
     setPendingDeleteExpenseIds(new Set());
+    setPendingAddExpenses([]);
     setPendingChangesVersion(v => v + 1); // force hasPendingChanges to re-evaluate on next open
     initialEditableTicketRef.current = null;
     initialServiceRowsRef.current = [];
@@ -271,8 +295,9 @@ export default function ServiceTickets() {
         || !hoursEq(row.so, inital.so) || !hoursEq(row.fo, inital.fo);
     });
     const hasPendingExpenseDeletes = pendingDeleteExpenseIds.size > 0;
-    return headerDirty || serviceDirty || hasPendingExpenseDeletes;
-  }, [editableTicket, serviceRows, pendingChangesVersion, pendingDeleteExpenseIds.size]);
+    const hasPendingExpenseAdds = pendingAddExpenses.length > 0;
+    return headerDirty || serviceDirty || hasPendingExpenseDeletes || hasPendingExpenseAdds;
+  }, [editableTicket, serviceRows, pendingChangesVersion, pendingDeleteExpenseIds.size, pendingAddExpenses.length]);
   
   // Legacy state for backward compatibility (used in some exports)
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
@@ -1364,6 +1389,7 @@ export default function ServiceTickets() {
                   
                   setSelectedTicket(ticket);
                   setPendingDeleteExpenseIds(new Set());
+                  setPendingAddExpenses([]);
                   const initialEditable = {
                     customerName: ticket.customerInfo.name || '',
                     address: ticket.customerInfo.address || '',
@@ -2451,7 +2477,7 @@ export default function ServiceTickets() {
                         )}
                       </div>
                       
-                      {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length === 0 && !editingExpense && (
+                      {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length === 0 && pendingAddExpenses.length === 0 && !editingExpense && (
                         <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
                           No expenses added yet.
                         </p>
@@ -2598,17 +2624,21 @@ export default function ServiceTickets() {
                                       rate: Number(editingExpense.rate) || 0,
                                       unit: editingExpense.unit?.trim() || undefined,
                                     });
+                                    setEditingExpense(null);
                                   } else {
-                                    await createExpenseMutation.mutateAsync({
-                                      service_ticket_id: currentTicketRecordId,
-                                      expense_type: editingExpense.expense_type,
-                                      description: editingExpense.description.trim(),
-                                      quantity: Number(editingExpense.quantity) || 0,
-                                      rate: Number(editingExpense.rate) || 0,
-                                      unit: editingExpense.unit?.trim() || undefined,
-                                    });
+                                    setPendingAddExpenses((prev) => [
+                                      ...prev,
+                                      {
+                                        expense_type: editingExpense.expense_type,
+                                        description: editingExpense.description.trim(),
+                                        quantity: Number(editingExpense.quantity) || 0,
+                                        rate: Number(editingExpense.rate) || 0,
+                                        unit: editingExpense.unit?.trim() || undefined,
+                                        tempId: `pending-${Date.now()}-${prev.length}`,
+                                      },
+                                    ]);
+                                    setEditingExpense(null);
                                   }
-                                  setEditingExpense(null);
                                 } catch (err: unknown) {
                                   console.error('Expense save error:', err);
                                   // Extract message from Error, Supabase error object, or plain string
@@ -2643,7 +2673,7 @@ export default function ServiceTickets() {
                         </div>
                       )}
 
-                      {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).map((expense) => (
+                      {[...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))), ...pendingAddExpenses.map((e) => ({ ...e, id: e.tempId }))].map((expense) => (
                         <div
                           key={expense.id ?? expense.description + expense.expense_type}
                           style={{
@@ -2679,7 +2709,14 @@ export default function ServiceTickets() {
                           {!isLockedForEditing && (
                           <div style={{ display: 'flex', gap: '6px' }}>
                             <button
-                              onClick={() => setEditingExpense({ ...expense })}
+                              onClick={() => {
+                                if (expense.id?.startsWith('pending-')) {
+                                  setPendingAddExpenses((prev) => prev.filter((e) => e.tempId !== expense.id));
+                                  setEditingExpense({ expense_type: expense.expense_type, description: expense.description, quantity: expense.quantity, rate: expense.rate, unit: expense.unit });
+                                } else {
+                                  setEditingExpense({ ...expense });
+                                }
+                              }}
                               style={{
                                 padding: '4px 8px',
                                 backgroundColor: 'transparent',
@@ -2694,8 +2731,10 @@ export default function ServiceTickets() {
                             </button>
                             <button
                               onClick={() => {
-                                if (expense.id && confirm('Delete this expense? It will be removed when you click Save Changes.')) {
-                                  setPendingDeleteExpenseIds((prev) => new Set(prev).add(expense.id!));
+                                if (expense.id?.startsWith('pending-')) {
+                                  setPendingAddExpenses((prev) => prev.filter((e) => e.tempId !== expense.id));
+                                } else if (expense.id && confirm('Delete this expense? It will be removed when you click Save Changes.')) {
+                                  setPendingDeleteExpenseIds((prev) => new Set(prev).add(expense.id));
                                 }
                               }}
                               style={{
@@ -2715,7 +2754,7 @@ export default function ServiceTickets() {
                         </div>
                       ))}
 
-                      {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length > 0 && (
+                      {([...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))), ...pendingAddExpenses].length > 0) && (
                         <div
                           style={{
                             display: 'flex',
@@ -2728,7 +2767,7 @@ export default function ServiceTickets() {
                         >
                           <span style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>TOTAL EXPENSES:</span>
                           <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: '700' }}>
-                            ${expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).reduce((sum, e) => sum + (e.quantity * e.rate), 0).toFixed(2)}
+                            ${[...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))), ...pendingAddExpenses].reduce((sum, e) => sum + (e.quantity * e.rate), 0).toFixed(2)}
                           </span>
                         </div>
                       )}
