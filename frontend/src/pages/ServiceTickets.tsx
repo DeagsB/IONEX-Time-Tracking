@@ -143,6 +143,7 @@ export default function ServiceTickets() {
 
   const [isSavingTicket, setIsSavingTicket] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
 
   const performSave = async (): Promise<boolean> => {
     if (!currentTicketRecordId || !selectedTicket) return false;
@@ -178,9 +179,10 @@ export default function ServiceTickets() {
       }
       setIsTicketEdited(false);
       queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-      // Update initial snapshots so pending highlights clear after save
+      // Update initial snapshots so pending highlights and Save Changes button clear after save
       if (editableTicket) initialEditableTicketRef.current = { ...editableTicket };
       initialServiceRowsRef.current = serviceRows.map(r => ({ ...r }));
+      setPendingChangesVersion(v => v + 1);
       return true;
     } finally {
       setIsSavingTicket(false);
@@ -211,7 +213,7 @@ export default function ServiceTickets() {
       return row.description !== inital.description || row.st !== inital.st || row.tt !== inital.tt || row.ft !== inital.ft || row.so !== inital.so || row.fo !== inital.fo;
     });
     return headerDirty || serviceDirty;
-  }, [editableTicket, serviceRows]);
+  }, [editableTicket, serviceRows, pendingChangesVersion]);
   
   // Legacy state for backward compatibility (used in some exports)
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
