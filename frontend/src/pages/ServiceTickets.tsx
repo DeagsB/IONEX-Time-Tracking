@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService } from '../services/supabaseServices';
+import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
@@ -155,6 +155,47 @@ export default function ServiceTickets() {
   const [isSavingTicket, setIsSavingTicket] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
+
+  // Create new ticket panel state
+  const [showCreatePanel, setShowCreatePanel] = useState(false);
+  const [isCreatingTicket, setIsCreatingTicket] = useState(false);
+  const [createCustomerId, setCreateCustomerId] = useState<string>('');
+  const [createProjectId, setCreateProjectId] = useState<string>('');
+  const [createData, setCreateData] = useState({
+    customerName: '',
+    address: '',
+    cityState: '',
+    zipCode: '',
+    phone: '',
+    email: '',
+    contactName: '',
+    serviceLocation: '',
+    locationCode: '',
+    poNumber: '',
+    approverName: '',
+    other: '',
+    techName: '',
+    projectNumber: '',
+    date: new Date().toISOString().split('T')[0],
+  });
+  const [createServiceRows, setCreateServiceRows] = useState<ServiceRow[]>([
+    { id: 'new-1', description: '', st: 0, tt: 0, ft: 0, so: 0, fo: 0 },
+  ]);
+  const [createExpenses, setCreateExpenses] = useState<Array<{
+    tempId: string;
+    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  }>>([]);
+  const [createEditingExpense, setCreateEditingExpense] = useState<{
+    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    description: string;
+    quantity: number;
+    rate: number;
+    unit?: string;
+  } | null>(null);
 
   // Round to nearest 0.5 hour (always round up)
   const roundToHalfHour = (hours: number): number => {
@@ -848,6 +889,12 @@ export default function ServiceTickets() {
     queryFn: () => employeesService.getAll(),
   });
 
+  // Fetch projects for create ticket panel
+  const { data: allProjects } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsService.getAll(),
+  });
+
   // Fetch current user's employee record to check department
   const { data: currentEmployee } = useQuery({
     queryKey: ['currentEmployee', user?.id],
@@ -1151,12 +1198,224 @@ export default function ServiceTickets() {
   };
 
 
+  // Open create ticket panel
+  const openCreatePanel = () => {
+    const techName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
+    setCreateCustomerId('');
+    setCreateProjectId('');
+    setCreateData({
+      customerName: '',
+      address: '',
+      cityState: '',
+      zipCode: '',
+      phone: '',
+      email: '',
+      contactName: '',
+      serviceLocation: '',
+      locationCode: '',
+      poNumber: '',
+      approverName: '',
+      other: '',
+      techName,
+      projectNumber: '',
+      date: new Date().toISOString().split('T')[0],
+    });
+    setCreateServiceRows([{ id: 'new-1', description: '', st: 0, tt: 0, ft: 0, so: 0, fo: 0 }]);
+    setCreateExpenses([]);
+    setCreateEditingExpense(null);
+    setShowCreatePanel(true);
+  };
+
+  // Handle customer selection in create panel - auto-populate fields
+  const handleCreateCustomerSelect = (customerId: string) => {
+    setCreateCustomerId(customerId);
+    setCreateProjectId('');
+    if (!customerId) {
+      setCreateData(prev => ({
+        ...prev,
+        customerName: '',
+        address: '',
+        cityState: '',
+        zipCode: '',
+        phone: '',
+        email: '',
+        contactName: '',
+        serviceLocation: '',
+        locationCode: '',
+        poNumber: '',
+        approverName: '',
+        other: '',
+        projectNumber: '',
+      }));
+      return;
+    }
+    const customer = customers?.find((c: any) => c.id === customerId);
+    if (customer) {
+      setCreateData(prev => ({
+        ...prev,
+        customerName: customer.name || '',
+        address: customer.address || '',
+        cityState: [customer.city, customer.state].filter(Boolean).join(', '),
+        zipCode: customer.zip_code || '',
+        phone: customer.phone || '',
+        email: customer.email || '',
+        contactName: customer.contact_name || '',
+        serviceLocation: customer.service_location || '',
+        locationCode: customer.location_code || '',
+        poNumber: customer.po_number || '',
+        approverName: customer.approver_name || '',
+        other: '',
+        projectNumber: '',
+      }));
+    }
+  };
+
+  // Handle project selection in create panel - auto-populate project fields
+  const handleCreateProjectSelect = (projectId: string) => {
+    setCreateProjectId(projectId);
+    if (!projectId) {
+      setCreateData(prev => ({ ...prev, projectNumber: '', serviceLocation: prev.serviceLocation, approverName: prev.approverName, other: '' }));
+      return;
+    }
+    const project = allProjects?.find((p: any) => p.id === projectId);
+    if (project) {
+      setCreateData(prev => ({
+        ...prev,
+        projectNumber: project.project_number || '',
+        serviceLocation: project.location || prev.serviceLocation,
+        approverName: project.approver_po_afe || prev.approverName,
+        other: project.other || prev.other,
+      }));
+    }
+  };
+
+  // Projects filtered by selected customer
+  const createProjectOptions = useMemo(() => {
+    if (!allProjects || !createCustomerId) return [];
+    return allProjects
+      .filter((p: any) => p.customer_id === createCustomerId && p.status === 'active')
+      .map((p: any) => ({ value: p.id, label: `${p.project_number || ''} - ${p.name}`.replace(/^ - /, '') }));
+  }, [allProjects, createCustomerId]);
+
+  // Save new ticket
+  const handleCreateTicketSave = async () => {
+    if (!user?.id) return;
+    if (!createCustomerId) { alert('Please select a customer.'); return; }
+    if (!createData.date) { alert('Please select a date.'); return; }
+
+    setIsCreatingTicket(true);
+    try {
+      const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+
+      // Get employee initials
+      let employeeInitials: string | null = null;
+      if (user.firstName && user.lastName) {
+        employeeInitials = `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
+      }
+
+      // Create the ticket record
+      const { data: newTicket, error: createError } = await supabase
+        .from(tableName)
+        .insert({
+          date: createData.date,
+          user_id: user.id,
+          customer_id: createCustomerId,
+          project_id: createProjectId || null,
+          workflow_status: 'draft',
+          employee_initials: employeeInitials,
+          is_edited: true,
+          header_overrides: {
+            customer_name: createData.customerName,
+            address: createData.address,
+            city_state: createData.cityState,
+            zip_code: createData.zipCode,
+            phone: createData.phone,
+            email: createData.email,
+            contact_name: createData.contactName,
+            service_location: createData.serviceLocation,
+            location_code: createData.locationCode,
+            po_number: createData.poNumber,
+            approver_po_afe: createData.approverName,
+            other: createData.other,
+            tech_name: createData.techName,
+            project_number: createData.projectNumber,
+            date: createData.date,
+          },
+        })
+        .select('id')
+        .single();
+
+      if (createError) throw createError;
+      const ticketId = newTicket.id;
+
+      // Save service rows as edited_descriptions & edited_hours
+      const editedDescriptions: Record<string, string[]> = {};
+      const editedHours: Record<string, number[]> = {};
+      const rateTypes = [
+        { key: 'st', label: 'Shop Time' },
+        { key: 'tt', label: 'Travel Time' },
+        { key: 'ft', label: 'Field Time' },
+        { key: 'so', label: 'Shop Overtime' },
+        { key: 'fo', label: 'Field Overtime' },
+      ];
+
+      for (const row of createServiceRows) {
+        for (const rt of rateTypes) {
+          const hours = row[rt.key as keyof ServiceRow] as number;
+          if (hours > 0) {
+            if (!editedDescriptions[rt.label]) {
+              editedDescriptions[rt.label] = [];
+              editedHours[rt.label] = [];
+            }
+            editedDescriptions[rt.label].push(row.description);
+            (editedHours[rt.label] as number[]).push(hours);
+          }
+        }
+      }
+
+      await supabase
+        .from(tableName)
+        .update({ edited_descriptions: editedDescriptions, edited_hours: editedHours })
+        .eq('id', ticketId);
+
+      // Save expenses
+      if (createExpenses.length > 0) {
+        for (const exp of createExpenses) {
+          await serviceTicketExpensesService.create({
+            service_ticket_id: ticketId,
+            expense_type: exp.expense_type,
+            description: exp.description,
+            quantity: exp.quantity,
+            rate: exp.rate,
+            unit: exp.unit || '',
+          });
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+      setShowCreatePanel(false);
+    } catch (err) {
+      console.error('Error creating ticket:', err);
+      alert('Failed to create service ticket. ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsCreatingTicket(false);
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
           Service Tickets
         </h2>
+        <button
+          className="button button-primary"
+          onClick={openCreatePanel}
+          style={{ padding: '10px 20px', fontSize: '14px', fontWeight: '600' }}
+        >
+          + Create Service Ticket
+        </button>
       </div>
 
       {/* Filters */}
@@ -3342,6 +3601,452 @@ export default function ServiceTickets() {
                   );
                 })()}
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Service Ticket Panel */}
+      {showCreatePanel && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+          onClick={() => setShowCreatePanel(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '12px',
+              maxWidth: '900px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+              border: '1px solid var(--border-color)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ padding: '24px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 8px 0' }}>
+                  CREATE SERVICE TICKET
+                </h2>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  Fill in the details below to create a new service ticket.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCreatePanel(false)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px 8px' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px' }}>
+              {/* Customer & Service Info */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+                {/* Customer Information */}
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Customer Information</h3>
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Customer Name</label>
+                  <SearchableSelect
+                    options={customers?.map((c: any) => ({ value: c.id, label: c.name })) || []}
+                    value={createCustomerId}
+                    onChange={handleCreateCustomerSelect}
+                    placeholder="Search customers..."
+                    emptyOption={{ value: '', label: 'Select a customer...' }}
+                  />
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Address</label>
+                  <input
+                    type="text"
+                    value={createData.address}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, address: e.target.value }))}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px', marginTop: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>City, Province</label>
+                      <input
+                        type="text"
+                        value={createData.cityState}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, cityState: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Postal Code</label>
+                      <input
+                        type="text"
+                        value={createData.zipCode}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, zipCode: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Contact Name</label>
+                  <input
+                    type="text"
+                    value={createData.contactName}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, contactName: e.target.value }))}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Phone</label>
+                      <input
+                        type="text"
+                        value={createData.phone}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, phone: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Email</label>
+                      <input
+                        type="text"
+                        value={createData.email}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, email: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Service Information */}
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Service Information</h3>
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Technician</label>
+                  <input
+                    type="text"
+                    value={createData.techName}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, techName: e.target.value }))}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Project Number</label>
+                  <SearchableSelect
+                    options={createProjectOptions}
+                    value={createProjectId}
+                    onChange={handleCreateProjectSelect}
+                    placeholder={createCustomerId ? 'Search projects...' : 'Select a customer first'}
+                    emptyOption={{ value: '', label: createCustomerId ? 'No project' : 'Select a customer first' }}
+                  />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Project #</label>
+                      <input
+                        type="text"
+                        value={createData.projectNumber}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, projectNumber: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Date</label>
+                      <input
+                        type="date"
+                        value={createData.date}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, date: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Service Location</label>
+                  <input
+                    type="text"
+                    value={createData.serviceLocation}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, serviceLocation: e.target.value }))}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Approver / PO / AFE</label>
+                  <input
+                    type="text"
+                    value={createData.approverName}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, approverName: e.target.value }))}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Other</label>
+                  <input
+                    type="text"
+                    value={createData.other}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, other: e.target.value }))}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              {/* Service Description */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Service Description</h3>
+                  <button
+                    className="button button-primary"
+                    onClick={() => setCreateServiceRows(prev => [...prev, { id: `new-${Date.now()}`, description: '', st: 0, tt: 0, ft: 0, so: 0, fo: 0 }])}
+                    style={{ padding: '6px 12px', fontSize: '12px' }}
+                  >
+                    + Add Row
+                  </button>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
+                      <th style={{ textAlign: 'left', padding: '8px', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>Description</th>
+                      <th style={{ textAlign: 'center', padding: '8px', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', width: '60px' }}>ST</th>
+                      <th style={{ textAlign: 'center', padding: '8px', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', width: '60px' }}>TT</th>
+                      <th style={{ textAlign: 'center', padding: '8px', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', width: '60px' }}>FT</th>
+                      <th style={{ textAlign: 'center', padding: '8px', fontSize: '12px', fontWeight: '600', color: '#ff9800', width: '60px' }}>SO</th>
+                      <th style={{ textAlign: 'center', padding: '8px', fontSize: '12px', fontWeight: '600', color: '#ff9800', width: '60px' }}>FO</th>
+                      <th style={{ width: '30px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {createServiceRows.map((row, idx) => (
+                      <tr key={row.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '6px 8px' }}>
+                          <textarea
+                            className="service-ticket-textarea"
+                            value={row.description}
+                            onChange={(e) => {
+                              const updated = [...createServiceRows];
+                              updated[idx] = { ...updated[idx], description: e.target.value };
+                              setCreateServiceRows(updated);
+                            }}
+                            rows={1}
+                            style={{
+                              width: '100%',
+                              padding: '6px',
+                              backgroundColor: 'var(--bg-primary)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '4px',
+                              color: 'var(--text-primary)',
+                              fontSize: '13px',
+                              resize: 'vertical',
+                              minHeight: '32px',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </td>
+                        {(['st', 'tt', 'ft', 'so', 'fo'] as const).map(field => (
+                          <td key={field} style={{ padding: '6px 4px', textAlign: 'center' }}>
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0"
+                              value={row[field] || ''}
+                              onChange={(e) => {
+                                const updated = [...createServiceRows];
+                                updated[idx] = { ...updated[idx], [field]: parseFloat(e.target.value) || 0 };
+                                setCreateServiceRows(updated);
+                              }}
+                              style={{
+                                width: '50px',
+                                padding: '6px 4px',
+                                textAlign: 'center',
+                                backgroundColor: 'var(--bg-primary)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '4px',
+                                color: 'var(--text-primary)',
+                                fontSize: '13px',
+                              }}
+                            />
+                          </td>
+                        ))}
+                        <td style={{ padding: '6px 4px', textAlign: 'center' }}>
+                          {createServiceRows.length > 1 && (
+                            <button
+                              onClick={() => setCreateServiceRows(prev => prev.filter((_, i) => i !== idx))}
+                              style={{ background: 'none', border: 'none', color: '#ef5350', cursor: 'pointer', fontSize: '16px', fontWeight: '700' }}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {/* Total hours */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px', fontSize: '13px', fontWeight: '700' }}>
+                  <span style={{ color: 'var(--text-primary)' }}>TOTAL:</span>
+                  <span style={{ width: '60px', textAlign: 'center' }}>{createServiceRows.reduce((s, r) => s + r.st, 0).toFixed(1)}</span>
+                  <span style={{ width: '60px', textAlign: 'center' }}>{createServiceRows.reduce((s, r) => s + r.tt, 0).toFixed(1)}</span>
+                  <span style={{ width: '60px', textAlign: 'center' }}>{createServiceRows.reduce((s, r) => s + r.ft, 0).toFixed(1)}</span>
+                  <span style={{ width: '60px', textAlign: 'center', color: '#ff9800' }}>{createServiceRows.reduce((s, r) => s + r.so, 0).toFixed(1)}</span>
+                  <span style={{ width: '60px', textAlign: 'center', color: '#ff9800' }}>{createServiceRows.reduce((s, r) => s + r.fo, 0).toFixed(1)}</span>
+                  <span style={{ width: '30px' }}></span>
+                </div>
+              </div>
+
+              {/* Expenses */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Travel / Subsistence / Expenses / Equipment</h3>
+                  <button
+                    className="button button-primary"
+                    onClick={() => setCreateEditingExpense({ expense_type: 'Travel', description: '', quantity: 1, rate: 0, unit: '' })}
+                    style={{ padding: '6px 12px', fontSize: '12px' }}
+                  >
+                    + Add Expense
+                  </button>
+                </div>
+
+                {/* Add/Edit expense form */}
+                {createEditingExpense && (
+                  <div style={{ padding: '12px', marginBottom: '12px', backgroundColor: 'rgba(255, 152, 0, 0.08)', borderRadius: '8px', border: '1px solid rgba(255, 152, 0, 0.3)' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr 1fr', gap: '8px', alignItems: 'end' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Type</label>
+                        <select
+                          value={createEditingExpense.expense_type}
+                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, expense_type: e.target.value as any } : null)}
+                          style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px' }}
+                        >
+                          <option value="Travel">Travel</option>
+                          <option value="Subsistence">Subsistence</option>
+                          <option value="Expenses">Expenses</option>
+                          <option value="Equipment">Equipment</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Description</label>
+                        <input
+                          type="text"
+                          value={createEditingExpense.description}
+                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, description: e.target.value } : null)}
+                          style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Qty</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={createEditingExpense.quantity}
+                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, quantity: parseFloat(e.target.value) || 0 } : null)}
+                          style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', textAlign: 'center' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Rate ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={createEditingExpense.rate}
+                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, rate: parseFloat(e.target.value) || 0 } : null)}
+                          style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', textAlign: 'center' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Unit</label>
+                        <input
+                          type="text"
+                          value={createEditingExpense.unit || ''}
+                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, unit: e.target.value } : null)}
+                          placeholder="km, day..."
+                          style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => setCreateEditingExpense(null)}
+                        className="button button-secondary"
+                        style={{ padding: '6px 14px', fontSize: '12px' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!createEditingExpense.description) return;
+                          setCreateExpenses(prev => [...prev, { ...createEditingExpense, tempId: `exp-${Date.now()}` }]);
+                          setCreateEditingExpense(null);
+                        }}
+                        className="button button-primary"
+                        style={{ padding: '6px 14px', fontSize: '12px' }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Expense list */}
+                {createExpenses.length > 0 && (
+                  <div>
+                    {createExpenses.map((exp) => (
+                      <div key={exp.tempId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
+                        <div>
+                          <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--primary-color)', textTransform: 'uppercase' }}>{exp.expense_type}</span>
+                          <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{exp.description}{exp.unit ? ` (${exp.unit})` : ''}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>${(exp.quantity * exp.rate).toFixed(2)}</span>
+                          <button
+                            onClick={() => setCreateExpenses(prev => prev.filter(e => e.tempId !== exp.tempId))}
+                            style={{ padding: '4px 8px', fontSize: '11px', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'none', color: '#ef5350', cursor: 'pointer' }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', fontWeight: '700' }}>
+                      <span>TOTAL EXPENSES:</span>
+                      <span style={{ color: 'var(--primary-color)' }}>${createExpenses.reduce((s, e) => s + e.quantity * e.rate, 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer buttons */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                <button
+                  className="button button-secondary"
+                  onClick={() => setShowCreatePanel(false)}
+                  style={{ padding: '10px 24px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button button-primary"
+                  onClick={handleCreateTicketSave}
+                  disabled={isCreatingTicket || !createCustomerId || !createData.date}
+                  style={{
+                    padding: '10px 24px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    opacity: (!createCustomerId || !createData.date) ? 0.5 : 1,
+                  }}
+                >
+                  {isCreatingTicket ? 'Creating...' : 'Create Service Ticket'}
+                </button>
               </div>
             </div>
           </div>
