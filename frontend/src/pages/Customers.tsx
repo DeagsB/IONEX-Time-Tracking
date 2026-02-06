@@ -787,8 +787,8 @@ export default function Customers() {
                 <td>{customer.city || '-'}</td>
                 <td>{customer.projects?.length || 0}</td>
                 <td style={{ textAlign: 'right' }}>
-                  {/* Allow users to edit/delete their own customers, or admins to edit/delete any */}
-                  {(user?.id === customer.created_by || isAdmin || customer.created_by === null || customer.created_by === undefined) && (
+                  {/* Any authenticated user can edit/delete customers */}
+                  {user && (
                     <>
                       <button
                         className="button button-secondary"

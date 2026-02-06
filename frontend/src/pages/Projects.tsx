@@ -979,8 +979,8 @@ export default function Projects() {
                   {formatHours(projectHours[project.id] || 0)}
                 </td>
                 <td style={{ textAlign: 'right' }}>
-                  {/* Allow users to edit/delete their own projects, or admins to edit/delete any */}
-                  {(user?.id === project.created_by || isAdmin || !project.created_by) && (
+                  {/* Any authenticated user can edit/delete projects */}
+                  {user && (
                     <>
                       <button
                         className="button button-secondary"
