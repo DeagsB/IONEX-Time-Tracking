@@ -1070,17 +1070,15 @@ export default function ServiceTickets() {
     }
     
     // Filter out discarded tickets unless showDiscarded is active
-    if (isAdmin) {
-      result = result.filter(t => {
-        const existing = existingTickets?.find(
-          et => et.date === t.date && 
-                et.user_id === t.userId && 
-                (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
-        );
-        const isDiscarded = !!(existing as any)?.is_discarded;
-        return showDiscarded ? isDiscarded : !isDiscarded;
-      });
-    }
+    result = result.filter(t => {
+      const existing = existingTickets?.find(
+        et => et.date === t.date && 
+              et.user_id === t.userId && 
+              (et.customer_id === t.customerId || (!et.customer_id && t.customerId === 'unassigned'))
+      );
+      const isDiscarded = !!(existing as any)?.is_discarded;
+      return showDiscarded ? isDiscarded : !isDiscarded;
+    });
     
     if (selectedCustomerId) {
       result = result.filter(t => t.customerId === selectedCustomerId);
@@ -1243,8 +1241,8 @@ export default function ServiceTickets() {
               />
             </div>
           )}
-          {/* Show Discarded toggle - only visible to admins */}
-          {isAdmin && (
+          {/* Show Discarded toggle */}
+          {(
             <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '4px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: showDiscarded ? '#ef5350' : 'var(--text-secondary)', fontWeight: showDiscarded ? '600' : '400' }}>
                 <input
@@ -1261,7 +1259,7 @@ export default function ServiceTickets() {
       </div>
 
       {/* Discarded banner */}
-      {showDiscarded && isAdmin && (
+      {showDiscarded && (
         <div style={{
           padding: '10px 16px',
           marginBottom: '12px',
@@ -3124,8 +3122,8 @@ export default function ServiceTickets() {
                   >
                     Close
                   </button>
-                  {/* Discard / Restore button - admin only */}
-                  {isAdmin && selectedTicket && (() => {
+                  {/* Discard / Restore button */}
+                  {selectedTicket && (() => {
                     const existingRecord = existingTickets?.find(
                       et => et.date === selectedTicket.date && 
                             et.user_id === selectedTicket.userId && 
