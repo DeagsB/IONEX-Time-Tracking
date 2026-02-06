@@ -945,12 +945,12 @@ export default function ServiceTickets() {
   });
 
   const tickets = useMemo(() => {
-    if (!billableEntries) return [];
-    const baseTickets = groupEntriesIntoTickets(billableEntries, employees);
+    const baseTickets = billableEntries ? groupEntriesIntoTickets(billableEntries, employees) : [];
     
     // Merge edited hours from database into tickets
+    let mergedTickets = baseTickets;
     if (existingTickets && existingTickets.length > 0) {
-      return baseTickets.map(ticket => {
+      mergedTickets = baseTickets.map(ticket => {
         // Find matching ticket record in database
         const ticketRecord = existingTickets.find(
           et => et.date === ticket.date && 
@@ -985,10 +985,77 @@ export default function ServiceTickets() {
         
         return ticket;
       });
+
+      // Append standalone tickets (manually created with no matching time entries)
+      const standaloneTickets = existingTickets.filter(et => {
+        // Skip records without a customer_id — these can't be standalone
+        if (!et.customer_id) return false;
+        // Check if any base ticket already matches this record
+        return !baseTickets.some(
+          bt => bt.date === et.date && bt.userId === et.user_id &&
+                (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned'))
+        );
+      });
+
+      for (const st of standaloneTickets) {
+        // Build hours from edited_hours if available
+        const editedHours = (st.edited_hours as Record<string, number | number[]>) || {};
+        const hoursByRateType: ServiceTicket['hoursByRateType'] = {
+          'Shop Time': 0, 'Shop Overtime': 0, 'Travel Time': 0, 'Field Time': 0, 'Field Overtime': 0,
+        };
+        Object.keys(editedHours).forEach(rateType => {
+          const hours = editedHours[rateType];
+          if (rateType in hoursByRateType) {
+            (hoursByRateType as any)[rateType] = Array.isArray(hours) ? hours.reduce((s: number, h: number) => s + (h || 0), 0) : (hours as number) || 0;
+          }
+        });
+        const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+
+        // Look up customer info
+        const customer = customers?.find((c: any) => c.id === st.customer_id);
+        const customerName = customer?.name || 'Unknown Customer';
+
+        // Look up user info for userName/initials
+        const emp = employees?.find((e: any) => e.user_id === st.user_id);
+        const firstName = emp?.user?.first_name || '';
+        const lastName = emp?.user?.last_name || '';
+        const userName = `${firstName} ${lastName}`.trim() || 'Unknown';
+        const userInitials = (firstName && lastName) ? `${firstName[0]}${lastName[0]}`.toUpperCase() : 'XX';
+
+        const standaloneTicket: ServiceTicket & { displayTicketNumber?: string } = {
+          id: `${st.date}-${st.customer_id}-${st.user_id}`,
+          date: st.date,
+          customerId: st.customer_id,
+          customerName,
+          customerInfo: {
+            name: customerName,
+            contact_name: customer?.contact_name,
+            email: customer?.email,
+            phone: customer?.phone,
+            address: customer?.address,
+            city: customer?.city,
+            state: customer?.state,
+            zip_code: customer?.zip_code,
+            po_number: customer?.po_number,
+            approver_name: customer?.approver_name,
+            location_code: customer?.location_code,
+            service_location: customer?.service_location,
+          },
+          userId: st.user_id,
+          userName,
+          userInitials,
+          ticketNumber: st.ticket_number || undefined,
+          totalHours,
+          entries: [],
+          hoursByRateType,
+          rates: { rt: 0, tt: 0, ft: 0, shop_ot: 0, field_ot: 0 },
+        };
+        mergedTickets.push(standaloneTicket);
+      }
     }
     
-    return baseTickets;
-  }, [billableEntries, employees, existingTickets]);
+    return mergedTickets;
+  }, [billableEntries, employees, existingTickets, customers]);
 
   // Expense mutations
   const createExpenseMutation = useMutation({
