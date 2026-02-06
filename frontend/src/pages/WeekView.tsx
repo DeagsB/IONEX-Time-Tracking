@@ -69,6 +69,7 @@ export default function WeekView() {
     billable: false, // Determined by rate_type (Internal = not billable)
     rate_type: 'Internal', // Default to Internal since no customer is default
     location: '', // Work location - different locations create separate service tickets
+    po_afe: '', // PO/AFE - auto-populated from project
   });
 
   // Edit existing entry modal state
@@ -84,6 +85,7 @@ export default function WeekView() {
     billable: true,
     rate_type: 'Shop Time',
     location: '',
+    po_afe: '',
   });
   
   // Track mouse position for modal drag detection
@@ -289,7 +291,7 @@ export default function WeekView() {
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       await refetchTimeEntries();
       setShowTimeEntryModal(false);
-      setNewEntry({ description: '', customer_id: '', project_id: '', hours: 0.25, billable: false, rate_type: 'Internal', location: '' });
+      setNewEntry({ description: '', customer_id: '', project_id: '', hours: 0.25, billable: false, rate_type: 'Internal', location: '', po_afe: '' });
       setSelectedSlot(null);
     },
     onError: (error: any) => {
@@ -535,6 +537,7 @@ export default function WeekView() {
         billable: false, // No customer = Internal = not billable
         rate_type: 'Internal',
         location: '',
+        po_afe: '',
       });
     setShowTimeEntryModal(true);
   };
@@ -586,6 +589,7 @@ export default function WeekView() {
       location: newEntry.location || null,
       customer_id: newEntry.customer_id || null,
       project_id: newEntry.project_id || null,
+      po_afe: newEntry.po_afe || null,
     };
 
     if (newEntry.project_id) {
@@ -627,6 +631,7 @@ export default function WeekView() {
       billable: entry.billable !== undefined ? entry.billable : true,
       rate_type: entry.rate_type || 'Shop Time',
       location: entry.location || '',
+      po_afe: entry.po_afe || '',
     });
     setShowEditModal(true);
   };
@@ -778,6 +783,7 @@ export default function WeekView() {
       location: editedEntry.location || null,
       customer_id: editedEntry.customer_id || null,
       project_id: editedEntry.project_id || null,
+      po_afe: editedEntry.po_afe || null,
     };
 
     updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
@@ -2470,24 +2476,27 @@ export default function WeekView() {
                           setNewEntry(prev => ({ ...prev, project_id: projectId }));
                           
                           if (!projectId) {
-                            setNewEntry(prev => ({ ...prev, location: '' }));
+                            setNewEntry(prev => ({ ...prev, location: '', po_afe: '' }));
                             return;
                           }
+                          
+                          // Auto-populate po_afe from project
+                          const selectedProject = projects?.find((p: any) => p.id === projectId);
                           
                           // Try to get the last used location for this user and project
                           if (user?.id) {
                             const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
                             if (lastLocation) {
-                              setNewEntry(prev => ({ ...prev, location: lastLocation }));
+                              setNewEntry(prev => ({ ...prev, location: lastLocation, po_afe: selectedProject?.approver_po_afe || '' }));
                               return;
                             }
                           }
                           
                           // Fallback to project default location
-                          const selectedProject = projects?.find((p: any) => p.id === projectId);
                           setNewEntry(prev => ({ 
                             ...prev, 
-                            location: selectedProject?.location || ''
+                            location: selectedProject?.location || '',
+                            po_afe: selectedProject?.approver_po_afe || '',
                           }));
                         }}
                         placeholder="Search projects..."
@@ -2502,6 +2511,9 @@ export default function WeekView() {
               {newEntry.customer_id && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
                   <label className="label">Location</label>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', marginBottom: '4px', display: 'block' }}>
+                    Different locations create separate service tickets
+                  </span>
                   <input
                     type="text"
                     className="input"
@@ -2517,9 +2529,28 @@ export default function WeekView() {
                       color: 'var(--text-primary)',
                     }}
                   />
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                    Different locations create separate service tickets
-                  </span>
+                </div>
+              )}
+
+              {/* 5b. PO/AFE input (only shown when customer is selected) */}
+              {newEntry.customer_id && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="label">PO/AFE</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="PO or AFE number"
+                    value={newEntry.po_afe}
+                    onChange={(e) => setNewEntry({ ...newEntry, po_afe: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
                 </div>
               )}
 
@@ -2822,24 +2853,27 @@ export default function WeekView() {
                           setEditedEntry(prev => ({ ...prev, project_id: projectId }));
                           
                           if (!projectId) {
-                            setEditedEntry(prev => ({ ...prev, location: '' }));
+                            setEditedEntry(prev => ({ ...prev, location: '', po_afe: '' }));
                             return;
                           }
+                          
+                          // Auto-populate po_afe from project
+                          const selectedProject = projects?.find((p: any) => p.id === projectId);
                           
                           // Try to get the last used location for this user and project
                           if (user?.id) {
                             const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
                             if (lastLocation) {
-                              setEditedEntry(prev => ({ ...prev, location: lastLocation }));
+                              setEditedEntry(prev => ({ ...prev, location: lastLocation, po_afe: selectedProject?.approver_po_afe || prev.po_afe }));
                               return;
                             }
                           }
                           
                           // Fallback to project default location
-                          const selectedProject = projects?.find((p: any) => p.id === projectId);
                           setEditedEntry(prev => ({
                             ...prev,
-                            location: selectedProject?.location || ''
+                            location: selectedProject?.location || '',
+                            po_afe: selectedProject?.approver_po_afe || prev.po_afe,
                           }));
                         }}
                         placeholder="Search projects..."
@@ -2854,6 +2888,9 @@ export default function WeekView() {
               {editedEntry.customer_id && (
                 <div className="form-group" style={{ marginBottom: '20px' }}>
                   <label className="label">Location</label>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', marginBottom: '4px', display: 'block' }}>
+                    Different locations create separate service tickets
+                  </span>
                   <input
                     type="text"
                     placeholder="Work location (e.g., Site A, Building 3)"
@@ -2869,9 +2906,28 @@ export default function WeekView() {
                       fontSize: '14px',
                     }}
                   />
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
-                    Different locations create separate service tickets
-                  </span>
+                </div>
+              )}
+
+              {/* 5b. PO/AFE input - only when customer selected */}
+              {editedEntry.customer_id && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="label">PO/AFE</label>
+                  <input
+                    type="text"
+                    placeholder="PO or AFE number"
+                    value={editedEntry.po_afe}
+                    onChange={(e) => setEditedEntry({ ...editedEntry, po_afe: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px',
+                    }}
+                  />
                 </div>
               )}
 
