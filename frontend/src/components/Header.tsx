@@ -24,6 +24,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [location, setLocation] = useState(''); // Work location for service tickets
+  const [poAfe, setPoAfe] = useState(''); // PO/AFE for service tickets
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
@@ -57,6 +58,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rate_type: data.rateType || 'Shop Time',
         description: data.description || null,
         location: data.location || null, // Work location for service tickets
+        po_afe: data.po_afe || null, // PO/AFE for service tickets
         is_demo: isDemoMode, // Mark as demo entry if in demo mode
       };
       
@@ -90,6 +92,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     // Clear project selection when customer changes
     setSelectedProjectId('');
     setLocation('');
+    setPoAfe('');
   };
 
   const handleProjectChange = async (projectId: string) => {
@@ -97,25 +100,25 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     
     if (!projectId) {
       setLocation('');
+      setPoAfe('');
       return;
     }
+    
+    const project = projects?.find((p: any) => p.id === projectId);
     
     // Try to get the last used location for this user and project
     if (user?.id) {
       const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
       if (lastLocation) {
         setLocation(lastLocation);
+        setPoAfe(project?.approver_po_afe || '');
         return;
       }
     }
     
-    // Fallback to project default location if no previous entry found
-    const project = projects?.find((p: any) => p.id === projectId);
-    if (project?.location) {
-      setLocation(project.location);
-    } else {
-      setLocation('');
-    }
+    // Fallback to project defaults
+    setLocation(project?.location || '');
+    setPoAfe(project?.approver_po_afe || '');
   };
 
   const handleStop = async () => {
@@ -195,6 +198,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rateType: isBillable ? 'Shop Time' : 'Internal',
         description: currentEntry.description,
         location: location || null, // Include location for service tickets
+        po_afe: poAfe || null, // Include PO/AFE for service tickets
       });
 
       // Stop timer after saving
@@ -205,6 +209,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       setSelectedCustomerId('');
       setSelectedProjectId('');
       setLocation('');
+      setPoAfe('');
       
       // Navigate to week view (which will show today's week)
       // The entry will appear in the correct time slot
@@ -224,42 +229,42 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     }
   };
 
+  const showSecondRow = !timerRunning && selectedCustomerId;
+
   return (
     <div style={{
-      height: '64px',
       backgroundColor: 'var(--bg-primary)',
       borderBottom: '1px solid var(--border-color)',
-      display: 'flex',
-      alignItems: 'center',
-      padding: '0 24px',
-      position: 'fixed',
-      top: 0,
-      left: '240px',
-      right: 0,
       zIndex: 100,
       boxShadow: 'var(--shadow-sm)',
+      flexShrink: 0,
     }}>
-
-      {/* Center - Timer Input */}
-      <div style={{ flex: 1, maxWidth: '600px', margin: '0 auto', position: 'relative' }}>
-        {timerRunning && currentEntry ? (
-          <div style={{
-            padding: '10px 15px',
-            borderRadius: '6px',
-            backgroundColor: 'var(--bg-secondary)',
-            border: '1px solid var(--border-color)',
-            fontSize: '14px',
-            color: 'var(--text-primary)',
-          }}>
-            <div style={{ fontWeight: '500' }}>{currentEntry.description}</div>
-            {currentEntry.projectName && (
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                {currentEntry.projectName}
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
+      {/* Row 1: Description, Timer, Start/Stop, User */}
+      <div style={{
+        height: '64px',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 24px',
+      }}>
+        {/* Center - Timer Input */}
+        <div style={{ flex: 1, maxWidth: '600px', margin: '0 auto', position: 'relative' }}>
+          {timerRunning && currentEntry ? (
+            <div style={{
+              padding: '10px 15px',
+              borderRadius: '6px',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              fontSize: '14px',
+              color: 'var(--text-primary)',
+            }}>
+              <div style={{ fontWeight: '500' }}>{currentEntry.description}</div>
+              {currentEntry.projectName && (
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  {currentEntry.projectName}
+                </div>
+              )}
+            </div>
+          ) : (
             <input
               type="text"
               placeholder="What are you working on?"
@@ -277,120 +282,84 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
                 transition: 'all 0.2s ease',
               }}
             />
-          </>
-        )}
-      </div>
-
-      {/* Right side - Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '20px' }}>
-        {/* Customer Selector */}
-        {!timerRunning && (
-          <SearchableSelect
-            options={customers?.map((customer: any) => ({
-              value: customer.id,
-              label: customer.name,
-            })) || []}
-            value={selectedCustomerId}
-            onChange={handleCustomerChange}
-            placeholder="Search customers..."
-            emptyOption={{ value: '', label: 'Select Customer' }}
-            style={{ width: '150px' }}
-          />
-        )}
-
-        {/* Project Selector - only show when customer selected */}
-        {!timerRunning && selectedCustomerId && (
-          <SearchableSelect
-            options={filteredProjects.map((project: any) => ({
-              value: project.id,
-              label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,
-            }))}
-            value={selectedProjectId}
-            onChange={handleProjectChange}
-            placeholder="Search projects..."
-            emptyOption={{ value: '', label: 'Select Project' }}
-            style={{ width: '150px' }}
-          />
-        )}
-
-        {/* Location input - only shown when project selected */}
-        {!timerRunning && selectedProjectId && (
-          <input
-            type="text"
-            placeholder="Location..."
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            style={{
-              width: '120px',
-              padding: '8px 10px',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              fontSize: '14px',
-              backgroundColor: 'var(--bg-primary)',
-              color: 'var(--text-primary)',
-            }}
-          />
-        )}
-
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '8px 16px',
-          backgroundColor: timerRunning ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-secondary)',
-          borderRadius: '8px',
-          fontSize: '15px',
-          fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-          fontWeight: '600',
-          color: timerRunning ? 'var(--error-color)' : 'var(--text-primary)',
-          border: timerRunning ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid transparent',
-          transition: 'all 0.2s ease',
-        }}>
-          {timerDisplay}
+          )}
         </div>
 
-        <button
-          onClick={() => {
-            if (timerRunning) {
-              handleStop();
-            } else {
-              handleStart();
-            }
-          }}
-          disabled={!timerRunning && !description.trim()}
-          style={{
-            backgroundColor: timerRunning ? 'var(--error-color)' : 'var(--primary-color)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '50%',
-            width: '44px',
-            height: '44px',
+        {/* Right side - Customer selector, timer display, start/stop, user */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '20px' }}>
+          {/* Customer Selector */}
+          {!timerRunning && (
+            <SearchableSelect
+              options={customers?.map((customer: any) => ({
+                value: customer.id,
+                label: customer.name,
+              })) || []}
+              value={selectedCustomerId}
+              onChange={handleCustomerChange}
+              placeholder="Search customers..."
+              emptyOption={{ value: '', label: 'Select Customer' }}
+              style={{ width: '160px' }}
+            />
+          )}
+
+          <div style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            cursor: (!timerRunning && !description.trim()) ? 'not-allowed' : 'pointer',
-            fontSize: '18px',
+            gap: '8px',
+            padding: '8px 16px',
+            backgroundColor: timerRunning ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-secondary)',
+            borderRadius: '8px',
+            fontSize: '15px',
+            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+            fontWeight: '600',
+            color: timerRunning ? 'var(--error-color)' : 'var(--text-primary)',
+            border: timerRunning ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid transparent',
             transition: 'all 0.2s ease',
-            opacity: (!timerRunning && !description.trim()) ? 0.5 : 1,
-            boxShadow: 'var(--shadow-sm)',
-          }}
-          onMouseEnter={(e) => {
-            if (!(!timerRunning && !description.trim())) {
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-              e.currentTarget.style.transform = 'translateY(-2px)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-          title={timerRunning ? 'Stop timer' : 'Start timer'}
-        >
-          {timerRunning ? '⏹' : '▶'}
-        </button>
+          }}>
+            {timerDisplay}
+          </div>
 
+          <button
+            onClick={() => {
+              if (timerRunning) {
+                handleStop();
+              } else {
+                handleStart();
+              }
+            }}
+            disabled={!timerRunning && !description.trim()}
+            style={{
+              backgroundColor: timerRunning ? 'var(--error-color)' : 'var(--primary-color)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '50%',
+              width: '44px',
+              height: '44px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: (!timerRunning && !description.trim()) ? 'not-allowed' : 'pointer',
+              fontSize: '18px',
+              transition: 'all 0.2s ease',
+              opacity: (!timerRunning && !description.trim()) ? 0.5 : 1,
+              boxShadow: 'var(--shadow-sm)',
+            }}
+            onMouseEnter={(e) => {
+              if (!(!timerRunning && !description.trim())) {
+                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            title={timerRunning ? 'Stop timer' : 'Start timer'}
+          >
+            {timerRunning ? '⏹' : '▶'}
+          </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {/* Developer Role Switcher */}
           {isDeveloper && (
             <div style={{
@@ -455,8 +424,74 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
             )}
           </span>
         </div>
+        </div>
       </div>
 
+      {/* Row 2: Project, Location, PO/AFE - only when customer is selected */}
+      {showSecondRow && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '0 24px 10px 24px',
+          flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '500', minWidth: '50px' }}>
+            Details:
+          </span>
+
+          {/* Project Selector */}
+          <SearchableSelect
+            options={filteredProjects.map((project: any) => ({
+              value: project.id,
+              label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,
+            }))}
+            value={selectedProjectId}
+            onChange={handleProjectChange}
+            placeholder="Search projects..."
+            emptyOption={{ value: '', label: 'Select Project' }}
+            style={{ width: '220px' }}
+          />
+
+          {/* Location input */}
+          {selectedProjectId && (
+            <input
+              type="text"
+              placeholder="Work Location..."
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              style={{
+                width: '160px',
+                padding: '8px 10px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                fontSize: '13px',
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+              }}
+            />
+          )}
+
+          {/* PO/AFE input */}
+          {selectedProjectId && (
+            <input
+              type="text"
+              placeholder="PO / AFE..."
+              value={poAfe}
+              onChange={(e) => setPoAfe(e.target.value)}
+              style={{
+                width: '160px',
+                padding: '8px 10px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                fontSize: '13px',
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

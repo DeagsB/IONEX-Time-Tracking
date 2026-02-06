@@ -3,8 +3,6 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import { useTimer } from '../context/TimerContext';
 
-const HEADER_HEIGHT = 64;
-
 export default function Layout() {
   const { timerRunning, timerDisplay, timerStartTime, currentEntry, startTimer, stopTimer } = useTimer();
   const location = useLocation();
@@ -21,7 +19,6 @@ export default function Layout() {
         display: 'flex',
         flexDirection: 'column',
       }}>
-        <div style={{ height: `${HEADER_HEIGHT}px`, flexShrink: 0 }} aria-hidden />
         <Header 
           onTimerStart={startTimer}
           onTimerStop={stopTimer}
