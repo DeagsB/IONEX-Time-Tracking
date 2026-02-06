@@ -2012,17 +2012,35 @@ export default function ServiceTickets() {
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={sectionTitleStyle}>Service Description</h3>
-                        {isTicketEdited && (
-                          <span style={{ 
-                            fontSize: '11px', 
-                            color: 'var(--primary-color)', 
-                            padding: '4px 8px', 
-                            backgroundColor: 'var(--primary-light)', 
-                            borderRadius: '4px',
-                            fontWeight: '600'
-                          }}>
-                            EDITED - Time entries won't update this ticket
-                          </span>
+                        {!isLockedForEditing && (
+                          <button
+                            onClick={() => {
+                              const newRow: ServiceRow = {
+                                id: `new-${Date.now()}`,
+                                description: '',
+                                st: 0,
+                                tt: 0,
+                                ft: 0,
+                                so: 0,
+                                fo: 0,
+                              };
+                              const newRows = [...serviceRows, newRow];
+                              setServiceRows(newRows);
+                              setIsTicketEdited(true);
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              backgroundColor: 'var(--primary-color)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            + Add Row
+                          </button>
                         )}
                       </div>
                       
@@ -2269,40 +2287,6 @@ export default function ServiceTickets() {
                           </span>
                         </div>
                         
-                        {/* Add Row Button - only shown when not locked */}
-                        {!isLockedForEditing && (
-                        <button
-                          onClick={() => {
-                            const newRow: ServiceRow = {
-                              id: `new-${Date.now()}`,
-                              description: '',
-                              st: 0,
-                              tt: 0,
-                              ft: 0,
-                              so: 0,
-                              fo: 0,
-                            };
-                            const newRows = [...serviceRows, newRow];
-                            setServiceRows(newRows);
-                            setIsTicketEdited(true);
-                          }}
-                          style={{
-                            padding: '8px 16px',
-                            backgroundColor: 'var(--primary-light)',
-                            color: 'var(--primary-color)',
-                            border: '1px solid rgba(199, 112, 240, 0.3)',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                            alignSelf: 'flex-start',
-                            marginTop: '8px',
-                          }}
-                        >
-                          + Add Row
-                        </button>
-                        )}
-                        
                         {/* Legend */}
                         <div style={{ 
                           marginTop: '12px', 
@@ -2318,6 +2302,22 @@ export default function ServiceTickets() {
                           <span style={{ color: '#ff9800' }}>SO = Shop Overtime</span>
                           <span style={{ color: '#ff9800' }}>FO = Field Overtime</span>
                         </div>
+                        
+                        {/* EDITED notice - below legend */}
+                        {isTicketEdited && (
+                          <div style={{ marginTop: '12px' }}>
+                            <span style={{ 
+                              fontSize: '11px', 
+                              color: 'var(--primary-color)', 
+                              padding: '4px 8px', 
+                              backgroundColor: 'var(--primary-light)', 
+                              borderRadius: '4px',
+                              fontWeight: '600'
+                            }}>
+                              EDITED - Time entries won't update this ticket
+                            </span>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Save Button (in-section - same as footer Save Changes) */}
