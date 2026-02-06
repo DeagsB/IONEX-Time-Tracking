@@ -190,7 +190,7 @@ export async function downloadPdfFromHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Name</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.approver_name || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
@@ -683,7 +683,7 @@ function buildPdfHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Name</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.approver_name || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>

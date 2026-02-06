@@ -8,6 +8,7 @@ export interface ServiceTicket {
   location?: string; // Work location - different locations create separate tickets
   customerInfo: {
     name: string;
+    contact_name?: string;
     email?: string;
     phone?: string;
     address?: string;
@@ -85,6 +86,7 @@ export interface TimeEntryWithRelations {
     customer?: {
       id: string;
       name: string;
+      contact_name?: string;
       email?: string;
       phone?: string;
       address?: string;
@@ -176,6 +178,7 @@ export function groupEntriesIntoTickets(
     const customerName = entry.project.customer.name;
     const customerInfo: ServiceTicket['customerInfo'] = {
       name: entry.project.customer.name,
+      contact_name: entry.project.customer.contact_name,
       email: entry.project.customer.email,
       phone: entry.project.customer.phone,
       address: entry.project.customer.address,

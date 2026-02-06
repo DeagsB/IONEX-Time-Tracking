@@ -248,8 +248,8 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
       color: rgb(0, 0, 0),
     });
     
-    // Contact Name (employee who did the work)
-    page.drawText(ticket.userName || '', {
+    // Contact Name (customer contact, not employee)
+    page.drawText(customer.contact_name || '', {
       x: LAYOUT.contactName.x,
       y: LAYOUT.contactName.y,
       size: 8,
@@ -273,7 +273,7 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
       color: rgb(0, 0, 0),
     });
     
-    page.drawText(customer.service_location || customer.address || '', {
+    page.drawText(customer.service_location || '', {
       x: LAYOUT.serviceLocation.x,
       y: LAYOUT.serviceLocation.y,
       size: 7,

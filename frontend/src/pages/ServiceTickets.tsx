@@ -1222,9 +1222,9 @@ export default function ServiceTickets() {
                     zipCode: ticket.customerInfo.zip_code || '',
                     phone: ticket.customerInfo.phone || '',
                     email: ticket.customerInfo.email || '',
-                    contactName: ticket.userName || '',
-                    // Use project defaults if available, otherwise fall back to customer info
-                    serviceLocation: ticket.projectLocation || ticket.customerInfo.service_location || ticket.customerInfo.address || '',
+                    contactName: ticket.customerInfo.contact_name || '',
+                    // Use project location, then customer service_location only (do not default to address so user can override)
+                    serviceLocation: ticket.projectLocation || ticket.customerInfo.service_location || '',
                     locationCode: ticket.customerInfo.location_code || '',
                     poNumber: ticket.customerInfo.po_number || '',
                     approverName: ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '',
@@ -2707,6 +2707,7 @@ export default function ServiceTickets() {
                         customerInfo: {
                           ...selectedTicket.customerInfo,
                           name: editableTicket.customerName,
+                          contact_name: editableTicket.contactName,
                           address: editableTicket.address,
                           city: editableTicket.cityState.split(',')[0]?.trim() || '',
                           state: editableTicket.cityState.split(',')[1]?.trim() || '',
