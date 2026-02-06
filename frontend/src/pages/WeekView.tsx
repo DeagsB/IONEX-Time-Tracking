@@ -2488,16 +2488,7 @@ export default function WeekView() {
                           // Auto-populate po_afe from project
                           const selectedProject = projects?.find((p: any) => p.id === projectId);
                           
-                          // Try to get the last used location for this user and project
-                          if (user?.id) {
-                            const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
-                            if (lastLocation) {
-                              setNewEntry(prev => ({ ...prev, location: lastLocation, po_afe: selectedProject?.approver_po_afe || '' }));
-                              return;
-                            }
-                          }
-                          
-                          // Fallback to project default location
+                          // Set project defaults (don't auto-populate from last used location)
                           setNewEntry(prev => ({ 
                             ...prev, 
                             location: selectedProject?.location || '',
@@ -2867,16 +2858,7 @@ export default function WeekView() {
                           // Auto-populate po_afe from project
                           const selectedProject = projects?.find((p: any) => p.id === projectId);
                           
-                          // Try to get the last used location for this user and project
-                          if (user?.id) {
-                            const lastLocation = await timeEntriesService.getLastLocation(user.id, projectId);
-                            if (lastLocation) {
-                              setEditedEntry(prev => ({ ...prev, location: lastLocation, po_afe: selectedProject?.approver_po_afe || prev.po_afe }));
-                              return;
-                            }
-                          }
-                          
-                          // Fallback to project default location
+                          // Set project defaults (don't auto-populate from last used location)
                           setEditedEntry(prev => ({
                             ...prev,
                             location: selectedProject?.location || '',
