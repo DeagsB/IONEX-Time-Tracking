@@ -2734,7 +2734,8 @@ export default function ServiceTickets() {
                                 if (expense.id?.startsWith('pending-')) {
                                   setPendingAddExpenses((prev) => prev.filter((e) => e.tempId !== expense.id));
                                 } else if (expense.id && confirm('Delete this expense? It will be removed when you click Save Changes.')) {
-                                  setPendingDeleteExpenseIds((prev) => new Set(prev).add(expense.id));
+                                  const id = expense.id;
+                                  setPendingDeleteExpenseIds((prev) => new Set(prev).add(id));
                                 }
                               }}
                               style={{
