@@ -1662,7 +1662,7 @@ export default function ServiceTickets() {
             padding: '20px',
           }}
           onClick={() => { 
-            if (isTicketEdited) setShowCloseConfirm(true);
+            if (isTicketEdited || hasPendingChanges) setShowCloseConfirm(true);
             else closePanel();
           }}
         >
@@ -1714,7 +1714,7 @@ export default function ServiceTickets() {
               </div>
               <button
                 onClick={() => { 
-                  if (isTicketEdited) setShowCloseConfirm(true);
+                  if (isTicketEdited || hasPendingChanges) setShowCloseConfirm(true);
                   else closePanel();
                 }}
                 style={{
@@ -2832,7 +2832,7 @@ export default function ServiceTickets() {
               )}
               {/* Action Buttons */}
               <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-                {isTicketEdited && !isLockedForEditing && (
+                {(isTicketEdited || hasPendingChanges) && !isLockedForEditing && (
                   <button
                     onClick={async () => {
                       await performSave();
@@ -2855,7 +2855,7 @@ export default function ServiceTickets() {
                 <button
                   className="button button-secondary"
                   onClick={() => { 
-                    if (isTicketEdited) {
+                    if (isTicketEdited || hasPendingChanges) {
                       setShowCloseConfirm(true);
                     } else {
                       closePanel();
