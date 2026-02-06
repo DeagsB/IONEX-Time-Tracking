@@ -2328,6 +2328,7 @@ export default function WeekView() {
             className="card"
             style={{
               width: '500px',
+              minHeight: '75vh',
               maxHeight: '90vh',
               padding: '0',
               backgroundColor: 'var(--bg-secondary)',
