@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -118,6 +118,24 @@ export default function ServiceTickets() {
   const [serviceRows, setServiceRows] = useState<ServiceRow[]>([]);
   const [isTicketEdited, setIsTicketEdited] = useState(false);
   const [isLockedForEditing, setIsLockedForEditing] = useState(false); // True when admin has approved
+  const [showLockNotification, setShowLockNotification] = useState(false);
+  const lockNotificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showLockedReason = () => {
+    if (!isLockedForEditing) return;
+    if (lockNotificationTimeoutRef.current) clearTimeout(lockNotificationTimeoutRef.current);
+    setShowLockNotification(true);
+    lockNotificationTimeoutRef.current = setTimeout(() => {
+      setShowLockNotification(false);
+      lockNotificationTimeoutRef.current = null;
+    }, 4500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (lockNotificationTimeoutRef.current) clearTimeout(lockNotificationTimeoutRef.current);
+    };
+  }, []);
   
   // Legacy state for backward compatibility (used in some exports)
   const [editedDescriptions, setEditedDescriptions] = useState<Record<string, string[]>>({});
@@ -1639,7 +1657,12 @@ export default function ServiceTickets() {
               </button>
             </div>
 
-            <div style={{ padding: '24px' }}>
+            <div
+              style={{ padding: '24px', position: 'relative' }}
+              onClick={isLockedForEditing ? showLockedReason : undefined}
+              role={isLockedForEditing ? 'button' : undefined}
+              aria-label={isLockedForEditing ? 'Ticket is locked; click to see why' : undefined}
+            >
               {/* Locked banner for non-admins when ticket is admin-approved */}
               {isLockedForEditing && (
                 <div style={{
@@ -1659,6 +1682,56 @@ export default function ServiceTickets() {
                       This ticket has been approved by an admin and can no longer be edited.
                     </div>
                   </div>
+                </div>
+              )}
+              {/* Toast when user tries to edit while locked */}
+              {showLockNotification && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    bottom: '24px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 10000,
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                    padding: '14px 20px',
+                    maxWidth: '90vw',
+                    width: '360px',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                  }}
+                  role="alert"
+                >
+                  <span style={{ fontSize: '20px', flexShrink: 0 }}>🔒</span>
+                  <div>
+                    <div style={{ fontWeight: '600', marginBottom: '4px', color: 'var(--text-primary)' }}>
+                      Cannot edit this ticket
+                    </div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      This ticket has been approved by an admin and is locked. Contact an administrator if you need to make changes.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowLockNotification(false); }}
+                    style={{
+                      marginLeft: 'auto',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      fontSize: '18px',
+                      lineHeight: 1,
+                      color: 'var(--text-secondary)',
+                    }}
+                    aria-label="Dismiss"
+                  >
+                    ×
+                  </button>
                 </div>
               )}
               
@@ -1898,7 +1971,7 @@ export default function ServiceTickets() {
                             <textarea
                               value={row.description}
                               onChange={(e) => {
-                                if (isLockedForEditing) return;
+                                if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, description: e.target.value };
                                 setServiceRows(newRows);
@@ -1924,7 +1997,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.st || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) return;
+                                if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, st: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -1948,7 +2021,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.tt || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) return;
+                                if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, tt: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -1972,7 +2045,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.ft || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) return;
+                                if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, ft: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -1996,7 +2069,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.so || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) return;
+                                if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, so: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
@@ -2021,7 +2094,7 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.fo || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) return;
+                                if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, fo: parseFloat(e.target.value) || 0 };
                                 setServiceRows(newRows);
