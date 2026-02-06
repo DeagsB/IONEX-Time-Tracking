@@ -193,15 +193,27 @@ export default function ServiceTickets() {
         alert('Failed to save edited ticket data.');
         return false;
       }
-      // Persist Service Location, Approver/PO/AFE, Other (requires migration_add_service_ticket_header_overrides)
+      // Persist ALL editable header fields (requires migration_add_service_ticket_header_overrides)
       if (editableTicket) {
         const { error: overrideError } = await supabase
           .from(tableName)
           .update({
             header_overrides: {
+              customer_name: editableTicket.customerName ?? '',
+              address: editableTicket.address ?? '',
+              city_state: editableTicket.cityState ?? '',
+              zip_code: editableTicket.zipCode ?? '',
+              phone: editableTicket.phone ?? '',
+              email: editableTicket.email ?? '',
+              contact_name: editableTicket.contactName ?? '',
               service_location: editableTicket.serviceLocation ?? '',
+              location_code: editableTicket.locationCode ?? '',
+              po_number: editableTicket.poNumber ?? '',
               approver_po_afe: editableTicket.approverName ?? '',
               other: editableTicket.other ?? '',
+              tech_name: editableTicket.techName ?? '',
+              project_number: editableTicket.projectNumber ?? '',
+              date: editableTicket.date ?? '',
             },
           })
           .eq('id', currentTicketRecordId);
@@ -1389,14 +1401,26 @@ export default function ServiceTickets() {
                       ticketRecord = dataWithOverrides;
                     }
                     
-                    // Apply saved header overrides (Service Location, Approver/PO/AFE, Other) so they persist on reopen
-                    const overrides = ticketRecord?.header_overrides as { service_location?: string; approver_po_afe?: string; other?: string } | null;
-                    if (overrides && (overrides.service_location !== undefined || overrides.approver_po_afe !== undefined || overrides.other !== undefined)) {
+                    // Apply saved header overrides so all editable fields persist on reopen
+                    const ov = ticketRecord?.header_overrides as Record<string, string> | null;
+                    if (ov && Object.keys(ov).length > 0) {
                       const merged = {
                         ...initialEditable,
-                        serviceLocation: overrides.service_location ?? initialEditable.serviceLocation,
-                        approverName: overrides.approver_po_afe ?? initialEditable.approverName,
-                        other: overrides.other ?? initialEditable.other,
+                        customerName: ov.customer_name ?? initialEditable.customerName,
+                        address: ov.address ?? initialEditable.address,
+                        cityState: ov.city_state ?? initialEditable.cityState,
+                        zipCode: ov.zip_code ?? initialEditable.zipCode,
+                        phone: ov.phone ?? initialEditable.phone,
+                        email: ov.email ?? initialEditable.email,
+                        contactName: ov.contact_name ?? initialEditable.contactName,
+                        serviceLocation: ov.service_location ?? initialEditable.serviceLocation,
+                        locationCode: ov.location_code ?? initialEditable.locationCode,
+                        poNumber: ov.po_number ?? initialEditable.poNumber,
+                        approverName: ov.approver_po_afe ?? initialEditable.approverName,
+                        other: ov.other ?? initialEditable.other,
+                        techName: ov.tech_name ?? initialEditable.techName,
+                        projectNumber: ov.project_number ?? initialEditable.projectNumber,
+                        date: ov.date ?? initialEditable.date,
                       };
                       setEditableTicket(merged);
                       initialEditableTicketRef.current = { ...merged };
