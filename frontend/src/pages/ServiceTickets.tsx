@@ -49,7 +49,17 @@ export default function ServiceTickets() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   // Filter tabs: 'draft' (Not Submitted), 'submitted' (Pending Approval), 'approved' (Finalized), 'all'
-  const [activeTab, setActiveTab] = useState<'draft' | 'submitted' | 'approved' | 'all'>('draft');
+  // Admin defaults to Submitted tab on first open; non-admin to Drafts
+  const [activeTab, setActiveTab] = useState<'draft' | 'submitted' | 'approved' | 'all'>(() =>
+    isAdmin ? 'submitted' : 'draft'
+  );
+  const hasSetAdminDefaultTab = useRef(false);
+  useEffect(() => {
+    if (isAdmin && !hasSetAdminDefaultTab.current) {
+      hasSetAdminDefaultTab.current = true;
+      setActiveTab('submitted');
+    }
+  }, [isAdmin]);
   const [showDiscarded, setShowDiscarded] = useState(false);
   
   // Sorting state - persisted per user in localStorage
