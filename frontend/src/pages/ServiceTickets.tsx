@@ -2149,6 +2149,21 @@ export default function ServiceTickets() {
                           letterSpacing: '0.5px',
                         }}>Discarded</span>
                       )}
+                      {isResubmitted && (
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          fontFamily: 'system-ui, sans-serif',
+                          color: '#b45309',
+                          backgroundColor: 'rgba(234, 179, 8, 0.2)',
+                          border: '1px solid rgba(234, 179, 8, 0.5)',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }} title="Resubmitted after rejection">Resubmitted</span>
+                      )}
                     </div>
                   </td>
                   <td style={{ padding: '16px', color: 'var(--text-primary)' }}>
