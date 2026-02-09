@@ -166,6 +166,8 @@ export default function ServiceTickets() {
 
   const [isSavingTicket, setIsSavingTicket] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [showRejectNoteModal, setShowRejectNoteModal] = useState(false);
+  const [rejectNote, setRejectNote] = useState('');
   const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
 
   // Create new ticket panel state
@@ -908,14 +910,14 @@ export default function ServiceTickets() {
       const { data, error } = await supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, rejected_at,
+          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, rejected_at, rejection_notes,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `);
       if (error) {
         // If the join fails (column doesn't exist yet), try without the join
         const { data: fallbackData, error: fallbackError } = await supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, rejected_at');
+          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, rejected_at, rejection_notes');
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
@@ -2458,6 +2460,35 @@ export default function ServiceTickets() {
               role={isLockedForEditing ? 'button' : undefined}
               aria-label={isLockedForEditing ? 'Ticket is locked; click to see why' : undefined}
             >
+              {/* Rejection note at top when user opens a rejected ticket in Drafts */}
+              {selectedTicket && (() => {
+                const rec = findMatchingTicketRecord(selectedTicket);
+                const isRejected = rec?.workflow_status === 'rejected';
+                const notes = (rec as { rejection_notes?: string | null })?.rejection_notes;
+                if (!isRejected || !(notes && String(notes).trim())) return null;
+                return (
+                  <div
+                    style={{
+                      backgroundColor: 'rgba(239, 83, 80, 0.15)',
+                      border: '1px solid #ef5350',
+                      borderRadius: '8px',
+                      padding: '12px 16px',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                    }}
+                  >
+                    <span style={{ fontSize: '18px' }}>⚠️</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '700', color: '#ef5350', marginBottom: '4px' }}>Rejection reason</div>
+                      <div style={{ fontSize: '14px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
+                        {String(notes).trim()}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
               {/* Locked banner for non-admins when ticket is admin-approved */}
               {isLockedForEditing && (
                 <div style={{
@@ -3571,6 +3602,95 @@ export default function ServiceTickets() {
                 </div>
               )}
 
+              {/* Reject with notes modal (admin) */}
+              {showRejectNoteModal && selectedTicket && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 10001,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onClick={() => setShowRejectNoteModal(false)}
+                >
+                  <div
+                    style={{
+                      backgroundColor: 'var(--bg-primary)',
+                      borderRadius: '8px',
+                      padding: '24px',
+                      maxWidth: '420px',
+                      width: '100%',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <p style={{ margin: '0 0 12px', color: 'var(--text-primary)', fontSize: '15px', fontWeight: '600' }}>
+                      Reject this ticket?
+                    </p>
+                    <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                      It will move back to Drafts for the user to revise. Add a reason (optional):
+                    </p>
+                    <textarea
+                      value={rejectNote}
+                      onChange={(e) => setRejectNote(e.target.value)}
+                      placeholder="Reason for rejection..."
+                      rows={4}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)',
+                        backgroundColor: 'var(--bg-secondary)',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        resize: 'vertical',
+                        marginBottom: '16px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button
+                        className="button button-secondary"
+                        onClick={() => setShowRejectNoteModal(false)}
+                        style={{ padding: '8px 16px' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="button"
+                        disabled={isApproving}
+                        onClick={async () => {
+                          setIsApproving(true);
+                          try {
+                            const record = await serviceTicketsService.getOrCreateTicket({
+                              date: selectedTicket.date,
+                              userId: selectedTicket.userId,
+                              customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                              location: selectedTicket.location || '',
+                            }, isDemoMode);
+                            await serviceTicketsService.updateWorkflowStatus(record.id, 'rejected', isDemoMode, rejectNote.trim() || null);
+                            queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                            queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                            setShowRejectNoteModal(false);
+                            closePanel();
+                          } catch (e) {
+                            console.error(e);
+                          } finally {
+                            setIsApproving(false);
+                          }
+                        }}
+                        style={{ padding: '8px 16px', backgroundColor: '#ef5350', color: 'white', border: 'none' }}
+                      >
+                        {isApproving ? 'Rejecting...' : 'Reject'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {hasPendingChanges && (
                 <div style={{
                   marginTop: '16px',
@@ -3742,25 +3862,9 @@ export default function ServiceTickets() {
                         <button
                           className="button"
                           disabled={isApproving}
-                          onClick={async () => {
-                            if (!window.confirm('Reject this ticket? It will move back to Drafts for the user to revise.')) return;
-                            setIsApproving(true);
-                            try {
-                              const record = await serviceTicketsService.getOrCreateTicket({
-                                date: selectedTicket.date,
-                                userId: selectedTicket.userId,
-                                customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
-                                location: selectedTicket.location || '',
-                              }, isDemoMode);
-                              await serviceTicketsService.updateWorkflowStatus(record.id, 'rejected', isDemoMode);
-                              queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                              queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
-                              closePanel();
-                            } catch (e) {
-                              console.error(e);
-                            } finally {
-                              setIsApproving(false);
-                            }
+                          onClick={() => {
+                            setRejectNote('');
+                            setShowRejectNoteModal(true);
                           }}
                           style={{ padding: '10px 24px', backgroundColor: '#ef5350', color: 'white', border: 'none' }}
                         >
