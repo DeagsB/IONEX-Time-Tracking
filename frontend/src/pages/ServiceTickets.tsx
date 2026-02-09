@@ -1598,36 +1598,8 @@ export default function ServiceTickets() {
         </button>
       </div>
 
-      {/* Status Tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
-        {[
-          { id: 'draft', label: 'Drafts' },
-          { id: 'submitted', label: 'Submitted' },
-          { id: 'approved', label: 'Approved' },
-          { id: 'all', label: 'All Tickets' }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            style={{
-              padding: '10px 20px',
-              border: 'none',
-              backgroundColor: 'transparent',
-              color: activeTab === tab.id ? 'var(--primary-color)' : 'var(--text-secondary)',
-              fontWeight: activeTab === tab.id ? '600' : '500',
-              cursor: 'pointer',
-              borderBottom: activeTab === tab.id ? '2px solid var(--primary-color)' : '2px solid transparent',
-              marginBottom: '-1px',
-              transition: 'all 0.2s',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       {/* Filters */}
-      <div className="card" style={{ marginBottom: '24px', padding: '20px' }}>
+      <div className="card" style={{ marginBottom: '16px', padding: '20px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           <div>
             <label className="label">Start Date</label>
@@ -1707,6 +1679,34 @@ export default function ServiceTickets() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Status Tabs */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
+        {[
+          { id: 'draft', label: 'Drafts' },
+          { id: 'submitted', label: 'Submitted' },
+          { id: 'approved', label: 'Approved' },
+          { id: 'all', label: 'All Tickets' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: activeTab === tab.id ? 'var(--primary-color)' : 'var(--text-secondary)',
+              fontWeight: activeTab === tab.id ? '600' : '500',
+              cursor: 'pointer',
+              borderBottom: activeTab === tab.id ? '2px solid var(--primary-color)' : '2px solid transparent',
+              marginBottom: '-1px',
+              transition: 'all 0.2s',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Discarded banner */}
