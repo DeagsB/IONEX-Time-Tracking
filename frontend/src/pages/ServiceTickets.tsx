@@ -48,7 +48,8 @@ export default function ServiceTickets() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [selectedWorkflowStatus, setSelectedWorkflowStatus] = useState<string>('');
+  // Filter tabs: 'draft' (Not Submitted), 'submitted' (Pending Approval), 'approved' (Finalized), 'all'
+  const [activeTab, setActiveTab] = useState<'draft' | 'submitted' | 'approved' | 'all'>('draft');
   const [showDiscarded, setShowDiscarded] = useState(false);
   
   // Sorting state - persisted per user in localStorage
@@ -1226,12 +1227,24 @@ export default function ServiceTickets() {
       result = result.filter(t => t.userId === selectedUserId);
     }
     
-    // Filter by workflow status (only for admins)
-    if (isAdmin && selectedWorkflowStatus) {
+    // Filter by Tab (Status Group)
+    if (activeTab && activeTab !== 'all') {
       result = result.filter(t => {
         const existing = findMatchingTicketRecord(t);
+        const hasTicketNumber = !!existing?.ticket_number;
         const workflowStatus = existing?.workflow_status || 'draft';
-        return workflowStatus === selectedWorkflowStatus;
+        
+        if (activeTab === 'draft') {
+          // Drafts: Not submitted (workflow not approved) and no ticket number
+          return !hasTicketNumber && (workflowStatus === 'draft' || workflowStatus === 'rejected');
+        } else if (activeTab === 'submitted') {
+          // Submitted: Submitted by user (workflow approved) but no ticket number assigned by admin yet
+          return !hasTicketNumber && workflowStatus !== 'draft' && workflowStatus !== 'rejected';
+        } else if (activeTab === 'approved') {
+          // Approved: Ticket number has been assigned (Finalized)
+          return hasTicketNumber;
+        }
+        return true;
       });
     }
     
@@ -1271,7 +1284,7 @@ export default function ServiceTickets() {
     });
     
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, selectedWorkflowStatus, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
+  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
   
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
@@ -1566,6 +1579,34 @@ export default function ServiceTickets() {
         </button>
       </div>
 
+      {/* Status Tabs */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
+        {[
+          { id: 'draft', label: 'Drafts' },
+          { id: 'submitted', label: 'Submitted' },
+          { id: 'approved', label: 'Approved' },
+          { id: 'all', label: 'All Tickets' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: activeTab === tab.id ? 'var(--primary-color)' : 'var(--text-secondary)',
+              fontWeight: activeTab === tab.id ? '600' : '500',
+              cursor: 'pointer',
+              borderBottom: activeTab === tab.id ? '2px solid var(--primary-color)' : '2px solid transparent',
+              marginBottom: '-1px',
+              transition: 'all 0.2s',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {/* Filters */}
       <div className="card" style={{ marginBottom: '24px', padding: '20px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
@@ -1629,22 +1670,6 @@ export default function ServiceTickets() {
                 onChange={(value) => setSelectedUserId(value)}
                 placeholder="Search employees..."
                 emptyOption={{ value: '', label: 'All Employees' }}
-              />
-            </div>
-          )}
-          {/* Workflow Status filter - only visible to admins */}
-          {isAdmin && (
-            <div>
-              <label className="label">Workflow Status</label>
-              <SearchableSelect
-                options={Object.entries(WORKFLOW_STATUSES).map(([key, { label, icon }]) => ({
-                  value: key,
-                  label: `${icon} ${label}`,
-                }))}
-                value={selectedWorkflowStatus}
-                onChange={(value) => setSelectedWorkflowStatus(value)}
-                placeholder="Search statuses..."
-                emptyOption={{ value: '', label: 'All Statuses' }}
               />
             </div>
           )}

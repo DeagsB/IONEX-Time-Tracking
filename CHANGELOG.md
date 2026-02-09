@@ -29,6 +29,9 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 - **Payroll for all users**  
   The Payroll page is now available to every signed-in user. Non-admins see only their own payroll data (“My Payroll”) and cannot click through to another user’s calendar from the table.
 
+- **Service Ticket Status Tabs**  
+  Added tabs to the Service Tickets page to filter by status: **Drafts** (default view), **Submitted**, and **Approved**. This organizes tickets by workflow stage and makes it easier to find tickets needing action. Existing filters (Date, Customer) apply within each tab.
+
 ### Changed
 
 - **Sidebar for non-admin users**  
