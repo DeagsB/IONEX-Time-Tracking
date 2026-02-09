@@ -2761,7 +2761,13 @@ export default function WeekView() {
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
                   {editingEntry.isRunningTimer 
                     ? 'Running Timer'
-                    : new Date(editingEntry.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                    : (() => {
+                        const d = editingEntry.date;
+                        const dateObj = typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d)
+                          ? (([y, m, day]) => new Date(Number(y), Number(m) - 1, Number(day)))(d.split('-'))
+                          : new Date(d);
+                        return dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                      })()}
                 </div>
                 {editingEntry.isRunningTimer && (
                   <div style={{ fontSize: '11px', color: '#ff6b6b', fontWeight: '600' }}>
