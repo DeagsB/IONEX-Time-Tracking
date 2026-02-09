@@ -1674,16 +1674,20 @@ export default function WeekView() {
                               onClick={(e) => handleEntryClick(entry, e)}
                               style={{
                                 padding: '12px 20px',
-                                borderBottom: '1px solid var(--border-color)',
-                                cursor: 'pointer',
-                                transition: 'background-color 0.2s',
+                                marginBottom: '8px',
+                                border: '1px solid var(--border-color)',
                                 borderRadius: '8px',
+                                cursor: 'pointer',
+                                transition: 'background-color 0.2s, box-shadow 0.2s',
+                                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
                               }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.15)';
+                                e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.1)';
                               }}
                               onMouseLeave={(e) => {
                                 e.currentTarget.style.backgroundColor = 'transparent';
+                                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.06)';
                               }}
                             >
                               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
