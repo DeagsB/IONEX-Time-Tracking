@@ -233,9 +233,6 @@ export default function Sidebar() {
                 <SidebarLink to="/user-management" active={isActive('/user-management')}>
                   User Management
                 </SidebarLink>
-                <SidebarLink to="/bug-reports" active={isActive('/bug-reports')}>
-                  Feedback & Issues
-                </SidebarLink>
               </>
             )}
             <SidebarLink to="/user-archive" active={isActive('/user-archive')}>

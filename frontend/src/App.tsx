@@ -18,7 +18,6 @@ import ServiceTickets from './pages/ServiceTickets';
 import EmployeeReports from './pages/EmployeeReports';
 import UserArchive from './pages/UserArchive';
 import UserManagement from './pages/UserManagement';
-import BugReports from './pages/BugReports';
 import Changelog from './pages/Changelog';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
@@ -139,14 +138,6 @@ function AppRoutes() {
           element={
             <AdminRoute>
               <UserManagement />
-            </AdminRoute>
-          }
-        />
-        <Route
-          path="bug-reports"
-          element={
-            <AdminRoute>
-              <BugReports />
             </AdminRoute>
           }
         />

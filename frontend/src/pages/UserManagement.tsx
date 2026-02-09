@@ -191,7 +191,7 @@ export default function UserManagement() {
         <h3 style={{ marginBottom: '10px', fontSize: '16px' }}>About User Roles</h3>
         <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', lineHeight: '1.6' }}>
           <li><strong>USER:</strong> Standard user with basic access to time tracking and projects.</li>
-          <li><strong>ADMIN:</strong> Full access including employee reports, service tickets, payroll, user management, and bug reports.</li>
+          <li><strong>ADMIN:</strong> Full access including employee reports, service tickets, payroll, and user management.</li>
           <li><strong>DEVELOPER:</strong> Can switch between USER and ADMIN modes for testing purposes.</li>
         </ul>
       </div>
