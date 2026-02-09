@@ -2827,19 +2827,44 @@ export default function WeekView() {
                     }}
                     title={editingEntry.isRunningTimer ? 'End time updates automatically while timer is running' : ''}
                   />
-                  <div
-                    style={{
-                      padding: '10px 15px',
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      color: 'var(--text-primary)',
-                      minWidth: '70px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {editedEntry.hours.toFixed(2)}h
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={24}
+                      step={0.25}
+                      value={editedEntry.hours}
+                      onChange={(e) => {
+                        const raw = parseFloat(e.target.value);
+                        const hours = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(24, raw));
+                        setEditedEntry((prev) => {
+                          const next = { ...prev, hours };
+                          if (prev.start_time) {
+                            const [startH, startM] = prev.start_time.split(':').map(Number);
+                            const startMinutes = startH * 60 + startM;
+                            const endMinutes = Math.min(24 * 60 - 1, startMinutes + Math.round(hours * 60));
+                            const endH = Math.floor(endMinutes / 60) % 24;
+                            const endM = endMinutes % 60;
+                            next.end_time = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+                          }
+                          return next;
+                        });
+                      }}
+                      disabled={editingEntry.isRunningTimer}
+                      style={{
+                        width: '70px',
+                        padding: '10px',
+                        backgroundColor: editingEntry.isRunningTimer ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        color: editingEntry.isRunningTimer ? 'var(--text-secondary)' : 'var(--text-primary)',
+                        fontSize: '14px',
+                        textAlign: 'center',
+                        cursor: editingEntry.isRunningTimer ? 'not-allowed' : 'text',
+                      }}
+                      title={editingEntry.isRunningTimer ? 'Duration updates automatically while timer is running' : 'Edit duration; end time will update'}
+                    />
+                    <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>h</span>
                   </div>
                 </div>
               </div>
