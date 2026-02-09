@@ -534,16 +534,17 @@ export default function WeekView() {
       startTime: `${startHour}:${startMin}`,
       endTime: `${endHour}:${endMin}`,
     });
-      setNewEntry({
-        description: '',
-        customer_id: '',
-        project_id: '',
-        hours: minutesPerDivision / 60,
-        billable: false, // No customer = Internal = not billable
-        rate_type: 'Internal',
-        location: '',
-        po_afe: '',
-      });
+    const initialHours = Math.round((minutesPerDivision / 60) * 100) / 100;
+    setNewEntry({
+      description: '',
+      customer_id: '',
+      project_id: '',
+      hours: initialHours,
+      billable: false, // No customer = Internal = not billable
+      rate_type: 'Internal',
+      location: '',
+      po_afe: '',
+    });
     setShowTimeEntryModal(true);
   };
 
@@ -2403,6 +2404,7 @@ export default function WeekView() {
                         ? (endMinutes - startMinutes) / 60
                         : (endMinutes + 24 * 60 - startMinutes) / 60;
                       hours = Math.max(0, Math.min(24, hours));
+                      hours = Math.round(hours * 100) / 100;
                       setNewEntry(prev => ({ ...prev, hours }));
                     }}
                     style={{
@@ -2428,6 +2430,7 @@ export default function WeekView() {
                         ? (endMinutes - startMinutes) / 60
                         : (endMinutes + 24 * 60 - startMinutes) / 60;
                       hours = Math.max(0, Math.min(24, hours));
+                      hours = Math.round(hours * 100) / 100;
                       setNewEntry(prev => ({ ...prev, hours }));
                     }}
                     style={{
@@ -2448,7 +2451,8 @@ export default function WeekView() {
                       value={newEntry.hours}
                       onChange={(e) => {
                         const raw = parseFloat(e.target.value);
-                        const hours = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(24, raw));
+                        let hours = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(24, raw));
+                        hours = Math.round(hours * 100) / 100;
                         setNewEntry(prev => ({ ...prev, hours }));
                         // Set end time from start + hours
                         const [startH, startM] = selectedSlot.startTime.split(':').map(Number);
