@@ -51,6 +51,7 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
   - Admins can approve manually created service tickets (they were previously mis-treated as demo tickets and failed to approve).
   - PO/CC/AFE and Other values now appear correctly on the service ticket PDF export.
   - Deleting the last time entry for a service ticket now reliably deletes the ticket itself (fixed an issue where missing customer data prevented cleanup).
+  - “Ghost” zero-hour tickets caused by a location mismatch (ticket with empty location vs. time entries with a location) have been cleaned up; orphaned ticket records with no matching time entries by location are no longer left in the list.
 
 - **Time entries**  
   Opening the edit modal for a running timer no longer causes a build/TypeScript error (missing `po_afe` in state).
