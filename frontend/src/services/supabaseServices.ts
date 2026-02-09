@@ -1141,6 +1141,48 @@ export const serviceTicketsService = {
   },
 
   /**
+   * After time entries are removed, delete any service ticket that was created from those entries
+   * (same date, user, customer) when no time entries remain for that combination.
+   */
+  async deleteTicketIfNoTimeEntriesFor(params: {
+    date: string;
+    userId: string;
+    customerId: string | null;
+  }, isDemo: boolean = false): Promise<void> {
+    if (!params.customerId) return;
+
+    const { date, userId, customerId } = params;
+
+    // Count remaining time entries for this date/user/customer
+    const { count, error: countError } = await supabase
+      .from('time_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('date', date)
+      .eq('user_id', userId)
+      .eq('customer_id', customerId)
+      .eq('is_demo', isDemo);
+
+    if (countError) return;
+    if (count != null && count > 0) return;
+
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { data: tickets, error: findError } = await supabase
+      .from(tableName)
+      .select('id')
+      .eq('date', date)
+      .eq('user_id', userId)
+      .eq('customer_id', customerId);
+
+    if (findError || !tickets?.length) return;
+
+    for (const ticket of tickets) {
+      await serviceTicketExpensesService.deleteByTicketId(ticket.id);
+      const { error: delError } = await supabase.from(tableName).delete().eq('id', ticket.id);
+      if (delError) console.error('Error deleting service ticket:', delError);
+    }
+  },
+
+  /**
    * Update workflow status for a service ticket
    * @param ticketId - The ID of the ticket record to update
    * @param workflowStatus - The new workflow status

@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTimer } from '../context/TimerContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { timeEntriesService, projectsService, employeesService, customersService } from '../services/supabaseServices';
+import { timeEntriesService, projectsService, employeesService, customersService, serviceTicketsService } from '../services/supabaseServices';
 import SearchableSelect from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
 import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
@@ -322,14 +322,17 @@ export default function WeekView() {
   });
 
   const deleteTimeEntryMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (payload: { id: string; date: string; userId: string; customerId: string | null }) => {
+      const { id, date, userId, customerId } = payload;
       console.log('Deleting time entry:', id);
       await timeEntriesService.delete(id);
+      // If no time entries remain for this date/user/customer, delete the associated service ticket
+      await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({ date, userId, customerId }, isDemoMode);
     },
     onSuccess: async () => {
       console.log('Time entry deleted successfully');
-      // Invalidate and refetch all timeEntries queries to ensure entries update immediately
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await refetchTimeEntries();
       setShowEditModal(false);
       setEditingEntry(null);
@@ -809,7 +812,13 @@ export default function WeekView() {
     }
     
     if (window.confirm('Are you sure you want to delete this time entry?')) {
-      deleteTimeEntryMutation.mutate(editingEntry.id);
+      const dateStr = typeof editingEntry.date === 'string' ? editingEntry.date : new Date(editingEntry.date).toISOString().split('T')[0];
+      deleteTimeEntryMutation.mutate({
+        id: editingEntry.id,
+        date: dateStr,
+        userId: editingEntry.user_id,
+        customerId: editingEntry.customer_id ?? null,
+      });
     }
   };
 
