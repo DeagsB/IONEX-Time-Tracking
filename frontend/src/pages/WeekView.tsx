@@ -87,7 +87,9 @@ export default function WeekView() {
     location: '',
     po_afe: '',
   });
-  
+  // Raw string for duration input (while typing); null = show formatted xx.xx
+  const [editDurationInputRaw, setEditDurationInputRaw] = useState<string | null>(null);
+
   // Track mouse position for modal drag detection
   const [modalMouseDownPos, setModalMouseDownPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -640,6 +642,7 @@ export default function WeekView() {
       location: entry.location || '',
       po_afe: entry.po_afe || '',
     });
+    setEditDurationInputRaw(null);
     setShowEditModal(true);
   };
 
@@ -692,6 +695,7 @@ export default function WeekView() {
       location: (currentEntry as any).location || '',
       po_afe: (currentEntry as any).po_afe || '',
     });
+    setEditDurationInputRaw(null);
     setShowEditModal(true);
   };
 
@@ -2829,14 +2833,18 @@ export default function WeekView() {
                   />
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <input
-                      type="number"
-                      min={0}
-                      max={24}
-                      step={0.25}
-                      value={editedEntry.hours}
+                      type="text"
+                      inputMode="decimal"
+                      value={editDurationInputRaw !== null ? editDurationInputRaw : editedEntry.hours.toFixed(2)}
+                      onFocus={() => setEditDurationInputRaw(editedEntry.hours.toFixed(2))}
                       onChange={(e) => {
-                        const raw = parseFloat(e.target.value);
-                        const hours = Number.isNaN(raw) ? 0 : Math.max(0, Math.min(24, raw));
+                        const s = e.target.value;
+                        setEditDurationInputRaw(s);
+                        const trimmed = s.trim();
+                        const hours = trimmed === '' ? 0 : (() => {
+                          const raw = parseFloat(trimmed);
+                          return Number.isNaN(raw) ? 0 : Math.max(0, Math.min(24, raw));
+                        })();
                         setEditedEntry((prev) => {
                           const next = { ...prev, hours };
                           if (prev.start_time) {
@@ -2850,6 +2858,7 @@ export default function WeekView() {
                           return next;
                         });
                       }}
+                      onBlur={() => setEditDurationInputRaw(null)}
                       disabled={editingEntry.isRunningTimer}
                       style={{
                         width: '70px',
@@ -2862,7 +2871,7 @@ export default function WeekView() {
                         textAlign: 'center',
                         cursor: editingEntry.isRunningTimer ? 'not-allowed' : 'text',
                       }}
-                      title={editingEntry.isRunningTimer ? 'Duration updates automatically while timer is running' : 'Edit duration; end time will update'}
+                      title={editingEntry.isRunningTimer ? 'Duration updates automatically while timer is running' : 'Edit duration (xx.xx); end time will update'}
                     />
                     <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>h</span>
                   </div>
