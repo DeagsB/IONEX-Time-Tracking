@@ -79,14 +79,30 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 ## Earlier improvements (summary)
 
-- **Service tickets**  
-  Save Changes and unsaved-changes confirmation; pending changes highlighted; header fields (customer/service info, Service Location, Approver/PO/AFE, Other) saved in `header_overrides`; expenses can be added/edited/removed with changes applied on Save; PDF export layout and styling improvements; lock message when editing another user’s ticket.
+### Service tickets
+- Save Changes and unsaved-changes confirmation; pending changes highlighted.
+- Header fields (customer/service info, Service Location, Approver/PO/AFE, Other) saved in `header_overrides`.
+- Expenses can be added/edited/removed with changes applied on Save.
+- PDF export layout and styling improvements; lock message when editing another user’s ticket.
+- Entry-level location and PO/AFE take priority over project/customer defaults on tickets.
+- Different locations no longer merge into one ticket; matching includes location.
+- Non-admin users create draft ticket records (no ticket number) when opening or saving a ticket.
+- Changelog link under Settings (admin only).
 
-- **Payroll / Week view**  
-  Current and Previous Pay Period buttons; payday shown for the selected period; project legend with numbers and full name on hover; horizontal scroll when there are many projects.
+### Time entry & calendar
+- Add Time Entry modal: taller (min 75vh) for better dropdown visibility; scrollable (max height 90vh) on small screens.
+- Editable hours field in Add Time Entry auto-adjusts end time.
+- Customer and project required before enabling Add/play; button greyed out until selected.
+- Location no longer auto-populated from last entry in manual time entry modals.
+- Header: PO/AFE field on live timer; project details on second row.
+- IONEX Systems default to Internal; skipped for service ticket creation.
 
-- **General**  
-  Bug fixes for customer updates, service ticket date handling, and expense error messages.
+### Payroll / Week view
+- Current and Previous Pay Period buttons; payday shown for the selected period.
+- Project legend with numbers and full name on hover; horizontal scroll when there are many projects.
+
+### General
+- Bug fixes for customer updates, service ticket date handling, expense error messages, and ticket visibility (e.g. Brooks District).
 
 ---
 
