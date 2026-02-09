@@ -32,7 +32,7 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 ### Changed
 
 - **Sidebar for non-admin users**  
-  The **ANALYZE** section (with Payroll) is visible to all users. Payroll appears above the MANAGE section (Projects, Clients, Service Tickets, Settings) in the sidebar.
+  The **ANALYZE** section (with Payroll) is visible to all users. Payroll appears below the MANAGE section (Projects, Clients, Service Tickets, Settings) in the sidebar.
 
 - **Service ticket form**  
   The label “Project Number” in the create-ticket form has been renamed to **“Project”**.
@@ -50,6 +50,7 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
   - Date range and employee filters now apply to all tickets, including standalone ones.
   - Admins can approve manually created service tickets (they were previously mis-treated as demo tickets and failed to approve).
   - PO/CC/AFE and Other values now appear correctly on the service ticket PDF export.
+  - Deleting the last time entry for a service ticket now reliably deletes the ticket itself (fixed an issue where missing customer data prevented cleanup).
 
 - **Time entries**  
   Opening the edit modal for a running timer no longer causes a build/TypeScript error (missing `po_afe` in state).
