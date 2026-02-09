@@ -1609,10 +1609,10 @@ export default function WeekView() {
                     const year = date.getFullYear();
                     const isCurrentYear = year === new Date().getFullYear();
 
-                    const dayTotalSeconds = dayEntries.reduce((sum: number, d) => sum + d.hoursOnThisDay * 3600, 0);
+                    const dayTotalSeconds = Math.round(dayEntries.reduce((sum: number, d) => sum + d.hoursOnThisDay * 3600, 0));
                     const dayTotalHours = Math.floor(dayTotalSeconds / 3600);
                     const dayTotalMinutes = Math.floor((dayTotalSeconds % 3600) / 60);
-                    const dayTotalSecs = dayTotalSeconds % 60;
+                    const dayTotalSecs = Math.floor(dayTotalSeconds % 60);
                     const dayTotal = `${dayTotalHours}:${String(dayTotalMinutes).padStart(2, '0')}:${String(dayTotalSecs).padStart(2, '0')}`;
 
                     // Check for overlaps
