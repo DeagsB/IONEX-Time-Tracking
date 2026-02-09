@@ -1688,14 +1688,14 @@ export default function WeekView() {
                             >
                               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                                 {/* Description */}
-                                <div style={{ flex: 1 }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ 
                                     fontSize: '14px', 
                                     color: 'var(--text-primary)', 
                                     marginBottom: '4px',
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-word',
+                                    overflowWrap: 'break-word',
                                   }}>
                                     {entry.description || 'Add description'}
                                   </div>
