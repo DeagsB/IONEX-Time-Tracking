@@ -813,11 +813,22 @@ export default function WeekView() {
     
     if (window.confirm('Are you sure you want to delete this time entry?')) {
       const dateStr = typeof editingEntry.date === 'string' ? editingEntry.date : new Date(editingEntry.date).toISOString().split('T')[0];
+      
+      // Resolve customerId from entry or project relationships to ensure associated ticket can be found
+      let customerId = editingEntry.customer_id;
+      if (!customerId && editingEntry.project?.customer?.id) {
+        customerId = editingEntry.project.customer.id;
+      }
+      if (!customerId && editingEntry.project_id && projects) {
+        const proj = projects.find((p: any) => p.id === editingEntry.project_id);
+        if (proj) customerId = proj.customer_id;
+      }
+
       deleteTimeEntryMutation.mutate({
         id: editingEntry.id,
         date: dateStr,
         userId: editingEntry.user_id,
-        customerId: editingEntry.customer_id ?? null,
+        customerId: customerId ?? null,
       });
     }
   };
