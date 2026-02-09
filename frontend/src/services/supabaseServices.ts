@@ -1052,6 +1052,7 @@ export const serviceTicketsService = {
       updateData.year = year;
       updateData.sequence_number = sequenceNumber;
       updateData.employee_initials = employeeInitials;
+      updateData.workflow_status = 'approved'; // Admin approval clears rejected/draft
       if (approvedByAdminId) {
         updateData.approved_by_admin_id = approvedByAdminId;
       }
@@ -1363,6 +1364,18 @@ export const serviceTicketsService = {
     }
     
     return data;
+  },
+
+  /** Count rejected tickets for a user (for sidebar notification) */
+  async getRejectedCountForUser(userId: string, isDemo: boolean = false): Promise<number> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { count, error } = await supabase
+      .from(tableName)
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('workflow_status', 'rejected');
+    if (error) return 0;
+    return count ?? 0;
   },
 };
 

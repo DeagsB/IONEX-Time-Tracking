@@ -32,6 +32,9 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 - **Service Ticket Status Tabs**  
   Added tabs to the Service Tickets page to filter by status: **Drafts** (default view), **Submitted**, and **Approved**. This organizes tickets by workflow stage and makes it easier to find tickets needing action. Existing filters (Date, Customer) apply within each tab.
 
+- **Admin Approve / Reject on service tickets**  
+  When an admin opens a ticket that is submitted by the user but not yet approved, the bottom of the ticket shows **Approve** and **Reject** buttons (Export PDF is hidden until the ticket is approved). Rejected tickets return to the user’s **Drafts** tab (at the top of the list), show a **Rejected** badge and highlight in the list, and a notification badge appears next to **Service Tickets** in the sidebar until the user addresses them.
+
 ### Changed
 
 - **Sidebar for non-admin users**  

@@ -1,12 +1,20 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { useTheme } from '../context/ThemeContext';
+import { serviceTicketsService } from '../services/supabaseServices';
 
 export default function Sidebar() {
   const location = useLocation();
   const { user, logout, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
+  const { data: rejectedTicketsCount = 0 } = useQuery({
+    queryKey: ['rejectedTicketsCount', user?.id, isDemoMode],
+    queryFn: () => serviceTicketsService.getRejectedCountForUser(user!.id, isDemoMode),
+    enabled: !!user?.id,
+  });
+  const showRejectedBadge = rejectedTicketsCount > 0;
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
@@ -89,7 +97,29 @@ export default function Sidebar() {
               Clients
             </SidebarLink>
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
-              Service Tickets
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Service Tickets
+                {showRejectedBadge && (
+                  <span
+                    title={`${rejectedTicketsCount} rejected ticket(s) need attention`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '20px',
+                      height: '20px',
+                      padding: '0 6px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: '#fff',
+                      backgroundColor: '#ef5350',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    {rejectedTicketsCount}
+                  </span>
+                )}
+              </span>
             </SidebarLink>
           </div>
         )}
@@ -114,7 +144,29 @@ export default function Sidebar() {
               Clients
             </SidebarLink>
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
-              Service Tickets
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Service Tickets
+                {showRejectedBadge && (
+                  <span
+                    title={`${rejectedTicketsCount} rejected ticket(s) need attention`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '20px',
+                      height: '20px',
+                      padding: '0 6px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: '#fff',
+                      backgroundColor: '#ef5350',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    {rejectedTicketsCount}
+                  </span>
+                )}
+              </span>
             </SidebarLink>
             <SidebarLink to="/employees" active={isActive('/employees')}>
               Members

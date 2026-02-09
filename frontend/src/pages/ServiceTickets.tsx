@@ -15,6 +15,7 @@ import SearchableSelect from '../components/SearchableSelect';
 const WORKFLOW_STATUSES = {
   draft: { label: 'Draft', color: '#6b7280', icon: '📝' },
   approved: { label: 'Approved', color: '#3b82f6', icon: '✓' },
+  rejected: { label: 'Rejected', color: '#ef5350', icon: '✕' },
   pdf_exported: { label: 'PDF Exported', color: '#8b5cf6', icon: '📄' },
   qbo_created: { label: 'QBO Invoice', color: '#f59e0b', icon: '💰' },
   sent_to_cnrl: { label: 'Sent to CNRL', color: '#ec4899', icon: '📧' },
@@ -1258,8 +1259,16 @@ export default function ServiceTickets() {
       });
     }
     
-    // Sort tickets
+    // Sort tickets (rejected first in Drafts tab)
     result = [...result].sort((a, b) => {
+      if (activeTab === 'draft') {
+        const aRec = findMatchingTicketRecord(a);
+        const bRec = findMatchingTicketRecord(b);
+        const aRej = aRec?.workflow_status === 'rejected';
+        const bRej = bRec?.workflow_status === 'rejected';
+        if (aRej && !bRej) return -1;
+        if (!aRej && bRej) return 1;
+      }
       let aVal: string | number;
       let bVal: string | number;
       
@@ -2065,21 +2074,24 @@ export default function ServiceTickets() {
                   }
                 };
 
+                const rowExisting = findMatchingTicketRecord(ticket);
+                const isRejected = rowExisting?.workflow_status === 'rejected';
                 return (
                 <tr
                   key={ticket.id}
                   style={{
                     borderBottom: '1px solid var(--border-color)',
+                    borderLeft: isRejected ? '4px solid #ef5350' : undefined,
                     transition: 'background-color 0.2s',
                     cursor: 'pointer',
-                    backgroundColor: selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : 'transparent'),
+                    backgroundColor: selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : 'transparent')),
                     opacity: showDiscarded ? 0.75 : 1,
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : 'var(--hover-bg)';
+                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : 'var(--hover-bg)');
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : 'transparent');
+                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : 'transparent'));
                   }}
                   onClick={handleRowClick}
                 >
@@ -2096,6 +2108,21 @@ export default function ServiceTickets() {
                   <td style={{ padding: '16px', color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {ticket.displayTicketNumber}
+                      {isRejected && (
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          fontFamily: 'system-ui, sans-serif',
+                          color: '#ef5350',
+                          backgroundColor: 'rgba(239, 83, 80, 0.15)',
+                          border: '1px solid rgba(239, 83, 80, 0.4)',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }} title="Rejected – needs attention">Rejected</span>
+                      )}
                       {showDiscarded && (
                         <span style={{
                           display: 'inline-block',
@@ -3617,83 +3644,150 @@ export default function ServiceTickets() {
                     {isSavingTicket ? 'Saving...' : 'Save Changes'}
                   </button>
                 )}
-                {isAdmin ? (
-                  <button
-                    className="button button-primary"
-                    onClick={async () => {
-                      // Ensure expenses are loaded
-                      if (currentTicketRecordId && expenses.length === 0) {
-                        await loadExpenses(currentTicketRecordId);
-                      }
-                      
-                      // Calculate hours totals from serviceRows
-                      const hoursTotals = {
-                        'Shop Time': serviceRows.reduce((sum, r) => sum + (r.st || 0), 0),
-                        'Travel Time': serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0),
-                        'Field Time': serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0),
-                        'Shop Overtime': serviceRows.reduce((sum, r) => sum + (r.so || 0), 0),
-                        'Field Overtime': serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0),
-                      };
-                      
-                      // Convert serviceRows to entries for export
-                      // Each row with hours in a column becomes an entry with that rate type
-                      const exportEntries: typeof selectedTicket.entries = [];
-                      serviceRows.forEach((row, idx) => {
-                        const template = selectedTicket.entries[0] || { id: '', date: selectedTicket.date, user_id: selectedTicket.userId };
-                        if (row.st > 0) {
-                          exportEntries.push({ ...template, id: `export-st-${idx}`, description: row.description, hours: row.st, rate_type: 'Shop Time' });
+                {isAdmin ? (() => {
+                  const existingTicketRecord = findMatchingTicketRecord(selectedTicket);
+                  const hasTicketNumber = !!existingTicketRecord?.ticket_number;
+                  const workflowStatus = existingTicketRecord?.workflow_status || 'draft';
+                  const isUserApprovedNotYetApproved = !hasTicketNumber && workflowStatus !== 'draft' && workflowStatus !== 'rejected';
+
+                  // Admin has approved (has ticket number): show Export PDF
+                  if (hasTicketNumber) {
+                    return (
+                      <button
+                        className="button button-primary"
+                        onClick={async () => {
+                          if (currentTicketRecordId && expenses.length === 0) await loadExpenses(currentTicketRecordId);
+                          const hoursTotals = {
+                            'Shop Time': serviceRows.reduce((sum, r) => sum + (r.st || 0), 0),
+                            'Travel Time': serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0),
+                            'Field Time': serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0),
+                            'Shop Overtime': serviceRows.reduce((sum, r) => sum + (r.so || 0), 0),
+                            'Field Overtime': serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0),
+                          };
+                          const exportEntries: typeof selectedTicket.entries = [];
+                          serviceRows.forEach((row, idx) => {
+                            const template = selectedTicket.entries[0] || { id: '', date: selectedTicket.date, user_id: selectedTicket.userId };
+                            if (row.st > 0) exportEntries.push({ ...template, id: `export-st-${idx}`, description: row.description, hours: row.st, rate_type: 'Shop Time' });
+                            if (row.tt > 0) exportEntries.push({ ...template, id: `export-tt-${idx}`, description: row.description, hours: row.tt, rate_type: 'Travel Time' });
+                            if (row.ft > 0) exportEntries.push({ ...template, id: `export-ft-${idx}`, description: row.description, hours: row.ft, rate_type: 'Field Time' });
+                            if (row.so > 0) exportEntries.push({ ...template, id: `export-so-${idx}`, description: row.description, hours: row.so, rate_type: 'Shop Overtime' });
+                            if (row.fo > 0) exportEntries.push({ ...template, id: `export-fo-${idx}`, description: row.description, hours: row.fo, rate_type: 'Field Overtime' });
+                          });
+                          const modifiedTicket: ServiceTicket = {
+                            ...selectedTicket,
+                            userName: editableTicket.techName,
+                            projectNumber: editableTicket.projectNumber,
+                            date: editableTicket.date,
+                            customerInfo: {
+                              ...selectedTicket.customerInfo,
+                              name: editableTicket.customerName,
+                              contact_name: editableTicket.contactName,
+                              address: editableTicket.address,
+                              city: editableTicket.cityState.split(',')[0]?.trim() || '',
+                              state: editableTicket.cityState.split(',')[1]?.trim() || '',
+                              zip_code: editableTicket.zipCode,
+                              phone: editableTicket.phone,
+                              email: editableTicket.email,
+                              service_location: editableTicket.serviceLocation,
+                              location_code: editableTicket.other,
+                              po_number: editableTicket.poNumber,
+                              approver_name: editableTicket.approverName,
+                            },
+                            hoursByRateType: hoursTotals as typeof selectedTicket.hoursByRateType,
+                            entries: exportEntries,
+                          };
+                          modifiedTicket.totalHours = Object.values(hoursTotals).reduce((sum, h) => sum + h, 0);
+                          await handleExportPdf(modifiedTicket);
+                          queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+                          queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                        }}
+                        style={{ padding: '10px 24px' }}
+                        disabled={isExportingExcel || isExportingPdf}
+                      >
+                        {isExportingPdf ? 'Generating PDF...' : 'Export PDF'}
+                      </button>
+                    );
+                  }
+
+                  // User submitted, waiting for admin: show Approve and Reject (no Export PDF)
+                  if (isUserApprovedNotYetApproved) {
+                    return (
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <button
+                          className="button button-primary"
+                          disabled={isApproving}
+                          onClick={async () => {
+                            setIsApproving(true);
+                            try {
+                              await handleAssignTicketNumber(selectedTicket);
+                              queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                              queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                              closePanel();
+                            } catch (e) {
+                              console.error(e);
+                            } finally {
+                              setIsApproving(false);
+                            }
+                          }}
+                          style={{ padding: '10px 24px' }}
+                        >
+                          {isApproving ? 'Approving...' : 'Approve'}
+                        </button>
+                        <button
+                          className="button button-secondary"
+                          disabled={isApproving}
+                          onClick={async () => {
+                            if (!window.confirm('Reject this ticket? It will move back to Drafts for the user to revise.')) return;
+                            setIsApproving(true);
+                            try {
+                              const record = await serviceTicketsService.getOrCreateTicket({
+                                date: selectedTicket.date,
+                                userId: selectedTicket.userId,
+                                customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                                location: selectedTicket.location || '',
+                              }, isDemoMode);
+                              await serviceTicketsService.updateWorkflowStatus(record.id, 'rejected', isDemoMode);
+                              queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                              queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                              closePanel();
+                            } catch (e) {
+                              console.error(e);
+                            } finally {
+                              setIsApproving(false);
+                            }
+                          }}
+                          style={{ padding: '10px 24px', borderColor: '#ef5350', color: '#ef5350' }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  // Draft/Rejected: show single Approve (assign ticket number) button
+                  return (
+                    <button
+                      className="button button-primary"
+                      disabled={isApproving}
+                      onClick={async () => {
+                        setIsApproving(true);
+                        try {
+                          await handleAssignTicketNumber(selectedTicket);
+                          queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                          queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                          closePanel();
+                        } catch (e) {
+                          console.error(e);
+                        } finally {
+                          setIsApproving(false);
                         }
-                        if (row.tt > 0) {
-                          exportEntries.push({ ...template, id: `export-tt-${idx}`, description: row.description, hours: row.tt, rate_type: 'Travel Time' });
-                        }
-                        if (row.ft > 0) {
-                          exportEntries.push({ ...template, id: `export-ft-${idx}`, description: row.description, hours: row.ft, rate_type: 'Field Time' });
-                        }
-                        if (row.so > 0) {
-                          exportEntries.push({ ...template, id: `export-so-${idx}`, description: row.description, hours: row.so, rate_type: 'Shop Overtime' });
-                        }
-                        if (row.fo > 0) {
-                          exportEntries.push({ ...template, id: `export-fo-${idx}`, description: row.description, hours: row.fo, rate_type: 'Field Overtime' });
-                        }
-                      });
-                      
-                      // Create a modified ticket with the editable values and serviceRows data
-                      const modifiedTicket: ServiceTicket = {
-                        ...selectedTicket,
-                        userName: editableTicket.techName,
-                        projectNumber: editableTicket.projectNumber,
-                        date: editableTicket.date,
-                        customerInfo: {
-                          ...selectedTicket.customerInfo,
-                          name: editableTicket.customerName,
-                          contact_name: editableTicket.contactName,
-                          address: editableTicket.address,
-                          city: editableTicket.cityState.split(',')[0]?.trim() || '',
-                          state: editableTicket.cityState.split(',')[1]?.trim() || '',
-                          zip_code: editableTicket.zipCode,
-                          phone: editableTicket.phone,
-                          email: editableTicket.email,
-                          service_location: editableTicket.serviceLocation,
-                          location_code: editableTicket.other,
-                          po_number: editableTicket.poNumber,
-                          approver_name: editableTicket.approverName,
-                        },
-                        hoursByRateType: hoursTotals as typeof selectedTicket.hoursByRateType,
-                        entries: exportEntries,
-                      };
-                      // Recalculate total hours
-                      modifiedTicket.totalHours = Object.values(hoursTotals).reduce((sum, h) => sum + h, 0);
-                      await handleExportPdf(modifiedTicket);
-                      // Refresh the ticket list to show updated ticket number
-                      queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
-                      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                    }}
-                    style={{ padding: '10px 24px' }}
-                    disabled={isExportingExcel || isExportingPdf}
-                  >
-                    {isExportingPdf ? 'Generating PDF...' : 'Export PDF'}
-                  </button>
-                ) : (() => {
+                      }}
+                      style={{ padding: '10px 24px' }}
+                    >
+                      {isApproving ? 'Approving...' : 'Approve'}
+                    </button>
+                  );
+                })() : (() => {
                   // Check if ticket is already approved
                   const existingTicketRecord = findMatchingTicketRecord(selectedTicket);
                   const isTicketApproved = existingTicketRecord?.workflow_status === 'approved';
@@ -3743,8 +3837,8 @@ export default function ServiceTickets() {
                           const newStatus = isTicketApproved ? 'draft' : 'approved';
                           await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
                           
-                          // Refresh data and wait for it to complete
                           await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                          await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                           await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
                         } catch (error) {
                           console.error('Error updating ticket status:', error);
@@ -3752,7 +3846,7 @@ export default function ServiceTickets() {
                           setIsApproving(false);
                         }
                       }}
-                      style={{ 
+                      style={{
                         padding: '10px 24px',
                         backgroundColor: isTicketApproved ? '#10b981' : undefined,
                         borderColor: isTicketApproved ? '#10b981' : undefined,
