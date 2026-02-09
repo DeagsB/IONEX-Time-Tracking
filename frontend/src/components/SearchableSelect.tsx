@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 
 interface Option {
   value: string;
@@ -15,7 +15,11 @@ interface SearchableSelectProps {
   className?: string;
 }
 
-export default function SearchableSelect({
+export interface SearchableSelectRef {
+  focus: () => void;
+}
+
+const SearchableSelect = forwardRef<SearchableSelectRef, SearchableSelectProps>(function SearchableSelect({
   options,
   value,
   onChange,
@@ -23,11 +27,18 @@ export default function SearchableSelect({
   emptyOption,
   style,
   className,
-}: SearchableSelectProps) {
+}, ref) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      setSearchQuery('');
+      setIsOpen(true);
+    },
+  }), []);
 
   // Get the display label for the current value
   const getDisplayLabel = () => {
@@ -203,4 +214,6 @@ export default function SearchableSelect({
       )}
     </div>
   );
-}
+});
+
+export default SearchableSelect;

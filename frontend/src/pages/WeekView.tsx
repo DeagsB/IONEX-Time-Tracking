@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTimer } from '../context/TimerContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { timeEntriesService, projectsService, employeesService, customersService, serviceTicketsService } from '../services/supabaseServices';
-import SearchableSelect from '../components/SearchableSelect';
+import SearchableSelect, { SearchableSelectRef } from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
 import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
 
@@ -56,6 +56,7 @@ export default function WeekView() {
   
   // Time entry modal state (for creating new entries)
   const [showTimeEntryModal, setShowTimeEntryModal] = useState(false);
+  const addProjectSelectRef = useRef<SearchableSelectRef>(null);
   const [selectedSlot, setSelectedSlot] = useState<{
     date: Date;
     startTime: string;
@@ -155,6 +156,13 @@ export default function WeekView() {
       return () => clearInterval(interval);
     }
   }, [showEditModal, editingEntry?.isRunningTimer, timerStartTime]);
+
+  // When customer is selected in Add Time Entry modal, focus project field so user can type immediately
+  useEffect(() => {
+    if (!showTimeEntryModal || !newEntry.customer_id) return;
+    const t = setTimeout(() => addProjectSelectRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [showTimeEntryModal, newEntry.customer_id]);
   
   // Get week start (Monday)
   const getWeekStart = (date: Date) => {
@@ -2540,6 +2548,7 @@ export default function WeekView() {
                     }} />
                     <div style={{ flex: 1 }}>
                       <SearchableSelect
+                        ref={addProjectSelectRef}
                         key={`new-project-select-${newEntry.customer_id}`}
                         options={projects
                           ?.filter((project: any) => project.customer_id === newEntry.customer_id)

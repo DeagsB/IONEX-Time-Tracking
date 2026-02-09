@@ -4,7 +4,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
-import SearchableSelect from './SearchableSelect';
+import SearchableSelect, { SearchableSelectRef } from './SearchableSelect';
 
 interface HeaderProps {
   onTimerStart: (description: string, projectId?: string) => void;
@@ -25,6 +25,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [location, setLocation] = useState(''); // Work location for service tickets
   const [poAfe, setPoAfe] = useState(''); // PO/AFE for service tickets
+  const projectSelectRef = useRef<SearchableSelectRef>(null);
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
@@ -101,6 +102,10 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     setSelectedProjectId('');
     setLocation('');
     setPoAfe('');
+    // Focus project field so user can type immediately without clicking the dropdown
+    if (customerId) {
+      setTimeout(() => projectSelectRef.current?.focus(), 50);
+    }
   };
 
   const handleProjectChange = async (projectId: string) => {
@@ -445,6 +450,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
 
           {/* Project Selector */}
           <SearchableSelect
+            ref={projectSelectRef}
             options={filteredProjects.map((project: any) => ({
               value: project.id,
               label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,
