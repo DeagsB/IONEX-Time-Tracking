@@ -2136,7 +2136,9 @@ export default function ServiceTickets() {
                       
                       // Check both ticket_number and workflow_status for approval
                       const hasTicketNumber = !!existing?.ticket_number;
-                      const isWorkflowApproved = existing?.workflow_status === 'approved';
+                      // Consider any status other than 'draft' (and 'rejected') as user-approved/submitted
+                      const workflowStatus = existing?.workflow_status || 'draft';
+                      const isWorkflowApproved = workflowStatus !== 'draft' && workflowStatus !== 'rejected';
                       const isApproved = hasTicketNumber || isWorkflowApproved;
                       
                       if (isAdmin) {
