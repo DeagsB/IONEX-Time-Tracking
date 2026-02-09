@@ -3709,32 +3709,12 @@ export default function ServiceTickets() {
                     );
                   }
 
-                  // User submitted, waiting for admin: show Approve and Reject (no Export PDF)
+                  // User submitted, waiting for admin: show Reject (left) and Approve (right)
                   if (isUserApprovedNotYetApproved) {
                     return (
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                         <button
-                          className="button button-primary"
-                          disabled={isApproving}
-                          onClick={async () => {
-                            setIsApproving(true);
-                            try {
-                              await handleAssignTicketNumber(selectedTicket);
-                              queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                              queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
-                              closePanel();
-                            } catch (e) {
-                              console.error(e);
-                            } finally {
-                              setIsApproving(false);
-                            }
-                          }}
-                          style={{ padding: '10px 24px' }}
-                        >
-                          {isApproving ? 'Approving...' : 'Approve'}
-                        </button>
-                        <button
-                          className="button button-secondary"
+                          className="button"
                           disabled={isApproving}
                           onClick={async () => {
                             if (!window.confirm('Reject this ticket? It will move back to Drafts for the user to revise.')) return;
@@ -3756,9 +3736,29 @@ export default function ServiceTickets() {
                               setIsApproving(false);
                             }
                           }}
-                          style={{ padding: '10px 24px', borderColor: '#ef5350', color: '#ef5350' }}
+                          style={{ padding: '10px 24px', backgroundColor: '#ef5350', color: 'white', border: 'none' }}
                         >
                           Reject
+                        </button>
+                        <button
+                          className="button"
+                          disabled={isApproving}
+                          onClick={async () => {
+                            setIsApproving(true);
+                            try {
+                              await handleAssignTicketNumber(selectedTicket);
+                              queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                              queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                              closePanel();
+                            } catch (e) {
+                              console.error(e);
+                            } finally {
+                              setIsApproving(false);
+                            }
+                          }}
+                          style={{ padding: '10px 24px', backgroundColor: '#10b981', color: 'white', border: 'none' }}
+                        >
+                          {isApproving ? 'Approving...' : 'Approve'}
                         </button>
                       </div>
                     );
