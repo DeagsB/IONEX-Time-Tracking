@@ -37,6 +37,12 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 ### Changed
 
+- **Admin Approve / Reject buttons**  
+  On the service ticket detail, **Reject** is on the left (red button) and **Approve** on the right (green button).
+
+- **Service Tickets default tab**  
+  For admins, the Service Tickets page opens with the **Submitted** tab selected by default; non-admins still default to **Drafts**.
+
 - **Sidebar for non-admin users**  
   The **ANALYZE** section (with Payroll) is visible to all users. Payroll appears below the MANAGE section (Projects, Clients, Service Tickets, Settings) in the sidebar.
 
@@ -58,6 +64,7 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
   - PO/CC/AFE and Other values now appear correctly on the service ticket PDF export.
   - Deleting the last time entry for a service ticket now reliably deletes the ticket itself (fixed an issue where missing customer data prevented cleanup).
   - “Ghost” zero-hour tickets caused by a location mismatch (ticket with empty location vs. time entries with a location) have been cleaned up; orphaned ticket records with no matching time entries by location are no longer left in the list.
+  - Tickets in the Submitted tab with statuses such as PDF Exported now correctly show “✓ Submitted” (not “Submit”) in the action column.
 
 - **Time entries**  
   Opening the edit modal for a running timer no longer causes a build/TypeScript error (missing `po_afe` in state).
