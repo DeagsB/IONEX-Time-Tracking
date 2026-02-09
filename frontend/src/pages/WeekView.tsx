@@ -2023,6 +2023,7 @@ export default function WeekView() {
                           if ((e.target as HTMLElement).closest('.drag-handle')) return;
                           e.preventDefault();
                           if (viewUserId && isAdmin) return;
+                          if (showTimeEntryModal || showEditModal) return;
                           setMoveStart({
                             entry,
                             startX: e.clientX,
