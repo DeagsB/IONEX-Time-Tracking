@@ -1041,6 +1041,7 @@ export const serviceTicketsService = {
     } else {
       // Assign ticket number - extract employee_initials from ticket number (format: XX_YYNNN)
       updateData.ticket_number = ticketNumber;
+      updateData.rejected_at = null; // Clear so ticket no longer shows as resubmitted
       const year = new Date().getFullYear() % 100;
       const sequenceMatch = ticketNumber.match(/\d{3}$/);
       const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : null;
@@ -1191,12 +1192,15 @@ export const serviceTicketsService = {
    */
   async updateWorkflowStatus(ticketId: string, workflowStatus: string, isDemo: boolean = false): Promise<void> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-    
+    const updatePayload: Record<string, unknown> = { workflow_status: workflowStatus };
+    if (workflowStatus === 'rejected') {
+      updatePayload.rejected_at = new Date().toISOString();
+    }
     const { error } = await supabase
       .from(tableName)
-      .update({ workflow_status: workflowStatus })
+      .update(updatePayload)
       .eq('id', ticketId);
-    
+
     if (error) {
       console.error('Error updating workflow status:', error);
       throw error;

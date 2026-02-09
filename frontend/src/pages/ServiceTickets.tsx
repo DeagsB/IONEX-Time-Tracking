@@ -908,14 +908,14 @@ export default function ServiceTickets() {
       const { data, error } = await supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded,
+          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, rejected_at,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `);
       if (error) {
         // If the join fails (column doesn't exist yet), try without the join
         const { data: fallbackData, error: fallbackError } = await supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded');
+          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, rejected_at');
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
@@ -1259,7 +1259,7 @@ export default function ServiceTickets() {
       });
     }
     
-    // Sort tickets (rejected first in Drafts tab)
+    // Sort tickets (rejected first in Drafts tab; resubmitted first in Submitted tab)
     result = [...result].sort((a, b) => {
       if (activeTab === 'draft') {
         const aRec = findMatchingTicketRecord(a);
@@ -1268,6 +1268,14 @@ export default function ServiceTickets() {
         const bRej = bRec?.workflow_status === 'rejected';
         if (aRej && !bRej) return -1;
         if (!aRej && bRej) return 1;
+      }
+      if (activeTab === 'submitted') {
+        const aRec = findMatchingTicketRecord(a);
+        const bRec = findMatchingTicketRecord(b);
+        const aResub = !!aRec?.rejected_at;
+        const bResub = !!bRec?.rejected_at;
+        if (aResub && !bResub) return -1;
+        if (!aResub && bResub) return 1;
       }
       let aVal: string | number;
       let bVal: string | number;
@@ -2076,22 +2084,25 @@ export default function ServiceTickets() {
 
                 const rowExisting = findMatchingTicketRecord(ticket);
                 const isRejected = rowExisting?.workflow_status === 'rejected';
+                const isResubmitted = activeTab === 'submitted' && !!rowExisting?.rejected_at;
+                const rowBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : (isResubmitted ? 'rgba(234, 179, 8, 0.15)' : 'transparent')));
+                const rowHoverBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : (isResubmitted ? 'rgba(234, 179, 8, 0.22)' : 'var(--hover-bg)'));
                 return (
                 <tr
                   key={ticket.id}
                   style={{
                     borderBottom: '1px solid var(--border-color)',
-                    borderLeft: isRejected ? '4px solid #ef5350' : undefined,
+                    borderLeft: isRejected ? '4px solid #ef5350' : (isResubmitted ? '4px solid #eab308' : undefined),
                     transition: 'background-color 0.2s',
                     cursor: 'pointer',
-                    backgroundColor: selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : 'transparent')),
+                    backgroundColor: rowBg,
                     opacity: showDiscarded ? 0.75 : 1,
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : 'var(--hover-bg)');
+                    e.currentTarget.style.backgroundColor = rowHoverBg;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : 'transparent'));
+                    e.currentTarget.style.backgroundColor = rowBg;
                   }}
                   onClick={handleRowClick}
                 >
