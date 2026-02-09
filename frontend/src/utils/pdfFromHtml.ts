@@ -69,11 +69,10 @@ export async function downloadPdfFromHtml(
     return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}/${d.getFullYear()}`;
   };
 
-  // Group entries by description (date + notes), round hours to nearest 0.5
+  // Group entries by description (notes only; no date in PDF service description)
   const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
   ticket.entries.forEach(entry => {
-    const dateStr = formatDate(entry.date);
-    const desc = `${dateStr} - ${entry.description || 'Work performed'}`;
+    const desc = entry.description || 'Work performed';
     const rateCode = getRateCode(entry.rate_type);
     const roundedHours = roundToHalfHour(entry.hours);
     descriptionLines.push({
@@ -458,11 +457,10 @@ export async function generateAndStorePdf(
     return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}/${d.getFullYear()}`;
   };
 
-  // Group entries by description (date + notes), round hours to nearest 0.5
+  // Group entries by description (notes only; no date in PDF service description)
   const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
   ticket.entries.forEach(entry => {
-    const dateStr = formatDate(entry.date);
-    const desc = `${dateStr} - ${entry.description || 'Work performed'}`;
+    const desc = entry.description || 'Work performed';
     const rateCode = getRateCode(entry.rate_type);
     const roundedHours = roundToHalfHour(entry.hours);
     descriptionLines.push({
