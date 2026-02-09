@@ -244,8 +244,8 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         alignItems: 'center',
         padding: '0 24px',
       }}>
-        {/* Center - Timer Input */}
-        <div style={{ flex: 1, maxWidth: '600px', margin: '0 auto', position: 'relative' }}>
+        {/* Center - Timer Input: grows to fill space on larger windows */}
+        <div style={{ flex: 1, minWidth: 0, position: 'relative', marginRight: '20px' }}>
           {timerRunning && currentEntry ? (
             <div style={{
               padding: '10px 15px',
