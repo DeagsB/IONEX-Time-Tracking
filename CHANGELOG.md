@@ -8,6 +8,9 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 ### Added
 
+- **Changelog (full) on Changelog page**  
+  The Changelog page now shows both “Latest” and “Earlier” sections, matching the full CHANGELOG.md so you can see the complete history in the app.
+
 - **Create service ticket from scratch**  
   You can create a new service ticket without any time entries. In the form, choosing a customer fills in address, contact, and related info; choosing a project filters by that customer. Technician name is pre-filled. Ticket number is assigned when an admin approves.
 
@@ -51,6 +54,15 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 - **Time entry form**  
   The note “Different locations create separate service tickets” now appears **above** the Location input instead of below it.
+
+- **Service Tickets filter and tabs**  
+  The status tabs (Drafts, Submitted, Approved, All Tickets) are now placed **below** the filter area (date range, Customer, Employee, Show Discarded) so filters are applied first, then you switch tabs.
+
+- **Live time entry (header)**  
+  The “What are you working on?” field in the header now expands to use the available width on larger windows instead of staying fixed at 600px.
+
+- **Manual time entry – duration**  
+  In the edit time entry modal, the duration (e.g. 1.00h) is now editable. Changing it updates the end time from the start time. The value is always shown as **xx.xx** (e.g. 1 → 1.00). On first click/focus, the whole value is selected so you can type to overwrite it.
 
 - **Customers and projects**  
   Any authenticated user can edit and delete customers and projects (previous restrictions were removed).
