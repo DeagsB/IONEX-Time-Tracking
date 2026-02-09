@@ -1,6 +1,7 @@
 import React from 'react';
 
 const LATEST_ADDED = [
+  '**Rejection notes on service tickets** – When an admin rejects a submitted service ticket, they can optionally enter a reason. Rejected tickets move back to the user\'s **Drafts** tab; when the user opens the ticket, the rejection reason is shown at the top in a highlighted banner so they know why it was rejected and can revise accordingly.',
   '**Create service ticket from scratch** – You can create a new service ticket without any time entries. In the form, choosing a customer fills in address, contact, and related info; choosing a project filters by that customer. Technician name is pre-filled. Ticket number is assigned when an admin approves.',
   '**Inline create Customer and Project** – In the "Create Service Ticket" panel, the Customer and Project dropdowns include options to add a new customer or a new project without leaving the form.',
   '**Bulk "Mark as Submitted"** – On the Service Tickets page you can select multiple tickets and use a single action to mark them all as Submitted (workflow status set to approved).',
@@ -19,6 +20,10 @@ const LATEST_CHANGED = [
   '**Service ticket form** – The label "Project Number" in the create-ticket form has been renamed to **"Project"**.',
   '**Time entry form** – The note "Different locations create separate service tickets" now appears **above** the Location input instead of below it.',
   '**Customers and projects** – Any authenticated user can edit and delete customers and projects (previous restrictions were removed).',
+];
+
+const LATEST_REMOVED = [
+  '**Feedback & Issues page** – The Feedback & Issues (bug reports) page and sidebar link have been removed from the app.',
 ];
 
 const LATEST_FIXED = [
@@ -109,6 +114,7 @@ export default function Changelog() {
 
         <Section title="Added">{renderList(LATEST_ADDED)}</Section>
         <Section title="Changed">{renderList(LATEST_CHANGED)}</Section>
+        <Section title="Removed">{renderList(LATEST_REMOVED)}</Section>
         <Section title="Fixed">{renderList(LATEST_FIXED)}</Section>
 
         <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginTop: '8px', marginBottom: '4px' }}>
