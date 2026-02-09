@@ -2836,7 +2836,10 @@ export default function WeekView() {
                       type="text"
                       inputMode="decimal"
                       value={editDurationInputRaw !== null ? editDurationInputRaw : editedEntry.hours.toFixed(2)}
-                      onFocus={() => setEditDurationInputRaw(editedEntry.hours.toFixed(2))}
+                      onFocus={(e) => {
+                        setEditDurationInputRaw(editedEntry.hours.toFixed(2));
+                        e.target.select();
+                      }}
                       onChange={(e) => {
                         const s = e.target.value;
                         setEditDurationInputRaw(s);
