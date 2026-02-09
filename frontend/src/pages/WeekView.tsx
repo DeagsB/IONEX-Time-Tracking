@@ -1673,10 +1673,11 @@ export default function WeekView() {
                               key={entry.id}
                               onClick={(e) => handleEntryClick(entry, e)}
                               style={{
-                                padding: '12px 0',
+                                padding: '12px 20px',
                                 borderBottom: '1px solid var(--border-color)',
                                 cursor: 'pointer',
-                                transition: 'background-color 0.2s'
+                                transition: 'background-color 0.2s',
+                                borderRadius: '8px',
                               }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.15)';
