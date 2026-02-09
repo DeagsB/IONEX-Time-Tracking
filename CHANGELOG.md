@@ -8,6 +8,9 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 ### Added
 
+- **Rejection notes on service tickets**  
+  When an admin rejects a submitted service ticket, they can optionally enter a reason. Rejected tickets move back to the user’s **Drafts** tab; when the user opens the ticket, the rejection reason is shown at the top of the ticket in a highlighted banner so they know why it was rejected and can revise accordingly.
+
 - **Changelog (full) on Changelog page**  
   The Changelog page now shows both “Latest” and “Earlier” sections, matching the full CHANGELOG.md so you can see the complete history in the app.
 
