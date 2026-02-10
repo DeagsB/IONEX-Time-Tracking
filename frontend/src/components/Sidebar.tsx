@@ -148,28 +148,8 @@ export default function Sidebar() {
               MANAGE
             </div>
             <SidebarLink to="/projects" active={isActive('/projects')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  Projects
-                  {showMissingProjectNumberBadge && (
-                    <span
-                      title={`${projectsMissingNumberCount} project(s) missing project number`}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '18px',
-                        height: '18px',
-                        fontSize: '12px',
-                        color: '#10b981',
-                        flexShrink: 0,
-                      }}
-                      aria-hidden
-                    >
-                      ●
-                    </span>
-                  )}
-                </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                Projects
                 {showMissingProjectNumberBadge && (
                   <span
                     title={`${projectsMissingNumberCount} project(s) missing project number`}
@@ -177,17 +157,15 @@ export default function Sidebar() {
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      minWidth: '20px',
-                      height: '20px',
-                      padding: '0 6px',
-                      fontSize: '11px',
-                      fontWeight: '700',
-                      color: '#fff',
-                      backgroundColor: '#10b981',
-                      borderRadius: '10px',
+                      width: '18px',
+                      height: '18px',
+                      fontSize: '12px',
+                      color: '#10b981',
+                      flexShrink: 0,
                     }}
+                    aria-hidden
                   >
-                    {projectsMissingNumberCount}
+                    ●
                   </span>
                 )}
               </span>
