@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { customersService } from '../services/supabaseServices';
+import { customersService, projectsService } from '../services/supabaseServices';
 
 export default function Customers() {
   const { user, isAdmin } = useAuth();
@@ -156,11 +156,18 @@ export default function Customers() {
   });
 
   const setActiveMutation = useMutation({
-    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
-      return await customersService.update(id, { active });
+    mutationFn: async ({ id, active, projectIds }: { id: string; active: boolean; projectIds?: string[] }) => {
+      const customer = await customersService.update(id, { active });
+      if (active === false && projectIds && projectIds.length > 0) {
+        for (const projectId of projectIds) {
+          await projectsService.update(projectId, { active: false });
+        }
+      }
+      return customer;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 
@@ -225,9 +232,13 @@ export default function Customers() {
     }
   };
 
-  const handleMarkInactive = (id: string) => {
-    if (window.confirm('Mark this customer as inactive? They will be hidden from the main list and only visible to admins.')) {
-      setActiveMutation.mutate({ id, active: false });
+  const handleMarkInactive = (customer: any) => {
+    const projectIds = (customer.projects || []).map((p: any) => p.id).filter(Boolean);
+    const message = projectIds.length > 0
+      ? `Mark this customer as inactive? Their ${projectIds.length} project(s) will also be marked inactive. All will be hidden from the main list and only visible to admins.`
+      : 'Mark this customer as inactive? They will be hidden from the main list and only visible to admins.';
+    if (window.confirm(message)) {
+      setActiveMutation.mutate({ id: customer.id, active: false, projectIds });
     }
   };
 
@@ -827,7 +838,7 @@ export default function Customers() {
                         <button
                           className="button button-secondary"
                           style={{ padding: '5px 10px', fontSize: '12px' }}
-                          onClick={() => handleMarkInactive(customer.id)}
+                          onClick={() => handleMarkInactive(customer)}
                           title="Hide from main list (admins can still see in Inactive section)"
                         >
                           Mark inactive
