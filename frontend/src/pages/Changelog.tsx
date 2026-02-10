@@ -4,6 +4,7 @@ const LATEST_ADDED = [
   '**Inactive clients and projects** – Clients and projects are no longer deleted. Admins can **Mark inactive** to hide them from the main list. A **Show inactive** toggle (admin only) reveals an Inactive section where items can be edited or **Reactivate**d. Only admins can mark items inactive or see the inactive section.',
   '**Project number – admin only** – Only admins can add or edit the Project number (Job ID). When a regular user adds or edits a project, the Project number field is hidden; new projects created by non-admins are saved without a project number.',
   '**Admin: projects missing project number** – In the Projects list, projects without a project number are highlighted in green (green left border, light green row, **Missing #** badge). A green dot appears next to **Projects** in the sidebar when any project is missing a project number.',
+  '**Admin: resubmitted tickets – yellow dot on Service Tickets** – When there are resubmitted tickets (rejected then resubmitted, in the **Submitted** tab), a yellow dot appears next to **Service Tickets** in the sidebar for admins.',
   '**Rejection notes on service tickets** – When an admin rejects a submitted service ticket, they can optionally enter a reason. Rejected tickets move back to the user\'s **Drafts** tab; when the user opens the ticket, the rejection reason is shown at the top in a highlighted banner so they know why it was rejected and can revise accordingly.',
   '**Create service ticket from scratch** – You can create a new service ticket without any time entries. In the form, choosing a customer fills in address, contact, and related info; choosing a project filters by that customer. Technician name is pre-filled. Ticket number is assigned when an admin approves.',
   '**Inline create Customer and Project** – In the "Create Service Ticket" panel, the Customer and Project dropdowns include options to add a new customer or a new project without leaving the form.',
@@ -24,6 +25,7 @@ const LATEST_CHANGED = [
   '**Time entry form** – The note "Different locations create separate service tickets" now appears **above** the Location input instead of below it.',
   '**Customers and projects** – Any authenticated user can edit clients and projects. Delete has been removed: clients and projects are now **Mark inactive** (admin only); inactive items are hidden and only visible to admins in a **Show inactive** section.',
   '**Payroll (admin)** – The Payroll page for admins now shows all active employees in the selected period, including those with no time entries. New hires appear with 0.00 hours instead of being omitted.',
+  '**Mark client inactive – projects too** – When an admin marks a client as inactive, all of that client\'s projects are now automatically marked inactive. The confirmation message shows how many projects will be marked inactive.',
 ];
 
 const LATEST_REMOVED = [

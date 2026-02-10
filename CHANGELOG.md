@@ -17,6 +17,9 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 - **Admin: projects missing project number**  
   In the Projects list, any project without a project number is highlighted in green (similar to rejected service tickets in Drafts): green left border, light green row background, and a **Missing #** badge in the Project # column. A green dot appears next to **Projects** in the sidebar when any project is missing a project number, so admins can quickly see that action is needed.
 
+- **Admin: resubmitted tickets – yellow dot on Service Tickets**  
+  When there are resubmitted service tickets (tickets that were rejected and then resubmitted, now in the **Submitted** tab), a **yellow dot** appears next to **Service Tickets** in the sidebar for admins. This makes it easy to see when tickets need review after a user has addressed a rejection.
+
 - **Rejection notes on service tickets**  
   When an admin rejects a submitted service ticket, they can optionally enter a reason. Rejected tickets move back to the user’s **Drafts** tab; when the user opens the ticket, the rejection reason is shown at the top of the ticket in a highlighted banner so they know why it was rejected and can revise accordingly.
 
@@ -81,6 +84,9 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 - **Payroll (admin)**  
   The Payroll page for admins now shows **all active employees** in the selected period, including those with no time entries. New hires and anyone with zero hours in the range appear in the table with 0.00 hours instead of being omitted.
+
+- **Mark client inactive – projects too**  
+  When an admin marks a client (customer) as inactive, all of that client’s projects are now automatically marked inactive as well. The confirmation message shows how many projects will be marked inactive.
 
 ### Fixed
 
