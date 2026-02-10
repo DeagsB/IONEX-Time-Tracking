@@ -25,6 +25,14 @@ export default function Sidebar() {
     (p: any) => !p.project_number || String(p.project_number).trim() === ''
   ).length;
   const showMissingProjectNumberBadge = isAdmin && projectsMissingNumberCount > 0;
+
+  const { data: resubmittedTicketsCount = 0 } = useQuery({
+    queryKey: ['resubmittedTicketsCount', isAdmin, isDemoMode],
+    queryFn: () => serviceTicketsService.getResubmittedCountForAdmin(isDemoMode),
+    enabled: !!isAdmin,
+  });
+  const showResubmittedBadge = isAdmin && resubmittedTicketsCount > 0;
+
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
@@ -175,7 +183,27 @@ export default function Sidebar() {
             </SidebarLink>
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                Service Tickets
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  Service Tickets
+                  {showResubmittedBadge && (
+                    <span
+                      title={`${resubmittedTicketsCount} resubmitted ticket(s) in Submitted tab`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '18px',
+                        height: '18px',
+                        fontSize: '12px',
+                        color: '#eab308',
+                        flexShrink: 0,
+                      }}
+                      aria-hidden
+                    >
+                      ●
+                    </span>
+                  )}
+                </span>
                 {showRejectedBadge && (
                   <span
                     title={`${rejectedTicketsCount} rejected ticket(s) need attention`}

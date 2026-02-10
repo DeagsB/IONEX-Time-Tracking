@@ -3674,6 +3674,7 @@ export default function ServiceTickets() {
                             await serviceTicketsService.updateWorkflowStatus(record.id, 'rejected', isDemoMode, rejectNote.trim() || null);
                             queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                             queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                            queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                             setShowRejectNoteModal(false);
                             closePanel();
                           } catch (e) {
@@ -3879,6 +3880,7 @@ export default function ServiceTickets() {
                               await handleAssignTicketNumber(selectedTicket);
                               queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                               queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                              queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                               closePanel();
                             } catch (e) {
                               console.error(e);
@@ -3905,6 +3907,7 @@ export default function ServiceTickets() {
                           await handleAssignTicketNumber(selectedTicket);
                           queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                           queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                          queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                           closePanel();
                         } catch (e) {
                           console.error(e);
@@ -3969,6 +3972,7 @@ export default function ServiceTickets() {
                           
                           await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                           await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                          await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                           await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
                         } catch (error) {
                           console.error('Error updating ticket status:', error);

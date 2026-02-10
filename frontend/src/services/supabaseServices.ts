@@ -1373,6 +1373,18 @@ export const serviceTicketsService = {
     if (error) return 0;
     return count ?? 0;
   },
+
+  /** Count of tickets in Submitted tab that were resubmitted after rejection (admin only – for sidebar notification) */
+  async getResubmittedCountForAdmin(isDemo: boolean = false): Promise<number> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { count, error } = await supabase
+      .from(tableName)
+      .select('*', { count: 'exact', head: true })
+      .not('rejected_at', 'is', null)
+      .not('workflow_status', 'in', '("draft","rejected")');
+    if (error) return 0;
+    return count ?? 0;
+  },
 };
 
 export const serviceTicketExpensesService = {
