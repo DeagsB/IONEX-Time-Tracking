@@ -23,6 +23,7 @@ const LATEST_CHANGED = [
   '**Service ticket form** – The label "Project Number" in the create-ticket form has been renamed to **"Project"**.',
   '**Time entry form** – The note "Different locations create separate service tickets" now appears **above** the Location input instead of below it.',
   '**Customers and projects** – Any authenticated user can edit clients and projects. Delete has been removed: clients and projects are now **Mark inactive** (admin only); inactive items are hidden and only visible to admins in a **Show inactive** section.',
+  '**Payroll (admin)** – The Payroll page for admins now shows all active employees in the selected period, including those with no time entries. New hires appear with 0.00 hours instead of being omitted.',
 ];
 
 const LATEST_REMOVED = [
@@ -30,6 +31,7 @@ const LATEST_REMOVED = [
 ];
 
 const LATEST_FIXED = [
+  '**Payroll** – New employees (and anyone with no time entries in the period) now appear on the Payroll page for admins with 0.00 hours, instead of being missing from the list.',
   '**Service tickets:** Manually created (standalone) service tickets now show up in the main ticket list. Date range and employee filters now apply to all tickets, including standalone ones. Admins can approve manually created service tickets. PO/CC/AFE and Other values now appear correctly on the service ticket PDF export. Deleting the last time entry for a service ticket now reliably deletes the ticket itself. "Ghost" zero-hour tickets from location mismatch have been cleaned up. Tickets in the Submitted tab with statuses such as PDF Exported now correctly show "✓ Submitted" in the action column.',
   '**Time entries** – Opening the edit modal for a running timer no longer causes a build/TypeScript error (missing po_afe in state).',
   '**Expenses** – The confirmation dialog when deleting an expense has been removed; deletion happens immediately when you choose delete.',

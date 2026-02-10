@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
+import { employeesService } from '../services/supabaseServices';
 
 interface TimeEntry {
   id: string;
@@ -180,8 +181,16 @@ export default function Payroll() {
     const period = getCurrentPayPeriod();
     return period?.end || FALLBACK_PERIOD.end;
   });
+
+  // Fetch all employees (admin only) so payroll shows everyone, including those with zero hours
+  const { data: allEmployees, isLoading: isLoadingEmployees } = useQuery({
+    queryKey: ['employees', 'payroll', isAdmin],
+    queryFn: () => employeesService.getAll(false),
+    enabled: !!isAdmin,
+  });
+
   // Fetch time entries for the date range (filtered by demo mode, and by user for non-admins)
-  const { data: timeEntries, isLoading, error } = useQuery({
+  const { data: timeEntries, isLoading: isLoadingTimeEntries, error } = useQuery({
     queryKey: ['payrollReport', startDate, endDate, isDemoMode, isAdmin, user?.id],
     queryFn: async () => {
       let query = supabase
@@ -211,12 +220,62 @@ export default function Payroll() {
 
   // Group entries by employee and calculate totals by rate type
   // Payroll is based ONLY on time entries (calendar hours) - not service tickets
+  // For admins: include all employees (from employees list) so new hires with no time show with 0 hours
   const employeeHours = useMemo(() => {
-    if (!timeEntries) return [];
-
     const employeeMap = new Map<string, EmployeeHours>();
 
-    // Calculate payroll hours directly from time entries only
+    const emptyHours = (): Omit<EmployeeHours, 'userId' | 'name' | 'email'> => ({
+      internalShopTime: 0,
+      internalShopOvertime: 0,
+      internalTravelTime: 0,
+      internalFieldTime: 0,
+      internalFieldOvertime: 0,
+      shopTime: 0,
+      shopOvertime: 0,
+      travelTime: 0,
+      fieldTime: 0,
+      fieldOvertime: 0,
+      totalHours: 0,
+      internalHours: 0,
+      entries: [],
+    });
+
+    // Admin: seed with all employees so everyone appears (including 0 hours)
+    if (isAdmin && allEmployees && allEmployees.length > 0) {
+      for (const emp of allEmployees as any[]) {
+        const uid = emp.user_id;
+        const u = emp.user;
+        const name = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email : 'Unknown';
+        if (!uid) continue;
+        employeeMap.set(uid, {
+          userId: uid,
+          name,
+          email: u?.email || '',
+          ...emptyHours(),
+        });
+      }
+    }
+
+    if (!timeEntries) {
+      const zeroRounded = Array.from(employeeMap.values()).map(emp => ({
+        ...emp,
+        internalShopTime: roundToQuarterHour(emp.internalShopTime),
+        internalShopOvertime: roundToQuarterHour(emp.internalShopOvertime),
+        internalTravelTime: roundToQuarterHour(emp.internalTravelTime),
+        internalFieldTime: roundToQuarterHour(emp.internalFieldTime),
+        internalFieldOvertime: roundToQuarterHour(emp.internalFieldOvertime),
+        shopTime: roundToQuarterHour(emp.shopTime),
+        shopOvertime: roundToQuarterHour(emp.shopOvertime),
+        travelTime: roundToQuarterHour(emp.travelTime),
+        fieldTime: roundToQuarterHour(emp.fieldTime),
+        fieldOvertime: roundToQuarterHour(emp.fieldOvertime),
+        totalHours: roundToQuarterHour(emp.totalHours),
+        internalHours: roundToQuarterHour(emp.internalHours),
+      }));
+      return zeroRounded.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // Apply time entries (add hours to existing rows or create row for non-admin)
     for (const entry of timeEntries) {
       const userId = entry.user_id;
       const userName = entry.user
@@ -228,19 +287,7 @@ export default function Payroll() {
           userId,
           name: userName,
           email: entry.user?.email || '',
-          internalShopTime: 0,
-          internalShopOvertime: 0,
-          internalTravelTime: 0,
-          internalFieldTime: 0,
-          internalFieldOvertime: 0,
-          shopTime: 0,
-          shopOvertime: 0,
-          travelTime: 0,
-          fieldTime: 0,
-          fieldOvertime: 0,
-          totalHours: 0,
-          internalHours: 0,
-          entries: [],
+          ...emptyHours(),
         });
       }
 
@@ -321,7 +368,9 @@ export default function Payroll() {
     });
 
     return roundedEmployeeHours.sort((a, b) => a.name.localeCompare(b.name));
-  }, [timeEntries]);
+  }, [timeEntries, isAdmin, allEmployees]);
+
+  const isLoading = isLoadingTimeEntries || (isAdmin && isLoadingEmployees);
 
   // Calculate grand totals (already rounded from employeeHours)
   const grandTotals = useMemo(() => {
