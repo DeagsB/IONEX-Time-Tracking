@@ -168,7 +168,7 @@ export default function Projects() {
     mutationFn: async (data: any) => {
       const projectData: any = {
         name: data.name,
-        project_number: data.project_number || null,
+        project_number: isAdmin ? (data.project_number || null) : null,
         description: data.description || null,
         customer_id: data.customer_id || null,
         status: data.status,
@@ -199,7 +199,7 @@ export default function Projects() {
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
       const projectData: any = {};
       if (data.name !== undefined) projectData.name = data.name;
-      if (data.project_number !== undefined) projectData.project_number = data.project_number || null;
+      if (isAdmin && data.project_number !== undefined) projectData.project_number = data.project_number || null;
       if (data.description !== undefined) projectData.description = data.description || null;
       if (data.customer_id !== undefined) projectData.customer_id = data.customer_id || null;
       if (data.status !== undefined) projectData.status = data.status;
@@ -423,16 +423,18 @@ export default function Projects() {
                 />
               </div>
 
-              <div className="form-group">
-                <label className="label">Project Number (Job ID)</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.project_number}
-                  onChange={(e) => setFormData({ ...formData, project_number: e.target.value })}
-                  placeholder="e.g., PRJ-001"
-                />
-              </div>
+              {isAdmin && (
+                <div className="form-group">
+                  <label className="label">Project Number (Job ID)</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={formData.project_number}
+                    onChange={(e) => setFormData({ ...formData, project_number: e.target.value })}
+                    placeholder="e.g., PRJ-001"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="form-group">
@@ -756,16 +758,18 @@ export default function Projects() {
                 />
               </div>
 
-              <div className="form-group">
-                <label className="label">Project Number (Job ID)</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.project_number}
-                  onChange={(e) => setFormData({ ...formData, project_number: e.target.value })}
-                  placeholder="e.g., PRJ-001"
-                />
-              </div>
+              {isAdmin && (
+                <div className="form-group">
+                  <label className="label">Project Number (Job ID)</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={formData.project_number}
+                    onChange={(e) => setFormData({ ...formData, project_number: e.target.value })}
+                    placeholder="e.g., PRJ-001"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="form-group">
