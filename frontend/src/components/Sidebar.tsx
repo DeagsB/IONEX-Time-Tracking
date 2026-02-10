@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { useTheme } from '../context/ThemeContext';
-import { serviceTicketsService } from '../services/supabaseServices';
+import { serviceTicketsService, projectsService } from '../services/supabaseServices';
 
 export default function Sidebar() {
   const location = useLocation();
@@ -15,6 +15,16 @@ export default function Sidebar() {
     enabled: !!user?.id,
   });
   const showRejectedBadge = rejectedTicketsCount > 0;
+
+  const { data: projectsForMissingCount } = useQuery({
+    queryKey: ['projects', 'sidebar-missing-count', isAdmin],
+    queryFn: () => projectsService.getAll(true),
+    enabled: !!isAdmin,
+  });
+  const projectsMissingNumberCount = (projectsForMissingCount || []).filter(
+    (p: any) => !p.project_number || String(p.project_number).trim() === ''
+  ).length;
+  const showMissingProjectNumberBadge = isAdmin && projectsMissingNumberCount > 0;
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
@@ -138,7 +148,49 @@ export default function Sidebar() {
               MANAGE
             </div>
             <SidebarLink to="/projects" active={isActive('/projects')}>
-              Projects
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  Projects
+                  {showMissingProjectNumberBadge && (
+                    <span
+                      title={`${projectsMissingNumberCount} project(s) missing project number`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '18px',
+                        height: '18px',
+                        fontSize: '12px',
+                        color: '#10b981',
+                        flexShrink: 0,
+                      }}
+                      aria-hidden
+                    >
+                      ●
+                    </span>
+                  )}
+                </span>
+                {showMissingProjectNumberBadge && (
+                  <span
+                    title={`${projectsMissingNumberCount} project(s) missing project number`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '20px',
+                      height: '20px',
+                      padding: '0 6px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: '#fff',
+                      backgroundColor: '#10b981',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    {projectsMissingNumberCount}
+                  </span>
+                )}
+              </span>
             </SidebarLink>
             <SidebarLink to="/customers" active={isActive('/customers')}>
               Clients

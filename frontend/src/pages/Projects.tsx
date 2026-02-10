@@ -984,9 +984,46 @@ export default function Projects() {
                 </td>
               </tr>
             )}
-            {sortedProjects.map((project: any) => (
-              <tr key={project.id}>
-                <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{project.project_number || '-'}</td>
+            {sortedProjects.map((project: any) => {
+              const missingProjectNumber = isAdmin && (!project.project_number || String(project.project_number).trim() === '');
+              const rowBg = missingProjectNumber ? 'rgba(16, 185, 129, 0.08)' : 'transparent';
+              const rowHoverBg = missingProjectNumber ? 'rgba(16, 185, 129, 0.12)' : 'var(--hover-bg)';
+              return (
+              <tr
+                key={project.id}
+                style={{
+                  borderLeft: missingProjectNumber ? '4px solid #10b981' : undefined,
+                  transition: 'background-color 0.2s',
+                  backgroundColor: rowBg,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = rowHoverBg;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = rowBg;
+                }}
+              >
+                <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>
+                  {missingProjectNumber ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px 8px',
+                        fontSize: '10px',
+                        fontWeight: '700',
+                        color: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                        borderRadius: '4px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                      }} title="Add a project number in Edit">Missing #</span>
+                      –
+                    </span>
+                  ) : (
+                    project.project_number || '-'
+                  )}
+                </td>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div
@@ -1031,7 +1068,7 @@ export default function Projects() {
                   )}
                 </td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
       </div>
