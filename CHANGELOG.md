@@ -8,6 +8,15 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 ### Added
 
+- **Inactive clients and projects**  
+  Clients and projects are no longer deleted. Instead, admins can **Mark inactive** to hide them from the main list. An admin-only **Show inactive** toggle reveals an **Inactive** section at the bottom of the Clients and Projects pages where inactive items can be edited or **Reactivate**d. Only admins can mark items inactive or see the inactive section.
+
+- **Project number – admin only**  
+  Only admins can add or edit the **Project number (Job ID)**. When a regular user adds or edits a project, the Project number field is hidden; new projects created by non-admins are saved without a project number.
+
+- **Admin: projects missing project number**  
+  In the Projects list, any project without a project number is highlighted in green (similar to rejected service tickets in Drafts): green left border, light green row background, and a **Missing #** badge in the Project # column. A green dot appears next to **Projects** in the sidebar when any project is missing a project number, so admins can quickly see that action is needed.
+
 - **Rejection notes on service tickets**  
   When an admin rejects a submitted service ticket, they can optionally enter a reason. Rejected tickets move back to the user’s **Drafts** tab; when the user opens the ticket, the rejection reason is shown at the top of the ticket in a highlighted banner so they know why it was rejected and can revise accordingly.
 
@@ -68,7 +77,7 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
   In the edit time entry modal, the duration (e.g. 1.00h) is now editable. Changing it updates the end time from the start time. The value is always shown as **xx.xx** (e.g. 1 → 1.00). On first click/focus, the whole value is selected so you can type to overwrite it.
 
 - **Customers and projects**  
-  Any authenticated user can edit and delete customers and projects (previous restrictions were removed).
+  Any authenticated user can edit clients and projects. Delete has been removed: clients and projects are now **Mark inactive** (admin only); inactive items are hidden from the main list and only visible to admins in a **Show inactive** section.
 
 ### Fixed
 
