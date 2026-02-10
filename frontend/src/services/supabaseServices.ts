@@ -129,7 +129,7 @@ export const customersService = {
       .select('*, projects(*), created_by')
       .order('name');
     if (!includeInactive) {
-      query = query.eq('active', true);
+      query = query.or('active.eq.true,active.is.null');
     }
     const { data, error } = await query;
     if (error) throw error;
@@ -219,7 +219,7 @@ export const projectsService = {
       `)
       .order('name');
     if (!includeInactive) {
-      query = query.eq('active', true);
+      query = query.or('active.eq.true,active.is.null');
     }
     const { data, error } = await query;
     if (error) throw error;

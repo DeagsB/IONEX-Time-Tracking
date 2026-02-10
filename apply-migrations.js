@@ -85,6 +85,7 @@ async function main() {
   const migrations = [
     'migration_preserve_data_on_user_delete.sql',
     'migration_add_user_archive.sql',
+    'migration_add_active_customers_projects.sql',
   ];
 
   for (const migration of migrations) {

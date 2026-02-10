@@ -1013,14 +1013,16 @@ export default function Projects() {
                       >
                         Edit
                       </button>
-                      <button
-                        className="button button-secondary"
-                        style={{ padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleMarkInactive(project.id)}
-                        title="Hide from main list (admins can still see in Inactive section)"
-                      >
-                        Mark inactive
-                      </button>
+                      {isAdmin && (
+                        <button
+                          className="button button-secondary"
+                          style={{ padding: '5px 10px', fontSize: '12px' }}
+                          onClick={() => handleMarkInactive(project.id)}
+                          title="Hide from main list (admins can still see in Inactive section)"
+                        >
+                          Mark inactive
+                        </button>
+                      )}
                     </>
                   )}
                 </td>
