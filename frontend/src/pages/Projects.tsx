@@ -36,10 +36,13 @@ export default function Projects() {
     travel_rate: '',
   });
 
+  const [showInactive, setShowInactive] = useState(false);
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsService.getAll(),
+    queryKey: ['projects', showInactive],
+    queryFn: () => projectsService.getAll(isAdmin ? showInactive : false),
   });
+  const activeProjects = useMemo(() => (projects || []).filter((p: any) => p.active !== false), [projects]);
+  const inactiveProjects = useMemo(() => (projects || []).filter((p: any) => p.active === false), [projects]);
 
   const { data: customers } = useQuery({
     queryKey: ['customers'],
@@ -100,11 +103,11 @@ export default function Projects() {
     return `${h}:${m.toString().padStart(2, '0')}`;
   };
 
-  // Sorted projects
+  // Sorted projects (active only for main list)
   const sortedProjects = useMemo(() => {
-    if (!projects) return [];
+    if (!activeProjects.length) return [];
     
-    return [...projects].sort((a: any, b: any) => {
+    return [...activeProjects].sort((a: any, b: any) => {
       let aVal: string | number;
       let bVal: string | number;
       
@@ -137,7 +140,14 @@ export default function Projects() {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [projects, sortField, sortDirection, projectHours]);
+  }, [activeProjects, sortField, sortDirection, projectHours]);
+
+  const sortedInactiveProjects = useMemo(() => {
+    if (!inactiveProjects.length) return [];
+    return [...inactiveProjects].sort((a: any, b: any) =>
+      (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase())
+    );
+  }, [inactiveProjects]);
 
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
@@ -213,9 +223,9 @@ export default function Projects() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await projectsService.delete(id);
+  const setActiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      return await projectsService.update(id, { active });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -290,17 +300,21 @@ export default function Projects() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this project?')) {
-      deleteMutation.mutate(id);
+  const handleMarkInactive = (id: string) => {
+    if (window.confirm('Mark this project as inactive? It will be hidden from the main list and only visible to admins.')) {
+      setActiveMutation.mutate({ id, active: false });
     }
+  };
+
+  const handleReactivate = (id: string) => {
+    setActiveMutation.mutate({ id, active: true });
   };
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2>Projects</h2>
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
           {isAdmin && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
               <input
@@ -315,6 +329,17 @@ export default function Projects() {
                 }}
               />
               <span>Show only my hours</span>
+            </label>
+          )}
+          {isAdmin && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#4ecdc4' }}
+              />
+              <span>Show inactive</span>
             </label>
           )}
           <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingProject(null); resetForm(); }}>
@@ -948,7 +973,7 @@ export default function Projects() {
             </tr>
           </thead>
           <tbody>
-            {projects && projects.length === 0 && (
+            {sortedProjects.length === 0 && !(isAdmin && showInactive && inactiveProjects.length > 0) && (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
                   No projects found. Create your first project above.
@@ -979,7 +1004,6 @@ export default function Projects() {
                   {formatHours(projectHours[project.id] || 0)}
                 </td>
                 <td style={{ textAlign: 'right' }}>
-                  {/* Any authenticated user can edit/delete projects */}
                   {user && (
                     <>
                       <button
@@ -990,11 +1014,12 @@ export default function Projects() {
                         Edit
                       </button>
                       <button
-                        className="button button-danger"
+                        className="button button-secondary"
                         style={{ padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleDelete(project.id)}
+                        onClick={() => handleMarkInactive(project.id)}
+                        title="Hide from main list (admins can still see in Inactive section)"
                       >
-                        Delete
+                        Mark inactive
                       </button>
                     </>
                   )}
@@ -1004,6 +1029,70 @@ export default function Projects() {
           </tbody>
         </table>
       </div>
+
+      {isAdmin && showInactive && sortedInactiveProjects.length > 0 && (
+        <div style={{ marginTop: '32px' }}>
+          <h3 style={{ marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '16px' }}>Inactive projects</h3>
+          <p style={{ marginBottom: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Only admins can see this section. Reactivate to show in the main list again.
+          </p>
+          <table className="table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Project #</th>
+                <th>Name</th>
+                <th>Customer</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Total Hours</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedInactiveProjects.map((project: any) => (
+                <tr key={project.id} style={{ opacity: 0.85 }}>
+                  <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{project.project_number || '-'}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div
+                        style={{
+                          backgroundColor: project.color || '#4ecdc4',
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '4px',
+                          flexShrink: 0,
+                          border: '1px solid rgba(0, 0, 0, 0.1)',
+                        }}
+                      />
+                      <span>{project.name}</span>
+                    </div>
+                  </td>
+                  <td>{project.customer?.name || '-'}</td>
+                  <td>{project.status}</td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                    {formatHours(projectHours[project.id] || 0)}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="button button-secondary"
+                      style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
+                      onClick={() => handleEdit(project)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="button button-primary"
+                      style={{ padding: '5px 10px', fontSize: '12px' }}
+                      onClick={() => handleReactivate(project.id)}
+                    >
+                      Reactivate
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

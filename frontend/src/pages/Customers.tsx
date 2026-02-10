@@ -35,10 +35,13 @@ export default function Customers() {
     rate_travel: '',
   });
 
+  const [showInactive, setShowInactive] = useState(false);
   const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => customersService.getAll(),
+    queryKey: ['customers', showInactive],
+    queryFn: () => customersService.getAll(isAdmin ? showInactive : false),
   });
+  const activeCustomers = useMemo(() => (customers || []).filter((c: any) => c.active !== false), [customers]);
+  const inactiveCustomers = useMemo(() => (customers || []).filter((c: any) => c.active === false), [customers]);
 
   // Sorting state - persisted per user in localStorage
   const [sortField, setSortField] = useState<'name' | 'email' | 'phone' | 'city' | 'projects'>(() => {
@@ -50,11 +53,11 @@ export default function Customers() {
     return (saved as 'asc' | 'desc') || 'asc';
   });
 
-  // Sorted customers
+  // Sorted customers (active only for main list)
   const sortedCustomers = useMemo(() => {
-    if (!customers) return [];
+    if (!activeCustomers.length) return [];
     
-    return [...customers].sort((a: any, b: any) => {
+    return [...activeCustomers].sort((a: any, b: any) => {
       let aVal: string | number;
       let bVal: string | number;
       
@@ -87,7 +90,14 @@ export default function Customers() {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [customers, sortField, sortDirection]);
+  }, [activeCustomers, sortField, sortDirection]);
+
+  const sortedInactiveCustomers = useMemo(() => {
+    if (!inactiveCustomers.length) return [];
+    return [...inactiveCustomers].sort((a: any, b: any) =>
+      (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase())
+    );
+  }, [inactiveCustomers]);
 
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
@@ -145,9 +155,9 @@ export default function Customers() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await customersService.delete(id);
+  const setActiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      return await customersService.update(id, { active });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
@@ -215,19 +225,36 @@ export default function Customers() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this customer?')) {
-      deleteMutation.mutate(id);
+  const handleMarkInactive = (id: string) => {
+    if (window.confirm('Mark this customer as inactive? They will be hidden from the main list and only visible to admins.')) {
+      setActiveMutation.mutate({ id, active: false });
     }
+  };
+
+  const handleReactivate = (id: string) => {
+    setActiveMutation.mutate({ id, active: true });
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h2>Customers</h2>
-        <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingCustomer(null); resetForm(); }}>
-          {showForm ? 'Cancel' : 'Add Customer'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {isAdmin && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#4ecdc4' }}
+              />
+              <span>Show inactive</span>
+            </label>
+          )}
+          <button className="button button-primary" onClick={() => { setShowForm(!showForm); setEditingCustomer(null); resetForm(); }}>
+            {showForm ? 'Cancel' : 'Add Customer'}
+          </button>
+        </div>
       </div>
 
       {/* Modal for editing */}
@@ -772,7 +799,7 @@ export default function Customers() {
             </tr>
           </thead>
           <tbody>
-            {customers && customers.length === 0 && (
+            {sortedCustomers.length === 0 && !(isAdmin && showInactive && inactiveCustomers.length > 0) && (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
                   No customers found. Create your first customer above.
@@ -787,7 +814,6 @@ export default function Customers() {
                 <td>{customer.city || '-'}</td>
                 <td>{customer.projects?.length || 0}</td>
                 <td style={{ textAlign: 'right' }}>
-                  {/* Any authenticated user can edit/delete customers */}
                   {user && (
                     <>
                       <button
@@ -798,11 +824,12 @@ export default function Customers() {
                         Edit
                       </button>
                       <button
-                        className="button button-danger"
+                        className="button button-secondary"
                         style={{ padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleDelete(customer.id)}
+                        onClick={() => handleMarkInactive(customer.id)}
+                        title="Hide from main list (admins can still see in Inactive section)"
                       >
-                        Delete
+                        Mark inactive
                       </button>
                     </>
                   )}
@@ -812,6 +839,54 @@ export default function Customers() {
           </tbody>
         </table>
       </div>
+
+      {isAdmin && showInactive && sortedInactiveCustomers.length > 0 && (
+        <div style={{ marginTop: '32px' }}>
+          <h3 style={{ marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '16px' }}>Inactive customers</h3>
+          <p style={{ marginBottom: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Only admins can see this section. Reactivate to show in the main list again.
+          </p>
+          <table className="table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>City</th>
+                <th>Projects</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedInactiveCustomers.map((customer: any) => (
+                <tr key={customer.id} style={{ opacity: 0.85 }}>
+                  <td>{customer.name}</td>
+                  <td>{customer.email || '-'}</td>
+                  <td>{customer.phone || '-'}</td>
+                  <td>{customer.city || '-'}</td>
+                  <td>{customer.projects?.length || 0}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="button button-secondary"
+                      style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
+                      onClick={() => handleEdit(customer)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="button button-primary"
+                      style={{ padding: '5px 10px', fontSize: '12px' }}
+                      onClick={() => handleReactivate(customer.id)}
+                    >
+                      Reactivate
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS public.customers (
   country TEXT,
   tax_id TEXT,
   notes TEXT,
+  active BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.projects (
   rate DECIMAL(10, 2) NOT NULL,
   billing_type TEXT DEFAULT 'hourly' CHECK (billing_type IN ('hourly', 'fixed', 'retainer')),
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'on-hold', 'cancelled')),
+  active BOOLEAN DEFAULT true,
   start_date DATE,
   end_date DATE,
   budget DECIMAL(10, 2),

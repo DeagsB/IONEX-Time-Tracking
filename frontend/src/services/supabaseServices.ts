@@ -123,12 +123,15 @@ export const timeEntriesService = {
 };
 
 export const customersService = {
-  async getAll() {
-    // All users can see all customers
-    const { data, error } = await supabase
+  async getAll(includeInactive: boolean = false) {
+    let query = supabase
       .from('customers')
       .select('*, projects(*), created_by')
       .order('name');
+    if (!includeInactive) {
+      query = query.eq('active', true);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
   },
@@ -204,28 +207,21 @@ export const customersService = {
     if (error) throw error;
     return data;
   },
-
-  async delete(id: string) {
-    const { error } = await supabase
-      .from('customers')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
-  },
 };
 
 export const projectsService = {
-  async getAll() {
-    // All users can see all projects
-    const { data, error } = await supabase
+  async getAll(includeInactive: boolean = false) {
+    let query = supabase
       .from('projects')
       .select(`
         *,
         customer:customers(*)
       `)
       .order('name');
-
+    if (!includeInactive) {
+      query = query.eq('active', true);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
   },
@@ -277,15 +273,6 @@ export const projectsService = {
 
     if (error) throw error;
     return data;
-  },
-
-  async delete(id: string) {
-    const { error } = await supabase
-      .from('projects')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
   },
 };
 
