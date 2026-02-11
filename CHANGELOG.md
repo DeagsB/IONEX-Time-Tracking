@@ -8,6 +8,9 @@ Notable changes to **IONEX Time Tracking** are listed here in plain language. Th
 
 ### Added
 
+- **QuickBooks Online integration**  
+  Admins can connect QuickBooks (Profile page) to create invoices from service tickets. Requires backend deployment and env vars.
+
 - **Inactive clients and projects**  
   Clients and projects are no longer deleted. Instead, admins can **Mark inactive** to hide them from the main list. An admin-only **Show inactive** toggle reveals an **Inactive** section at the bottom of the Clients and Projects pages where inactive items can be edited or **Reactivate**d. Only admins can mark items inactive or see the inactive section.
 
