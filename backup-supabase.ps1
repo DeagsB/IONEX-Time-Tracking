@@ -90,6 +90,22 @@ try {
 
     Write-Host "Backup complete: $backupDir" -ForegroundColor Green
     Get-ChildItem -File | ForEach-Object { Write-Host "  $($_.Name)" -ForegroundColor Gray }
+
+    # Upload to Supabase Storage if configured
+    if ($env:SUPABASE_URL -and $env:SUPABASE_SERVICE_KEY) {
+        Write-Host "Uploading to Supabase Storage..." -ForegroundColor Cyan
+        $uploadScript = Join-Path $PSScriptRoot "backend\scripts\upload-backup.js"
+        if (Test-Path $uploadScript) {
+            & node $uploadScript $backupDir
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Online backup complete." -ForegroundColor Green
+            } else {
+                Write-Host "Online upload failed (local backup saved)." -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "Upload script not found, skipping online backup." -ForegroundColor Yellow
+        }
+    }
 }
 finally {
     Pop-Location

@@ -24,6 +24,27 @@ To run backups automatically every Saturday at 7:00pm:
 **Manual run:** `.\backup-scheduled.ps1`  
 **Remove schedule:** `Unregister-ScheduledTask -TaskName "IONEX Supabase Backup"`
 
+### Online backup (upload to Supabase Storage)
+
+To also upload backups to Supabase Storage (protects against local machine failure):
+
+1. **Create the storage bucket** – run in Supabase SQL Editor:
+   ```sql
+   -- From migration_create_database_backups_bucket.sql
+   INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+   VALUES ('database-backups', 'database-backups', false, 524288000, ARRAY['application/sql', 'application/octet-stream', 'text/plain'])
+   ON CONFLICT (id) DO NOTHING;
+   ```
+
+2. **Add to `backup-config.env`:**
+   ```
+   SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+   SUPABASE_SERVICE_KEY=your_service_role_key
+   ```
+   Get these from Supabase Dashboard → Project Settings → API.
+
+3. Backups will be uploaded to the `database-backups` bucket, in folders like `backup-2025-02-10-1900/`.
+
 ---
 
 ## Option 1: Supabase Dashboard (easiest if you’re on Pro or higher)

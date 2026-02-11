@@ -10,21 +10,35 @@ $taskName = "IONEX Supabase Backup"
 if (-not (Test-Path $configPath)) {
     Write-Host "backup-config.env not found. Creating from template..." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Get your database connection string from:" -ForegroundColor Gray
-    Write-Host "  Supabase Dashboard -> Project Settings -> Database -> Connection string (URI)" -ForegroundColor Gray
-    Write-Host "  Replace [YOUR-PASSWORD] with your database password." -ForegroundColor Gray
+    Write-Host "1. Database connection (required):" -ForegroundColor Gray
+    Write-Host "   Supabase Dashboard -> Project Settings -> Database -> Connection string (URI)" -ForegroundColor Gray
+    Write-Host "   Replace [YOUR-PASSWORD] with your database password." -ForegroundColor Gray
     Write-Host ""
     $url = Read-Host "Enter SUPABASE_DB_URL (postgresql://postgres....)"
     if (-not $url) {
         Write-Host "No URL provided. Exiting." -ForegroundColor Red
         exit 1
     }
-    $content = @"
-# Supabase database connection for scheduled backups
-# Do not commit this file - it contains secrets
-SUPABASE_DB_URL=$url
-"@
-    Set-Content -Path $configPath -Value $content
+    Write-Host ""
+    Write-Host "2. For online backup (optional - uploads to Supabase Storage):" -ForegroundColor Gray
+    Write-Host "   Supabase Dashboard -> Project Settings -> API" -ForegroundColor Gray
+    Write-Host "   Project URL = SUPABASE_URL, service_role key = SUPABASE_SERVICE_KEY" -ForegroundColor Gray
+    Write-Host ""
+    $supabaseUrl = Read-Host "Enter SUPABASE_URL (https://xxx.supabase.co) or press Enter to skip"
+    $supabaseKey = ""
+    if ($supabaseUrl) {
+        $supabaseKey = Read-Host "Enter SUPABASE_SERVICE_KEY (service_role secret)"
+    }
+    $lines = @(
+        "# Supabase database connection for scheduled backups",
+        "# Do not commit this file - it contains secrets",
+        "SUPABASE_DB_URL=$url"
+    )
+    if ($supabaseUrl) {
+        $lines += "SUPABASE_URL=$supabaseUrl"
+        $lines += "SUPABASE_SERVICE_KEY=$supabaseKey"
+    }
+    Set-Content -Path $configPath -Value ($lines -join "`n")
     Write-Host "Saved to backup-config.env" -ForegroundColor Green
 } else {
     Write-Host "Using existing backup-config.env" -ForegroundColor Cyan
