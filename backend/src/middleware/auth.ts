@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -9,7 +10,33 @@ export interface AuthRequest extends Request {
   };
 }
 
-export const authenticate = (
+async function authenticateWithSupabase(
+  token: string
+): Promise<{ id: string; email: string; role: string } | null> {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return null;
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) return null;
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('role, global_admin')
+    .eq('id', user.id)
+    .single();
+
+  let role = (profile?.role as string) || 'USER';
+  if (profile?.global_admin) role = 'ADMIN';
+  return {
+    id: user.id,
+    email: user.email ?? '',
+    role: role === 'ADMIN' || role === 'DEVELOPER' ? role : 'USER',
+  };
+}
+
+export const authenticate = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
@@ -21,13 +48,24 @@ export const authenticate = (
       return res.status(401).json({ error: 'No token, authorization denied' });
     }
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || 'fallback-secret'
-    ) as { id: string; email: string; role: string };
+    // Try custom JWT first
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || 'fallback-secret'
+      ) as { id: string; email: string; role: string };
+      req.user = decoded;
+      return next();
+    } catch {
+      // Fallback: Supabase JWT (used when frontend uses Supabase Auth)
+      const supabaseUser = await authenticateWithSupabase(token);
+      if (supabaseUser) {
+        req.user = supabaseUser;
+        return next();
+      }
+    }
 
-    req.user = decoded;
-    next();
+    res.status(401).json({ error: 'Token is not valid' });
   } catch (error) {
     res.status(401).json({ error: 'Token is not valid' });
   }

@@ -79,6 +79,9 @@ export default function Profile() {
     enabled: isAdmin === true,
   });
 
+  const [qboConnectLoading, setQboConnectLoading] = useState(false);
+  const [qboConnectError, setQboConnectError] = useState<string | null>(null);
+
   // Handle QBO callback params (?qbo=success or ?qbo=error)
   useEffect(() => {
     const qbo = searchParams.get('qbo');
@@ -611,7 +614,7 @@ export default function Profile() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
             Connect QuickBooks to create invoices from the Invoices page.
           </p>
-          {searchParams.get('qbo') === 'error' && (
+          {(searchParams.get('qbo') === 'error' || qboConnectError) && (
             <div style={{
               padding: '12px 16px',
               borderRadius: '8px',
@@ -620,7 +623,7 @@ export default function Profile() {
               border: '1px solid #ff4757',
               color: '#ff4757',
             }}>
-              {searchParams.get('message') || 'QuickBooks connection failed.'}
+              {qboConnectError || searchParams.get('message') || 'QuickBooks connection failed.'}
             </div>
           )}
           {qboConnected ? (
@@ -657,9 +660,22 @@ export default function Profile() {
           ) : (
             <button
               type="button"
+              disabled={qboConnectLoading}
               onClick={async () => {
-                const url = await quickbooksClientService.getAuthUrl();
-                if (url) window.location.href = url;
+                setQboConnectError(null);
+                setQboConnectLoading(true);
+                try {
+                  const url = await quickbooksClientService.getAuthUrl();
+                  if (url) {
+                    window.location.href = url;
+                  } else {
+                    setQboConnectError('Could not get QuickBooks authorization URL. Ensure the backend is running and configured (VITE_API_URL, QBO_CLIENT_ID, etc.).');
+                  }
+                } catch (err) {
+                  setQboConnectError(err instanceof Error ? err.message : 'Failed to connect to QuickBooks.');
+                } finally {
+                  setQboConnectLoading(false);
+                }
               }}
               style={{
                 padding: '10px 20px',
@@ -669,10 +685,11 @@ export default function Profile() {
                 borderRadius: '6px',
                 fontWeight: '600',
                 fontSize: '14px',
-                cursor: 'pointer',
+                cursor: qboConnectLoading ? 'not-allowed' : 'pointer',
+                opacity: qboConnectLoading ? 0.7 : 1,
               }}
             >
-              Connect QuickBooks
+              {qboConnectLoading ? 'Connecting...' : 'Connect QuickBooks'}
             </button>
           )}
         </div>

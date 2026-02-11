@@ -3,6 +3,8 @@
  * Handles communication with backend QuickBooks API endpoints
  */
 
+import { supabase } from '../lib/supabaseClient';
+
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 interface InvoiceLineItem {
@@ -60,13 +62,13 @@ class QuickBooksClientService {
     const headers = new Headers({
       'Content-Type': 'application/json',
     });
-    
-    // Get auth token from localStorage or session
-    const token = localStorage.getItem('authToken');
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? localStorage.getItem('authToken');
     if (token) {
       headers.append('Authorization', `Bearer ${token}`);
     }
-    
+
     return headers;
   }
 
@@ -93,16 +95,28 @@ class QuickBooksClientService {
       const headers = await this.getAuthHeaders();
       const response = await fetch(`${API_BASE}/api/quickbooks/auth-url`, { headers });
       const data: QBOAuthUrlResponse = await response.json();
-      
+
       if (data.success) {
-        // Store state for verification
         sessionStorage.setItem('qbo_state', data.state);
         return data.authUrl;
       }
+
+      if (response.status === 401) {
+        throw new Error('Please sign in again to connect QuickBooks.');
+      }
+      if (response.status === 403) {
+        throw new Error('Only admins can connect QuickBooks.');
+      }
+      if (response.status >= 400) {
+        throw new Error((data as { error?: string }).error || 'Could not get QuickBooks authorization URL.');
+      }
       return null;
-    } catch (error) {
-      console.error('Error getting auth URL:', error);
-      return null;
+    } catch (err) {
+      if (err instanceof Error && (err.message.includes('sign in') || err.message.includes('admins') || err.message.includes('Could not') || err.message.includes('authorization'))) {
+        throw err;
+      }
+      console.error('Error getting auth URL:', err);
+      throw new Error('Cannot reach the backend. Ensure it is running and VITE_API_URL is correct.');
     }
   }
 
