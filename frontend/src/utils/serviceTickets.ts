@@ -455,32 +455,36 @@ export interface HeaderOverrides {
   date?: string;
 }
 
-/** Apply header_overrides to a ticket for PDF export (user edits take precedence) */
+/** Apply header_overrides to a ticket for PDF export (user edits take precedence).
+ * When header_overrides is null, applies fallbacks from ticket.location and entry-level po_afe. */
 export function applyHeaderOverridesToTicket(
   ticket: ServiceTicket,
   headerOverrides?: HeaderOverrides | null
 ): ServiceTicket {
-  if (!headerOverrides || Object.keys(headerOverrides).length === 0) return ticket;
-  const ov = headerOverrides;
+  const ov = headerOverrides && Object.keys(headerOverrides).length > 0 ? headerOverrides : null;
+  const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
+  const locFallback = (ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
+  const approverFallback = entryPo ?? ticket.projectApproverPoAfe ?? ticket.customerInfo?.approver_name ?? ticket.customerInfo?.po_number ?? '';
+
   return {
     ...ticket,
     customerInfo: {
       ...ticket.customerInfo,
-      name: ov.customer_name ?? ticket.customerInfo.name,
-      contact_name: ov.contact_name ?? ticket.customerInfo.contact_name,
-      address: ov.address ?? ticket.customerInfo.address,
-      city: ov.city_state?.split(',')[0]?.trim() ?? ticket.customerInfo.city,
-      state: ov.city_state?.split(',')[1]?.trim() ?? ticket.customerInfo.state,
-      zip_code: ov.zip_code ?? ticket.customerInfo.zip_code,
-      phone: ov.phone ?? ticket.customerInfo.phone,
-      email: ov.email ?? ticket.customerInfo.email,
-      service_location: ov.service_location ?? ticket.customerInfo.service_location,
-      location_code: ov.location_code ?? ticket.customerInfo.location_code,
-      po_number: ov.po_number ?? ticket.customerInfo.po_number,
-      approver_name: ov.approver_po_afe ?? ticket.customerInfo.approver_name,
+      name: ov?.customer_name ?? ticket.customerInfo.name,
+      contact_name: ov?.contact_name ?? ticket.customerInfo.contact_name,
+      address: ov?.address ?? ticket.customerInfo.address,
+      city: ov?.city_state?.split(',')[0]?.trim() ?? ticket.customerInfo.city,
+      state: ov?.city_state?.split(',')[1]?.trim() ?? ticket.customerInfo.state,
+      zip_code: ov?.zip_code ?? ticket.customerInfo.zip_code,
+      phone: ov?.phone ?? ticket.customerInfo.phone,
+      email: ov?.email ?? ticket.customerInfo.email,
+      service_location: (ov?.service_location ?? ticket.customerInfo.service_location ?? locFallback).trim() || locFallback,
+      location_code: ov?.location_code ?? ticket.customerInfo.location_code,
+      po_number: ov?.po_number ?? ticket.customerInfo.po_number,
+      approver_name: ov?.approver_po_afe ?? ticket.customerInfo.approver_name ?? approverFallback || undefined,
     },
-    projectApproverPoAfe: ov.approver_po_afe ?? ticket.projectApproverPoAfe,
-    projectOther: ov.other ?? ticket.projectOther,
+    projectApproverPoAfe: ov?.approver_po_afe ?? ticket.projectApproverPoAfe ?? entryPo ?? undefined,
+    projectOther: ov?.other ?? ticket.projectOther,
   };
 }
 
