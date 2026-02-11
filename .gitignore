@@ -20,6 +20,7 @@ build/
 
 # Supabase backups (local dumps)
 backups/
+backup-config.env
 
 # IDE
 .vscode/

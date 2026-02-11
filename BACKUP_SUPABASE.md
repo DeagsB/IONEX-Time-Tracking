@@ -2,6 +2,30 @@
 
 Ways to create a backup of your Supabase database for the IONEX Time Tracking project.
 
+---
+
+## Option 0: Scheduled backup (every Saturday at 7:00pm)
+
+To run backups automatically every Saturday at 7:00pm:
+
+1. **Run the setup script once** (from the repo root):
+
+   ```powershell
+   .\schedule-backup.ps1
+   ```
+
+2. On first run, it will prompt for your `SUPABASE_DB_URL` and save it to `backup-config.env` (gitignored).
+
+3. A Windows Task Scheduler task **"IONEX Supabase Backup"** is created. It runs every Saturday at 7:00pm.
+
+4. Backups are written to `backups/backup-YYYY-MM-DD-HHmm/`.
+5. Log output: `backups/backup-schedule.log`.
+
+**Manual run:** `.\backup-scheduled.ps1`  
+**Remove schedule:** `Unregister-ScheduledTask -TaskName "IONEX Supabase Backup"`
+
+---
+
 ## Option 1: Supabase Dashboard (easiest if you’re on Pro or higher)
 
 1. Open your project: **[Supabase Dashboard](https://supabase.com/dashboard)** → select the IONEX project.
