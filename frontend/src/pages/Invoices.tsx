@@ -141,14 +141,16 @@ export default function Invoices() {
 
       if (match) {
         const proj = projects?.find((p: { id: string }) => p.id === (rec.project_id ?? match.projectId));
-        ticketList.push({
+        const rawTicket: ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string } = {
           ...match,
           ticketNumber: rec.ticket_number,
           recordId: rec.id,
           headerOverrides: rec.header_overrides,
           recordProjectId: rec.project_id ?? match.projectId,
           projectApproverPoAfe: proj?.approver_po_afe ?? match.projectApproverPoAfe,
-        });
+        };
+        const ticketWithOverrides = applyHeaderOverridesToTicket(rawTicket, rec.header_overrides ?? undefined);
+        ticketList.push({ ...ticketWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawTicket.recordProjectId });
       } else {
         // Standalone ticket
         const editedHours = (rec.edited_hours as Record<string, number | number[]>) || {};
@@ -177,7 +179,7 @@ export default function Invoices() {
         const userName = `${firstName} ${lastName}`.trim() || 'Unknown';
         const userInitials = firstName && lastName ? `${firstName[0]}${lastName[0]}`.toUpperCase() : 'XX';
         const proj = projects?.find((p: { id: string }) => p.id === rec.project_id);
-        ticketList.push({
+        const rawStandalone: ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string } = {
           id: `${rec.date}-${rec.customer_id}-${rec.user_id}-${ticketLocation}`,
           date: rec.date,
           customerId: rec.customer_id || 'unassigned',
@@ -213,7 +215,9 @@ export default function Invoices() {
           projectNumber: proj?.project_number,
           projectLocation: proj?.location,
           projectApproverPoAfe: proj?.approver_po_afe,
-        });
+        };
+        const standaloneWithOverrides = applyHeaderOverridesToTicket(rawStandalone, rec.header_overrides ?? undefined);
+        ticketList.push({ ...standaloneWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawStandalone.recordProjectId });
       }
     }
 
@@ -298,8 +302,7 @@ export default function Invoices() {
               expenses = [];
             }
           }
-          const ticketForPdf = applyHeaderOverridesToTicket(ticket, t.headerOverrides ?? undefined);
-          const result = await generateAndStorePdf(ticketForPdf, expenses, {
+          const result = await generateAndStorePdf(ticket, expenses, {
             uploadToStorage: false,
             downloadLocally: false,
           });
@@ -414,8 +417,7 @@ export default function Invoices() {
                 expenses = [];
               }
             }
-            const ticketForPdf = applyHeaderOverridesToTicket(ticket, t.headerOverrides ?? undefined);
-            const pdfResult = await generateAndStorePdf(ticketForPdf, expenses, {
+            const pdfResult = await generateAndStorePdf(ticket, expenses, {
               uploadToStorage: false,
               downloadLocally: false,
             });
