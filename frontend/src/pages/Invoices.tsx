@@ -274,6 +274,46 @@ export default function Invoices() {
     return result;
   }, [tickets]);
 
+  const [exportingGroupIdx, setExportingGroupIdx] = useState<number | null>(null);
+
+  const handleExportSingleGroup = async (groupIdx: number) => {
+    const { key, tickets: groupTickets } = groupedTickets[groupIdx];
+    setExportingGroupIdx(groupIdx);
+    setExportError(null);
+    try {
+      const blobs: Blob[] = [];
+      for (const ticket of groupTickets) {
+        const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
+        const recordId = t.recordId;
+        let expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+        if (recordId) {
+          try {
+            expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+          } catch {
+            expenses = [];
+          }
+        }
+        const result = await generateAndStorePdf(ticket, expenses, {
+          uploadToStorage: false,
+          downloadLocally: false,
+        });
+        blobs.push(result.blob);
+      }
+      if (blobs.length > 0) {
+        const merged = await mergePdfBlobs(blobs);
+        const approverLabel = key.approverCode || 'no-approver';
+        const dateStr = new Date().toISOString().split('T')[0];
+        const filename = `Invoices_${approverLabel}_${dateStr}.pdf`;
+        saveAs(merged, filename);
+      }
+    } catch (err) {
+      console.error('Export error:', err);
+      setExportError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExportingGroupIdx(null);
+    }
+  };
+
   const handleExportForInvoicing = async () => {
     setExportError(null);
     const total = groupedTickets.reduce((sum, g) => sum + g.tickets.length, 0);
@@ -639,9 +679,29 @@ export default function Invoices() {
                   border: '1px solid var(--border-color)',
                 }}
               >
-                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
-                  Project: {key.projectId || '(none)'} | Approver: {key.approverCode || '(none)'} | Location:{' '}
-                  {key.location || '(none)'} | CC: {key.cc || '(none)'}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                    Project: {key.projectId || '(none)'} | Approver: {key.approverCode || '(none)'} | Location:{' '}
+                    {key.location || '(none)'} | CC: {key.cc || '(none)'}
+                  </div>
+                  <button
+                    onClick={() => handleExportSingleGroup(idx)}
+                    disabled={!!exportProgress || !!qboProgress || exportingGroupIdx !== null}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: 'var(--primary-color)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: exportProgress || qboProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
+                      flexShrink: 0,
+                    }}
+                    title="Download this group's merged PDF"
+                  >
+                    {exportingGroupIdx === idx ? 'Generating…' : 'Download'}
+                  </button>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {groupTickets.map((t) => (
