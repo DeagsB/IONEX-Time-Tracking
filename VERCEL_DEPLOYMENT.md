@@ -31,6 +31,12 @@ https://github.com/DeagsB/IONEX-Time-Tracking
    - Value: Your Supabase anon/public key (from Supabase Dashboard → Settings → API)
    - Environment: Production, Preview, Development (select all)
    
+   **VITE_API_URL** (required for QuickBooks)
+   - Value: Your backend API URL
+   - Local dev: `http://localhost:3001` (run `npm run dev` from repo root)
+   - Production: Deploy backend to Railway/Render/Fly.io, then use that URL
+   - Environment: Production, Preview, Development (select all)
+   
    > **Note**: Never commit API keys to version control. Get these values from your Supabase project dashboard.
 
 5. **Deploy**:
