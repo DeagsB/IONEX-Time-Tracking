@@ -43,6 +43,11 @@ export const useAuth = () => {
   return context;
 };
 
+/** Invoices page is restricted to Deagan Bespalko only */
+export const INVOICES_ALLOWED_EMAILS = ['deagan.bespalko@ionexsystems.com', 'bespalkodeagan@gmail.com'];
+export const canAccessInvoices = (user: { email?: string } | null) =>
+  !!user?.email && INVOICES_ALLOWED_EMAILS.includes(user.email.toLowerCase());
+
 // Development mode - bypass authentication
 const DEV_MODE = false; // Set to false for production
 const DEV_USER_ID = '235d854a-1b7d-4e00-a5a4-43835c85c086'; // Existing user from database

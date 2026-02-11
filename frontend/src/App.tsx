@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider, useAuth, canAccessInvoices } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TimerProvider } from './context/TimerContext';
 import { DemoModeProvider } from './context/DemoModeContext';
@@ -45,6 +45,35 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" />;
+  }
+
+  return <>{children}</>;
+}
+
+function InvoicesRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '18px',
+        color: 'var(--text-primary)'
+      }}>
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  if (!canAccessInvoices(user)) {
+    return <Navigate to="/calendar" />;
   }
 
   return <>{children}</>;
@@ -121,9 +150,9 @@ function AppRoutes() {
         <Route
           path="invoices"
           element={
-            <AdminRoute>
+            <InvoicesRoute>
               <Invoices />
-            </AdminRoute>
+            </InvoicesRoute>
           }
         />
         <Route
