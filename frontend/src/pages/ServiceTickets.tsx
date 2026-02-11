@@ -79,6 +79,7 @@ export default function ServiceTickets() {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [currentTicketRecordId, setCurrentTicketRecordId] = useState<string | null>(null);
   
   // Expense management state
@@ -333,6 +334,7 @@ export default function ServiceTickets() {
     setShowCloseConfirm(false);
     setSelectedTicket(null);
     setEditableTicket(null);
+    setSubmitError(null);
     setServiceRows([]);
     setEditedDescriptions({});
     setEditedHours({});
@@ -3953,42 +3955,52 @@ export default function ServiceTickets() {
                   }
                   
                   return (
-                    <button
-                      className={isTicketApproved ? "button button-secondary" : "button button-primary"}
-                      onClick={async () => {
-                        setIsApproving(true);
-                        try {
-                          // Get or create the ticket record
-                          const ticketRecord = await serviceTicketsService.getOrCreateTicket({
-                            date: selectedTicket.date,
-                            userId: selectedTicket.userId,
-                            customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
-                            location: selectedTicket.location || '',
-                          }, isDemoMode);
-                          
-                          // Toggle workflow status
-                          const newStatus = isTicketApproved ? 'draft' : 'approved';
-                          await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
-                          
-                          await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                          await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
-                          await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
-                          await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
-                        } catch (error) {
-                          console.error('Error updating ticket status:', error);
-                        } finally {
-                          setIsApproving(false);
-                        }
-                      }}
-                      style={{
-                        padding: '10px 24px',
-                        backgroundColor: isTicketApproved ? '#10b981' : undefined,
-                        borderColor: isTicketApproved ? '#10b981' : undefined,
-                      }}
-                      disabled={isApproving}
-                    >
-                      {isApproving ? 'Submitting...' : (isTicketApproved ? '✓ Submitted' : 'Submit for Approval')}
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+                      {submitError && (
+                        <div style={{ color: '#ef5350', fontSize: '14px', maxWidth: '100%' }}>
+                          {submitError}
+                        </div>
+                      )}
+                      <button
+                        className={isTicketApproved ? "button button-secondary" : "button button-primary"}
+                        onClick={async () => {
+                          setSubmitError(null);
+                          setIsApproving(true);
+                          try {
+                            // Get or create the ticket record
+                            const ticketRecord = await serviceTicketsService.getOrCreateTicket({
+                              date: selectedTicket.date,
+                              userId: selectedTicket.userId,
+                              customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                              location: selectedTicket.location || '',
+                            }, isDemoMode);
+                            
+                            // Toggle workflow status
+                            const newStatus = isTicketApproved ? 'draft' : 'approved';
+                            await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
+                            
+                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                            await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                            await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+                          } catch (error) {
+                            console.error('Error updating ticket status:', error);
+                            const msg = error instanceof Error ? error.message : 'Failed to submit for approval.';
+                            setSubmitError(msg);
+                          } finally {
+                            setIsApproving(false);
+                          }
+                        }}
+                        style={{
+                          padding: '10px 24px',
+                          backgroundColor: isTicketApproved ? '#10b981' : undefined,
+                          borderColor: isTicketApproved ? '#10b981' : undefined,
+                        }}
+                        disabled={isApproving}
+                      >
+                        {isApproving ? 'Submitting...' : (isTicketApproved ? '✓ Submitted' : 'Submit for Approval')}
+                      </button>
+                    </div>
                   );
                 })()}
                 </div>

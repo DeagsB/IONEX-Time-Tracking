@@ -1107,6 +1107,9 @@ export const serviceTicketsService = {
     if (userData?.first_name && userData?.last_name) {
       employeeInitials = `${userData.first_name[0]}${userData.last_name[0]}`.toUpperCase();
     }
+    if (!employeeInitials) {
+      employeeInitials = 'XX'; // fallback when user has no first/last name; DB requires NOT NULL
+    }
     
     // Create a new ticket record (without a ticket number - that's assigned on approval/export)
     const { data: newTicket, error: createError } = await supabase
