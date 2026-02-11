@@ -307,15 +307,9 @@ export default function Invoices() {
 
         if (blobs.length > 0) {
           const merged = await mergePdfBlobs(blobs);
-          const label = [
-            key.projectId ? `project-${key.projectId.slice(0, 8)}` : 'unknown',
-            key.approverCode || 'no-approver',
-            key.location || 'no-location',
-            key.cc || 'no-cc',
-          ]
-            .filter(Boolean)
-            .join('_');
-          const filename = `Invoices_${label}_${new Date().toISOString().split('T')[0]}.pdf`;
+          const approverLabel = key.approverCode || 'no-approver';
+          const dateStr = new Date().toISOString().split('T')[0];
+          const filename = `Invoices_${approverLabel}_${dateStr}.pdf`;
           saveAs(merged, filename);
         }
       }
