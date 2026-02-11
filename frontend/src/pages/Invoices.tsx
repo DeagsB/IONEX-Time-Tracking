@@ -14,6 +14,7 @@ import {
   ServiceTicket,
   getInvoiceGroupKey,
   getApproverPoAfeFromTicket,
+  applyHeaderOverridesToTicket,
   InvoiceGroupKey,
   extractPoValue,
   extractCcValue,
@@ -287,7 +288,8 @@ export default function Invoices() {
 
         const blobs: Blob[] = [];
         for (const ticket of groupTickets) {
-          const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
+          const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
+          const recordId = t.recordId;
           let expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
           if (recordId) {
             try {
@@ -296,7 +298,8 @@ export default function Invoices() {
               expenses = [];
             }
           }
-          const result = await generateAndStorePdf(ticket, expenses, {
+          const ticketForPdf = applyHeaderOverridesToTicket(ticket, t.headerOverrides ?? undefined);
+          const result = await generateAndStorePdf(ticketForPdf, expenses, {
             uploadToStorage: false,
             downloadLocally: false,
           });
@@ -401,7 +404,8 @@ export default function Invoices() {
           // Attach merged PDF to invoice
           const blobs: Blob[] = [];
           for (const ticket of groupTickets) {
-            const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
+            const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
+            const recordId = t.recordId;
             let expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
             if (recordId) {
               try {
@@ -410,7 +414,8 @@ export default function Invoices() {
                 expenses = [];
               }
             }
-            const pdfResult = await generateAndStorePdf(ticket, expenses, {
+            const ticketForPdf = applyHeaderOverridesToTicket(ticket, t.headerOverrides ?? undefined);
+            const pdfResult = await generateAndStorePdf(ticketForPdf, expenses, {
               uploadToStorage: false,
               downloadLocally: false,
             });

@@ -436,6 +436,54 @@ export interface InvoiceGroupKey {
   cc: string;
 }
 
+/** Header overrides from service_tickets.header_overrides (user edits saved on the ticket) */
+export interface HeaderOverrides {
+  service_location?: string;
+  approver_po_afe?: string;
+  other?: string;
+  customer_name?: string;
+  address?: string;
+  city_state?: string;
+  zip_code?: string;
+  phone?: string;
+  email?: string;
+  contact_name?: string;
+  location_code?: string;
+  po_number?: string;
+  tech_name?: string;
+  project_number?: string;
+  date?: string;
+}
+
+/** Apply header_overrides to a ticket for PDF export (user edits take precedence) */
+export function applyHeaderOverridesToTicket(
+  ticket: ServiceTicket,
+  headerOverrides?: HeaderOverrides | null
+): ServiceTicket {
+  if (!headerOverrides || Object.keys(headerOverrides).length === 0) return ticket;
+  const ov = headerOverrides;
+  return {
+    ...ticket,
+    customerInfo: {
+      ...ticket.customerInfo,
+      name: ov.customer_name ?? ticket.customerInfo.name,
+      contact_name: ov.contact_name ?? ticket.customerInfo.contact_name,
+      address: ov.address ?? ticket.customerInfo.address,
+      city: ov.city_state?.split(',')[0]?.trim() ?? ticket.customerInfo.city,
+      state: ov.city_state?.split(',')[1]?.trim() ?? ticket.customerInfo.state,
+      zip_code: ov.zip_code ?? ticket.customerInfo.zip_code,
+      phone: ov.phone ?? ticket.customerInfo.phone,
+      email: ov.email ?? ticket.customerInfo.email,
+      service_location: ov.service_location ?? ticket.customerInfo.service_location,
+      location_code: ov.location_code ?? ticket.customerInfo.location_code,
+      po_number: ov.po_number ?? ticket.customerInfo.po_number,
+      approver_name: ov.approver_po_afe ?? ticket.customerInfo.approver_name,
+    },
+    projectApproverPoAfe: ov.approver_po_afe ?? ticket.projectApproverPoAfe,
+    projectOther: ov.other ?? ticket.projectOther,
+  };
+}
+
 /** Get approver/PO/AFE string from a ticket (header overrides > project > entry-level) */
 export function getApproverPoAfeFromTicket(
   ticket: { projectApproverPoAfe?: string; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
