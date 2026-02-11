@@ -976,6 +976,8 @@ export default function ServiceTickets() {
       const standaloneTickets = existingTickets.filter(et => {
         // Skip records without a customer_id — these can't be standalone
         if (!et.customer_id) return false;
+        // Skip discarded records — they should not appear in the main list
+        if ((et as any).is_discarded) return false;
         // Check if any base ticket already matches this record (including location)
         return !baseTickets.some(
           bt => bt.date === et.date && bt.userId === et.user_id &&
@@ -3732,8 +3734,8 @@ export default function ServiceTickets() {
                               .update({ is_discarded: !isCurrentlyDiscarded })
                               .eq('id', currentTicketRecordId);
                             if (error) throw error;
-                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             closePanel();
                           } catch (err) {
                             console.error(`Error ${action}ing ticket:`, err);
