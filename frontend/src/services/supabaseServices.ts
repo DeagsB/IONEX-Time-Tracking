@@ -1323,6 +1323,27 @@ export const serviceTicketsService = {
   },
 
   /**
+   * Get approved service tickets ready for PDF export (invoicing).
+   * Criteria: workflow_status='approved', ticket_number not null, is_discarded=false.
+   */
+  async getTicketsReadyForExport(isDemo: boolean = false) {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, header_overrides')
+      .eq('workflow_status', 'approved')
+      .eq('is_discarded', false)
+      .not('ticket_number', 'is', null)
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('Error getting tickets ready for export:', error);
+      throw error;
+    }
+    return data || [];
+  },
+
+  /**
    * Get all service tickets with workflow data
    */
   async getAllTickets(filters?: { 

@@ -1,4 +1,5 @@
 import html2pdf from 'html2pdf.js';
+import { PDFDocument } from 'pdf-lib';
 import { ServiceTicket } from './serviceTickets';
 import { supabase } from '../lib/supabaseClient';
 
@@ -50,9 +51,13 @@ export async function downloadPdfFromHtml(
   const shopOtRate = ticket.rates.shop_ot;
   const fieldOtRate = ticket.rates.field_ot;
 
-  // Calculate OT amounts separately
-  const shopOtHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(e.hours) : 0), 0);
-  const fieldOtHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(e.hours) : 0), 0);
+  // Calculate OT amounts separately (for standalone tickets use hoursByRateType)
+  const shopOtHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(e.hours) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Shop Overtime'] || 0);
+  const fieldOtHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(e.hours) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Field Overtime'] || 0);
   const shopOtAmount = shopOtHours * shopOtRate;
   const fieldOtAmount = fieldOtHours * fieldOtRate;
 
@@ -427,9 +432,16 @@ export async function generateAndStorePdf(
   } = { uploadToStorage: false, downloadLocally: true }
 ): Promise<PdfExportResult> {
   // Calculate totals using mapped rate types (each entry rounded to nearest 0.5)
-  const rtHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? roundToHalfHour(e.hours) : 0), 0);
-  const ttHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? roundToHalfHour(e.hours) : 0), 0);
-  const ftHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? roundToHalfHour(e.hours) : 0), 0);
+  // For standalone tickets with no entries, use hoursByRateType
+  const rtHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? roundToHalfHour(e.hours) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Shop Time'] || 0);
+  const ttHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? roundToHalfHour(e.hours) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Travel Time'] || 0);
+  const ftHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? roundToHalfHour(e.hours) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Field Time'] || 0);
 
   // Use employee-specific rates from ticket
   const rtRate = ticket.rates.rt;
@@ -438,9 +450,13 @@ export async function generateAndStorePdf(
   const shopOtRate = ticket.rates.shop_ot;
   const fieldOtRate = ticket.rates.field_ot;
 
-  // Calculate OT amounts separately
-  const shopOtHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(e.hours) : 0), 0);
-  const fieldOtHours = ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(e.hours) : 0), 0);
+  // Calculate OT amounts separately (for standalone tickets use hoursByRateType)
+  const shopOtHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(e.hours) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Shop Overtime'] || 0);
+  const fieldOtHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(e.hours) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Field Overtime'] || 0);
   const shopOtAmount = shopOtHours * shopOtRate;
   const fieldOtAmount = fieldOtHours * fieldOtRate;
 
@@ -458,20 +474,33 @@ export async function generateAndStorePdf(
   };
 
   // Group entries by description (notes only; no date in PDF service description)
+  // For standalone tickets with no entries, build from hoursByRateType
   const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
-  ticket.entries.forEach(entry => {
-    const desc = entry.description || 'Work performed';
-    const rateCode = getRateCode(entry.rate_type);
-    const roundedHours = roundToHalfHour(entry.hours);
-    descriptionLines.push({
-      text: desc,
-      st: rateCode === 'RT' ? roundedHours : 0,
-      tt: rateCode === 'TT' ? roundedHours : 0,
-      ft: rateCode === 'FT' ? roundedHours : 0,
-      so: entry.rate_type === 'Shop Overtime' ? roundedHours : 0,
-      fo: entry.rate_type === 'Field Overtime' ? roundedHours : 0,
+  if (ticket.entries.length > 0) {
+    ticket.entries.forEach(entry => {
+      const desc = entry.description || 'Work performed';
+      const rateCode = getRateCode(entry.rate_type);
+      const roundedHours = roundToHalfHour(entry.hours);
+      descriptionLines.push({
+        text: desc,
+        st: rateCode === 'RT' ? roundedHours : 0,
+        tt: rateCode === 'TT' ? roundedHours : 0,
+        ft: rateCode === 'FT' ? roundedHours : 0,
+        so: entry.rate_type === 'Shop Overtime' ? roundedHours : 0,
+        fo: entry.rate_type === 'Field Overtime' ? roundedHours : 0,
+      });
     });
-  });
+  } else {
+    // Standalone ticket: build one row from hoursByRateType
+    const st = roundToHalfHour(ticket.hoursByRateType['Shop Time'] || 0);
+    const tt = roundToHalfHour(ticket.hoursByRateType['Travel Time'] || 0);
+    const ft = roundToHalfHour(ticket.hoursByRateType['Field Time'] || 0);
+    const so = roundToHalfHour(ticket.hoursByRateType['Shop Overtime'] || 0);
+    const fo = roundToHalfHour(ticket.hoursByRateType['Field Overtime'] || 0);
+    if (st + tt + ft + so + fo > 0) {
+      descriptionLines.push({ text: 'Work performed', st, tt, ft, so, fo });
+    }
+  }
 
   // Pad to 10 rows minimum
   while (descriptionLines.length < 10) {
@@ -562,6 +591,22 @@ export async function generateAndStorePdf(
   } finally {
     document.body.removeChild(container);
   }
+}
+
+/**
+ * Merge multiple PDF blobs into a single PDF.
+ * Uses pdf-lib to copy pages from each source into a new document.
+ */
+export async function mergePdfBlobs(blobs: Blob[]): Promise<Blob> {
+  const mergedPdf = await PDFDocument.create();
+  for (const blob of blobs) {
+    const bytes = await blob.arrayBuffer();
+    const pdf = await PDFDocument.load(bytes);
+    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+    copiedPages.forEach((p) => mergedPdf.addPage(p));
+  }
+  const mergedBytes = await mergedPdf.save();
+  return new Blob([mergedBytes as BlobPart], { type: 'application/pdf' });
 }
 
 /**

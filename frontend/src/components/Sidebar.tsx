@@ -181,6 +181,9 @@ export default function Sidebar() {
             <SidebarLink to="/customers" active={isActive('/customers')}>
               Clients
             </SidebarLink>
+            <SidebarLink to="/invoices" active={isActive('/invoices')}>
+              Invoices
+            </SidebarLink>
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

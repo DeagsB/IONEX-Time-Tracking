@@ -15,6 +15,7 @@ import Employees from './pages/Employees';
 import Payroll from './pages/Payroll';
 import Profile from './pages/Profile';
 import ServiceTickets from './pages/ServiceTickets';
+import Invoices from './pages/Invoices';
 import EmployeeReports from './pages/EmployeeReports';
 import UserArchive from './pages/UserArchive';
 import UserManagement from './pages/UserManagement';
@@ -117,6 +118,14 @@ function AppRoutes() {
           }
         />
         <Route path="service-tickets" element={<ServiceTickets />} />
+        <Route
+          path="invoices"
+          element={
+            <AdminRoute>
+              <Invoices />
+            </AdminRoute>
+          }
+        />
         <Route
           path="employee-reports"
           element={

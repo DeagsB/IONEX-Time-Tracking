@@ -358,3 +358,40 @@ export function getRateTypeSortOrder(rateType: string): number {
   return order[rateType] || 99;
 }
 
+/** Extract approver code (G###) from approver_po_afe string */
+export function extractApproverCode(approverPoAfe: string | undefined): string {
+  if (!approverPoAfe) return '';
+  const m = approverPoAfe.match(/G\d{3,}/i);
+  return m ? m[0].toUpperCase() : (approverPoAfe.trim() || '');
+}
+
+/** Extract CC value from approver_po_afe string (e.g. "CC: 123" or "CC 123") */
+export function extractCcValue(approverPoAfe: string | undefined): string {
+  if (!approverPoAfe) return '';
+  const m = approverPoAfe.match(/CC\s*[:\-]?\s*([^\s,;]+)/i);
+  return m ? m[1].trim() : '';
+}
+
+/** Grouping keys for invoice export: project, approver, location, CC */
+export interface InvoiceGroupKey {
+  projectId: string;
+  approverCode: string;
+  location: string;
+  cc: string;
+}
+
+/** Get grouping key for a ticket (for merged PDF export) */
+export function getInvoiceGroupKey(
+  ticket: { projectId?: string; location?: string; projectApproverPoAfe?: string; projectLocation?: string; customerInfo?: { service_location?: string } },
+  headerOverrides?: { approver_po_afe?: string; service_location?: string } | null
+): InvoiceGroupKey {
+  const approverPoAfe = headerOverrides?.approver_po_afe ?? ticket.projectApproverPoAfe ?? '';
+  const location = (headerOverrides?.service_location ?? ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
+  return {
+    projectId: ticket.projectId ?? '',
+    approverCode: extractApproverCode(approverPoAfe),
+    location,
+    cc: extractCcValue(approverPoAfe),
+  };
+}
+
