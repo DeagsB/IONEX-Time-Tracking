@@ -144,6 +144,46 @@ router.post('/invoice', authenticate, authorize(['ADMIN']), async (req: Request,
 });
 
 /**
+ * POST /api/quickbooks/invoice/from-group
+ * Create an invoice from grouped service tickets (CNRL format)
+ * Body: { customerName, customerEmail?, customerPo?, reference?, ccLineItems: [{ cc, tickets, totalAmount }], date, docNumber? }
+ */
+router.post('/invoice/from-group', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
+  try {
+    const { customerName, customerEmail, customerPo, reference, ccLineItems, date, docNumber } = req.body;
+
+    if (!customerName || !ccLineItems || !Array.isArray(ccLineItems) || !date) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: customerName, ccLineItems (array), date',
+      });
+    }
+
+    const result = await quickbooksService.createInvoiceFromGroup({
+      customerName,
+      customerEmail,
+      customerPo,
+      reference,
+      ccLineItems,
+      date,
+      docNumber,
+    });
+
+    res.json({
+      success: true,
+      invoiceId: result.invoiceId,
+      invoiceNumber: result.invoiceNumber,
+    });
+  } catch (error: any) {
+    console.error('Error creating invoice from group:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * POST /api/quickbooks/invoice/:invoiceId/attach
  * Attach a PDF to an invoice
  */

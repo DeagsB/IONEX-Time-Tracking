@@ -22,6 +22,22 @@ interface CreateInvoiceParams {
   memo?: string;
 }
 
+export interface CcLineItem {
+  cc: string;
+  tickets: string[];
+  totalAmount: number;
+}
+
+export interface CreateInvoiceFromGroupParams {
+  customerName: string;
+  customerEmail?: string;
+  customerPo?: string;
+  reference?: string;
+  ccLineItems: CcLineItem[];
+  date: string;
+  docNumber?: string;
+}
+
 interface QBOStatusResponse {
   success: boolean;
   connected: boolean;
@@ -132,6 +148,33 @@ class QuickBooksClientService {
     } catch (error) {
       console.error('Error creating invoice:', error);
       return null;
+    }
+  }
+
+  /**
+   * Create an invoice from grouped service tickets (CNRL format)
+   */
+  async createInvoiceFromGroup(params: CreateInvoiceFromGroupParams): Promise<QBOInvoiceResponse | null> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const response = await fetch(`${API_BASE}/api/quickbooks/invoice/from-group`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(params),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        return {
+          success: true,
+          invoiceId: data.invoiceId,
+          invoiceNumber: data.invoiceNumber,
+        };
+      }
+      throw new Error(data.error || 'Failed to create invoice');
+    } catch (error) {
+      console.error('Error creating invoice from group:', error);
+      throw error;
     }
   }
 

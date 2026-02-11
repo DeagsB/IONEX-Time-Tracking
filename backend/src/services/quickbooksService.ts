@@ -11,6 +11,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // QuickBooks OAuth2 configuration
+// Optional: QBO_CUSTOM_FIELD_CUSTOMER_PO and QBO_CUSTOM_FIELD_REFERENCE = DefinitionId for invoice custom fields (Customer PO#, Reference)
 const QBO_CLIENT_ID = process.env.QBO_CLIENT_ID || '';
 const QBO_CLIENT_SECRET = process.env.QBO_CLIENT_SECRET || '';
 const QBO_REDIRECT_URI = process.env.QBO_REDIRECT_URI || '';
@@ -45,6 +46,23 @@ interface CreateInvoiceParams {
   date: string;
   dueDate?: string;
   memo?: string;
+}
+
+/** Line item for CC-based invoice (one per CC) */
+interface CcLineItem {
+  cc: string;
+  tickets: string[];
+  totalAmount: number;
+}
+
+interface CreateInvoiceFromGroupParams {
+  customerName: string;
+  customerEmail?: string;
+  customerPo?: string;
+  reference?: string;
+  ccLineItems: CcLineItem[];
+  date: string;
+  docNumber?: string;
 }
 
 class QuickBooksService {
@@ -268,6 +286,100 @@ class QuickBooksService {
 
     const createResult = await this.makeApiRequest('POST', '/customer', customerData);
     return createResult.Customer.Id;
+  }
+
+  /**
+   * Find Item by name (e.g. "Automation:Labour")
+   */
+  private async findItemByName(name: string): Promise<string | null> {
+    const escaped = name.replace(/'/g, "\\'");
+    const query = `SELECT * FROM Item WHERE Name = '${escaped}'`;
+    const result = await this.makeApiRequest('GET', `/query?query=${encodeURIComponent(query)}`);
+    const items = result.QueryResponse?.Item;
+    if (items && items.length > 0) {
+      return items[0].Id;
+    }
+    return null;
+  }
+
+  /**
+   * Find TaxCode by name (e.g. "GST")
+   */
+  private async findTaxCodeByName(name: string): Promise<string | null> {
+    const escaped = name.replace(/'/g, "\\'");
+    const query = `SELECT * FROM TaxCode WHERE Name = '${escaped}'`;
+    const result = await this.makeApiRequest('GET', `/query?query=${encodeURIComponent(query)}`);
+    const codes = result.QueryResponse?.TaxCode;
+    if (codes && codes.length > 0) {
+      return codes[0].Id;
+    }
+    return null;
+  }
+
+  /**
+   * Create an invoice from grouped service tickets (CNRL format)
+   * - Customer PO# custom field = PO value
+   * - Reference custom field = approver code (G###)
+   * - Line items: one per CC, "Automation:Labour", Description "CC: X Tickets: A, B, C", Qty 1, Rate = total, GST
+   */
+  async createInvoiceFromGroup(params: CreateInvoiceFromGroupParams): Promise<{ invoiceId: string; invoiceNumber: string }> {
+    const customerId = await this.findOrCreateCustomer(params.customerName, params.customerEmail);
+    const itemId = await this.findItemByName('Automation:Labour');
+    const gstTaxCodeId = await this.findTaxCodeByName('GST');
+
+    if (!itemId) {
+      throw new Error('Item "Automation:Labour" not found in QuickBooks. Please create it first.');
+    }
+
+    const minorVersion = 75; // For custom fields support
+    const lineItems = params.ccLineItems.map((item, index) => {
+      const description = item.cc
+        ? `CC: ${item.cc} Tickets: ${item.tickets.join(', ')}`
+        : `Tickets: ${item.tickets.join(', ')}`;
+      const line: Record<string, unknown> = {
+        Id: String(index + 1),
+        LineNum: index + 1,
+        Description: description,
+        Amount: item.totalAmount,
+        DetailType: 'SalesItemLineDetail',
+        SalesItemLineDetail: {
+          ItemRef: { value: itemId },
+          Qty: 1,
+          UnitPrice: item.totalAmount,
+        },
+      };
+      if (gstTaxCodeId) {
+        (line.SalesItemLineDetail as Record<string, unknown>).TaxCodeRef = { value: gstTaxCodeId };
+      }
+      return line;
+    });
+
+    const invoiceData: Record<string, unknown> = {
+      CustomerRef: { value: customerId },
+      Line: lineItems,
+      TxnDate: params.date,
+      DocNumber: params.docNumber || undefined,
+    };
+
+    const customFields: Array<{ DefinitionId: string; StringValue: string }> = [];
+    const customerPoDefId = process.env.QBO_CUSTOM_FIELD_CUSTOMER_PO;
+    const referenceDefId = process.env.QBO_CUSTOM_FIELD_REFERENCE;
+    if (customerPoDefId && params.customerPo) {
+      customFields.push({ DefinitionId: customerPoDefId, StringValue: params.customerPo });
+    }
+    if (referenceDefId && params.reference) {
+      customFields.push({ DefinitionId: referenceDefId, StringValue: params.reference });
+    }
+    if (customFields.length > 0) {
+      invoiceData.CustomField = customFields;
+    }
+
+    const result = await this.makeApiRequest('POST', `/invoice?minorversion=${minorVersion}`, invoiceData);
+
+    return {
+      invoiceId: result.Invoice.Id,
+      invoiceNumber: result.Invoice.DocNumber,
+    };
   }
 
   /**

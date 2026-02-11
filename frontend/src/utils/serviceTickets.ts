@@ -372,6 +372,62 @@ export function extractCcValue(approverPoAfe: string | undefined): string {
   return m ? m[1].trim() : '';
 }
 
+/** Extract PO value from approver_po_afe string (e.g. "PO: FC250374-9084" or "FC250374-9084") */
+export function extractPoValue(approverPoAfe: string | undefined): string {
+  if (!approverPoAfe) return '';
+  const poMatch = approverPoAfe.match(/PO\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
+  if (poMatch) return poMatch[1].trim();
+  // Fallback: look for pattern like FC250374-9084 (letters + digits + hyphen)
+  const inlineMatch = approverPoAfe.match(/([A-Z]{2,}\d{4,}-\d{4,})/i);
+  return inlineMatch ? inlineMatch[1].trim() : '';
+}
+
+/** Round hours to nearest 0.5 (round up) */
+function roundToHalfHour(hours: number): number {
+  return Math.ceil(hours * 2) / 2;
+}
+
+/** Calculate total billable amount for a service ticket (matches PDF total) */
+export function calculateTicketTotalAmount(
+  ticket: Pick<ServiceTicket, 'entries' | 'hoursByRateType' | 'rates'>,
+  expenses: Array<{ quantity: number; rate: number }> = []
+): number {
+  const rtHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? roundToHalfHour(e.hours || 0) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Shop Time'] || 0);
+  const ttHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? roundToHalfHour(e.hours || 0) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Travel Time'] || 0);
+  const ftHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? roundToHalfHour(e.hours || 0) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Field Time'] || 0);
+  const shopOtHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(e.hours || 0) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Shop Overtime'] || 0);
+  const fieldOtHours = ticket.entries.length > 0
+    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(e.hours || 0) : 0), 0)
+    : roundToHalfHour(ticket.hoursByRateType['Field Overtime'] || 0);
+
+  const rtAmount = rtHours * (ticket.rates.rt || 0);
+  const ttAmount = ttHours * (ticket.rates.tt || 0);
+  const ftAmount = ftHours * (ticket.rates.ft || 0);
+  const shopOtAmount = shopOtHours * (ticket.rates.shop_ot || 0);
+  const fieldOtAmount = fieldOtHours * (ticket.rates.field_ot || 0);
+  const expensesTotal = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
+  return rtAmount + ttAmount + ftAmount + shopOtAmount + fieldOtAmount + expensesTotal;
+}
+
+function getRateCode(rateType?: string): 'RT' | 'TT' | 'FT' | 'OT' {
+  const map: Record<string, 'RT' | 'TT' | 'FT' | 'OT'> = {
+    'Shop Time': 'RT',
+    'Travel Time': 'TT',
+    'Field Time': 'FT',
+    'Shop Overtime': 'OT',
+    'Field Overtime': 'OT',
+  };
+  return map[rateType || ''] || 'RT';
+}
+
 /** Grouping keys for invoice export: project, approver, location, CC */
 export interface InvoiceGroupKey {
   projectId: string;

@@ -14,9 +14,13 @@ import {
   ServiceTicket,
   getInvoiceGroupKey,
   InvoiceGroupKey,
+  extractPoValue,
+  extractCcValue,
+  calculateTicketTotalAmount,
 } from '../utils/serviceTickets';
 import { generateAndStorePdf, mergePdfBlobs } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
+import { quickbooksClientService } from '../services/quickbooksService';
 
 type ApprovedRecord = {
   id: string;
@@ -44,6 +48,15 @@ export default function Invoices() {
 
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number; label: string } | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [qboProgress, setQboProgress] = useState<{ current: number; total: number; label: string } | null>(null);
+  const [qboError, setQboError] = useState<string | null>(null);
+  const [qboCreatedIds, setQboCreatedIds] = useState<string[]>([]);
+
+  const { data: qboConnected } = useQuery({
+    queryKey: ['qboStatus'],
+    queryFn: () => quickbooksClientService.checkStatus(),
+    enabled: isAdmin,
+  });
 
   // Fetch approved tickets ready for export
   const { data: approvedRecords, isLoading: loadingApproved } = useQuery({
@@ -296,6 +309,124 @@ export default function Invoices() {
     }
   };
 
+  const handleCreateInQuickBooks = async () => {
+    setQboError(null);
+    setQboCreatedIds([]);
+    const total = groupedTickets.length;
+    setQboProgress({ current: 0, total, label: 'Connecting to QuickBooks...' });
+
+    try {
+      for (let i = 0; i < groupedTickets.length; i++) {
+        const { key, tickets: groupTickets } = groupedTickets[i];
+        setQboProgress({
+          current: i,
+          total,
+          label: `Creating invoice ${i + 1}/${total} in QuickBooks...`,
+        });
+
+        // Sub-group by CC (each CC = one line item)
+        const ccMap = new Map<string, ServiceTicket[]>();
+        for (const ticket of groupTickets) {
+          const t = ticket as ServiceTicket & { headerOverrides?: { approver_po_afe?: string } };
+          const approverPoAfe = t.headerOverrides?.approver_po_afe ?? t.projectApproverPoAfe ?? '';
+          const cc = extractCcValue(approverPoAfe) || '(no CC)';
+          const list = ccMap.get(cc) ?? [];
+          list.push(ticket);
+          ccMap.set(cc, list);
+        }
+
+        const ccLineItems: Array<{ cc: string; tickets: string[]; totalAmount: number }> = [];
+        for (const [cc, ccTickets] of ccMap) {
+          let totalAmount = 0;
+          const ticketNumbers: string[] = [];
+          for (const ticket of ccTickets) {
+            const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
+            let expenses: Array<{ quantity: number; rate: number }> = [];
+            if (recordId) {
+              try {
+                const exp = await serviceTicketExpensesService.getByTicketId(recordId);
+                expenses = exp.map((e) => ({ quantity: e.quantity, rate: e.rate }));
+              } catch {
+                // ignore
+              }
+            }
+            totalAmount += calculateTicketTotalAmount(ticket, expenses);
+            if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
+          }
+          ccLineItems.push({
+            cc: cc === '(no CC)' ? '' : cc,
+            tickets: ticketNumbers,
+            totalAmount: Math.round(totalAmount * 100) / 100,
+          });
+        }
+
+        const firstTicket = groupTickets[0];
+        const approverPoAfe =
+          (firstTicket as ServiceTicket & { headerOverrides?: { approver_po_afe?: string } }).headerOverrides
+            ?.approver_po_afe ?? firstTicket.projectApproverPoAfe ?? '';
+        const customerPo = extractPoValue(approverPoAfe);
+        const reference = key.approverCode;
+        const date = firstTicket.date || new Date().toISOString().split('T')[0];
+        const docNumber = key.approverCode
+          ? `INV-${key.approverCode}-${date.replace(/-/g, '')}`
+          : undefined;
+
+        const result = await quickbooksClientService.createInvoiceFromGroup({
+          customerName: firstTicket.customerName,
+          customerEmail: firstTicket.customerInfo?.email,
+          customerPo: customerPo || undefined,
+          reference: reference || undefined,
+          ccLineItems,
+          date,
+          docNumber,
+        });
+
+        if (result?.invoiceId) {
+          setQboCreatedIds((prev) => [...prev, result.invoiceNumber]);
+
+          // Attach merged PDF to invoice
+          const blobs: Blob[] = [];
+          for (const ticket of groupTickets) {
+            const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
+            let expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+            if (recordId) {
+              try {
+                expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+              } catch {
+                expenses = [];
+              }
+            }
+            const pdfResult = await generateAndStorePdf(ticket, expenses, {
+              uploadToStorage: false,
+              downloadLocally: false,
+            });
+            blobs.push(pdfResult.blob);
+          }
+          if (blobs.length > 0) {
+            const merged = await mergePdfBlobs(blobs);
+            const filename = `ServiceTickets_${key.approverCode || 'group'}_${date}.pdf`;
+            const base64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result as string;
+                resolve(result.split(',')[1] || '');
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(merged);
+            });
+            await quickbooksClientService.attachPdfToInvoice(result.invoiceId, base64, filename);
+          }
+        }
+      }
+
+      setQboProgress(null);
+    } catch (err) {
+      console.error('QBO create error:', err);
+      setQboError(err instanceof Error ? err.message : 'Failed to create invoices in QuickBooks');
+      setQboProgress(null);
+    }
+  };
+
   if (!isAdmin || !user) {
     return (
       <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>
@@ -365,16 +496,77 @@ export default function Invoices() {
         </div>
       )}
 
+      {qboProgress && (
+        <div
+          style={{
+            marginBottom: '24px',
+            padding: '16px',
+            backgroundColor: 'var(--bg-tertiary)',
+            borderRadius: '8px',
+            border: '1px solid var(--border-color)',
+          }}
+        >
+          <div style={{ marginBottom: '8px', fontSize: '14px' }}>{qboProgress.label}</div>
+          <div
+            style={{
+              height: '8px',
+              backgroundColor: 'var(--border-color)',
+              borderRadius: '4px',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${qboProgress.total > 0 ? (qboProgress.current / qboProgress.total) * 100 : 0}%`,
+                backgroundColor: 'var(--primary-color)',
+                transition: 'width 0.2s ease',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {qboError && (
+        <div
+          style={{
+            marginBottom: '24px',
+            padding: '12px',
+            backgroundColor: 'rgba(239, 83, 80, 0.1)',
+            border: '1px solid #ef5350',
+            borderRadius: '8px',
+            color: '#ef5350',
+          }}
+        >
+          {qboError}
+        </div>
+      )}
+
+      {qboCreatedIds.length > 0 && (
+        <div
+          style={{
+            marginBottom: '24px',
+            padding: '12px',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid #10b981',
+            borderRadius: '8px',
+            color: '#10b981',
+          }}
+        >
+          Created {qboCreatedIds.length} invoice(s) in QuickBooks: {qboCreatedIds.join(', ')}
+        </div>
+      )}
+
       {groupedTickets.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           No approved tickets ready for export. Approve service tickets first in the Service Tickets page.
         </div>
       ) : (
         <>
-          <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={handleExportForInvoicing}
-              disabled={!!exportProgress}
+              disabled={!!exportProgress || !!qboProgress}
               style={{
                 padding: '10px 20px',
                 backgroundColor: 'var(--primary-color)',
@@ -383,11 +575,33 @@ export default function Invoices() {
                 borderRadius: '8px',
                 fontSize: '14px',
                 fontWeight: 600,
-                cursor: exportProgress ? 'not-allowed' : 'pointer',
+                cursor: exportProgress || qboProgress ? 'not-allowed' : 'pointer',
               }}
             >
               Export for invoicing
             </button>
+            <button
+              onClick={handleCreateInQuickBooks}
+              disabled={!qboConnected || !!exportProgress || !!qboProgress}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: qboConnected ? '#0ea5e9' : 'var(--bg-tertiary)',
+                color: qboConnected ? 'white' : 'var(--text-tertiary)',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: qboConnected && !exportProgress && !qboProgress ? 'pointer' : 'not-allowed',
+              }}
+              title={!qboConnected ? 'Connect QuickBooks in Settings first' : 'Create invoices in QuickBooks Online'}
+            >
+              Create in QuickBooks
+            </button>
+            {!qboConnected && (
+              <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                Connect QuickBooks in Settings to create invoices
+              </span>
+            )}
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
               {tickets.length} ticket(s) in {groupedTickets.length} group(s)
             </span>
