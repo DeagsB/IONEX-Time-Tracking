@@ -217,6 +217,7 @@ export default function Invoices() {
   }, [billableEntries, employees, approvedRecords, customers, projects]);
 
   // Group tickets by approver code only — all tickets with same approver code merge together
+  // Exclude tickets without approver codes (they shouldn't be invoiced until a PO/approver is assigned)
   const groupedTickets = useMemo(() => {
     const groups = new Map<string, ServiceTicket[]>();
     for (const ticket of tickets) {
@@ -231,7 +232,8 @@ export default function Invoices() {
         },
         t.headerOverrides as { approver_po_afe?: string; service_location?: string } | undefined
       );
-      const groupKey = keyObj.approverCode || 'no-approver';
+      if (!keyObj.approverCode) continue; // Skip tickets without approver code — not ready for invoicing
+      const groupKey = keyObj.approverCode;
       const list = groups.get(groupKey) ?? [];
       list.push(ticket);
       groups.set(groupKey, list);
@@ -459,7 +461,7 @@ export default function Invoices() {
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <h1 style={{ marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '14px' }}>
-        Approved service tickets ready for PDF export. Grouped by project, approver code (G###), location, and CC.
+        Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add Approver/PO/AFE to the project in Projects to include tickets.
       </p>
 
       {exportProgress && (
