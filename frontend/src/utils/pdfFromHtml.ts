@@ -27,6 +27,21 @@ const roundToHalfHour = (hours: number): number => {
   return Math.ceil(hours * 2) / 2;
 };
 
+/** Wait for layout and images so html2canvas captures complete content.
+ * html2canvas fails to render off-screen elements correctly. */
+async function waitForPdfElementReady(element: HTMLElement | null): Promise<void> {
+  if (!element) return;
+  const img = element.querySelector('img');
+  if (img && !img.complete) {
+    await new Promise<void>((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      setTimeout(resolve, 3000);
+    });
+  }
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+
 // Generate PDF from HTML that matches the Excel template exactly
 export async function downloadPdfFromHtml(
   ticket: ServiceTicket,
@@ -380,17 +395,17 @@ export async function downloadPdfFromHtml(
     </div>
   `;
 
-  // Create a temporary container
+  // Create a temporary container - must be in viewport for html2canvas to capture correctly
+  // (off-screen elements at -9999px cause missing/incomplete content in merged PDFs)
   const container = document.createElement('div');
   container.innerHTML = html;
-  container.style.position = 'absolute';
-  container.style.left = '-9999px';
-  container.style.top = '-9999px';
+  container.style.cssText = 'position:fixed;left:0;top:0;width:8.5in;z-index:-1;pointer-events:none;opacity:0.01';
   document.body.appendChild(container);
 
   const element = container.querySelector('#service-ticket');
 
   try {
+    await waitForPdfElementReady(element as HTMLElement);
     const opt = {
       margin: 0,
       filename: `ServiceTicket_${ticket.ticketNumber || ticket.id.substring(0, 8)}.pdf`,
@@ -519,17 +534,17 @@ export async function generateAndStorePdf(
   // Build the same HTML as downloadPdfFromHtml (abbreviated for space)
   const html = buildPdfHtml(ticket, expenses, descriptionLines, employeeName, employeeEmail, ticketDate, rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, rtRate, ttRate, ftRate, shopOtRate, fieldOtRate, rtAmount, ttAmount, ftAmount, shopOtAmount, fieldOtAmount, expensesTotal, grandTotal);
 
-  // Create a temporary container
+  // Create a temporary container - must be in viewport for html2canvas to capture correctly
+  // (off-screen elements at -9999px cause missing/incomplete content in merged PDFs)
   const container = document.createElement('div');
   container.innerHTML = html;
-  container.style.position = 'absolute';
-  container.style.left = '-9999px';
-  container.style.top = '-9999px';
+  container.style.cssText = 'position:fixed;left:0;top:0;width:8.5in;z-index:-1;pointer-events:none;opacity:0.01';
   document.body.appendChild(container);
 
   const element = container.querySelector('#service-ticket');
 
   try {
+    await waitForPdfElementReady(element as HTMLElement);
     const opt = {
       margin: 0,
       filename: filename,

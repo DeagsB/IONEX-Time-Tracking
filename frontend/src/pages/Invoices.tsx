@@ -141,8 +141,41 @@ export default function Invoices() {
 
       if (match) {
         const proj = projects?.find((p: { id: string }) => p.id === (rec.project_id ?? match.projectId));
+        let ticketToUse = match;
+        if (rec.is_edited && rec.edited_hours) {
+          const editedHours = rec.edited_hours as Record<string, number | number[]>;
+          const hoursByRateType = { ...match.hoursByRateType };
+          Object.keys(editedHours).forEach((rateType) => {
+            if (rateType in hoursByRateType) {
+              const hours = editedHours[rateType];
+              (hoursByRateType as Record<string, number>)[rateType] = Array.isArray(hours)
+                ? hours.reduce((s: number, h: number) => s + (h || 0), 0)
+                : (hours as number) || 0;
+            }
+          });
+          const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+          const syntheticEntries = Object.entries(hoursByRateType)
+            .filter(([, h]) => h > 0)
+            .map(([rateType, hours]) => ({
+              id: `syn-${rateType}`,
+              date: match.date,
+              hours,
+              description: 'Work performed',
+              rate_type: rateType,
+              user_id: match.userId,
+              user: match.entries[0]?.user,
+              project_id: match.projectId,
+              project: match.entries[0]?.project,
+            })) as ServiceTicket['entries'];
+          ticketToUse = {
+            ...match,
+            hoursByRateType,
+            totalHours,
+            entries: syntheticEntries.length > 0 ? syntheticEntries : match.entries,
+          };
+        }
         const rawTicket: ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string } = {
-          ...match,
+          ...ticketToUse,
           ticketNumber: rec.ticket_number,
           recordId: rec.id,
           headerOverrides: rec.header_overrides,
@@ -172,13 +205,23 @@ export default function Invoices() {
         const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
         const customer = customers?.find((c: { id: string }) => c.id === rec.customer_id);
         const customerName = customer?.name || 'Unknown Customer';
-        const emp = employees?.find((e: { user_id: string }) => e.user_id === rec.user_id);
+        const emp = employees?.find((e: { user_id: string }) => e.user_id === rec.user_id) as { rt_rate?: number; tt_rate?: number; ft_rate?: number; shop_ot_rate?: number; field_ot_rate?: number } | undefined;
         const u = emp?.user as { first_name?: string; last_name?: string } | undefined;
         const firstName = u?.first_name || '';
         const lastName = u?.last_name || '';
         const userName = `${firstName} ${lastName}`.trim() || 'Unknown';
         const userInitials = firstName && lastName ? `${firstName[0]}${lastName[0]}`.toUpperCase() : 'XX';
         const proj = projects?.find((p: { id: string }) => p.id === rec.project_id);
+        const DEFAULT_RATES = { rt: 110, tt: 85, ft: 140, shop_ot: 165, field_ot: 165 };
+        const rates = emp
+          ? {
+              rt: emp.rt_rate ?? DEFAULT_RATES.rt,
+              tt: emp.tt_rate ?? DEFAULT_RATES.tt,
+              ft: emp.ft_rate ?? DEFAULT_RATES.ft,
+              shop_ot: emp.shop_ot_rate ?? DEFAULT_RATES.shop_ot,
+              field_ot: emp.field_ot_rate ?? DEFAULT_RATES.field_ot,
+            }
+          : DEFAULT_RATES;
         const rawStandalone: ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string } = {
           id: `${rec.date}-${rec.customer_id}-${rec.user_id}-${ticketLocation}`,
           date: rec.date,
@@ -206,7 +249,7 @@ export default function Invoices() {
           totalHours,
           entries: [],
           hoursByRateType,
-          rates: { rt: 0, tt: 0, ft: 0, shop_ot: 0, field_ot: 0 },
+          rates,
           recordId: rec.id,
           headerOverrides: rec.header_overrides,
           recordProjectId: rec.project_id ?? undefined,
