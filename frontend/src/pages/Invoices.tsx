@@ -205,8 +205,8 @@ export default function Invoices() {
         const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
         const customer = customers?.find((c: { id: string }) => c.id === rec.customer_id);
         const customerName = customer?.name || 'Unknown Customer';
-        const emp = employees?.find((e: { user_id: string }) => e.user_id === rec.user_id) as { rt_rate?: number; tt_rate?: number; ft_rate?: number; shop_ot_rate?: number; field_ot_rate?: number } | undefined;
-        const u = emp?.user as { first_name?: string; last_name?: string } | undefined;
+        const emp = employees?.find((e: { user_id: string }) => e.user_id === rec.user_id) as { rt_rate?: number; tt_rate?: number; ft_rate?: number; shop_ot_rate?: number; field_ot_rate?: number; user?: { first_name?: string; last_name?: string } } | undefined;
+        const u = emp?.user;
         const firstName = u?.first_name || '';
         const lastName = u?.last_name || '';
         const userName = `${firstName} ${lastName}`.trim() || 'Unknown';
