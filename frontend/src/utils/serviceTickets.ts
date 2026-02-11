@@ -436,12 +436,21 @@ export interface InvoiceGroupKey {
   cc: string;
 }
 
+/** Get approver/PO/AFE string from a ticket (header overrides > project > entry-level) */
+export function getApproverPoAfeFromTicket(
+  ticket: { projectApproverPoAfe?: string; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
+  headerOverrides?: { approver_po_afe?: string } | null
+): string {
+  const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
+  return headerOverrides?.approver_po_afe ?? ticket.projectApproverPoAfe ?? entryPo ?? '';
+}
+
 /** Get grouping key for a ticket (for merged PDF export) */
 export function getInvoiceGroupKey(
-  ticket: { projectId?: string; location?: string; projectApproverPoAfe?: string; projectLocation?: string; customerInfo?: { service_location?: string } },
+  ticket: { projectId?: string; location?: string; projectApproverPoAfe?: string; projectLocation?: string; customerInfo?: { service_location?: string }; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
   headerOverrides?: { approver_po_afe?: string; service_location?: string } | null
 ): InvoiceGroupKey {
-  const approverPoAfe = headerOverrides?.approver_po_afe ?? ticket.projectApproverPoAfe ?? '';
+  const approverPoAfe = getApproverPoAfeFromTicket(ticket, headerOverrides);
   const location = (headerOverrides?.service_location ?? ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
   return {
     projectId: ticket.projectId ?? '',

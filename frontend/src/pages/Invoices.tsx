@@ -13,6 +13,7 @@ import {
   groupEntriesIntoTickets,
   ServiceTicket,
   getInvoiceGroupKey,
+  getApproverPoAfeFromTicket,
   InvoiceGroupKey,
   extractPoValue,
   extractCcValue,
@@ -138,12 +139,14 @@ export default function Invoices() {
       );
 
       if (match) {
+        const proj = projects?.find((p: { id: string }) => p.id === (rec.project_id ?? match.projectId));
         ticketList.push({
           ...match,
           ticketNumber: rec.ticket_number,
           recordId: rec.id,
           headerOverrides: rec.header_overrides,
           recordProjectId: rec.project_id ?? match.projectId,
+          projectApproverPoAfe: proj?.approver_po_afe ?? match.projectApproverPoAfe,
         });
       } else {
         // Standalone ticket
@@ -229,6 +232,7 @@ export default function Invoices() {
           projectApproverPoAfe: t.projectApproverPoAfe,
           projectLocation: t.projectLocation,
           customerInfo: t.customerInfo,
+          entries: t.entries,
         },
         t.headerOverrides as { approver_po_afe?: string; service_location?: string } | undefined
       );
@@ -256,6 +260,7 @@ export default function Invoices() {
           projectApproverPoAfe: first.projectApproverPoAfe,
           projectLocation: first.projectLocation,
           customerInfo: first.customerInfo,
+          entries: first.entries,
         },
         first.headerOverrides as { approver_po_afe?: string; service_location?: string } | undefined
       );
@@ -342,7 +347,7 @@ export default function Invoices() {
         const ccMap = new Map<string, ServiceTicket[]>();
         for (const ticket of groupTickets) {
           const t = ticket as ServiceTicket & { headerOverrides?: { approver_po_afe?: string } };
-          const approverPoAfe = t.headerOverrides?.approver_po_afe ?? t.projectApproverPoAfe ?? '';
+          const approverPoAfe = getApproverPoAfeFromTicket(t, t.headerOverrides);
           const cc = extractCcValue(approverPoAfe) || '(no CC)';
           const list = ccMap.get(cc) ?? [];
           list.push(ticket);
@@ -375,9 +380,10 @@ export default function Invoices() {
         }
 
         const firstTicket = groupTickets[0];
-        const approverPoAfe =
+        const approverPoAfe = getApproverPoAfeFromTicket(
+          firstTicket,
           (firstTicket as ServiceTicket & { headerOverrides?: { approver_po_afe?: string } }).headerOverrides
-            ?.approver_po_afe ?? firstTicket.projectApproverPoAfe ?? '';
+        );
         const customerPo = extractPoValue(approverPoAfe);
         const reference = key.approverCode;
         const date = firstTicket.date || new Date().toISOString().split('T')[0];
