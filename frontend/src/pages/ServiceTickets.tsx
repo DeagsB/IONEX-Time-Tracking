@@ -1209,27 +1209,14 @@ export default function ServiceTickets() {
     }
     
     // Filter out discarded tickets unless showDiscarded is active
-    // For computed tickets (with time entries), prefer non-discarded matching records
-    // and don't hide them if only stale discarded records exist
     result = result.filter(t => {
       const existing = findMatchingTicketRecord(t);
       const isDiscarded = !!(existing as any)?.is_discarded;
 
       if (!showDiscarded) {
-        // In normal view: always show computed tickets that have real time entries,
-        // even if stale discarded records exist for the same date/customer/user.
-        // Only hide tickets that were explicitly discarded AND have no time entries (standalone).
-        if (isDiscarded && t.entries.length > 0) {
-          return true; // Don't hide computed tickets with active entries
-        }
-        return !isDiscarded;
+        return !isDiscarded; // Normal view: hide all discarded tickets
       } else {
-        // In discarded view: show discarded tickets, but only standalone ones
-        // (computed tickets with entries always appear in normal view instead)
-        if (isDiscarded && t.entries.length > 0) {
-          return false; // These show in normal view, not discarded view
-        }
-        return isDiscarded;
+        return isDiscarded; // Discarded view: show all discarded tickets
       }
     });
     
