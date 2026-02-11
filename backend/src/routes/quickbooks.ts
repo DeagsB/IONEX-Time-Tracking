@@ -44,21 +44,21 @@ router.get('/callback', async (req: Request, res: Response) => {
     
     if (error) {
       // User denied access or error occurred
-      return res.redirect(`${process.env.FRONTEND_URL}/settings?qbo=error&message=${encodeURIComponent(error as string)}`);
+      return res.redirect(`${process.env.FRONTEND_URL}/profile?qbo=error&message=${encodeURIComponent(error as string)}`);
     }
     
     if (!code || !realmId) {
-      return res.redirect(`${process.env.FRONTEND_URL}/settings?qbo=error&message=Missing+required+parameters`);
+      return res.redirect(`${process.env.FRONTEND_URL}/profile?qbo=error&message=Missing+required+parameters`);
     }
     
     // Exchange code for tokens
     await quickbooksService.exchangeCodeForTokens(code as string, realmId as string);
     
     // Redirect back to frontend with success
-    res.redirect(`${process.env.FRONTEND_URL}/settings?qbo=success`);
+    res.redirect(`${process.env.FRONTEND_URL}/profile?qbo=success`);
   } catch (error: any) {
     console.error('Error in QBO callback:', error);
-    res.redirect(`${process.env.FRONTEND_URL}/settings?qbo=error&message=${encodeURIComponent(error.message)}`);
+    res.redirect(`${process.env.FRONTEND_URL}/profile?qbo=error&message=${encodeURIComponent(error.message)}`);
   }
 });
 

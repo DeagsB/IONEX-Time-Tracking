@@ -593,13 +593,13 @@ export default function Invoices() {
                 fontWeight: 600,
                 cursor: qboConnected && !exportProgress && !qboProgress ? 'pointer' : 'not-allowed',
               }}
-              title={!qboConnected ? 'Connect QuickBooks in Settings first' : 'Create invoices in QuickBooks Online'}
+              title={!qboConnected ? 'Connect QuickBooks in Profile (admin) first' : 'Create invoices in QuickBooks Online'}
             >
               Create in QuickBooks
             </button>
             {!qboConnected && (
               <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-                Connect QuickBooks in Settings to create invoices
+                Connect QuickBooks in Profile (admin) to create invoices
               </span>
             )}
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>

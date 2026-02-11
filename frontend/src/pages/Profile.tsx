@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { usersService } from '../services/supabaseServices';
+import { quickbooksClientService } from '../services/quickbooksService';
 
 // Common timezone options
 const TIMEZONE_OPTIONS = [
@@ -42,7 +44,8 @@ interface PasswordData {
 }
 
 export default function Profile() {
-  const { user, updateUser, refreshUserProfile } = useAuth();
+  const { user, updateUser, refreshUserProfile, isAdmin } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   
   // Profile form state
   const [profileData, setProfileData] = useState<ProfileData>({
@@ -69,6 +72,25 @@ export default function Profile() {
   // Form validation state
   const [profileErrors, setProfileErrors] = useState<Partial<ProfileData>>({});
   const [passwordErrors, setPasswordErrors] = useState<Partial<PasswordData>>({});
+
+  const { data: qboConnected, refetch: refetchQbo } = useQuery({
+    queryKey: ['qboStatus'],
+    queryFn: () => quickbooksClientService.checkStatus(),
+    enabled: isAdmin === true,
+  });
+
+  // Handle QBO callback params (?qbo=success or ?qbo=error)
+  useEffect(() => {
+    const qbo = searchParams.get('qbo');
+    if (qbo === 'success') {
+      refetchQbo();
+      setSearchParams((p) => {
+        p.delete('qbo');
+        p.delete('message');
+        return p;
+      }, { replace: true });
+    }
+  }, [searchParams, refetchQbo, setSearchParams]);
 
   // Load user profile data
   useEffect(() => {
@@ -578,6 +600,83 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* QuickBooks Connection - Admin only (Deagan Bespalko) */}
+      {isAdmin && (
+        <div style={cardStyle}>
+          <h3 style={sectionTitleStyle}>
+            <span style={{ fontSize: '20px' }}>📊</span>
+            QuickBooks Online
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+            Connect QuickBooks to create invoices from the Invoices page.
+          </p>
+          {searchParams.get('qbo') === 'error' && (
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              backgroundColor: 'rgba(255, 71, 87, 0.1)',
+              border: '1px solid #ff4757',
+              color: '#ff4757',
+            }}>
+              {searchParams.get('message') || 'QuickBooks connection failed.'}
+            </div>
+          )}
+          {qboConnected ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{
+                padding: '6px 12px',
+                backgroundColor: 'rgba(78, 205, 196, 0.2)',
+                borderRadius: '6px',
+                color: '#4ecdc4',
+                fontWeight: '600',
+                fontSize: '14px',
+              }}>
+                ✓ Connected
+              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await quickbooksClientService.disconnect();
+                  if (ok) refetchQbo();
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                const url = await quickbooksClientService.getAuthUrl();
+                if (url) window.location.href = url;
+              }}
+              style={{
+                padding: '10px 20px',
+                backgroundColor: '#0ea5e9',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}
+            >
+              Connect QuickBooks
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
