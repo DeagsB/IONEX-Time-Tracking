@@ -25,11 +25,13 @@ Get-Content $configPath | ForEach-Object {
     }
 }
 
-if (-not $env:SUPABASE_DB_URL) {
+$hasDbUrl = $env:SUPABASE_DB_URL
+$hasApiCreds = $env:SUPABASE_URL -and $env:SUPABASE_SERVICE_KEY
+if (-not $hasDbUrl -and -not $hasApiCreds) {
     $logPath = Join-Path $scriptDir "backups\backup-schedule.log"
     $logDir = Split-Path -Parent $logPath
     if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
-    $msg = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - ERROR: SUPABASE_DB_URL not set in backup-config.env"
+    $msg = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - ERROR: Set SUPABASE_DB_URL or (SUPABASE_URL + SUPABASE_SERVICE_KEY) in backup-config.env"
     Add-Content -Path $logPath -Value $msg
     Write-Host $msg -ForegroundColor Red
     exit 1

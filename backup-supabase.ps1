@@ -5,19 +5,23 @@
 $ErrorActionPreference = "Stop"
 
 $url = $env:SUPABASE_DB_URL
-if (-not $url) {
-    Write-Host "SUPABASE_DB_URL is not set." -ForegroundColor Yellow
-    Write-Host "Set it to your database connection string from Supabase Dashboard -> Project Settings -> Database"
-    Write-Host "Example: `$env:SUPABASE_DB_URL = 'postgresql://postgres.[ref]:[password]@...'" -ForegroundColor Gray
+$hasApiCreds = $env:SUPABASE_URL -and $env:SUPABASE_SERVICE_KEY
+if (-not $url -and -not $hasApiCreds) {
+    Write-Host "Set SUPABASE_DB_URL or (SUPABASE_URL + SUPABASE_SERVICE_KEY) in backup-config.env" -ForegroundColor Yellow
     exit 1
 }
 
 # Check for pg_dump (preferred for remote databases, no Docker needed)
 $pgDump = Get-Command pg_dump -ErrorAction SilentlyContinue
 $usePgDump = $false
+$useSupabaseApi = $false
 if ($pgDump) {
     $usePgDump = $true
     Write-Host "Using pg_dump (PostgreSQL native tool)" -ForegroundColor Cyan
+} elseif ($env:SUPABASE_URL -and $env:SUPABASE_SERVICE_KEY) {
+    # Use Supabase REST API via Node (no pg_dump or Docker needed)
+    $useSupabaseApi = $true
+    Write-Host "Using Supabase API (Node.js)" -ForegroundColor Cyan
 } else {
     # Fallback to Supabase CLI (requires Docker for some operations)
     $cli = Get-Command supabase -ErrorAction SilentlyContinue
@@ -40,14 +44,21 @@ if ($pgDump) {
 
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmm"
 $backupDir = Join-Path $PSScriptRoot "backups\backup-$timestamp"
-New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-$backupDir = (Resolve-Path $backupDir).Path
+if (-not $useSupabaseApi) {
+    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+    $backupDir = (Resolve-Path $backupDir).Path
+}
 
-Write-Host "Backing up to $backupDir" -ForegroundColor Cyan
+Write-Host "Backing up to backups\" -ForegroundColor Cyan
 
-Push-Location $backupDir
 try {
-    if ($usePgDump) {
+    if ($useSupabaseApi) {
+        $backupScript = Join-Path $PSScriptRoot "backend\scripts\backup-via-supabase.js"
+        & node $backupScript
+        if ($LASTEXITCODE -ne 0) { throw "Supabase API backup failed" }
+        $backupDir = (Get-ChildItem (Join-Path $PSScriptRoot "backups") -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+    } elseif ($usePgDump) {
+        Push-Location $backupDir
         # Use pg_dump directly (works for remote databases, no Docker needed)
         Write-Host "Dumping full database (schema + data)..." -ForegroundColor Gray
         & pg_dump $url --no-owner --no-acl -f backup.sql
@@ -89,7 +100,7 @@ try {
     }
 
     Write-Host "Backup complete: $backupDir" -ForegroundColor Green
-    Get-ChildItem -File | ForEach-Object { Write-Host "  $($_.Name)" -ForegroundColor Gray }
+    Get-ChildItem $backupDir -File | ForEach-Object { Write-Host "  $($_.Name)" -ForegroundColor Gray }
 
     # Upload to Supabase Storage if configured
     if ($env:SUPABASE_URL -and $env:SUPABASE_SERVICE_KEY) {
