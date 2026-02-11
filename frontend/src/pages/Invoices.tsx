@@ -216,7 +216,7 @@ export default function Invoices() {
     return ticketList;
   }, [billableEntries, employees, approvedRecords, customers, projects]);
 
-  // Group tickets by project → approver → location → CC
+  // Group tickets by approver code only — all tickets with same approver code merge together
   const groupedTickets = useMemo(() => {
     const groups = new Map<string, ServiceTicket[]>();
     for (const ticket of tickets) {
@@ -231,22 +231,34 @@ export default function Invoices() {
         },
         t.headerOverrides as { approver_po_afe?: string; service_location?: string } | undefined
       );
-      const keyStr = JSON.stringify(keyObj);
-      const list = groups.get(keyStr) ?? [];
+      const groupKey = keyObj.approverCode || 'no-approver';
+      const list = groups.get(groupKey) ?? [];
       list.push(ticket);
-      groups.set(keyStr, list);
+      groups.set(groupKey, list);
     }
-    // Sort within each group: by employee (userName), then by ticket number
+    // Sort groups by approver code, then within each group: by employee, then by ticket number
     const result: { key: InvoiceGroupKey; tickets: ServiceTicket[] }[] = [];
-    groups.forEach((list, keyStr) => {
-      const key = JSON.parse(keyStr) as InvoiceGroupKey;
+    const sortedGroupKeys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+    for (const groupKey of sortedGroupKeys) {
+      const list = groups.get(groupKey) ?? [];
       list.sort((a, b) => {
         const nameCmp = (a.userName || '').localeCompare(b.userName || '');
         if (nameCmp !== 0) return nameCmp;
         return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
       });
-      result.push({ key, tickets: list });
-    });
+      const first = list[0] as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
+      const keyObj = getInvoiceGroupKey(
+        {
+          projectId: first.recordProjectId ?? first.projectId,
+          location: first.location,
+          projectApproverPoAfe: first.projectApproverPoAfe,
+          projectLocation: first.projectLocation,
+          customerInfo: first.customerInfo,
+        },
+        first.headerOverrides as { approver_po_afe?: string; service_location?: string } | undefined
+      );
+      result.push({ key: keyObj, tickets: list });
+    }
     return result;
   }, [tickets]);
 
