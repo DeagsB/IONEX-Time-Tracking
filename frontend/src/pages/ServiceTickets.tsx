@@ -2303,9 +2303,12 @@ export default function ServiceTickets() {
                       const workflowStatus = existing?.workflow_status || 'draft';
                       const isWorkflowApproved = workflowStatus !== 'draft' && workflowStatus !== 'rejected';
                       const isApproved = hasTicketNumber || isWorkflowApproved;
-                      
-                      if (isAdmin) {
-                        // Admin flow: assign/unassign ticket numbers
+                      const isOwnTicket = ticket.userId === user?.id;
+
+                      // Admin's own tickets: use Submit flow like regular user so they can submit and see it in Submitted tab
+                      // Other users' tickets: use admin flow (Approve, assign ticket number)
+                      if (isAdmin && !isOwnTicket) {
+                        // Admin flow for other users' tickets: assign/unassign ticket numbers
                         // Show different states: fully approved (has ticket#) vs user-approved (workflow only)
                         if (hasTicketNumber) {
                           return (
@@ -2392,7 +2395,7 @@ export default function ServiceTickets() {
                             </button>
                           );
                         }
-                        // User can toggle workflow_status
+                        // User can toggle workflow_status (also used for admin's own tickets)
                         return (
                           <button
                             className="button"
@@ -2408,6 +2411,8 @@ export default function ServiceTickets() {
                                 const newStatus = isApproved ? 'draft' : 'approved';
                                 await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
                                 queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                                // When submitting (not withdrawing), switch to Submitted tab so admin sees their ticket
+                                if (!isApproved && isAdmin) setActiveTab('submitted');
                               } catch (error) {
                                 console.error('Error updating ticket status:', error);
                               }
