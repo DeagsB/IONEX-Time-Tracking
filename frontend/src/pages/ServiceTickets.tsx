@@ -20,7 +20,7 @@ const WORKFLOW_STATUSES = {
   qbo_created: { label: 'QBO Invoice', color: '#f59e0b', icon: '💰' },
   sent_to_cnrl: { label: 'Sent to CNRL', color: '#ec4899', icon: '📧' },
   cnrl_approved: { label: 'CNRL Approved', color: '#10b981', icon: '✅' },
-  submitted_to_cnrl: { label: 'Submitted', color: '#3b82f6', icon: '🎉' },
+  submitted_to_cnrl: { label: 'Submitted', color: '#059669', icon: '🎉' },
 } as const;
 
 type WorkflowStatus = keyof typeof WORKFLOW_STATUSES;
@@ -2465,7 +2465,7 @@ export default function ServiceTickets() {
                             style={{
                               padding: '6px 16px',
                               fontSize: '13px',
-                              backgroundColor: isApproved ? '#10b981' : undefined,
+                              backgroundColor: isApproved ? '#3b82f6' : undefined,
                               color: isApproved ? 'white' : undefined,
                               border: 'none',
                               cursor: 'pointer',
@@ -4079,7 +4079,7 @@ export default function ServiceTickets() {
                               setIsApproving(false);
                             }
                           }}
-                          style={{ padding: '10px 24px', backgroundColor: isTicketApproved ? '#10b981' : undefined, borderColor: isTicketApproved ? '#10b981' : undefined }}
+                          style={{ padding: '10px 24px', backgroundColor: isTicketApproved ? '#3b82f6' : undefined, borderColor: isTicketApproved ? '#3b82f6' : undefined }}
                           disabled={isApproving}
                         >
                           {isApproving ? 'Submitting...' : (isTicketApproved ? '✓ Submitted' : 'Submit for Approval')}
