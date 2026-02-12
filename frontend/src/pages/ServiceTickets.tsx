@@ -2215,8 +2215,21 @@ export default function ServiceTickets() {
                 const isResubmitted = !showDiscarded && activeTab === 'submitted' && !!rowExisting?.rejected_at;
                 const isRestored = !showDiscarded && !!(rowExisting as any)?.restored_at;
                 const isNew = !showDiscarded && activeTab === 'draft' && !rowExisting && ticket.entries?.length > 0;
-                const rowBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : (isResubmitted ? 'rgba(234, 179, 8, 0.15)' : (isRestored ? 'rgba(16, 185, 129, 0.06)' : (isNew ? 'rgba(37, 99, 235, 0.06)' : 'transparent')))));
-                const rowHoverBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : (isResubmitted ? 'rgba(234, 179, 8, 0.22)' : (isRestored ? 'rgba(16, 185, 129, 0.1)' : (isNew ? 'rgba(37, 99, 235, 0.1)' : 'var(--hover-bg)')));
+                const rowBg = selectedTicketIds.has(ticket.id)
+                  ? 'rgba(37, 99, 235, 0.1)'
+                  : showDiscarded ? 'rgba(239, 83, 80, 0.04)'
+                  : isRejected ? 'rgba(239, 83, 80, 0.08)'
+                  : isResubmitted ? 'rgba(234, 179, 8, 0.15)'
+                  : isRestored ? 'rgba(16, 185, 129, 0.06)'
+                  : isNew ? 'rgba(37, 99, 235, 0.06)'
+                  : 'transparent';
+                const rowHoverBg = selectedTicketIds.has(ticket.id)
+                  ? 'rgba(37, 99, 235, 0.2)'
+                  : isRejected ? 'rgba(239, 83, 80, 0.12)'
+                  : isResubmitted ? 'rgba(234, 179, 8, 0.22)'
+                  : isRestored ? 'rgba(16, 185, 129, 0.1)'
+                  : isNew ? 'rgba(37, 99, 235, 0.1)'
+                  : 'var(--hover-bg)';
                 return (
                 <tr
                   key={ticket.id}
