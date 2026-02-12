@@ -138,6 +138,9 @@ export default function WeekView() {
   const [contextMenuEntry, setContextMenuEntry] = useState<{ x: number; y: number; entry: any } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
+  // In-app delete confirmation for time entry (replaces browser confirm)
+  const [deleteConfirmEntry, setDeleteConfirmEntry] = useState<{ id: string; date: string; userId: string; customerId: string | null } | null>(null);
+
   // Header visibility state (hide on scroll down, show on scroll up)
   const [headerVisible, setHeaderVisible] = useState(true);
   const lastScrollTop = useRef(0);
@@ -2415,15 +2418,13 @@ export default function WeekView() {
                 const proj = projects.find((p: any) => p.id === entry.project_id);
                 if (proj) customerId = proj.customer_id;
               }
-              if (window.confirm('Are you sure you want to delete this time entry?')) {
-                deleteTimeEntryMutation.mutate({
-                  id: entry.id,
-                  date: dateStr,
-                  userId: entry.user_id,
-                  customerId: customerId ?? null,
-                });
-                setContextMenuEntry(null);
-              }
+              setContextMenuEntry(null);
+              setDeleteConfirmEntry({
+                id: entry.id,
+                date: dateStr,
+                userId: entry.user_id,
+                customerId: customerId ?? null,
+              });
             }}
             style={{
               display: 'flex',
@@ -2448,6 +2449,65 @@ export default function WeekView() {
             <span style={{ opacity: 0.8 }}>🗑</span>
             Delete
           </button>
+        </div>
+      )}
+
+      {/* Delete time entry confirmation modal */}
+      {deleteConfirmEntry && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1101,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setDeleteConfirmEntry(null)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '8px',
+              padding: '24px',
+              maxWidth: '380px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p style={{ margin: '0 0 20px', color: 'var(--text-primary)', fontSize: '15px' }}>
+              Are you sure you want to delete this time entry?
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                className="button button-secondary"
+                onClick={() => setDeleteConfirmEntry(null)}
+                style={{ padding: '8px 16px' }}
+              >
+                Cancel
+              </button>
+              <button
+                className="button"
+                onClick={() => {
+                  deleteTimeEntryMutation.mutate(deleteConfirmEntry);
+                  setDeleteConfirmEntry(null);
+                }}
+                disabled={deleteTimeEntryMutation.isPending}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#ef5350',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: deleteTimeEntryMutation.isPending ? 'wait' : 'pointer',
+                }}
+              >
+                {deleteTimeEntryMutation.isPending ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
