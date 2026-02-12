@@ -218,10 +218,10 @@ export async function downloadPdfFromHtml(
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Email</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Phone</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
@@ -767,10 +767,10 @@ function buildPdfHtml(
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Email</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Phone</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
