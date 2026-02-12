@@ -2637,17 +2637,6 @@ export default function WeekView() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: '20px' }}>
                     <div className="form-group">
-                      <label className="label">Approver (AC)</label>
-                      <input
-                        type="text"
-                        className="input"
-                        placeholder="e.g. G829, C566"
-                        value={newEntry.approver}
-                        onChange={(e) => setNewEntry({ ...newEntry, approver: e.target.value })}
-                        style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
-                      />
-                    </div>
-                    <div className="form-group">
                       <label className="label">PO/AFE</label>
                       <input
                         type="text"
@@ -2655,6 +2644,17 @@ export default function WeekView() {
                         placeholder="PO or AFE number"
                         value={newEntry.poAfe}
                         onChange={(e) => setNewEntry({ ...newEntry, poAfe: e.target.value })}
+                        style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Approver (AC)</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g. G829, C566"
+                        value={newEntry.approver}
+                        onChange={(e) => setNewEntry({ ...newEntry, approver: e.target.value })}
                         style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
                       />
                     </div>
@@ -3083,22 +3083,22 @@ export default function WeekView() {
               {editedEntry.customer_id && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: '20px' }}>
                   <div className="form-group">
-                    <label className="label">Approver (AC)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. G829, C566"
-                      value={editedEntry.approver}
-                      onChange={(e) => setEditedEntry({ ...editedEntry, approver: e.target.value })}
-                      style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}
-                    />
-                  </div>
-                  <div className="form-group">
                     <label className="label">PO/AFE</label>
                     <input
                       type="text"
                       placeholder="PO or AFE number"
                       value={editedEntry.poAfe}
                       onChange={(e) => setEditedEntry({ ...editedEntry, poAfe: e.target.value })}
+                      style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Approver (AC)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. G829, C566"
+                      value={editedEntry.approver}
+                      onChange={(e) => setEditedEntry({ ...editedEntry, approver: e.target.value })}
                       style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}
                     />
                   </div>

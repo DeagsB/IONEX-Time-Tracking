@@ -545,16 +545,6 @@ export default function Projects() {
                 />
               </div>
               <div className="form-group">
-                <label className="label">Approver</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.approver}
-                  onChange={(e) => setFormData({ ...formData, approver: e.target.value })}
-                  placeholder="e.g., G900, AC: C566"
-                />
-              </div>
-              <div className="form-group">
                 <label className="label">PO/AFE</label>
                 <input
                   type="text"
@@ -562,6 +552,16 @@ export default function Projects() {
                   value={formData.poAfe}
                   onChange={(e) => setFormData({ ...formData, poAfe: e.target.value })}
                   placeholder="e.g., PO: FC250505-8887"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Approver</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.approver}
+                  onChange={(e) => setFormData({ ...formData, approver: e.target.value })}
+                  placeholder="e.g., G900, AC: C566"
                 />
               </div>
               <div className="form-group">
@@ -900,16 +900,6 @@ export default function Projects() {
                 />
               </div>
               <div className="form-group">
-                <label className="label">Approver</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.approver}
-                  onChange={(e) => setFormData({ ...formData, approver: e.target.value })}
-                  placeholder="e.g., G900, AC: C566"
-                />
-              </div>
-              <div className="form-group">
                 <label className="label">PO/AFE</label>
                 <input
                   type="text"
@@ -917,6 +907,16 @@ export default function Projects() {
                   value={formData.poAfe}
                   onChange={(e) => setFormData({ ...formData, poAfe: e.target.value })}
                   placeholder="e.g., PO: FC250505-8887"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">Approver</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.approver}
+                  onChange={(e) => setFormData({ ...formData, approver: e.target.value })}
+                  placeholder="e.g., G900, AC: C566"
                 />
               </div>
               <div className="form-group">
