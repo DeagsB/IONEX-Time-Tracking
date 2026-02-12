@@ -816,100 +816,36 @@ export default function ServiceTickets() {
     }
   };
 
-  // Bulk mark as submitted (set workflow_status to 'approved')
-  const handleBulkMarkSubmitted = async () => {
+  // Bulk move to trash
+  const handleBulkMoveToTrash = async () => {
+    const ticketsToTrash = Array.from(selectedTicketIds)
+      .map(id => getTicketById(id))
+      .filter(Boolean) as (ServiceTicket & { displayTicketNumber?: string })[];
+    if (ticketsToTrash.length === 0) return;
+    if (!confirm(`Move ${ticketsToTrash.length} ticket${ticketsToTrash.length > 1 ? 's' : ''} to trash? They can be restored from the Show Trash view.`)) return;
+
     try {
-      const ticketsToSubmit = Array.from(selectedTicketIds)
-        .map(id => getTicketById(id))
-        .filter((t): t is ServiceTicket & { displayTicketNumber: string } => {
-          if (!t) return false;
-          const existing = findMatchingTicketRecord(t);
-          return existing?.workflow_status !== 'approved';
-        });
-
-      if (ticketsToSubmit.length === 0) return;
-
-      for (const ticket of ticketsToSubmit) {
-        const ticketRecord = await serviceTicketsService.getOrCreateTicket({
-          date: ticket.date,
-          userId: ticket.userId,
-          customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
-          location: ticket.location || '',
-        }, isDemoMode);
-        await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, 'approved', isDemoMode);
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
-      setSelectedTicketIds(new Set());
-    } catch (error) {
-      console.error('Error in bulk mark submitted:', error);
-    }
-  };
-
-  // Bulk export to PDF
-  const handleBulkExportPdf = async () => {
-    setIsBulkExporting(true);
-    try {
-      const ticketsToExport = Array.from(selectedTicketIds).map(id => getTicketById(id)).filter(Boolean) as (ServiceTicket & { displayTicketNumber: string })[];
-      
-      let updatedTicketsList = [...(existingTickets || [])];
-      
-      for (const ticket of ticketsToExport) {
-        try {
-          // Check if a ticket number already exists (check both original list and newly created tickets)
-          let existingRecord = updatedTicketsList.find(
-            et => et.date === ticket.date && 
-                  et.user_id === ticket.userId && 
-                  (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned'))
-          );
-          
-          let ticketNumber: string;
-          let ticketRecordId: string | undefined;
-          
-          // Only use existing ticket number - don't auto-assign
-          if (!existingRecord?.ticket_number) {
-            console.warn(`Skipping ticket ${ticket.id} - no ticket number assigned`);
-            continue; // Skip this ticket
-          }
-          
-          ticketNumber = existingRecord.ticket_number;
-          ticketRecordId = existingRecord.id;
-          
-          const ov = (existingRecord as { header_overrides?: Record<string, string | number> })?.header_overrides ?? undefined;
-          const ticketWithOverrides = ov ? applyHeaderOverridesToTicket(ticket, ov) : ticket;
-          const ticketWithNumber = { ...ticketWithOverrides, ticketNumber };
-          // Load expenses for bulk export
-          let ticketExpenses = [];
-          if (ticketRecordId) {
-            try {
-              ticketExpenses = await serviceTicketExpensesService.getByTicketId(ticketRecordId);
-            } catch (error) {
-              console.error('Error loading expenses for export:', error);
-            }
-          }
-          
-          await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
-          
-          // Small delay between exports to avoid overwhelming the browser
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (error) {
-          console.error(`Error exporting ticket for ${ticket.date}:`, error);
-          // Continue with next ticket even if this one fails
+      const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+      for (const ticket of ticketsToTrash) {
+        const record = findMatchingTicketRecord(ticket);
+        if (record?.id) {
+          await supabase.from(tableName).update({ is_discarded: true }).eq('id', record.id);
+        } else if (ticket.customerId && ticket.customerId !== 'unassigned') {
+          const created = await serviceTicketsService.getOrCreateTicket({
+            date: ticket.date,
+            userId: ticket.userId,
+            customerId: ticket.customerId,
+            location: ticket.location || '',
+          }, isDemoMode);
+          await supabase.from(tableName).update({ is_discarded: true }).eq('id', created.id);
         }
       }
-      
-      // Invalidate and refetch queries to refresh the ticket list with new ticket numbers
-      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
-      
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
       setSelectedTicketIds(new Set());
-      alert(`Successfully exported ${ticketsToExport.length} PDF files!`);
     } catch (error) {
-      console.error('Bulk PDF export error:', error);
-      alert('Error during bulk export. Some files may have been exported.');
-    } finally {
-      setIsBulkExporting(false);
+      console.error('Error bulk moving to trash:', error);
+      alert('Failed to move tickets to trash.');
     }
   };
 
@@ -1673,7 +1609,8 @@ export default function ServiceTickets() {
 
       {/* Filters */}
       <div className="card" style={{ marginBottom: '16px', padding: '20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', flex: 1, minWidth: 0 }}>
           <div>
             <label className="label">Start Date</label>
             <input
@@ -1737,20 +1674,27 @@ export default function ServiceTickets() {
               />
             </div>
           )}
-          {/* Show Trash toggle */}
-          {(
-            <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '4px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: showDiscarded ? '#ef5350' : 'var(--text-secondary)', fontWeight: showDiscarded ? '600' : '400' }}>
-                <input
-                  type="checkbox"
-                  checked={showDiscarded}
-                  onChange={(e) => setShowDiscarded(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#ef5350', cursor: 'pointer' }}
-                />
-                🗑️ Show Trash
-              </label>
-            </div>
-          )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowDiscarded(!showDiscarded)}
+            style={{
+              marginLeft: 'auto',
+              padding: '8px 16px',
+              fontSize: '13px',
+              fontWeight: '600',
+              color: showDiscarded ? 'white' : '#ef5350',
+              backgroundColor: showDiscarded ? '#ef5350' : 'transparent',
+              border: '1px solid #ef5350',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            🗑️ Show Trash
+          </button>
         </div>
       </div>
 
@@ -1841,23 +1785,6 @@ export default function ServiceTickets() {
             </span>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
-                onClick={handleBulkMarkSubmitted}
-                disabled={isBulkExporting}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
-                  opacity: isBulkExporting ? 0.6 : 1,
-                }}
-              >
-                ✓ Mark as Submitted
-              </button>
-              <button
                 onClick={handleBulkAssignTicketNumbers}
                 disabled={isBulkExporting}
                 style={{
@@ -1892,7 +1819,7 @@ export default function ServiceTickets() {
                 ✗ Unapprove Selected
               </button>
               <button
-                onClick={handleBulkExportPdf}
+                onClick={handleBulkMoveToTrash}
                 disabled={isBulkExporting}
                 style={{
                   padding: '8px 16px',
@@ -1906,7 +1833,7 @@ export default function ServiceTickets() {
                   opacity: isBulkExporting ? 0.6 : 1,
                 }}
               >
-                {isBulkExporting ? 'Exporting...' : '📄 Export All to PDF'}
+                🗑️ Move to Trash
               </button>
               <button
                 onClick={() => setSelectedTicketIds(new Set())}
