@@ -205,6 +205,25 @@ export const customersService = {
       .single();
 
     if (error) throw error;
+
+    // Sync draft and rejected service tickets with updated customer info (address, billing rates context, etc.)
+    if (data) {
+      serviceTicketsService.updateDraftRejectedTicketsWithCustomerInfo(id, {
+        name: data.name,
+        contact_name: data.contact_name,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+        zip_code: data.zip_code,
+        service_location: data.service_location,
+        location_code: data.location_code,
+        po_number: data.po_number,
+        approver_name: data.approver_name,
+      }).catch((err) => console.warn('Failed to sync service tickets with customer update:', err));
+    }
+
     return data;
   },
 };
@@ -1172,6 +1191,72 @@ export const serviceTicketsService = {
       await serviceTicketExpensesService.deleteByTicketId(ticket.id);
       const { error: delError } = await supabase.from(tableName).delete().eq('id', ticket.id);
       if (delError) console.error('Error deleting service ticket:', delError);
+    }
+  },
+
+  /**
+   * When customer info is updated, sync draft and rejected service tickets with the new customer data.
+   * Submitted or approved tickets are not updated.
+   * Updates header_overrides so draft/rejected tickets display the new address, contact info, etc.
+   */
+  async updateDraftRejectedTicketsWithCustomerInfo(
+    customerId: string,
+    customerData: {
+      name?: string;
+      contact_name?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      zip_code?: string;
+      service_location?: string;
+      location_code?: string;
+      po_number?: string;
+      approver_name?: string;
+    }
+  ): Promise<void> {
+    const customerOverrides: Record<string, string> = {};
+    if (customerData.name != null) customerOverrides.customer_name = customerData.name;
+    if (customerData.contact_name != null) customerOverrides.contact_name = customerData.contact_name;
+    if (customerData.email != null) customerOverrides.email = customerData.email;
+    if (customerData.phone != null) customerOverrides.phone = customerData.phone;
+    if (customerData.address != null) customerOverrides.address = customerData.address;
+    if (customerData.city != null || customerData.state != null) {
+      customerOverrides.city_state = [customerData.city, customerData.state].filter(Boolean).join(', ');
+    }
+    if (customerData.zip_code != null) customerOverrides.zip_code = customerData.zip_code;
+    if (customerData.service_location != null) customerOverrides.service_location = customerData.service_location;
+    if (customerData.location_code != null) customerOverrides.location_code = customerData.location_code;
+    if (customerData.po_number != null) customerOverrides.po_number = customerData.po_number;
+    if (customerData.approver_name != null) customerOverrides.approver_po_afe = customerData.approver_name;
+
+    if (Object.keys(customerOverrides).length === 0) return;
+
+    for (const isDemo of [false, true]) {
+      const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+      const { data: tickets, error: fetchError } = await supabase
+        .from(tableName)
+        .select('id, header_overrides')
+        .eq('customer_id', customerId)
+        .in('workflow_status', ['draft', 'rejected']);
+
+      if (fetchError) {
+        console.warn('Failed to fetch draft/rejected tickets for customer sync:', fetchError);
+        continue;
+      }
+
+      for (const ticket of tickets || []) {
+        const existing = (ticket.header_overrides as Record<string, string> | null) ?? {};
+        const merged = { ...existing, ...customerOverrides };
+        const { error: updateError } = await supabase
+          .from(tableName)
+          .update({ header_overrides: merged })
+          .eq('id', ticket.id);
+        if (updateError) {
+          console.warn(`Failed to update ticket ${ticket.id} with customer info:`, updateError);
+        }
+      }
     }
   },
 

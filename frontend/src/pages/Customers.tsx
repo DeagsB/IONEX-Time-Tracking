@@ -145,6 +145,8 @@ export default function Customers() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
       setShowModal(false);
       setEditingCustomer(null);
       resetForm();
