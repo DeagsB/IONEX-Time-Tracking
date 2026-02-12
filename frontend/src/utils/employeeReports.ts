@@ -989,7 +989,11 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
   const result: ProjectBreakdown[] = Array.from(projectMap.entries())
     .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0) // Only include projects with activity
     .map(([projectId, data]) => {
-      const projectName = entries.find(e => e.project_id === projectId)?.project?.name || '(Unknown Project)';
+      const project = entries.find(e => e.project_id === projectId)?.project;
+      const name = project?.name || '(Unknown Project)';
+      const projectName = project?.project_number
+        ? `${project.project_number} - ${name}`
+        : name;
       // Hours displayed = billable hours from service tickets only
       return {
         projectId,
