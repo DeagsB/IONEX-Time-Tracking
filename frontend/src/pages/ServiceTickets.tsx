@@ -1987,26 +1987,31 @@ export default function ServiceTickets() {
                       ticketRecord = dataWithOverrides;
                     }
                     
-                    // Apply saved header overrides so all editable fields persist on reopen
+                    // Apply saved header overrides so all editable fields persist on reopen.
+                    // Use fallback: prefer override only when it has a non-empty value; otherwise use
+                    // initialEditable (from ticket.customerInfo). This prevents empty strings in
+                    // header_overrides from overwriting updated customer data (e.g. after customer edit).
                     const ov = ticketRecord?.header_overrides as Record<string, string> | null;
+                    const useOverride = (ovVal: string | undefined, fallback: string) =>
+                      (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
                     if (ov && Object.keys(ov).length > 0) {
                       const merged = {
                         ...initialEditable,
-                        customerName: ov.customer_name ?? initialEditable.customerName,
-                        address: ov.address ?? initialEditable.address,
-                        cityState: ov.city_state ?? initialEditable.cityState,
-                        zipCode: ov.zip_code ?? initialEditable.zipCode,
-                        phone: ov.phone ?? initialEditable.phone,
-                        email: ov.email ?? initialEditable.email,
-                        contactName: ov.contact_name ?? initialEditable.contactName,
-                        serviceLocation: ov.service_location ?? initialEditable.serviceLocation,
-                        locationCode: ov.location_code ?? initialEditable.locationCode,
-                        poNumber: ov.po_number ?? initialEditable.poNumber,
-                        approverName: ov.approver_po_afe ?? initialEditable.approverName,
-                        other: ov.other ?? initialEditable.other,
-                        techName: ov.tech_name ?? initialEditable.techName,
-                        projectNumber: ov.project_number ?? initialEditable.projectNumber,
-                        date: ov.date ?? initialEditable.date,
+                        customerName: useOverride(ov.customer_name, initialEditable.customerName),
+                        address: useOverride(ov.address, initialEditable.address),
+                        cityState: useOverride(ov.city_state, initialEditable.cityState),
+                        zipCode: useOverride(ov.zip_code, initialEditable.zipCode),
+                        phone: useOverride(ov.phone, initialEditable.phone),
+                        email: useOverride(ov.email, initialEditable.email),
+                        contactName: useOverride(ov.contact_name, initialEditable.contactName),
+                        serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
+                        locationCode: useOverride(ov.location_code, initialEditable.locationCode),
+                        poNumber: useOverride(ov.po_number, initialEditable.poNumber),
+                        approverName: useOverride(ov.approver_po_afe, initialEditable.approverName),
+                        other: useOverride(ov.other, initialEditable.other),
+                        techName: useOverride(ov.tech_name, initialEditable.techName),
+                        projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
+                        date: useOverride(ov.date, initialEditable.date),
                       };
                       setEditableTicket(merged);
                       initialEditableTicketRef.current = { ...merged };
