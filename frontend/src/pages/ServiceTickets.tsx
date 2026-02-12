@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, parseApproverPoAfe, buildApproverPoAfe } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -121,7 +121,9 @@ export default function ServiceTickets() {
     serviceLocation: string;
     locationCode: string;
     poNumber: string;
-    approverName: string;
+    approver: string;
+    poAfe: string;
+    cc: string;
     other: string;
     techName: string;
     projectNumber: string;
@@ -189,7 +191,9 @@ export default function ServiceTickets() {
     serviceLocation: '',
     locationCode: '',
     poNumber: '',
-    approverName: '',
+    approver: '',
+    poAfe: '',
+    cc: '',
     other: '',
     techName: '',
     projectNumber: '',
@@ -285,7 +289,7 @@ export default function ServiceTickets() {
               service_location: editableTicket.serviceLocation ?? '',
               location_code: editableTicket.locationCode ?? '',
               po_number: editableTicket.poNumber ?? '',
-              approver_po_afe: editableTicket.approverName ?? '',
+              approver_po_afe: buildApproverPoAfe(editableTicket.approver, editableTicket.poAfe, editableTicket.cc),
               other: editableTicket.other ?? '',
               tech_name: editableTicket.techName ?? '',
               project_number: editableTicket.projectNumber ?? '',
@@ -1376,7 +1380,9 @@ export default function ServiceTickets() {
       serviceLocation: '',
       locationCode: '',
       poNumber: '',
-      approverName: '',
+      approver: '',
+      poAfe: '',
+      cc: '',
       other: '',
       techName,
       projectNumber: '',
@@ -1410,7 +1416,9 @@ export default function ServiceTickets() {
         serviceLocation: '',
         locationCode: '',
         poNumber: '',
-        approverName: '',
+        approver: '',
+        poAfe: '',
+        cc: '',
         other: '',
         projectNumber: '',
       }));
@@ -1430,7 +1438,9 @@ export default function ServiceTickets() {
         serviceLocation: customer.service_location || '',
         locationCode: customer.location_code || '',
         poNumber: customer.po_number || '',
-        approverName: customer.approver_name || '',
+        approver: customer.approver_name || '',
+        poAfe: '',
+        cc: '',
         other: '',
         projectNumber: '',
       }));
@@ -1441,7 +1451,7 @@ export default function ServiceTickets() {
   const handleCreateProjectSelect = (projectId: string) => {
     setCreateProjectId(projectId);
     if (!projectId) {
-      setCreateData(prev => ({ ...prev, projectNumber: '', serviceLocation: prev.serviceLocation, approverName: prev.approverName, other: '' }));
+      setCreateData(prev => ({ ...prev, projectNumber: '', serviceLocation: prev.serviceLocation, approver: prev.approver, poAfe: prev.poAfe, cc: prev.cc, other: '' }));
       return;
     }
     const project = allProjects?.find((p: any) => p.id === projectId);
@@ -1450,7 +1460,7 @@ export default function ServiceTickets() {
         ...prev,
         projectNumber: project.project_number || '',
         serviceLocation: project.location || prev.serviceLocation,
-        approverName: project.approver_po_afe || prev.approverName,
+        ...(project.approver_po_afe ? parseApproverPoAfe(project.approver_po_afe) : { approver: prev.approver, poAfe: prev.poAfe, cc: prev.cc }),
         other: project.other || prev.other,
       }));
     }
@@ -1494,7 +1504,7 @@ export default function ServiceTickets() {
         ...prev,
         projectNumber: newProject.project_number || '',
         serviceLocation: newProject.location || prev.serviceLocation,
-        approverName: newProject.approver_po_afe || prev.approverName,
+        ...(newProject.approver_po_afe ? parseApproverPoAfe(newProject.approver_po_afe) : { approver: prev.approver, poAfe: prev.poAfe, cc: prev.cc }),
         other: newProject.other || prev.other,
       }));
       setShowInlineCreateProject(false);
@@ -1554,7 +1564,7 @@ export default function ServiceTickets() {
             service_location: createData.serviceLocation,
             location_code: createData.locationCode,
             po_number: createData.poNumber,
-            approver_po_afe: createData.approverName,
+            approver_po_afe: buildApproverPoAfe(createData.approver, createData.poAfe, createData.cc),
             other: createData.other,
             tech_name: createData.techName,
             project_number: createData.projectNumber,
@@ -1990,7 +2000,7 @@ export default function ServiceTickets() {
                     serviceLocation: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
                     locationCode: ticket.customerInfo.location_code || '',
                     poNumber: ticket.customerInfo.po_number || '',
-                    approverName: ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '',
+                    ...parseApproverPoAfe(ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || ''),
                     other: ticket.projectOther || '',
                     techName: ticket.userName || '',
                     projectNumber: ticket.projectNumber || '',
@@ -2048,7 +2058,10 @@ export default function ServiceTickets() {
                         serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
                         locationCode: useOverride(ov.location_code, initialEditable.locationCode),
                         poNumber: useOverride(ov.po_number, initialEditable.poNumber),
-                        approverName: useOverride(ov.approver_po_afe, initialEditable.approverName),
+                        ...((): { approver: string; poAfe: string; cc: string } => {
+                          const combined = useOverride(ov.approver_po_afe, buildApproverPoAfe(initialEditable.approver, initialEditable.poAfe, initialEditable.cc));
+                          return parseApproverPoAfe(combined);
+                        })(),
                         other: useOverride(ov.other, initialEditable.other),
                         techName: useOverride(ov.tech_name, initialEditable.techName),
                         projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
@@ -2798,11 +2811,29 @@ export default function ServiceTickets() {
                             />
                           </div>
                           <div>
-                            <label style={labelStyle}>Approver / PO / AFE</label>
+                            <label style={labelStyle}>Approver</label>
                             <input
-                              style={{ ...inputStyle, ...(isHeaderFieldDirty('approverName') ? pendingChangeHighlight : {}) }}
-                              value={editableTicket.approverName}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, approverName: e.target.value })}
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('approver') ? pendingChangeHighlight : {}) }}
+                              value={editableTicket.approver}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, approver: e.target.value })}
+                              readOnly={isLockedForEditing}
+                            />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>PO/AFE</label>
+                            <input
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('poAfe') ? pendingChangeHighlight : {}) }}
+                              value={editableTicket.poAfe}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, poAfe: e.target.value })}
+                              readOnly={isLockedForEditing}
+                            />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>CC</label>
+                            <input
+                              style={{ ...inputStyle, ...(isHeaderFieldDirty('cc') ? pendingChangeHighlight : {}) }}
+                              value={editableTicket.cc}
+                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, cc: e.target.value })}
                               readOnly={isLockedForEditing}
                             />
                           </div>
@@ -3877,6 +3908,7 @@ export default function ServiceTickets() {
                             userName: editableTicket.techName,
                             projectNumber: editableTicket.projectNumber,
                             date: editableTicket.date,
+                            projectOther: editableTicket.other,
                             customerInfo: {
                               ...selectedTicket.customerInfo,
                               name: editableTicket.customerName,
@@ -3888,9 +3920,12 @@ export default function ServiceTickets() {
                               phone: editableTicket.phone,
                               email: editableTicket.email,
                               service_location: editableTicket.serviceLocation,
-                              location_code: editableTicket.other,
+                              location_code: editableTicket.locationCode,
                               po_number: editableTicket.poNumber,
-                              approver_name: editableTicket.approverName,
+                              approver_name: buildApproverPoAfe(editableTicket.approver, editableTicket.poAfe, editableTicket.cc),
+                              approver: editableTicket.approver,
+                              po_afe: editableTicket.poAfe,
+                              cc: editableTicket.cc,
                             },
                             hoursByRateType: hoursTotals as typeof selectedTicket.hoursByRateType,
                             entries: exportEntries,
@@ -4320,11 +4355,27 @@ export default function ServiceTickets() {
                     style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
                   />
 
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Approver / PO / AFE</label>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Approver</label>
                   <input
                     type="text"
-                    value={createData.approverName}
-                    onChange={(e) => setCreateData(prev => ({ ...prev, approverName: e.target.value }))}
+                    value={createData.approver}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, approver: e.target.value }))}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>PO/AFE</label>
+                  <input
+                    type="text"
+                    value={createData.poAfe}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, poAfe: e.target.value }))}
+                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
+
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>CC</label>
+                  <input
+                    type="text"
+                    value={createData.cc}
+                    onChange={(e) => setCreateData(prev => ({ ...prev, cc: e.target.value }))}
                     style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
                   />
 

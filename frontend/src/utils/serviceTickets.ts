@@ -19,6 +19,9 @@ export interface ServiceTicket {
     tax_id?: string;
     po_number?: string;
     approver_name?: string;
+    approver?: string;
+    po_afe?: string;
+    cc?: string;
     location_code?: string;
     service_location?: string;
   };
@@ -392,6 +395,25 @@ export function extractPoValue(approverPoAfe: string | undefined): string {
   // Fallback: look for pattern like FC250374-9084 (letters + digits + hyphen)
   const inlineMatch = approverPoAfe.match(/([A-Z]{2,}\d{4,}-\d{4,})/i);
   return inlineMatch ? inlineMatch[1].trim() : '';
+}
+
+/** Parse combined approver_po_afe into approver (G###), poAfe, cc */
+export function parseApproverPoAfe(combined: string | undefined): { approver: string; poAfe: string; cc: string } {
+  const s = (combined || '').trim();
+  return {
+    approver: extractApproverCode(s),
+    poAfe: extractPoValue(s) || (s.replace(/G\d{3,}\s*/i, '').replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '').trim() || ''),
+    cc: extractCcValue(s),
+  };
+}
+
+/** Build combined approver_po_afe from approver, poAfe, cc */
+export function buildApproverPoAfe(approver: string, poAfe: string, cc: string): string {
+  const parts: string[] = [];
+  if (approver.trim()) parts.push(approver.trim());
+  if (poAfe.trim()) parts.push(poAfe.trim());
+  if (cc.trim()) parts.push(cc.trim().match(/^CC\s*[:\-]?/i) ? cc.trim() : `CC: ${cc.trim()}`);
+  return parts.join(' ');
 }
 
 /** Round hours to nearest 0.5 (round up) */

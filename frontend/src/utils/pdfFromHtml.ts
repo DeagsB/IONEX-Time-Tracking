@@ -1,6 +1,6 @@
 import html2pdf from 'html2pdf.js';
 import { PDFDocument } from 'pdf-lib';
-import { ServiceTicket, getApproverPoAfeFromTicket } from './serviceTickets';
+import { ServiceTicket, getApproverPoAfeFromTicket, parseApproverPoAfe } from './serviceTickets';
 import { supabase } from '../lib/supabaseClient';
 
 interface PdfExportResult {
@@ -118,6 +118,11 @@ export async function downloadPdfFromHtml(
 
   const ticketDate = ticket.entries[0]?.date ? formatDate(ticket.entries[0].date) : formatDate(new Date().toISOString());
   const approverPoAfe = ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? '';
+  const ci = ticket.customerInfo as { approver?: string; po_afe?: string; cc?: string };
+  const { approver, poAfe, cc } = ci.approver != null || ci.po_afe != null || ci.cc != null
+    ? { approver: ci.approver ?? '', poAfe: ci.po_afe ?? '', cc: ci.cc ?? '' }
+    : parseApproverPoAfe(approverPoAfe);
+  const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
 
   const html = `
     <div id="service-ticket" style="
@@ -214,21 +219,25 @@ export async function downloadPdfFromHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
-            </tr>
-            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Email</td>
-              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px; width: 100px;">PO/CC/AFE</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approverPoAfe}</td>
+              <td style="padding: 2px 4px; width: 100px;">PO/AFE</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${poAfe}</td>
+              <td style="padding: 2px 4px; width: 40px;">CC</td>
+              <td style="padding: 2px 4px;">${cc}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; width: 100px;">Approver</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approver}</td>
               <td style="padding: 2px 4px; width: 40px;">Other</td>
-              <td style="padding: 2px 4px;">${ticket.projectOther ?? ticket.customerInfo.location_code ?? ''}</td>
+              <td style="padding: 2px 4px;">${otherVal}</td>
             </tr>
           </table>
         </div>
@@ -659,6 +668,11 @@ function buildPdfHtml(
   const approverPoAfe = headerOverrides != null
     ? getApproverPoAfeFromTicket(ticket, headerOverrides)
     : (ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? '');
+  const ci = ticket.customerInfo as { approver?: string; po_afe?: string; cc?: string };
+  const { approver, poAfe, cc } = ci.approver != null || ci.po_afe != null || ci.cc != null
+    ? { approver: ci.approver ?? '', poAfe: ci.po_afe ?? '', cc: ci.cc ?? '' }
+    : parseApproverPoAfe(approverPoAfe);
+  const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
   return `
     <div id="service-ticket" style="
       width: 8.5in;
@@ -754,21 +768,25 @@ function buildPdfHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
-            </tr>
-            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Email</td>
-              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px; width: 100px;">PO/CC/AFE</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approverPoAfe}</td>
+              <td style="padding: 2px 4px; width: 100px;">PO/AFE</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${poAfe}</td>
+              <td style="padding: 2px 4px; width: 40px;">CC</td>
+              <td style="padding: 2px 4px;">${cc}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; width: 100px;">Approver</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approver}</td>
               <td style="padding: 2px 4px; width: 40px;">Other</td>
-              <td style="padding: 2px 4px;">${ticket.projectOther ?? ticket.customerInfo.location_code ?? ''}</td>
+              <td style="padding: 2px 4px;">${otherVal}</td>
             </tr>
           </table>
         </div>
