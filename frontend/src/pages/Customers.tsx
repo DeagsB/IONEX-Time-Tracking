@@ -21,7 +21,7 @@ export default function Customers() {
     city: '',
     state: '',
     zip_code: '',
-    country: '',
+    country: 'Canada',
     tax_id: '',
     notes: '',
     po_number: '',
@@ -181,7 +181,7 @@ export default function Customers() {
       city: '',
       state: '',
       zip_code: '',
-      country: '',
+      country: 'Canada',
       tax_id: '',
       notes: '',
       po_number: '',
@@ -207,7 +207,7 @@ export default function Customers() {
       city: customer.city || '',
       state: customer.state || '',
       zip_code: customer.zip_code || '',
-      country: customer.country || '',
+      country: customer.country || 'Canada',
       tax_id: customer.tax_id || '',
       notes: customer.notes || '',
       po_number: customer.po_number || '',
@@ -397,7 +397,7 @@ export default function Customers() {
               </div>
 
               <div className="form-group">
-                <label className="label">State</label>
+                <label className="label">Province</label>
                 <input
                   type="text"
                   className="input"
@@ -407,7 +407,7 @@ export default function Customers() {
               </div>
 
               <div className="form-group">
-                <label className="label">ZIP Code</label>
+                <label className="label">Postal Code</label>
                 <input
                   type="text"
                   className="input"
@@ -420,12 +420,14 @@ export default function Customers() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Country</label>
-                <input
-                  type="text"
+                <select
                   className="input"
                   value={formData.country}
                   onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                />
+                >
+                  <option value="Canada">Canada</option>
+                  <option value="United States">United States</option>
+                </select>
               </div>
 
               <div className="form-group">
@@ -628,7 +630,7 @@ export default function Customers() {
               </div>
 
               <div className="form-group">
-                <label className="label">State</label>
+                <label className="label">Province</label>
                 <input
                   type="text"
                   className="input"
@@ -638,7 +640,7 @@ export default function Customers() {
               </div>
 
               <div className="form-group">
-                <label className="label">ZIP Code</label>
+                <label className="label">Postal Code</label>
                 <input
                   type="text"
                   className="input"
@@ -651,12 +653,14 @@ export default function Customers() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div className="form-group">
                 <label className="label">Country</label>
-                <input
-                  type="text"
+                <select
                   className="input"
                   value={formData.country}
                   onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                />
+                >
+                  <option value="Canada">Canada</option>
+                  <option value="United States">United States</option>
+                </select>
               </div>
 
               <div className="form-group">
