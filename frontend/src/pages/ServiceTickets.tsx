@@ -1263,8 +1263,8 @@ export default function ServiceTickets() {
       result = result.filter(t => t.userId === selectedUserId);
     }
     
-    // Filter by Tab (Status Group)
-    if (activeTab && activeTab !== 'all') {
+    // Filter by Tab (Status Group) - skip when viewing trash (show all trashed from draft/submitted/approved)
+    if (!showDiscarded && activeTab && activeTab !== 'all') {
       result = result.filter(t => {
         const existing = findMatchingTicketRecord(t);
         const hasTicketNumber = !!existing?.ticket_number;
