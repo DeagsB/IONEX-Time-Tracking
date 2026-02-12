@@ -4058,6 +4058,8 @@ export default function ServiceTickets() {
                             setSubmitError(null);
                             setIsApproving(true);
                             try {
+                              const ok = await performSave();
+                              if (!ok) { setIsApproving(false); return; }
                               const ticketRecord = await serviceTicketsService.getOrCreateTicket({
                                 date: selectedTicket.date,
                                 userId: selectedTicket.userId,
@@ -4173,6 +4175,8 @@ export default function ServiceTickets() {
                           onClick={async () => {
                             setIsApproving(true);
                             try {
+                              const ok = await performSave();
+                              if (!ok) { setIsApproving(false); return; }
                               await handleAssignTicketNumber(selectedTicket);
                               queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                               queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
@@ -4200,6 +4204,8 @@ export default function ServiceTickets() {
                       onClick={async () => {
                         setIsApproving(true);
                         try {
+                          const ok = await performSave();
+                          if (!ok) { setIsApproving(false); return; }
                           await handleAssignTicketNumber(selectedTicket);
                           queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                           queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
