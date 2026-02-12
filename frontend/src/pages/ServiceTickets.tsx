@@ -2810,41 +2810,45 @@ export default function ServiceTickets() {
                               readOnly={isLockedForEditing}
                             />
                           </div>
-                          <div>
-                            <label style={labelStyle}>Approver</label>
-                            <input
-                              style={{ ...inputStyle, ...(isHeaderFieldDirty('approver') ? pendingChangeHighlight : {}) }}
-                              value={editableTicket.approver}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, approver: e.target.value })}
-                              readOnly={isLockedForEditing}
-                            />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={labelStyle}>PO/AFE</label>
+                              <input
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('poAfe') ? pendingChangeHighlight : {}) }}
+                                value={editableTicket.poAfe}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, poAfe: e.target.value })}
+                                readOnly={isLockedForEditing}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Approver</label>
+                              <input
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('approver') ? pendingChangeHighlight : {}) }}
+                                value={editableTicket.approver}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, approver: e.target.value })}
+                                readOnly={isLockedForEditing}
+                              />
+                            </div>
                           </div>
-                          <div>
-                            <label style={labelStyle}>PO/AFE</label>
-                            <input
-                              style={{ ...inputStyle, ...(isHeaderFieldDirty('poAfe') ? pendingChangeHighlight : {}) }}
-                              value={editableTicket.poAfe}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, poAfe: e.target.value })}
-                              readOnly={isLockedForEditing}
-                            />
-                          </div>
-                          <div>
-                            <label style={labelStyle}>CC</label>
-                            <input
-                              style={{ ...inputStyle, ...(isHeaderFieldDirty('cc') ? pendingChangeHighlight : {}) }}
-                              value={editableTicket.cc}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, cc: e.target.value })}
-                              readOnly={isLockedForEditing}
-                            />
-                          </div>
-                          <div>
-                            <label style={labelStyle}>Other</label>
-                            <input
-                              style={{ ...inputStyle, ...(isHeaderFieldDirty('other') ? pendingChangeHighlight : {}) }}
-                              value={editableTicket.other}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, other: e.target.value })}
-                              readOnly={isLockedForEditing}
-                            />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={labelStyle}>CC</label>
+                              <input
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('cc') ? pendingChangeHighlight : {}) }}
+                                value={editableTicket.cc}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, cc: e.target.value })}
+                                readOnly={isLockedForEditing}
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Other</label>
+                              <input
+                                style={{ ...inputStyle, ...(isHeaderFieldDirty('other') ? pendingChangeHighlight : {}) }}
+                                value={editableTicket.other}
+                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, other: e.target.value })}
+                                readOnly={isLockedForEditing}
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -4355,37 +4359,47 @@ export default function ServiceTickets() {
                     style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
                   />
 
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Approver</label>
-                  <input
-                    type="text"
-                    value={createData.approver}
-                    onChange={(e) => setCreateData(prev => ({ ...prev, approver: e.target.value }))}
-                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>PO/AFE</label>
+                      <input
+                        type="text"
+                        value={createData.poAfe}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, poAfe: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Approver</label>
+                      <input
+                        type="text"
+                        value={createData.approver}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, approver: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
 
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>PO/AFE</label>
-                  <input
-                    type="text"
-                    value={createData.poAfe}
-                    onChange={(e) => setCreateData(prev => ({ ...prev, poAfe: e.target.value }))}
-                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
-
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>CC</label>
-                  <input
-                    type="text"
-                    value={createData.cc}
-                    onChange={(e) => setCreateData(prev => ({ ...prev, cc: e.target.value }))}
-                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
-
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>Other</label>
-                  <input
-                    type="text"
-                    value={createData.other}
-                    onChange={(e) => setCreateData(prev => ({ ...prev, other: e.target.value }))}
-                    style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>CC</label>
+                      <input
+                        type="text"
+                        value={createData.cc}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, cc: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Other</label>
+                      <input
+                        type="text"
+                        value={createData.other}
+                        onChange={(e) => setCreateData(prev => ({ ...prev, other: e.target.value }))}
+                        style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
