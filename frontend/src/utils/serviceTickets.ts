@@ -496,6 +496,19 @@ export function getProjectApproverPoAfe(project: { approver?: string; po_afe?: s
   return project.approver_po_afe ?? '';
 }
 
+/** Get split Approver, PO/AFE, CC, Other from project for form autopopulation. */
+export function getProjectHeaderFields(project: { approver?: string; po_afe?: string; cc?: string; approver_po_afe?: string; other?: string } | null | undefined): { approver: string; poAfe: string; cc: string; other: string } {
+  if (!project) return { approver: '', poAfe: '', cc: '', other: '' };
+  const apr = parseApproverPoAfe(project.approver_po_afe || '');
+  const oth = parseOtherFieldForPrefixes(project.other || '');
+  return {
+    approver: (project.approver ?? apr.approver ?? oth.approver) || '',
+    poAfe: (project.po_afe ?? apr.poAfe ?? oth.poAfe) || '',
+    cc: (project.cc ?? apr.cc ?? oth.cc) || '',
+    other: (project.other ?? oth.otherRemainder) || '',
+  };
+}
+
 /** Round hours to nearest 0.5 (round up) */
 function roundToHalfHour(hours: number): number {
   return Math.ceil(hours * 2) / 2;

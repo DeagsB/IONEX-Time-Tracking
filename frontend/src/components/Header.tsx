@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
 import SearchableSelect, { SearchableSelectRef } from './SearchableSelect';
-import { getProjectApproverPoAfe } from '../utils/serviceTickets';
+import { getProjectHeaderFields, buildApproverPoAfe } from '../utils/serviceTickets';
 
 interface HeaderProps {
   onTimerStart: (description: string, projectId?: string) => void;
@@ -25,7 +25,10 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [location, setLocation] = useState(''); // Work location for service tickets
-  const [poAfe, setPoAfe] = useState(''); // PO/AFE for service tickets
+  const [approver, setApprover] = useState('');
+  const [poAfe, setPoAfe] = useState('');
+  const [cc, setCc] = useState('');
+  const [other, setOther] = useState('');
   const projectSelectRef = useRef<SearchableSelectRef>(null);
 
   const { data: projects } = useQuery({
@@ -60,7 +63,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rate_type: data.rateType || 'Shop Time',
         description: data.description || null,
         location: data.location || null, // Work location for service tickets
-        po_afe: data.po_afe || null, // PO/AFE for service tickets
+        po_afe: data.po_afe || null, // Combined approver+po_afe+cc for service tickets
         is_demo: isDemoMode, // Mark as demo entry if in demo mode
       };
       
@@ -102,7 +105,10 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     // Clear project selection when customer changes
     setSelectedProjectId('');
     setLocation('');
+    setApprover('');
     setPoAfe('');
+    setCc('');
+    setOther('');
     // Focus project field so user can type immediately without clicking the dropdown
     if (customerId) {
       setTimeout(() => projectSelectRef.current?.focus(), 50);
@@ -113,16 +119,21 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     setSelectedProjectId(projectId);
     
     if (!projectId) {
-      setLocation('');
-      setPoAfe('');
-      return;
-    }
-    
-    const project = projects?.find((p: any) => p.id === projectId);
-    
-    // Set project defaults (don't auto-populate from last used location)
-    setLocation(project?.location || '');
-    setPoAfe(getProjectApproverPoAfe(project) || '');
+    setLocation('');
+    setApprover('');
+    setPoAfe('');
+    setCc('');
+    setOther('');
+    return;
+  }
+  
+  const project = projects?.find((p: any) => p.id === projectId);
+  const fields = getProjectHeaderFields(project);
+  setLocation(project?.location || '');
+  setApprover(fields.approver);
+  setPoAfe(fields.poAfe);
+  setCc(fields.cc);
+  setOther(fields.other);
   };
 
   const handleStop = async () => {
@@ -202,7 +213,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rateType: isBillable ? 'Shop Time' : 'Internal',
         description: currentEntry.description,
         location: location || null, // Include location for service tickets
-        po_afe: poAfe || null, // Include PO/AFE for service tickets
+        po_afe: buildApproverPoAfe(approver, poAfe, cc) || null,
       });
 
       // Stop timer after saving
@@ -213,7 +224,10 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       setSelectedCustomerId('');
       setSelectedProjectId('');
       setLocation('');
+      setApprover('');
       setPoAfe('');
+      setCc('');
+      setOther('');
       
       // Navigate to week view (which will show today's week)
       // The entry will appear in the correct time slot
@@ -493,23 +507,38 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
             />
           )}
 
-          {/* PO/AFE input */}
+          {/* Approver, PO/AFE, CC, Other - only when project selected */}
           {selectedProjectId && (
-            <input
-              type="text"
-              placeholder="PO / AFE..."
-              value={poAfe}
-              onChange={(e) => setPoAfe(e.target.value)}
-              style={{
-                width: '160px',
-                padding: '8px 10px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                fontSize: '13px',
-                backgroundColor: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-              }}
-            />
+            <>
+              <input
+                type="text"
+                placeholder="Approver (AC)..."
+                value={approver}
+                onChange={(e) => setApprover(e.target.value)}
+                style={{ width: '100px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              />
+              <input
+                type="text"
+                placeholder="PO / AFE..."
+                value={poAfe}
+                onChange={(e) => setPoAfe(e.target.value)}
+                style={{ width: '140px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              />
+              <input
+                type="text"
+                placeholder="CC..."
+                value={cc}
+                onChange={(e) => setCc(e.target.value)}
+                style={{ width: '90px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              />
+              <input
+                type="text"
+                placeholder="Other..."
+                value={other}
+                onChange={(e) => setOther(e.target.value)}
+                style={{ width: '100px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              />
+            </>
           )}
         </div>
       )}

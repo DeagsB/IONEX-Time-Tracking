@@ -8,7 +8,7 @@ import { timeEntriesService, projectsService, employeesService, customersService
 import SearchableSelect, { SearchableSelectRef } from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
 import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
-import { getProjectApproverPoAfe } from '../utils/serviceTickets';
+import { getProjectApproverPoAfe, getProjectHeaderFields, buildApproverPoAfe, parseApproverPoAfe, parseOtherFieldForPrefixes } from '../utils/serviceTickets';
 
 interface TimeEntry {
   id: string;
@@ -71,7 +71,10 @@ export default function WeekView() {
     billable: false, // Determined by rate_type (Internal = not billable)
     rate_type: 'Internal', // Default to Internal since no customer is default
     location: '', // Work location - different locations create separate service tickets
-    po_afe: '', // PO/AFE - auto-populated from project
+    approver: '',
+    poAfe: '',
+    cc: '',
+    other: '', // From project
   });
 
   // Edit existing entry modal state
@@ -87,7 +90,10 @@ export default function WeekView() {
     billable: true,
     rate_type: 'Shop Time',
     location: '',
-    po_afe: '',
+    approver: '',
+    poAfe: '',
+    cc: '',
+    other: '',
   });
   // Raw string for duration input (while typing); null = show formatted xx.xx
   const [editDurationInputRaw, setEditDurationInputRaw] = useState<string | null>(null);
@@ -302,7 +308,7 @@ export default function WeekView() {
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       await refetchTimeEntries();
       setShowTimeEntryModal(false);
-      setNewEntry({ description: '', customer_id: '', project_id: '', hours: 0.25, billable: false, rate_type: 'Internal', location: '', po_afe: '' });
+      setNewEntry({ description: '', customer_id: '', project_id: '', hours: 0.25, billable: false, rate_type: 'Internal', location: '', approver: '', poAfe: '', cc: '', other: '' });
       setSelectedSlot(null);
     },
     onError: (error: any) => {
@@ -552,7 +558,10 @@ export default function WeekView() {
       billable: false, // No customer = Internal = not billable
       rate_type: 'Internal',
       location: '',
-      po_afe: '',
+      approver: '',
+      poAfe: '',
+      cc: '',
+      other: '',
     });
     setShowTimeEntryModal(true);
   };
@@ -608,7 +617,7 @@ export default function WeekView() {
       location: newEntry.location || null,
       customer_id: newEntry.customer_id || null,
       project_id: newEntry.project_id || null,
-      po_afe: newEntry.po_afe || null,
+      po_afe: buildApproverPoAfe(newEntry.approver, newEntry.poAfe, newEntry.cc) || null,
     };
 
     if (newEntry.project_id) {
@@ -637,9 +646,10 @@ export default function WeekView() {
       return timeStr.slice(0, 5);
     };
     
-    // Look up the customer_id from the project
+    // Look up the customer_id and project from the project
     const entryProject = projects?.find((p: any) => p.id === entry.project_id);
-    
+    const parsed = parseApproverPoAfe(entry.po_afe || '');
+    const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
     setEditedEntry({
       description: entry.description || '',
       customer_id: entryProject?.customer_id || '',
@@ -650,7 +660,10 @@ export default function WeekView() {
       billable: entry.billable !== undefined ? entry.billable : true,
       rate_type: entry.rate_type || 'Shop Time',
       location: entry.location || '',
-      po_afe: entry.po_afe || '',
+      approver: parsed.approver || oth.approver,
+      poAfe: parsed.poAfe || oth.poAfe,
+      cc: parsed.cc || oth.cc,
+      other: oth.otherRemainder,
     });
     setEditDurationInputRaw(null);
     setShowEditModal(true);
@@ -690,9 +703,9 @@ export default function WeekView() {
     };
     
     setEditingEntry(timerEntry);
-    // Look up the customer_id from the project
+    // Look up customer_id and project defaults (timer doesn't store location/approver/po/cc)
     const timerProject = projects?.find((p: any) => p.id === currentEntry.projectId);
-    
+    const fields = getProjectHeaderFields(timerProject);
     setEditedEntry({
       description: currentEntry.description || '',
       customer_id: timerProject?.customer_id || '',
@@ -702,8 +715,11 @@ export default function WeekView() {
       hours: hours,
       billable: true,
       rate_type: 'Shop Time',
-      location: (currentEntry as any).location || '',
-      po_afe: (currentEntry as any).po_afe || '',
+      location: (currentEntry as any).location || timerProject?.location || '',
+      approver: fields.approver,
+      poAfe: fields.poAfe,
+      cc: fields.cc,
+      other: fields.other,
     });
     setEditDurationInputRaw(null);
     setShowEditModal(true);
@@ -805,7 +821,7 @@ export default function WeekView() {
       location: editedEntry.location || null,
       customer_id: editedEntry.customer_id || null,
       project_id: editedEntry.project_id || null,
-      po_afe: editedEntry.po_afe || null,
+      po_afe: buildApproverPoAfe(editedEntry.approver, editedEntry.poAfe, editedEntry.cc) || null,
     };
 
     updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
@@ -2513,6 +2529,10 @@ export default function WeekView() {
                         customer_id: '',
                         project_id: '',
                         location: '',
+                        approver: '',
+                        poAfe: '',
+                        cc: '',
+                        other: '',
                         rate_type: 'Internal',
                         billable: false
                       }));
@@ -2525,6 +2545,10 @@ export default function WeekView() {
                         customer_id: customerId,
                         project_id: '',
                         location: '',
+                        approver: '',
+                        poAfe: '',
+                        cc: '',
+                        other: '',
                         rate_type: isIonexSystems ? 'Internal' : 'Shop Time',
                         billable: !isIonexSystems
                       }));
@@ -2562,18 +2586,20 @@ export default function WeekView() {
                           setNewEntry(prev => ({ ...prev, project_id: projectId }));
                           
                           if (!projectId) {
-                            setNewEntry(prev => ({ ...prev, location: '', po_afe: '' }));
+                            setNewEntry(prev => ({ ...prev, location: '', approver: '', poAfe: '', cc: '', other: '' }));
                             return;
                           }
                           
-                          // Auto-populate po_afe from project
+                          // Auto-populate Approver, PO/AFE, CC, Other from project
                           const selectedProject = projects?.find((p: any) => p.id === projectId);
-                          
-                          // Set project defaults (don't auto-populate from last used location)
+                          const fields = getProjectHeaderFields(selectedProject);
                           setNewEntry(prev => ({ 
                             ...prev, 
                             location: selectedProject?.location || '',
-                            po_afe: getProjectApproverPoAfe(selectedProject) || '',
+                            approver: fields.approver,
+                            poAfe: fields.poAfe,
+                            cc: fields.cc,
+                            other: fields.other,
                           }));
                         }}
                         placeholder="Search projects..."
@@ -2609,23 +2635,51 @@ export default function WeekView() {
                     />
                   </div>
 
-                  <div className="form-group" style={{ marginBottom: '20px' }}>
-                    <label className="label">PO/AFE</label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="PO or AFE number"
-                      value={newEntry.po_afe}
-                      onChange={(e) => setNewEntry({ ...newEntry, po_afe: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        backgroundColor: 'var(--bg-primary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        color: 'var(--text-primary)',
-                      }}
-                    />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: '20px' }}>
+                    <div className="form-group">
+                      <label className="label">Approver (AC)</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g. G829, C566"
+                        value={newEntry.approver}
+                        onChange={(e) => setNewEntry({ ...newEntry, approver: e.target.value })}
+                        style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">PO/AFE</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="PO or AFE number"
+                        value={newEntry.poAfe}
+                        onChange={(e) => setNewEntry({ ...newEntry, poAfe: e.target.value })}
+                        style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">CC</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="CC"
+                        value={newEntry.cc}
+                        onChange={(e) => setNewEntry({ ...newEntry, cc: e.target.value })}
+                        style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Other</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Other"
+                        value={newEntry.other}
+                        onChange={(e) => setNewEntry({ ...newEntry, other: e.target.value })}
+                        style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
+                      />
+                    </div>
                   </div>
 
                   {!isPanelShop && (
@@ -2936,6 +2990,10 @@ export default function WeekView() {
                         customer_id: customerId,
                         project_id: '',
                         location: '',
+                        approver: '',
+                        poAfe: '',
+                        cc: '',
+                        other: '',
                         rate_type: isIonexSystems ? 'Internal' : (prev.rate_type === 'Internal' ? 'Shop Time' : prev.rate_type),
                         billable: !isIonexSystems
                       }));
@@ -2972,18 +3030,20 @@ export default function WeekView() {
                           setEditedEntry(prev => ({ ...prev, project_id: projectId }));
                           
                           if (!projectId) {
-                            setEditedEntry(prev => ({ ...prev, location: '', po_afe: '' }));
+                            setEditedEntry(prev => ({ ...prev, location: '', approver: '', poAfe: '', cc: '', other: '' }));
                             return;
                           }
                           
-                          // Auto-populate po_afe from project
+                          // Auto-populate Approver, PO/AFE, CC, Other from project
                           const selectedProject = projects?.find((p: any) => p.id === projectId);
-                          
-                          // Set project defaults (don't auto-populate from last used location)
+                          const fields = getProjectHeaderFields(selectedProject);
                           setEditedEntry(prev => ({
                             ...prev,
                             location: selectedProject?.location || '',
-                            po_afe: getProjectApproverPoAfe(selectedProject) || prev.po_afe,
+                            approver: fields.approver,
+                            poAfe: fields.poAfe,
+                            cc: fields.cc,
+                            other: fields.other,
                           }));
                         }}
                         placeholder="Search projects..."
@@ -3019,25 +3079,49 @@ export default function WeekView() {
                 </div>
               )}
 
-              {/* 5b. PO/AFE input - only when customer selected */}
+              {/* 5b. Approver, PO/AFE, CC, Other - only when customer selected */}
               {editedEntry.customer_id && (
-                <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="label">PO/AFE</label>
-                  <input
-                    type="text"
-                    placeholder="PO or AFE number"
-                    value={editedEntry.po_afe}
-                    onChange={(e) => setEditedEntry({ ...editedEntry, po_afe: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
-                      fontSize: '14px',
-                    }}
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: '20px' }}>
+                  <div className="form-group">
+                    <label className="label">Approver (AC)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. G829, C566"
+                      value={editedEntry.approver}
+                      onChange={(e) => setEditedEntry({ ...editedEntry, approver: e.target.value })}
+                      style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">PO/AFE</label>
+                    <input
+                      type="text"
+                      placeholder="PO or AFE number"
+                      value={editedEntry.poAfe}
+                      onChange={(e) => setEditedEntry({ ...editedEntry, poAfe: e.target.value })}
+                      style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">CC</label>
+                    <input
+                      type="text"
+                      placeholder="CC"
+                      value={editedEntry.cc}
+                      onChange={(e) => setEditedEntry({ ...editedEntry, cc: e.target.value })}
+                      style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Other</label>
+                    <input
+                      type="text"
+                      placeholder="Other"
+                      value={editedEntry.other}
+                      onChange={(e) => setEditedEntry({ ...editedEntry, other: e.target.value })}
+                      style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}
+                    />
+                  </div>
                 </div>
               )}
 
