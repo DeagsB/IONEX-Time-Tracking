@@ -134,6 +134,10 @@ export default function WeekView() {
   const [hoveredEntryId, setHoveredEntryId] = useState<string | null>(null);
   const [hoveredLegendId, setHoveredLegendId] = useState<string | null>(null);
 
+  // Right-click context menu for time entries
+  const [contextMenuEntry, setContextMenuEntry] = useState<{ x: number; y: number; entry: any } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
   // Header visibility state (hide on scroll down, show on scroll up)
   const [headerVisible, setHeaderVisible] = useState(true);
   const lastScrollTop = useRef(0);
@@ -170,6 +174,18 @@ export default function WeekView() {
     const t = setTimeout(() => addProjectSelectRef.current?.focus(), 50);
     return () => clearTimeout(t);
   }, [showTimeEntryModal, newEntry.customer_id]);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    if (!contextMenuEntry) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenuEntry(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [contextMenuEntry]);
   
   // Get week start (Monday)
   const getWeekStart = (date: Date) => {
@@ -2071,6 +2087,14 @@ export default function WeekView() {
                           }
                           handleEntryClick(entry, e);
                         }}
+                        onContextMenu={(e) => {
+                          if ((e.target as HTMLElement).closest('.drag-handle')) return;
+                          if (viewUserId && isAdmin) return;
+                          if (showTimeEntryModal || showEditModal) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setContextMenuEntry({ x: e.clientX, y: e.clientY, entry });
+                        }}
                       >
                         {/* Project number and name (bold) */}
                         <div style={{ 
@@ -2344,6 +2368,72 @@ export default function WeekView() {
           })}
         </div>
       </div>
+      )}
+
+      {/* Right-click context menu for time entries */}
+      {contextMenuEntry && (
+        <div
+          ref={contextMenuRef}
+          style={{
+            position: 'fixed',
+            left: contextMenuEntry.x,
+            top: contextMenuEntry.y,
+            zIndex: 1100,
+            backgroundColor: 'var(--bg-secondary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            minWidth: '140px',
+            padding: '4px 0',
+          }}
+        >
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const entry = contextMenuEntry.entry;
+              if (!entry?.id) return;
+              const dateStr = typeof entry.date === 'string' ? entry.date : new Date(entry.date).toISOString().split('T')[0];
+              let customerId = entry.customer_id;
+              if (!customerId && entry.project?.customer?.id) customerId = entry.project.customer.id;
+              if (!customerId && entry.project_id && projects) {
+                const proj = projects.find((p: any) => p.id === entry.project_id);
+                if (proj) customerId = proj.customer_id;
+              }
+              if (window.confirm('Are you sure you want to delete this time entry?')) {
+                deleteTimeEntryMutation.mutate({
+                  id: entry.id,
+                  date: dateStr,
+                  userId: entry.user_id,
+                  customerId: customerId ?? null,
+                });
+                setContextMenuEntry(null);
+              }
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              width: '100%',
+              padding: '8px 14px',
+              border: 'none',
+              background: 'none',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <span style={{ opacity: 0.8 }}>🗑</span>
+            Delete
+          </button>
+        </div>
       )}
 
       {/* Time Entry Modal */}
