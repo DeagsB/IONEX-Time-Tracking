@@ -306,7 +306,11 @@ export function aggregateEmployeeMetrics(
                             roundedPayrollHours.shopOvertime + 
                             roundedPayrollHours.fieldOvertime + 
                             roundedPayrollHours.internal;
-  const billableRatio = totalPayrollHours > 0 ? (billableHours / totalPayrollHours) * 100 : 0;
+  
+  // Billable ratio should be calculated as billable hours / total hours worked
+  // This represents what percentage of total hours are billable (should be <= 100%)
+  // Using totalHours instead of totalPayrollHours to avoid efficiency > 100% when service tickets have minimums
+  const billableRatio = totalHours > 0 ? (billableHours / totalHours) * 100 : 0;
   
   // Calculate total service ticket hours for average rate calculation
   const totalServiceTicketHours = serviceTicketHours && serviceTicketHours.length > 0
