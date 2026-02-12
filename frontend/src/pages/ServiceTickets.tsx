@@ -4023,8 +4023,65 @@ export default function ServiceTickets() {
                     );
                   }
 
-                  // Not in trash: show admin buttons (Submit for Approval / Export PDF)
-                  if (!isAdmin) return null;
+                  // Not in trash: show admin or user buttons
+                  if (!isAdmin) {
+                    // Non-admin: Submit for Approval or Approved by Admin
+                    const isTicketApproved = existingTicketRecord?.workflow_status === 'approved';
+                    const isAdminApproved = !!existingTicketRecord?.ticket_number;
+                    const approvedByAdmin = (existingTicketRecord as any)?.approved_by_admin;
+                    const adminName = approvedByAdmin
+                      ? `${approvedByAdmin.first_name || ''} ${approvedByAdmin.last_name || ''}`.trim() || 'Admin'
+                      : 'Admin';
+                    if (isAdminApproved) {
+                      return (
+                        <button
+                          className="button button-secondary"
+                          disabled
+                          style={{ padding: '10px 24px', backgroundColor: '#10b981', borderColor: '#10b981', cursor: 'not-allowed', opacity: 0.8 }}
+                          title={`Approved by ${adminName}`}
+                        >
+                          ✓ Approved by {adminName}
+                        </button>
+                      );
+                    }
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+                        {submitError && (
+                          <div style={{ color: '#ef5350', fontSize: '14px', maxWidth: '100%' }}>{submitError}</div>
+                        )}
+                        <button
+                          className={isTicketApproved ? 'button button-secondary' : 'button button-primary'}
+                          onClick={async () => {
+                            setSubmitError(null);
+                            setIsApproving(true);
+                            try {
+                              const ticketRecord = await serviceTicketsService.getOrCreateTicket({
+                                date: selectedTicket.date,
+                                userId: selectedTicket.userId,
+                                customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                                location: selectedTicket.location || '',
+                              }, isDemoMode);
+                              const newStatus = isTicketApproved ? 'draft' : 'approved';
+                              await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
+                              await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                              await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                              await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+                              await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+                            } catch (error) {
+                              const msg = error instanceof Error ? error.message : 'Failed to submit for approval.';
+                              setSubmitError(msg);
+                            } finally {
+                              setIsApproving(false);
+                            }
+                          }}
+                          style={{ padding: '10px 24px', backgroundColor: isTicketApproved ? '#10b981' : undefined, borderColor: isTicketApproved ? '#10b981' : undefined }}
+                          disabled={isApproving}
+                        >
+                          {isApproving ? 'Submitting...' : (isTicketApproved ? '✓ Submitted' : 'Submit for Approval')}
+                        </button>
+                      </div>
+                    );
+                  }
                   const hasTicketNumber = !!existingTicketRecord?.ticket_number;
                   const workflowStatus = existingTicketRecord?.workflow_status || 'draft';
                   const isUserApprovedNotYetApproved = !hasTicketNumber && workflowStatus !== 'draft' && workflowStatus !== 'rejected';
@@ -4155,86 +4212,6 @@ export default function ServiceTickets() {
                     >
                       {isApproving ? 'Approving...' : 'Approve'}
                     </button>
-                  );
-                })() : (() => {
-                  // Check if ticket is already approved
-                  const existingTicketRecord = findMatchingTicketRecord(selectedTicket);
-                  const isTicketApproved = existingTicketRecord?.workflow_status === 'approved';
-                  const isAdminApproved = !!existingTicketRecord?.ticket_number; // Admin has assigned a ticket number
-                  
-                  // Get admin name if available
-                  const approvedByAdmin = (existingTicketRecord as any)?.approved_by_admin;
-                  const adminName = approvedByAdmin 
-                    ? `${approvedByAdmin.first_name || ''} ${approvedByAdmin.last_name || ''}`.trim() || 'Admin'
-                    : 'Admin';
-                  
-                  // If admin has approved (assigned ticket number), show locked state
-                  if (isAdminApproved) {
-                    return (
-                      <button
-                        className="button button-secondary"
-                        disabled
-                        style={{ 
-                          padding: '10px 24px',
-                          backgroundColor: '#10b981',
-                          borderColor: '#10b981',
-                          cursor: 'not-allowed',
-                          opacity: 0.8,
-                        }}
-                        title={`Approved by ${adminName}`}
-                      >
-                        ✓ Approved by {adminName}
-                      </button>
-                    );
-                  }
-                  
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
-                      {submitError && (
-                        <div style={{ color: '#ef5350', fontSize: '14px', maxWidth: '100%' }}>
-                          {submitError}
-                        </div>
-                      )}
-                      <button
-                        className={isTicketApproved ? "button button-secondary" : "button button-primary"}
-                        onClick={async () => {
-                          setSubmitError(null);
-                          setIsApproving(true);
-                          try {
-                            // Get or create the ticket record
-                            const ticketRecord = await serviceTicketsService.getOrCreateTicket({
-                              date: selectedTicket.date,
-                              userId: selectedTicket.userId,
-                              customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
-                              location: selectedTicket.location || '',
-                            }, isDemoMode);
-                            
-                            // Toggle workflow status
-                            const newStatus = isTicketApproved ? 'draft' : 'approved';
-                            await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
-                            
-                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                            await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
-                            await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
-                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
-                          } catch (error) {
-                            console.error('Error updating ticket status:', error);
-                            const msg = error instanceof Error ? error.message : 'Failed to submit for approval.';
-                            setSubmitError(msg);
-                          } finally {
-                            setIsApproving(false);
-                          }
-                        }}
-                        style={{
-                          padding: '10px 24px',
-                          backgroundColor: isTicketApproved ? '#10b981' : undefined,
-                          borderColor: isTicketApproved ? '#10b981' : undefined,
-                        }}
-                        disabled={isApproving}
-                      >
-                        {isApproving ? 'Submitting...' : (isTicketApproved ? '✓ Submitted' : 'Submit for Approval')}
-                      </button>
-                    </div>
                   );
                 })()}
                 </div>
