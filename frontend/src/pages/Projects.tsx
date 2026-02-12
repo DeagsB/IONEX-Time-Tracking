@@ -4,8 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 import SearchableSelect from '../components/SearchableSelect';
-import { parseApproverPoAfe, buildApproverPoAfe, parseOtherFieldForPrefixes } from '../utils/serviceTickets';
-
 export default function Projects() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -177,7 +175,6 @@ export default function Projects() {
         status: data.status,
         color: data.color || '#4ecdc4',
         location: data.location || null,
-        approver_po_afe: buildApproverPoAfe(data.approver, data.poAfe, data.cc) || null,
         approver: data.approver?.trim() || null,
         po_afe: data.poAfe?.trim() || null,
         cc: data.cc?.trim() || null,
@@ -212,7 +209,6 @@ export default function Projects() {
       if (data.color !== undefined) projectData.color = data.color;
       if (data.location !== undefined) projectData.location = data.location || null;
       if (data.approver !== undefined || data.poAfe !== undefined || data.cc !== undefined) {
-        projectData.approver_po_afe = buildApproverPoAfe(data.approver ?? '', data.poAfe ?? '', data.cc ?? '') || null;
         projectData.approver = (data.approver ?? '').trim() || null;
         projectData.po_afe = (data.poAfe ?? '').trim() || null;
         projectData.cc = (data.cc ?? '').trim() || null;
@@ -285,9 +281,6 @@ export default function Projects() {
 
   const handleEdit = (project: any) => {
     setEditingProject(project);
-    // Prefer new columns when present; fallback to parsing approver_po_afe/other
-    const apr = parseApproverPoAfe(project.approver_po_afe || '');
-    const oth = parseOtherFieldForPrefixes(project.other || '');
     setFormData({
       name: project.name || '',
       project_number: project.project_number || '',
@@ -296,10 +289,10 @@ export default function Projects() {
       status: project.status || 'active',
       color: project.color || '#4ecdc4',
       location: project.location || '',
-      approver: (project.approver ?? apr.approver ?? oth.approver) || '',
-      poAfe: (project.po_afe ?? apr.poAfe ?? oth.poAfe) || '',
-      cc: (project.cc ?? apr.cc ?? oth.cc) || '',
-      other: oth.otherRemainder,
+      approver: project.approver || '',
+      poAfe: project.po_afe || '',
+      cc: project.cc || '',
+      other: project.other || '',
       shop_junior_rate: project.shop_junior_rate?.toString() || '',
       shop_senior_rate: project.shop_senior_rate?.toString() || '',
       ft_junior_rate: project.ft_junior_rate?.toString() || '',

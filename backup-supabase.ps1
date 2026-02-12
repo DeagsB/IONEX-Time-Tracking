@@ -33,11 +33,11 @@ if (-not $url -and -not $hasApiCreds) {
     exit 1
 }
 
-# Check for pg_dump (preferred for remote databases, no Docker needed)
+# Check for pg_dump (preferred when SUPABASE_DB_URL is set)
 $pgDump = Get-Command pg_dump -ErrorAction SilentlyContinue
 $usePgDump = $false
 $useSupabaseApi = $false
-if ($pgDump) {
+if ($pgDump -and $url) {
     $usePgDump = $true
     Write-Host "Using pg_dump (PostgreSQL native tool)" -ForegroundColor Cyan
 } elseif ($env:SUPABASE_URL -and $env:SUPABASE_SERVICE_KEY) {

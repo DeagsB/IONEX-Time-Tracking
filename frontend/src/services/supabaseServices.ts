@@ -811,7 +811,9 @@ export const serviceTicketsService = {
           ft_senior_rate,
           travel_rate,
           location,
-          approver_po_afe,
+          approver,
+          po_afe,
+          cc,
           other,
           customer:customers!projects_customer_id_fkey(*)
         )
@@ -1258,7 +1260,7 @@ export const serviceTicketsService = {
     if (customerData.service_location != null) customerOverrides.service_location = customerData.service_location;
     if (customerData.location_code != null) customerOverrides.location_code = customerData.location_code;
     if (customerData.po_number != null) customerOverrides.po_number = customerData.po_number;
-    if (customerData.approver_name != null) customerOverrides.approver_po_afe = customerData.approver_name;
+    if (customerData.approver_name != null) customerOverrides.approver = customerData.approver_name;
 
     if (Object.keys(customerOverrides).length === 0) return;
 

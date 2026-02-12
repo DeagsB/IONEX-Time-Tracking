@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, parseApproverPoAfe, buildApproverPoAfe, parseOtherFieldForPrefixes } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, parseApproverPoAfe, buildApproverPoAfe, getProjectHeaderFields } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -289,7 +289,9 @@ export default function ServiceTickets() {
               service_location: editableTicket.serviceLocation ?? '',
               location_code: editableTicket.locationCode ?? '',
               po_number: editableTicket.poNumber ?? '',
-              approver_po_afe: buildApproverPoAfe(editableTicket.approver, editableTicket.poAfe, editableTicket.cc),
+              approver: editableTicket.approver ?? '',
+              po_afe: editableTicket.poAfe ?? '',
+              cc: editableTicket.cc ?? '',
               other: editableTicket.other ?? '',
               tech_name: editableTicket.techName ?? '',
               project_number: editableTicket.projectNumber ?? '',
@@ -351,7 +353,9 @@ export default function ServiceTickets() {
       service_location: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
       location_code: ticket.customerInfo.location_code ?? '',
       po_number: ticket.customerInfo.po_number ?? '',
-      approver_po_afe: ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '',
+      approver: ticket.projectApprover ?? ticket.customerInfo.approver_name ?? '',
+      po_afe: ticket.projectPoAfe ?? ticket.customerInfo.po_number ?? '',
+      cc: ticket.projectCc ?? '',
       other: ticket.projectOther ?? '',
       tech_name: ticket.userName ?? '',
       project_number: ticket.projectNumber ?? '',
@@ -1456,16 +1460,15 @@ export default function ServiceTickets() {
     }
     const project = allProjects?.find((p: any) => p.id === projectId);
     if (project) {
-      const apr = project.approver_po_afe ? parseApproverPoAfe(project.approver_po_afe) : null;
-      const oth = parseOtherFieldForPrefixes(project.other || '');
+      const fields = getProjectHeaderFields(project);
       setCreateData(prev => ({
         ...prev,
         projectNumber: project.project_number || '',
         serviceLocation: project.location || prev.serviceLocation,
-        approver: apr?.approver || oth.approver || prev.approver,
-        poAfe: apr?.poAfe || oth.poAfe || prev.poAfe,
-        cc: apr?.cc || oth.cc || prev.cc,
-        other: oth.otherRemainder || prev.other,
+        approver: fields.approver || prev.approver,
+        poAfe: fields.poAfe || prev.poAfe,
+        cc: fields.cc || prev.cc,
+        other: fields.other || prev.other,
       }));
     }
   };
@@ -1504,16 +1507,15 @@ export default function ServiceTickets() {
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
       await queryClient.refetchQueries({ queryKey: ['projects'] });
       setCreateProjectId(newProject.id);
-      const apr = newProject.approver_po_afe ? parseApproverPoAfe(newProject.approver_po_afe) : null;
-      const oth = parseOtherFieldForPrefixes(newProject.other || '');
+      const fields = getProjectHeaderFields(newProject);
       setCreateData(prev => ({
         ...prev,
         projectNumber: newProject.project_number || '',
         serviceLocation: newProject.location || prev.serviceLocation,
-        approver: apr?.approver || oth.approver || prev.approver,
-        poAfe: apr?.poAfe || oth.poAfe || prev.poAfe,
-        cc: apr?.cc || oth.cc || prev.cc,
-        other: oth.otherRemainder || prev.other,
+        approver: fields.approver || prev.approver,
+        poAfe: fields.poAfe || prev.poAfe,
+        cc: fields.cc || prev.cc,
+        other: fields.other || prev.other,
       }));
       setShowInlineCreateProject(false);
       setInlineProjectName('');
@@ -2008,16 +2010,10 @@ export default function ServiceTickets() {
                     serviceLocation: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
                     locationCode: ticket.customerInfo.location_code || '',
                     poNumber: ticket.customerInfo.po_number || '',
-                    ...((): { approver: string; poAfe: string; cc: string; other: string } => {
-                      const apr = parseApproverPoAfe(ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '');
-                      const oth = parseOtherFieldForPrefixes(ticket.projectOther || '');
-                      return {
-                        approver: apr.approver || oth.approver,
-                        poAfe: apr.poAfe || oth.poAfe,
-                        cc: apr.cc || oth.cc,
-                        other: oth.otherRemainder,
-                      };
-                    })(),
+                    approver: ticket.projectApprover || ticket.customerInfo.approver_name || '',
+                    poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
+                    cc: ticket.projectCc || '',
+                    other: ticket.projectOther || '',
                     techName: ticket.userName || '',
                     projectNumber: ticket.projectNumber || '',
                     date: ticket.date || '',
@@ -2074,20 +2070,10 @@ export default function ServiceTickets() {
                         serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
                         locationCode: useOverride(ov.location_code, initialEditable.locationCode),
                         poNumber: useOverride(ov.po_number, initialEditable.poNumber),
-                        ...((): { approver: string; poAfe: string; cc: string; other: string } => {
-                          const combined = useOverride(ov.approver_po_afe, buildApproverPoAfe(initialEditable.approver, initialEditable.poAfe, initialEditable.cc));
-                          const apr = parseApproverPoAfe(combined);
-                          const otherVal = useOverride(ov.other, initialEditable.other);
-                          const oth = parseOtherFieldForPrefixes(otherVal);
-                          // Prefer parsed override, but fall back to initialEditable when override parses to empty
-                          // (avoids blanking approver/cc when saved approver_po_afe was incomplete, e.g. PO only)
-                          return {
-                            approver: apr.approver || oth.approver || initialEditable.approver,
-                            poAfe: apr.poAfe || oth.poAfe || initialEditable.poAfe,
-                            cc: apr.cc || oth.cc || initialEditable.cc,
-                            other: oth.otherRemainder,
-                          };
-                        })(),
+                        approver: (ov.approver != null && String(ov.approver).trim() !== '') ? String(ov.approver).trim() : (ov.approver_po_afe ? parseApproverPoAfe(String(ov.approver_po_afe)).approver : null) ?? initialEditable.approver,
+                        poAfe: (ov.po_afe != null && String(ov.po_afe).trim() !== '') ? String(ov.po_afe).trim() : (ov.approver_po_afe ? parseApproverPoAfe(String(ov.approver_po_afe)).poAfe : null) ?? initialEditable.poAfe,
+                        cc: (ov.cc != null && String(ov.cc).trim() !== '') ? String(ov.cc).trim() : (ov.approver_po_afe ? parseApproverPoAfe(String(ov.approver_po_afe)).cc : null) ?? initialEditable.cc,
+                        other: useOverride(ov.other, initialEditable.other),
                         techName: useOverride(ov.tech_name, initialEditable.techName),
                         projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
                         date: useOverride(ov.date, initialEditable.date),

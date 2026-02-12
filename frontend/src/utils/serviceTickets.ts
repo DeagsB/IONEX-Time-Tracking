@@ -35,6 +35,9 @@ export interface ServiceTicket {
   // Project-level service ticket defaults
   projectLocation?: string;
   projectApproverPoAfe?: string;
+  projectApprover?: string;
+  projectPoAfe?: string;
+  projectCc?: string;
   projectOther?: string;
   // Entry-level overrides (from time entry form - take priority over project/customer defaults)
   entryLocation?: string;
@@ -88,7 +91,6 @@ export interface TimeEntryWithRelations {
     travel_rate?: number;
     // Service ticket defaults
     location?: string;
-    approver_po_afe?: string;
     approver?: string;
     po_afe?: string;
     cc?: string;
@@ -295,6 +297,9 @@ export function groupEntriesIntoTickets(
         projectNumber: entry.project?.project_number,
         projectLocation: entry.project?.location,
         projectApproverPoAfe: getProjectApproverPoAfe(entry.project) || undefined,
+        projectApprover: getProjectHeaderFields(entry.project).approver,
+        projectPoAfe: getProjectHeaderFields(entry.project).poAfe,
+        projectCc: getProjectHeaderFields(entry.project).cc,
         projectOther: entry.project?.other,
         entryLocation: entry.location || undefined,
         entryPoAfe: entry.po_afe || undefined,
@@ -478,34 +483,26 @@ export function parseOtherFieldForPrefixes(other: string | undefined): { cc: str
   return { cc: ccVal, approver: acVal, poAfe: poFinal, otherRemainder: remainder };
 }
 
-/** Build combined approver_po_afe from approver, poAfe, cc. Values only, no AC:/PO:/CC: prefixes. */
+/** Build combined approver/PO/AFE/CC string from separate fields. */
 export function buildApproverPoAfe(approver: string, poAfe: string, cc: string): string {
-  const parts: string[] = [];
-  if (approver.trim()) parts.push(approver.trim().replace(/^AC\s*[:\-]?\s*/i, ''));
-  if (poAfe.trim()) parts.push(poAfe.trim().replace(/^PO\s*[:\-]?\s*/i, '').replace(/^AFE\s*[:\-]?\s*/i, ''));
-  if (cc.trim()) parts.push(cc.trim().replace(/^CC\s*[:\-]?\s*/i, ''));
+  const parts = [approver?.trim(), poAfe?.trim(), cc?.trim()].filter(Boolean);
   return parts.join(' ');
 }
 
-/** Get combined approver/PO/AFE/CC from project. Prefers new columns when present. */
-export function getProjectApproverPoAfe(project: { approver?: string; po_afe?: string; cc?: string; approver_po_afe?: string } | null | undefined): string {
+/** Get combined approver/PO/AFE/CC from project. Uses approver, po_afe, cc columns only. */
+export function getProjectApproverPoAfe(project: { approver?: string; po_afe?: string; cc?: string } | null | undefined): string {
   if (!project) return '';
-  if (project.approver != null || project.po_afe != null || project.cc != null) {
-    return buildApproverPoAfe(project.approver ?? '', project.po_afe ?? '', project.cc ?? '');
-  }
-  return project.approver_po_afe ?? '';
+  return buildApproverPoAfe(project.approver ?? '', project.po_afe ?? '', project.cc ?? '');
 }
 
 /** Get split Approver, PO/AFE, CC, Other from project for form autopopulation. */
-export function getProjectHeaderFields(project: { approver?: string; po_afe?: string; cc?: string; approver_po_afe?: string; other?: string } | null | undefined): { approver: string; poAfe: string; cc: string; other: string } {
+export function getProjectHeaderFields(project: { approver?: string; po_afe?: string; cc?: string; other?: string } | null | undefined): { approver: string; poAfe: string; cc: string; other: string } {
   if (!project) return { approver: '', poAfe: '', cc: '', other: '' };
-  const apr = parseApproverPoAfe(project.approver_po_afe || '');
-  const oth = parseOtherFieldForPrefixes(project.other || '');
   return {
-    approver: (project.approver ?? apr.approver ?? oth.approver) || '',
-    poAfe: (project.po_afe ?? apr.poAfe ?? oth.poAfe) || '',
-    cc: (project.cc ?? apr.cc ?? oth.cc) || '',
-    other: (project.other ?? oth.otherRemainder) || '',
+    approver: project.approver || '',
+    poAfe: project.po_afe || '',
+    cc: project.cc || '',
+    other: project.other || '',
   };
 }
 
@@ -566,7 +563,11 @@ export interface InvoiceGroupKey {
 /** Header overrides from service_tickets.header_overrides (user edits + frozen rates saved on the ticket) */
 export interface HeaderOverrides {
   service_location?: string;
+  /** @deprecated Use approver, po_afe, cc. Kept for backward compat with old tickets. */
   approver_po_afe?: string;
+  approver?: string;
+  po_afe?: string;
+  cc?: string;
   other?: string;
   customer_name?: string;
   address?: string;
@@ -600,10 +601,12 @@ export function applyHeaderOverridesToTicket(
   const locFallback = (ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
   const approverFallback = entryPo ?? ticket.projectApproverPoAfe ?? ticket.customerInfo?.approver_name ?? ticket.customerInfo?.po_number ?? '';
 
-  // Only use approver_po_afe override when non-empty; empty string overwrites valid project/customer fallbacks (Invoices bulk merge bug)
-  const approverOverride = (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
-    ? ov.approver_po_afe
-    : undefined;
+  // Prefer new approver/po_afe/cc; fallback to approver_po_afe for old tickets
+  const approverOverride = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
+    ? buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '')
+    : (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
+      ? ov.approver_po_afe
+      : undefined;
 
   const hasFrozenRates = ov && (
     typeof ov.rate_rt === 'number' || typeof ov.rate_tt === 'number' || typeof ov.rate_ft === 'number' ||
@@ -641,22 +644,27 @@ export function applyHeaderOverridesToTicket(
 }
 
 /** Get approver/PO/AFE string from a ticket (header overrides > project > entry-level).
- * Empty approver_po_afe in overrides is treated as no override to avoid blanking valid fallbacks. */
+ * Supports new approver/po_afe/cc and legacy approver_po_afe in overrides. */
 export function getApproverPoAfeFromTicket(
   ticket: { projectApproverPoAfe?: string; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
-  headerOverrides?: { approver_po_afe?: string } | null
+  headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string } | null
 ): string {
   const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
-  const ov = headerOverrides?.approver_po_afe != null && String(headerOverrides.approver_po_afe).trim() !== ''
-    ? headerOverrides.approver_po_afe
-    : undefined;
-  return ov ?? ticket.projectApproverPoAfe ?? entryPo ?? '';
+  const ov = headerOverrides;
+  const fromNew = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
+    ? buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '')
+    : '';
+  const fromLegacy = (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
+    ? ov.approver_po_afe
+    : '';
+  const override = fromNew || fromLegacy || undefined;
+  return override ?? ticket.projectApproverPoAfe ?? entryPo ?? '';
 }
 
 /** Get grouping key for a ticket (for merged PDF export) */
 export function getInvoiceGroupKey(
   ticket: { projectId?: string; location?: string; projectApproverPoAfe?: string; projectLocation?: string; customerInfo?: { service_location?: string }; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
-  headerOverrides?: { approver_po_afe?: string; service_location?: string } | null
+  headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; service_location?: string } | null
 ): InvoiceGroupKey {
   const approverPoAfe = getApproverPoAfeFromTicket(ticket, headerOverrides);
   const location = (headerOverrides?.service_location ?? ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
