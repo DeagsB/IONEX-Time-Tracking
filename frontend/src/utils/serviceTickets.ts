@@ -432,6 +432,29 @@ export function parseApproverPoAfe(combined: string | undefined): { approver: st
   };
 }
 
+/**
+ * Parse "other" field for CC:, AC:, PO: prefixes (legacy data).
+ * Returns extracted values and remainder for other.
+ */
+export function parseOtherFieldForPrefixes(other: string | undefined): { cc: string; approver: string; poAfe: string; otherRemainder: string } {
+  const s = (other || '').trim();
+  if (!s) return { cc: '', approver: '', poAfe: '', otherRemainder: '' };
+  const ccVal = extractCcValue(s);
+  const acVal = extractACValue(s);
+  const poVal = extractPoValue(s);
+  // Also match PO: with underscores (e.g. in other field)
+  const poInOther = s.match(/PO\s*[:\-]?\s*([^\s,;]+)/i);
+  const poValFromOther = poInOther ? poInOther[1].trim() : '';
+  const poFinal = poVal || poValFromOther;
+  let remainder = s
+    .replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '')
+    .replace(/AC\s*[:\-]?\s*[^\s,;]+/gi, '')
+    .replace(/PO\s*[:\-]?\s*[^\s,;]+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { cc: ccVal, approver: acVal, poAfe: poFinal, otherRemainder: remainder };
+}
+
 /** Build combined approver_po_afe from approver, poAfe, cc. Values only, no AC:/PO:/CC: prefixes. */
 export function buildApproverPoAfe(approver: string, poAfe: string, cc: string): string {
   const parts: string[] = [];

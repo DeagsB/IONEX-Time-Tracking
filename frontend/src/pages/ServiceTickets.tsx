@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, parseApproverPoAfe, buildApproverPoAfe } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, parseApproverPoAfe, buildApproverPoAfe, parseOtherFieldForPrefixes } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -1456,12 +1456,16 @@ export default function ServiceTickets() {
     }
     const project = allProjects?.find((p: any) => p.id === projectId);
     if (project) {
+      const apr = project.approver_po_afe ? parseApproverPoAfe(project.approver_po_afe) : null;
+      const oth = parseOtherFieldForPrefixes(project.other || '');
       setCreateData(prev => ({
         ...prev,
         projectNumber: project.project_number || '',
         serviceLocation: project.location || prev.serviceLocation,
-        ...(project.approver_po_afe ? parseApproverPoAfe(project.approver_po_afe) : { approver: prev.approver, poAfe: prev.poAfe, cc: prev.cc }),
-        other: project.other || prev.other,
+        approver: apr?.approver || oth.approver || prev.approver,
+        poAfe: apr?.poAfe || oth.poAfe || prev.poAfe,
+        cc: apr?.cc || oth.cc || prev.cc,
+        other: oth.otherRemainder || prev.other,
       }));
     }
   };
@@ -1500,12 +1504,16 @@ export default function ServiceTickets() {
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
       await queryClient.refetchQueries({ queryKey: ['projects'] });
       setCreateProjectId(newProject.id);
+      const apr = newProject.approver_po_afe ? parseApproverPoAfe(newProject.approver_po_afe) : null;
+      const oth = parseOtherFieldForPrefixes(newProject.other || '');
       setCreateData(prev => ({
         ...prev,
         projectNumber: newProject.project_number || '',
         serviceLocation: newProject.location || prev.serviceLocation,
-        ...(newProject.approver_po_afe ? parseApproverPoAfe(newProject.approver_po_afe) : { approver: prev.approver, poAfe: prev.poAfe, cc: prev.cc }),
-        other: newProject.other || prev.other,
+        approver: apr?.approver || oth.approver || prev.approver,
+        poAfe: apr?.poAfe || oth.poAfe || prev.poAfe,
+        cc: apr?.cc || oth.cc || prev.cc,
+        other: oth.otherRemainder || prev.other,
       }));
       setShowInlineCreateProject(false);
       setInlineProjectName('');
@@ -2000,8 +2008,16 @@ export default function ServiceTickets() {
                     serviceLocation: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
                     locationCode: ticket.customerInfo.location_code || '',
                     poNumber: ticket.customerInfo.po_number || '',
-                    ...parseApproverPoAfe(ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || ''),
-                    other: ticket.projectOther || '',
+                    ...((): { approver: string; poAfe: string; cc: string; other: string } => {
+                      const apr = parseApproverPoAfe(ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '');
+                      const oth = parseOtherFieldForPrefixes(ticket.projectOther || '');
+                      return {
+                        approver: apr.approver || oth.approver,
+                        poAfe: apr.poAfe || oth.poAfe,
+                        cc: apr.cc || oth.cc,
+                        other: oth.otherRemainder,
+                      };
+                    })(),
                     techName: ticket.userName || '',
                     projectNumber: ticket.projectNumber || '',
                     date: ticket.date || '',
@@ -2058,11 +2074,18 @@ export default function ServiceTickets() {
                         serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
                         locationCode: useOverride(ov.location_code, initialEditable.locationCode),
                         poNumber: useOverride(ov.po_number, initialEditable.poNumber),
-                        ...((): { approver: string; poAfe: string; cc: string } => {
+                        ...((): { approver: string; poAfe: string; cc: string; other: string } => {
                           const combined = useOverride(ov.approver_po_afe, buildApproverPoAfe(initialEditable.approver, initialEditable.poAfe, initialEditable.cc));
-                          return parseApproverPoAfe(combined);
+                          const apr = parseApproverPoAfe(combined);
+                          const otherVal = useOverride(ov.other, initialEditable.other);
+                          const oth = parseOtherFieldForPrefixes(otherVal);
+                          return {
+                            approver: apr.approver || oth.approver,
+                            poAfe: apr.poAfe || oth.poAfe,
+                            cc: apr.cc || oth.cc,
+                            other: oth.otherRemainder,
+                          };
                         })(),
-                        other: useOverride(ov.other, initialEditable.other),
                         techName: useOverride(ov.tech_name, initialEditable.techName),
                         projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
                         date: useOverride(ov.date, initialEditable.date),
