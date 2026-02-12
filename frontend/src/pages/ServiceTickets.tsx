@@ -1722,7 +1722,7 @@ export default function ServiceTickets() {
             </div>
           )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 'auto', marginBottom: '6px' }}>
             <button
               type="button"
               onClick={() => setShowDiscarded(!showDiscarded)}
