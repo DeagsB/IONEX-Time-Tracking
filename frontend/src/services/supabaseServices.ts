@@ -693,7 +693,10 @@ export const reportsService = {
   async getServiceTicketHours(startDate: string, endDate: string, userId?: string) {
     let query = supabase
       .from('service_tickets')
-      .select('id, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours')
+      .select(`
+        id, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours,
+        customer:customers!service_tickets_customer_id_fkey(id, name)
+      `)
       .gte('date', startDate)
       .lte('date', endDate);
 
