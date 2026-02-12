@@ -856,13 +856,15 @@ export const serviceTicketsService = {
     const year = new Date().getFullYear() % 100; // Get last 2 digits of year
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     
-    // Get all used sequence numbers for this employee this year (excluding nulls from unassigned tickets)
+    // Get all used sequence numbers for this employee this year
+    // Exclude: null sequence (unassigned), trashed tickets (their numbers are freed for reuse)
     const { data, error } = await supabase
       .from(tableName)
       .select('sequence_number')
       .eq('employee_initials', userInitials.toUpperCase())
       .eq('year', year)
       .not('sequence_number', 'is', null)
+      .or('is_discarded.eq.false,is_discarded.is.null')
       .order('sequence_number', { ascending: true });
 
     if (error) {
@@ -974,6 +976,7 @@ export const serviceTicketsService = {
             .eq('employee_initials', ticket.employeeInitials.toUpperCase())
             .eq('year', year)
             .not('sequence_number', 'is', null)
+            .or('is_discarded.eq.false,is_discarded.is.null')
             .order('sequence_number', { ascending: true });
           
           // Find first available gap
@@ -1008,6 +1011,7 @@ export const serviceTicketsService = {
           .eq('employee_initials', ticket.employeeInitials.toUpperCase())
           .eq('year', year)
           .not('sequence_number', 'is', null)
+          .or('is_discarded.eq.false,is_discarded.is.null')
           .order('sequence_number', { ascending: true });
         
         // Find first available gap
