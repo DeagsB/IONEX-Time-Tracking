@@ -4,6 +4,20 @@ Use this when you're ready to remove the old way of doing things after all data 
 
 ---
 
+## 0. Create a backup first (required)
+
+Before running any migration:
+
+```powershell
+.\pre-migration-backup.ps1
+```
+
+If `backup-config.env` is missing, copy `backup-config.env.example` to `backup-config.env` and add your Supabase credentials. See `BACKUP_SUPABASE.md` for details.
+
+Alternatively: **Supabase Dashboard** → **Database** → **Backups** → Download a backup.
+
+---
+
 ## 1. Remove `approver_po_afe` column (use `approver`, `po_afe`, `cc` only)
 
 **Before:** Verify all projects have `approver`, `po_afe`, `cc` populated correctly. Run a quick check:
