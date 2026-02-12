@@ -1787,6 +1787,23 @@ export default function ServiceTickets() {
             </span>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
+                onClick={handleBulkUnassignTicketNumbers}
+                disabled={isBulkExporting}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                  opacity: isBulkExporting ? 0.6 : 1,
+                }}
+              >
+                ✗ Unapprove Selected
+              </button>
+              <button
                 onClick={handleBulkAssignTicketNumbers}
                 disabled={isBulkExporting}
                 style={{
@@ -1804,28 +1821,11 @@ export default function ServiceTickets() {
                 ✓ Approve Selected
               </button>
               <button
-                onClick={handleBulkUnassignTicketNumbers}
-                disabled={isBulkExporting}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#f59e0b',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
-                  opacity: isBulkExporting ? 0.6 : 1,
-                }}
-              >
-                ✗ Unapprove Selected
-              </button>
-              <button
                 onClick={handleBulkMoveToTrash}
                 disabled={isBulkExporting}
                 style={{
                   padding: '8px 16px',
-                  backgroundColor: '#dc2626',
+                  backgroundColor: '#6b7280',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
