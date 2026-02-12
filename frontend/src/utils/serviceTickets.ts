@@ -296,10 +296,25 @@ export function groupEntriesIntoTickets(
         projectName: entry.project?.name,
         projectNumber: entry.project?.project_number,
         projectLocation: entry.project?.location,
-        projectApproverPoAfe: getProjectApproverPoAfe(entry.project) || undefined,
-        projectApprover: getProjectHeaderFields(entry.project).approver,
-        projectPoAfe: getProjectHeaderFields(entry.project).poAfe,
-        projectCc: getProjectHeaderFields(entry.project).cc,
+        projectApproverPoAfe: getProjectApproverPoAfe(entry.project) || entry.po_afe || undefined,
+        projectApprover: (() => {
+          const pf = getProjectHeaderFields(entry.project);
+          if (pf.approver || pf.poAfe || pf.cc) return pf.approver;
+          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
+          return parsed.approver;
+        })(),
+        projectPoAfe: (() => {
+          const pf = getProjectHeaderFields(entry.project);
+          if (pf.approver || pf.poAfe || pf.cc) return pf.poAfe;
+          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
+          return parsed.poAfe;
+        })(),
+        projectCc: (() => {
+          const pf = getProjectHeaderFields(entry.project);
+          if (pf.approver || pf.poAfe || pf.cc) return pf.cc;
+          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
+          return parsed.cc;
+        })(),
         projectOther: entry.project?.other,
         entryLocation: entry.location || undefined,
         entryPoAfe: entry.po_afe || undefined,

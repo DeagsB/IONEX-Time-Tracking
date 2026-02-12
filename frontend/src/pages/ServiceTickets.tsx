@@ -353,9 +353,23 @@ export default function ServiceTickets() {
       service_location: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
       location_code: ticket.customerInfo.location_code ?? '',
       po_number: ticket.customerInfo.po_number ?? '',
-      approver: ticket.projectApprover ?? ticket.customerInfo.approver_name ?? '',
-      po_afe: ticket.projectPoAfe ?? ticket.customerInfo.po_number ?? '',
-      cc: ticket.projectCc ?? '',
+      ...((): { approver: string; po_afe: string; cc: string } => {
+        const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
+        if (fromProject) {
+          return {
+            approver: ticket.projectApprover ?? ticket.customerInfo.approver_name ?? '',
+            po_afe: ticket.projectPoAfe ?? ticket.customerInfo.po_number ?? '',
+            cc: ticket.projectCc ?? '',
+          };
+        }
+        const fromEntry = ticket.entryPoAfe || ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe || ticket.projectApproverPoAfe || '';
+        const parsed = fromEntry ? parseApproverPoAfe(fromEntry) : { approver: '', poAfe: '', cc: '' };
+        return {
+          approver: parsed.approver || ticket.customerInfo.approver_name || '',
+          po_afe: parsed.poAfe || ticket.customerInfo.po_number || '',
+          cc: parsed.cc || '',
+        };
+      })(),
       other: ticket.projectOther ?? '',
       tech_name: ticket.userName ?? '',
       project_number: ticket.projectNumber ?? '',
@@ -2010,10 +2024,25 @@ export default function ServiceTickets() {
                     serviceLocation: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
                     locationCode: ticket.customerInfo.location_code || '',
                     poNumber: ticket.customerInfo.po_number || '',
-                    approver: ticket.projectApprover || ticket.customerInfo.approver_name || '',
-                    poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
-                    cc: ticket.projectCc || '',
-                    other: ticket.projectOther || '',
+                    ...((): { approver: string; poAfe: string; cc: string; other: string } => {
+                      const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
+                      if (fromProject) {
+                        return {
+                          approver: ticket.projectApprover || ticket.customerInfo.approver_name || '',
+                          poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
+                          cc: ticket.projectCc || '',
+                          other: ticket.projectOther || '',
+                        };
+                      }
+                      const fromEntry = ticket.entryPoAfe || ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe || ticket.projectApproverPoAfe || '';
+                      const parsed = fromEntry ? parseApproverPoAfe(fromEntry) : { approver: '', poAfe: '', cc: '' };
+                      return {
+                        approver: parsed.approver || ticket.customerInfo.approver_name || '',
+                        poAfe: parsed.poAfe || ticket.customerInfo.po_number || '',
+                        cc: parsed.cc || '',
+                        other: ticket.projectOther || '',
+                      };
+                    })(),
                     techName: ticket.userName || '',
                     projectNumber: ticket.projectNumber || '',
                     date: ticket.date || '',
