@@ -1737,7 +1737,7 @@ export default function ServiceTickets() {
               />
             </div>
           )}
-          {/* Show Discarded toggle */}
+          {/* Show Trash toggle */}
           {(
             <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '4px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: showDiscarded ? '#ef5350' : 'var(--text-secondary)', fontWeight: showDiscarded ? '600' : '400' }}>
@@ -1747,7 +1747,7 @@ export default function ServiceTickets() {
                   onChange={(e) => setShowDiscarded(e.target.checked)}
                   style={{ width: '16px', height: '16px', accentColor: '#ef5350', cursor: 'pointer' }}
                 />
-                Show Discarded
+                🗑️ Show Trash
               </label>
             </div>
           )}
@@ -1782,7 +1782,7 @@ export default function ServiceTickets() {
         ))}
       </div>
 
-      {/* Discarded banner */}
+      {/* Trashed banner */}
       {showDiscarded && (
         <div style={{
           padding: '10px 16px',
@@ -1795,7 +1795,7 @@ export default function ServiceTickets() {
           gap: '8px',
         }}>
           <span style={{ fontSize: '13px', color: '#ef5350', fontWeight: '600' }}>
-            Viewing discarded tickets
+            Viewing trashed tickets
           </span>
           <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
             &mdash; These tickets are hidden from the default view. Open a ticket and click &quot;Restore Ticket&quot; to move it back.
@@ -1820,7 +1820,7 @@ export default function ServiceTickets() {
       ) : filteredTickets.length === 0 ? (
         <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-secondary)' }}>
-            {showDiscarded ? 'No discarded tickets found for the selected filters.' : 'No billable time entries found for the selected filters.'}
+            {showDiscarded ? 'No trashed tickets found for the selected filters.' : 'No billable time entries found for the selected filters.'}
           </p>
         </div>
       ) : (
@@ -1862,7 +1862,7 @@ export default function ServiceTickets() {
                 disabled={isBulkExporting}
                 style={{
                   padding: '8px 16px',
-                  backgroundColor: '#4caf50',
+                  backgroundColor: '#10b981',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -2247,7 +2247,7 @@ export default function ServiceTickets() {
                           borderRadius: '4px',
                           textTransform: 'uppercase',
                           letterSpacing: '0.5px',
-                        }}>Discarded</span>
+                        }}>🗑️ Trashed</span>
                       )}
                       {isResubmitted && (
                         <span style={{
@@ -2303,12 +2303,9 @@ export default function ServiceTickets() {
                       const workflowStatus = existing?.workflow_status || 'draft';
                       const isWorkflowApproved = workflowStatus !== 'draft' && workflowStatus !== 'rejected';
                       const isApproved = hasTicketNumber || isWorkflowApproved;
-                      const isOwnTicket = ticket.userId === user?.id;
-
-                      // Admin's own tickets: use Submit flow like regular user so they can submit and see it in Submitted tab
-                      // Other users' tickets: use admin flow (Approve, assign ticket number)
-                      if (isAdmin && !isOwnTicket) {
-                        // Admin flow for other users' tickets: assign/unassign ticket numbers
+                      
+                      if (isAdmin) {
+                        // Admin flow: assign/unassign ticket numbers
                         // Show different states: fully approved (has ticket#) vs user-approved (workflow only)
                         if (hasTicketNumber) {
                           return (
@@ -2321,7 +2318,7 @@ export default function ServiceTickets() {
                               style={{
                                 padding: '6px 16px',
                                 fontSize: '13px',
-                                backgroundColor: '#4caf50',
+                                backgroundColor: '#10b981',
                                 color: 'white',
                                 border: 'none',
                                 cursor: 'pointer',
@@ -2395,7 +2392,7 @@ export default function ServiceTickets() {
                             </button>
                           );
                         }
-                        // User can toggle workflow_status (also used for admin's own tickets)
+                        // User can toggle workflow_status
                         return (
                           <button
                             className="button"
@@ -2411,8 +2408,6 @@ export default function ServiceTickets() {
                                 const newStatus = isApproved ? 'draft' : 'approved';
                                 await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
                                 queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                                // When submitting (not withdrawing), switch to Submitted tab so admin sees their ticket
-                                if (!isApproved && isAdmin) setActiveTab('submitted');
                               } catch (error) {
                                 console.error('Error updating ticket status:', error);
                               }
@@ -3857,7 +3852,7 @@ export default function ServiceTickets() {
                   >
                     Close
                   </button>
-                  {/* Discard / Restore button */}
+                  {/* Trash / Restore button */}
                   {selectedTicket && (() => {
                     const existingRecord = findMatchingTicketRecord(selectedTicket);
                     const isCurrentlyDiscarded = !!(existingRecord as any)?.is_discarded;
@@ -3865,8 +3860,8 @@ export default function ServiceTickets() {
                       <button
                         onClick={async () => {
                           if (!currentTicketRecordId) return;
-                          const action = isCurrentlyDiscarded ? 'restore' : 'discard';
-                          if (!isCurrentlyDiscarded && !confirm('Discard this service ticket? It will be hidden from the default view but can be restored later.')) return;
+                          const action = isCurrentlyDiscarded ? 'restore' : 'trash';
+                          if (!isCurrentlyDiscarded && !confirm('Trash this service ticket? It will be hidden from the default view but can be restored later.')) return;
                           setIsDiscarding(true);
                           try {
                             const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
@@ -3880,7 +3875,7 @@ export default function ServiceTickets() {
                             closePanel();
                           } catch (err) {
                             console.error(`Error ${action}ing ticket:`, err);
-                            alert(`Failed to ${action} ticket.`);
+                            alert(`Failed to ${action === 'restore' ? 'restore' : 'trash'} ticket.`);
                           } finally {
                             setIsDiscarding(false);
                           }
@@ -3897,7 +3892,7 @@ export default function ServiceTickets() {
                           cursor: isDiscarding ? 'wait' : 'pointer',
                         }}
                       >
-                        {isDiscarding ? (isCurrentlyDiscarded ? 'Restoring...' : 'Discarding...') : (isCurrentlyDiscarded ? 'Restore Ticket' : 'Discard')}
+                        {isDiscarding ? (isCurrentlyDiscarded ? 'Restoring...' : 'Trashing...') : (isCurrentlyDiscarded ? 'Restore Ticket' : '🗑️ Trash')}
                       </button>
                     );
                   })()}
