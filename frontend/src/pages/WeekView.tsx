@@ -186,6 +186,18 @@ export default function WeekView() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [contextMenuEntry]);
+
+  // Prevent browser context menu on time entries (Chrome ignores React's preventDefault)
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target?.closest?.('[data-time-entry-block]')) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('contextmenu', handleContextMenu, { capture: true });
+    return () => document.removeEventListener('contextmenu', handleContextMenu, { capture: true });
+  }, []);
   
   // Get week start (Monday)
   const getWeekStart = (date: Date) => {
@@ -2044,6 +2056,7 @@ export default function WeekView() {
                   return (
                     <div
                       key={entry.id}
+                      data-time-entry-block
                       style={{
                         position: 'absolute',
                           top: `${topPosition}px`,
@@ -2066,6 +2079,7 @@ export default function WeekView() {
                           boxSizing: 'border-box'
                         }}
                         onMouseDown={(e) => {
+                          if (e.button !== 0) return; // Ignore right-click (don't start move)
                           if ((e.target as HTMLElement).closest('.drag-handle')) return;
                           e.preventDefault();
                           if (viewUserId && isAdmin) return;
@@ -2080,6 +2094,7 @@ export default function WeekView() {
                         onMouseEnter={() => setHoveredEntryId(entry.id)}
                         onMouseLeave={() => setHoveredEntryId(null)}
                         onClick={(e) => {
+                          if (e.button !== 0) return; // Only handle left-click, ignore right-click
                           if ((e.target as HTMLElement).closest('.drag-handle')) return;
                           if (didMoveRef.current) {
                             didMoveRef.current = false;
@@ -2088,11 +2103,11 @@ export default function WeekView() {
                           handleEntryClick(entry, e);
                         }}
                         onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           if ((e.target as HTMLElement).closest('.drag-handle')) return;
                           if (viewUserId && isAdmin) return;
                           if (showTimeEntryModal || showEditModal) return;
-                          e.preventDefault();
-                          e.stopPropagation();
                           setContextMenuEntry({ x: e.clientX, y: e.clientY, entry });
                         }}
                       >
