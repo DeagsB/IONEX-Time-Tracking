@@ -89,6 +89,9 @@ export interface TimeEntryWithRelations {
     // Service ticket defaults
     location?: string;
     approver_po_afe?: string;
+    approver?: string;
+    po_afe?: string;
+    cc?: string;
     other?: string;
     customer?: {
       id: string;
@@ -291,7 +294,7 @@ export function groupEntriesIntoTickets(
         projectName: entry.project?.name,
         projectNumber: entry.project?.project_number,
         projectLocation: entry.project?.location,
-        projectApproverPoAfe: entry.project?.approver_po_afe,
+        projectApproverPoAfe: getProjectApproverPoAfe(entry.project) || undefined,
         projectOther: entry.project?.other,
         entryLocation: entry.location || undefined,
         entryPoAfe: entry.po_afe || undefined,
@@ -482,6 +485,15 @@ export function buildApproverPoAfe(approver: string, poAfe: string, cc: string):
   if (poAfe.trim()) parts.push(poAfe.trim().replace(/^PO\s*[:\-]?\s*/i, '').replace(/^AFE\s*[:\-]?\s*/i, ''));
   if (cc.trim()) parts.push(cc.trim().replace(/^CC\s*[:\-]?\s*/i, ''));
   return parts.join(' ');
+}
+
+/** Get combined approver/PO/AFE/CC from project. Prefers new columns when present. */
+export function getProjectApproverPoAfe(project: { approver?: string; po_afe?: string; cc?: string; approver_po_afe?: string } | null | undefined): string {
+  if (!project) return '';
+  if (project.approver != null || project.po_afe != null || project.cc != null) {
+    return buildApproverPoAfe(project.approver ?? '', project.po_afe ?? '', project.cc ?? '');
+  }
+  return project.approver_po_afe ?? '';
 }
 
 /** Round hours to nearest 0.5 (round up) */

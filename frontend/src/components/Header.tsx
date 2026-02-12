@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
 import SearchableSelect, { SearchableSelectRef } from './SearchableSelect';
+import { getProjectApproverPoAfe } from '../utils/serviceTickets';
 
 interface HeaderProps {
   onTimerStart: (description: string, projectId?: string) => void;
@@ -121,7 +122,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     
     // Set project defaults (don't auto-populate from last used location)
     setLocation(project?.location || '');
-    setPoAfe(project?.approver_po_afe || '');
+    setPoAfe(getProjectApproverPoAfe(project) || '');
   };
 
   const handleStop = async () => {

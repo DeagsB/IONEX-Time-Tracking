@@ -178,6 +178,9 @@ export default function Projects() {
         color: data.color || '#4ecdc4',
         location: data.location || null,
         approver_po_afe: buildApproverPoAfe(data.approver, data.poAfe, data.cc) || null,
+        approver: data.approver?.trim() || null,
+        po_afe: data.poAfe?.trim() || null,
+        cc: data.cc?.trim() || null,
         other: data.other || null,
         shop_junior_rate: data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null,
         shop_senior_rate: data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null,
@@ -208,7 +211,12 @@ export default function Projects() {
       if (data.status !== undefined) projectData.status = data.status;
       if (data.color !== undefined) projectData.color = data.color;
       if (data.location !== undefined) projectData.location = data.location || null;
-      if (data.approver !== undefined || data.poAfe !== undefined || data.cc !== undefined) projectData.approver_po_afe = buildApproverPoAfe(data.approver ?? '', data.poAfe ?? '', data.cc ?? '') || null;
+      if (data.approver !== undefined || data.poAfe !== undefined || data.cc !== undefined) {
+        projectData.approver_po_afe = buildApproverPoAfe(data.approver ?? '', data.poAfe ?? '', data.cc ?? '') || null;
+        projectData.approver = (data.approver ?? '').trim() || null;
+        projectData.po_afe = (data.poAfe ?? '').trim() || null;
+        projectData.cc = (data.cc ?? '').trim() || null;
+      }
       if (data.other !== undefined) projectData.other = data.other || null;
       if (data.shop_junior_rate !== undefined) projectData.shop_junior_rate = data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null;
       if (data.shop_senior_rate !== undefined) projectData.shop_senior_rate = data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null;
@@ -277,6 +285,7 @@ export default function Projects() {
 
   const handleEdit = (project: any) => {
     setEditingProject(project);
+    // Prefer new columns when present; fallback to parsing approver_po_afe/other
     const apr = parseApproverPoAfe(project.approver_po_afe || '');
     const oth = parseOtherFieldForPrefixes(project.other || '');
     setFormData({
@@ -287,9 +296,9 @@ export default function Projects() {
       status: project.status || 'active',
       color: project.color || '#4ecdc4',
       location: project.location || '',
-      approver: apr.approver || oth.approver,
-      poAfe: apr.poAfe || oth.poAfe,
-      cc: apr.cc || oth.cc,
+      approver: (project.approver ?? apr.approver ?? oth.approver) || '',
+      poAfe: (project.po_afe ?? apr.poAfe ?? oth.poAfe) || '',
+      cc: (project.cc ?? apr.cc ?? oth.cc) || '',
       other: oth.otherRemainder,
       shop_junior_rate: project.shop_junior_rate?.toString() || '',
       shop_senior_rate: project.shop_senior_rate?.toString() || '',

@@ -8,6 +8,7 @@ import { timeEntriesService, projectsService, employeesService, customersService
 import SearchableSelect, { SearchableSelectRef } from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
 import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
+import { getProjectApproverPoAfe } from '../utils/serviceTickets';
 
 interface TimeEntry {
   id: string;
@@ -2572,7 +2573,7 @@ export default function WeekView() {
                           setNewEntry(prev => ({ 
                             ...prev, 
                             location: selectedProject?.location || '',
-                            po_afe: selectedProject?.approver_po_afe || '',
+                            po_afe: getProjectApproverPoAfe(selectedProject) || '',
                           }));
                         }}
                         placeholder="Search projects..."
@@ -2982,7 +2983,7 @@ export default function WeekView() {
                           setEditedEntry(prev => ({
                             ...prev,
                             location: selectedProject?.location || '',
-                            po_afe: selectedProject?.approver_po_afe || prev.po_afe,
+                            po_afe: getProjectApproverPoAfe(selectedProject) || prev.po_afe,
                           }));
                         }}
                         placeholder="Search projects..."

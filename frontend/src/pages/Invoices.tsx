@@ -15,6 +15,7 @@ import {
   getInvoiceGroupKey,
   getApproverPoAfeFromTicket,
   applyHeaderOverridesToTicket,
+  getProjectApproverPoAfe,
   InvoiceGroupKey,
   extractPoValue,
   extractCcValue,
@@ -180,7 +181,7 @@ export default function Invoices() {
           recordId: rec.id,
           headerOverrides: rec.header_overrides,
           recordProjectId: rec.project_id ?? match.projectId,
-          projectApproverPoAfe: proj?.approver_po_afe ?? match.projectApproverPoAfe,
+          projectApproverPoAfe: getProjectApproverPoAfe(proj) || match.projectApproverPoAfe,
         };
         const ticketWithOverrides = applyHeaderOverridesToTicket(rawTicket, rec.header_overrides ?? undefined);
         ticketList.push({ ...ticketWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawTicket.recordProjectId });
@@ -257,7 +258,7 @@ export default function Invoices() {
           projectName: proj?.name,
           projectNumber: proj?.project_number,
           projectLocation: proj?.location,
-          projectApproverPoAfe: proj?.approver_po_afe,
+          projectApproverPoAfe: getProjectApproverPoAfe(proj) || undefined,
         };
         const standaloneWithOverrides = applyHeaderOverridesToTicket(rawStandalone, rec.header_overrides ?? undefined);
         ticketList.push({ ...standaloneWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawStandalone.recordProjectId });
