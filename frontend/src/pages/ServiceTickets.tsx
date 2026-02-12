@@ -1928,11 +1928,9 @@ export default function ServiceTickets() {
                 <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   FO
                 </th>
-                {!showDiscarded && (
-                  <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                    Action
-                  </th>
-                )}
+                <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                  Action
+                </th>
                 {/* Workflow column - only visible to admins, hidden in trash view */}
                 {isAdmin && !showDiscarded && (
                   <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
@@ -2236,9 +2234,36 @@ export default function ServiceTickets() {
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {ticket.hoursByRateType['Field Overtime'].toFixed(1)}
                   </td>
-                  {!showDiscarded && (
                   <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                    {(() => {
+                    {showDiscarded ? (
+                      <button
+                        className="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const record = findMatchingTicketRecord(ticket);
+                          if (!record?.id) return;
+                          try {
+                            const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                            await supabase.from(tableName).update({ is_discarded: false }).eq('id', record.id);
+                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                          } catch (err) {
+                            console.error('Error restoring ticket:', err);
+                            alert('Failed to restore ticket.');
+                          }
+                        }}
+                        style={{
+                          padding: '6px 16px',
+                          fontSize: '13px',
+                          backgroundColor: '#10b981',
+                          color: 'white',
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Restore
+                      </button>
+                    ) : (() => {
                       const existing = findMatchingTicketRecord(ticket);
                       
                       // Check both ticket_number and workflow_status for approval
@@ -2372,7 +2397,6 @@ export default function ServiceTickets() {
                       }
                     })()}
                   </td>
-                  )}
                   {/* Workflow status cell - only visible to admins, hidden in trash view */}
                   {isAdmin && !showDiscarded && (
                     <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
