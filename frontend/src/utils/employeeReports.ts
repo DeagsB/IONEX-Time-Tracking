@@ -124,7 +124,6 @@ export interface ServiceTicketHours {
   project_id?: string;
   is_edited?: boolean;
   edited_hours?: Record<string, number | number[]>;
-  customer?: { id: string; name: string } | null;
 }
 
 // Aggregate metrics for a single employee from their time entries
@@ -1088,7 +1087,8 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
     });
   }
 
-  // First pass: add customers from entries (billable only)
+  // First pass: initialize customer map (billable hours come from service tickets only)
+  // Skip entries without a customer or with Internal rate type
   entries.forEach(entry => {
     if (!entry.project?.customer?.id) {
       return; // Skip entries without a customer
@@ -1106,22 +1106,10 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
         revenue: 0,
       });
     }
-  });
 
-  // Also add customers from service tickets (may have tickets without matching entries in date range)
-  if (serviceTicketHours) {
-    serviceTicketHours.forEach(ticket => {
-      if (ticket.user_id === userId && ticket.customer_id) {
-        if (!customerMap.has(ticket.customer_id)) {
-          customerMap.set(ticket.customer_id, {
-            billableHours: 0,
-            nonBillableHours: 0,
-            revenue: 0,
-          });
-        }
-      }
-    });
-  }
+    // Just ensure the customer is in the map - billable hours come from service tickets
+    customerMap.get(customerId);
+  });
 
   // Second pass: set billable hours from service tickets and calculate revenue (billable only)
   customerMap.forEach((data, customerId) => {
@@ -1134,19 +1122,11 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
     data.revenue = ticketRevenue;
   });
 
-  // Helper to get customer name from entries or service tickets
-  const getCustomerName = (customerId: string): string => {
-    const fromEntry = entries.find(e => e.project?.customer?.id === customerId)?.project?.customer?.name;
-    if (fromEntry) return fromEntry;
-    const ticketWithCustomer = serviceTicketHours?.find(t => t.customer_id === customerId && t.customer?.name);
-    return ticketWithCustomer?.customer?.name || '(Unknown Customer)';
-  };
-
   // Convert to CustomerBreakdown format - only include customers with hours
   const result: CustomerBreakdown[] = Array.from(customerMap.entries())
     .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0) // Only include customers with activity
     .map(([customerId, data]) => {
-      const customerName = getCustomerName(customerId);
+      const customerName = entries.find(e => e.project?.customer?.id === customerId)?.project?.customer?.name || '(Unknown Customer)';
       // Hours displayed = billable hours from service tickets only
       return {
         customerId,
