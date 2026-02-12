@@ -485,6 +485,11 @@ export function applyHeaderOverridesToTicket(
   const locFallback = (ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
   const approverFallback = entryPo ?? ticket.projectApproverPoAfe ?? ticket.customerInfo?.approver_name ?? ticket.customerInfo?.po_number ?? '';
 
+  // Only use approver_po_afe override when non-empty; empty string overwrites valid project/customer fallbacks (Invoices bulk merge bug)
+  const approverOverride = (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
+    ? ov.approver_po_afe
+    : undefined;
+
   const hasFrozenRates = ov && (
     typeof ov.rate_rt === 'number' || typeof ov.rate_tt === 'number' || typeof ov.rate_ft === 'number' ||
     typeof ov.rate_shop_ot === 'number' || typeof ov.rate_field_ot === 'number'
@@ -512,21 +517,25 @@ export function applyHeaderOverridesToTicket(
       service_location: ((ov?.service_location ?? ticket.customerInfo.service_location ?? locFallback).trim() || locFallback),
       location_code: ov?.location_code ?? ticket.customerInfo.location_code,
       po_number: ov?.po_number ?? ticket.customerInfo.po_number,
-      approver_name: (ov?.approver_po_afe ?? ticket.customerInfo.approver_name ?? approverFallback) || undefined,
+      approver_name: (approverOverride ?? ticket.customerInfo.approver_name ?? approverFallback) || undefined,
     },
-    projectApproverPoAfe: ov?.approver_po_afe ?? ticket.projectApproverPoAfe ?? entryPo ?? undefined,
+    projectApproverPoAfe: approverOverride ?? ticket.projectApproverPoAfe ?? entryPo ?? undefined,
     projectOther: ov?.other ?? ticket.projectOther,
     rates,
   };
 }
 
-/** Get approver/PO/AFE string from a ticket (header overrides > project > entry-level) */
+/** Get approver/PO/AFE string from a ticket (header overrides > project > entry-level).
+ * Empty approver_po_afe in overrides is treated as no override to avoid blanking valid fallbacks. */
 export function getApproverPoAfeFromTicket(
   ticket: { projectApproverPoAfe?: string; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
   headerOverrides?: { approver_po_afe?: string } | null
 ): string {
   const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
-  return headerOverrides?.approver_po_afe ?? ticket.projectApproverPoAfe ?? entryPo ?? '';
+  const ov = headerOverrides?.approver_po_afe != null && String(headerOverrides.approver_po_afe).trim() !== ''
+    ? headerOverrides.approver_po_afe
+    : undefined;
+  return ov ?? ticket.projectApproverPoAfe ?? entryPo ?? '';
 }
 
 /** Get grouping key for a ticket (for merged PDF export) */
