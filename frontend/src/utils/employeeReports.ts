@@ -672,46 +672,60 @@ export function calculateRateTypeBreakdown(
     fieldOvertime: 0,
   };
 
-  // Track which entries have been processed by edited service tickets
+  // Track which entries have been processed by service tickets
   const processedEntryIds = new Set<string>();
 
-  // Deduplicate service tickets by date + user_id + customer_id
-  const uniqueTicketMap = new Map<string, ServiceTicketHours>();
+  // Group service tickets by date + user_id + customer_id + project_id
+  // Sum hours from all tickets for the same combination (handles multiple tickets per day)
+  const ticketGroupsMap = new Map<string, ServiceTicketHours[]>();
   if (serviceTicketHours && serviceTicketHours.length > 0) {
     serviceTicketHours.forEach(ticket => {
-      const key = `${ticket.date}-${ticket.user_id}-${ticket.customer_id || 'unassigned'}`;
-      const existing = uniqueTicketMap.get(key);
-      if (!existing || (ticket.is_edited && !existing.is_edited)) {
-        uniqueTicketMap.set(key, ticket);
+      if (ticket.user_id !== userId) return;
+      // Skip tickets with 0 hours - they shouldn't contribute to billable hours
+      if (Number(ticket.total_hours) === 0 && (!ticket.is_edited || !ticket.edited_hours)) return;
+      
+      const key = `${ticket.date}-${ticket.user_id}-${ticket.customer_id || 'unassigned'}-${ticket.project_id || 'unassigned'}`;
+      if (!ticketGroupsMap.has(key)) {
+        ticketGroupsMap.set(key, []);
       }
+      ticketGroupsMap.get(key)!.push(ticket);
     });
   }
-  const dedupedTickets = Array.from(uniqueTicketMap.values());
   
-  console.log('[RateTypeBreakdown] After deduplication:', dedupedTickets.length, 'unique tickets');
+  console.log('[RateTypeBreakdown] After grouping:', ticketGroupsMap.size, 'ticket groups');
 
-  // Process edited service tickets first - these override time entry hours
-  dedupedTickets.forEach((ticket) => {
-    if (ticket.user_id !== userId) return;
+  // Process service tickets - edited tickets take precedence, but sum all tickets per group
+  ticketGroupsMap.forEach((tickets, key) => {
+    // Find matching entries for this ticket group
+    const firstTicket = tickets[0];
+    const matchingEntries = entries.filter(entry => {
+      if (entry.date !== firstTicket.date) return false;
+      if (!entry.billable) return false;
+      if (firstTicket.customer_id && entry.project?.customer?.id !== firstTicket.customer_id) return false;
+      if (firstTicket.project_id && entry.project_id !== firstTicket.project_id) return false;
+      return true;
+    });
     
-    // Only process tickets that have been EDITED (hours manually adjusted)
-    if (ticket.is_edited && ticket.edited_hours) {
+    // Check if any entries in this group have already been processed
+    const unprocessedEntries = matchingEntries.filter(entry => !processedEntryIds.has(entry.id));
+    
+    // If all entries are already processed, skip this group (already handled by another ticket)
+    if (unprocessedEntries.length === 0 && matchingEntries.length > 0) {
+      return;
+    }
+    
+    // Mark unprocessed entries as processed
+    unprocessedEntries.forEach(entry => processedEntryIds.add(entry.id));
+    
+    // Separate edited and non-edited tickets
+    const editedTickets = tickets.filter(t => t.is_edited && t.edited_hours);
+    const nonEditedTickets = tickets.filter(t => !t.is_edited || !t.edited_hours);
+    
+    // Process edited tickets first (they override everything)
+    editedTickets.forEach(ticket => {
       console.log('[RateTypeBreakdown] Processing edited ticket:', ticket.id, ticket.edited_hours);
       
-      // Find matching entries to mark them as processed
-      const matchingEntries = entries.filter(entry => {
-        if (entry.date !== ticket.date) return false;
-        if (!entry.billable) return false;
-        if (ticket.customer_id && entry.project?.customer?.id !== ticket.customer_id) return false;
-        if (ticket.project_id && entry.project_id !== ticket.project_id) return false;
-        return true;
-      });
-      
-      // Mark these entries as processed
-      matchingEntries.forEach(entry => processedEntryIds.add(entry.id));
-      
-      // Use edited_hours from the service ticket
-      Object.keys(ticket.edited_hours).forEach(rateTypeKey => {
+      Object.keys(ticket.edited_hours!).forEach(rateTypeKey => {
         const hours = ticket.edited_hours![rateTypeKey];
         let totalHoursForRate = 0;
         
@@ -737,13 +751,51 @@ export function calculateRateTypeBreakdown(
           }
         }
       });
+    });
+    
+    // Process non-edited tickets only if no edited tickets exist
+    if (editedTickets.length === 0 && nonEditedTickets.length > 0 && unprocessedEntries.length > 0) {
+      // Sum total_hours from all non-edited tickets in this group
+      const totalTicketHours = nonEditedTickets.reduce((sum, t) => sum + (Number(t.total_hours) || 0), 0);
+      
+      if (totalTicketHours > 0) {
+        console.log('[RateTypeBreakdown] Processing non-edited tickets:', nonEditedTickets.length, 'total_hours:', totalTicketHours);
+        
+        // Calculate total hours from unprocessed entries to determine proportion
+        const totalEntryHours = unprocessedEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+        
+        if (totalEntryHours > 0) {
+          // Distribute ticket hours proportionally by entry rate type
+          unprocessedEntries.forEach(entry => {
+            const entryHours = Number(entry.hours) || 0;
+            const proportion = entryHours / totalEntryHours;
+            const proportionalTicketHours = totalTicketHours * proportion;
+            const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+            
+            if (rateType.includes('shop') && rateType.includes('overtime')) {
+              billableHoursByRateType.shopOvertime += proportionalTicketHours;
+            } else if (rateType.includes('field') && rateType.includes('overtime')) {
+              billableHoursByRateType.fieldOvertime += proportionalTicketHours;
+            } else if (rateType.includes('field')) {
+              billableHoursByRateType.fieldTime += proportionalTicketHours;
+            } else if (rateType.includes('travel')) {
+              billableHoursByRateType.travelTime += proportionalTicketHours;
+            } else {
+              billableHoursByRateType.shopTime += proportionalTicketHours;
+            }
+          });
+        } else {
+          // No matching entries - default to shop time
+          billableHoursByRateType.shopTime += totalTicketHours;
+        }
+      }
     }
   });
 
-  // Now process ALL billable time entries that weren't covered by edited tickets
+  // Now process ALL billable time entries that weren't covered by any service tickets
   entries.forEach(entry => {
     if (!entry.billable) return;
-    if (processedEntryIds.has(entry.id)) return; // Skip if processed by edited ticket
+    if (processedEntryIds.has(entry.id)) return; // Skip if processed by service ticket
     
     const hours = Number(entry.hours) || 0;
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
