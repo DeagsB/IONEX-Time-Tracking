@@ -2079,10 +2079,12 @@ export default function ServiceTickets() {
                           const apr = parseApproverPoAfe(combined);
                           const otherVal = useOverride(ov.other, initialEditable.other);
                           const oth = parseOtherFieldForPrefixes(otherVal);
+                          // Prefer parsed override, but fall back to initialEditable when override parses to empty
+                          // (avoids blanking approver/cc when saved approver_po_afe was incomplete, e.g. PO only)
                           return {
-                            approver: apr.approver || oth.approver,
-                            poAfe: apr.poAfe || oth.poAfe,
-                            cc: apr.cc || oth.cc,
+                            approver: apr.approver || oth.approver || initialEditable.approver,
+                            poAfe: apr.poAfe || oth.poAfe || initialEditable.poAfe,
+                            cc: apr.cc || oth.cc || initialEditable.cc,
                             other: oth.otherRemainder,
                           };
                         })(),
