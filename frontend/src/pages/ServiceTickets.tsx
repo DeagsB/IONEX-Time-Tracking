@@ -833,7 +833,17 @@ export default function ServiceTickets() {
       for (const ticket of ticketsToRestore) {
         const record = findMatchingTicketRecord(ticket);
         if (record?.id) {
-          await supabase.from(tableName).update({ is_discarded: false, restored_at: new Date().toISOString() }).eq('id', record.id);
+          await supabase.from(tableName).update({
+            is_discarded: false,
+            restored_at: new Date().toISOString(),
+            workflow_status: 'draft',
+            rejected_at: null,
+            rejection_notes: null,
+            approved_by_admin_id: null,
+            ticket_number: null,
+            sequence_number: null,
+            year: null,
+          }).eq('id', record.id);
         }
       }
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
@@ -2353,7 +2363,17 @@ export default function ServiceTickets() {
                           if (!record?.id) return;
                           try {
                             const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                            await supabase.from(tableName).update({ is_discarded: false, restored_at: new Date().toISOString() }).eq('id', record.id);
+                            await supabase.from(tableName).update({
+            is_discarded: false,
+            restored_at: new Date().toISOString(),
+            workflow_status: 'draft',
+            rejected_at: null,
+            rejection_notes: null,
+            approved_by_admin_id: null,
+            ticket_number: null,
+            sequence_number: null,
+            year: null,
+          }).eq('id', record.id);
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
@@ -4024,7 +4044,17 @@ export default function ServiceTickets() {
                             const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
                             const { error } = await supabase
                               .from(tableName)
-                              .update({ is_discarded: false, restored_at: new Date().toISOString() })
+                              .update({
+                                is_discarded: false,
+                                restored_at: new Date().toISOString(),
+                                workflow_status: 'draft',
+                                rejected_at: null,
+                                rejection_notes: null,
+                                approved_by_admin_id: null,
+                                ticket_number: null,
+                                sequence_number: null,
+                                year: null,
+                              })
                               .eq('id', currentTicketRecordId);
                             if (error) throw error;
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
