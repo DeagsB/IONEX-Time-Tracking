@@ -73,7 +73,7 @@ export async function exportEmployeeReportsToExcel(
 
   // Employee details header (row 13)
   const headerRow = 13;
-  const headers = ['Employee', 'Position', 'Total Hours', 'Billable Hours', 'Non-Billable', 'Billable %', 'Revenue', 'Cost', 'Net Profit', 'Profit Margin', 'Avg Rate', 'Tickets'];
+  const headers = ['Employee', 'Position', 'Total Hours', 'Billable Hours', 'Non-Billable', 'Billable %', 'Revenue', 'Cost', 'Net Profit', 'Profit Margin', 'Tickets'];
   headers.forEach((header, index) => {
     const cell = summarySheet.getCell(headerRow, index + 1);
     cell.value = header;
@@ -110,12 +110,10 @@ export async function exportEmployeeReportsToExcel(
     summarySheet.getCell(rowNum, 9).numFmt = '"$"#,##0.00';
     summarySheet.getCell(rowNum, 10).value = emp.profitMargin / 100;
     summarySheet.getCell(rowNum, 10).numFmt = '0.00%';
-    summarySheet.getCell(rowNum, 11).value = emp.averageRate;
-    summarySheet.getCell(rowNum, 11).numFmt = '"$"#,##0.00';
-    summarySheet.getCell(rowNum, 12).value = emp.serviceTicketCount;
+    summarySheet.getCell(rowNum, 11).value = emp.serviceTicketCount;
 
     // Add borders
-    for (let col = 1; col <= 12; col++) {
+    for (let col = 1; col <= 11; col++) {
       summarySheet.getCell(rowNum, col).border = {
         top: { style: 'thin' },
         bottom: { style: 'thin' },
@@ -375,7 +373,6 @@ export async function exportEmployeeReportsToPDF(
             <th class="text-right">Billable</th>
             <th class="text-center">Billable %</th>
             <th class="text-right">Revenue</th>
-            <th class="text-right">Avg Rate</th>
             <th class="text-right">Tickets</th>
           </tr>
         </thead>
@@ -390,7 +387,6 @@ export async function exportEmployeeReportsToPDF(
                 ${formatPercentage(emp.efficiency)}
               </td>
               <td class="text-right">${formatCurrency(emp.totalRevenue)}</td>
-              <td class="text-right">${formatCurrency(emp.averageRate)}</td>
               <td class="text-right">${emp.serviceTicketCount}</td>
             </tr>
           `).join('')}

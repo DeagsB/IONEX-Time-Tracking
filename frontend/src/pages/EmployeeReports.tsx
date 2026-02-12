@@ -636,12 +636,6 @@ export default function EmployeeReports() {
                   Profit Margin {sortField === 'profitMargin' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
                 <th 
-                  onClick={() => handleSort('averageRate')}
-                  style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
-                >
-                  Avg Rate {sortField === 'averageRate' && (sortDirection === 'asc' ? '↑' : '↓')}
-                </th>
-                <th 
                   onClick={() => handleSort('serviceTicketCount')}
                   style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
                 >
@@ -653,7 +647,7 @@ export default function EmployeeReports() {
             <tbody>
               {sortedMetrics.length === 0 ? (
                 <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                  <td colSpan={11} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
                     No employee data for this period
                   </td>
                 </tr>
@@ -703,9 +697,6 @@ export default function EmployeeReports() {
                       <td style={{ textAlign: 'right', color: metrics.profitMargin >= 0 ? '#28a745' : '#dc3545' }}>
                         {formatPercentage(metrics.profitMargin)}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {formatCurrency(metrics.averageRate)}
-                      </td>
                       <td style={{ textAlign: 'right' }}>{metrics.serviceTicketCount}</td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ 
@@ -720,7 +711,7 @@ export default function EmployeeReports() {
                     {/* Expanded Details */}
                     {expandedEmployee === metrics.userId && (
                       <tr>
-                        <td colSpan={12} style={{ backgroundColor: 'var(--bg-secondary)', padding: '20px' }}>
+                        <td colSpan={11} style={{ backgroundColor: 'var(--bg-secondary)', padding: '20px' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                             {/* Rate Type Breakdown */}
                             <div>
