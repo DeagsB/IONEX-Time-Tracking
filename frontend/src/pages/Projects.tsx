@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 import SearchableSelect from '../components/SearchableSelect';
+import { parseApproverPoAfe, buildApproverPoAfe } from '../utils/serviceTickets';
 
 export default function Projects() {
   const { user, isAdmin } = useAuth();
@@ -27,7 +28,9 @@ export default function Projects() {
     status: 'active',
     color: '#4ecdc4',
     location: '',
-    approver_po_afe: '',
+    approver: '',
+    poAfe: '',
+    cc: '',
     other: '',
     shop_junior_rate: '',
     shop_senior_rate: '',
@@ -174,7 +177,7 @@ export default function Projects() {
         status: data.status,
         color: data.color || '#4ecdc4',
         location: data.location || null,
-        approver_po_afe: data.approver_po_afe || null,
+        approver_po_afe: buildApproverPoAfe(data.approver, data.poAfe, data.cc) || null,
         other: data.other || null,
         shop_junior_rate: data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null,
         shop_senior_rate: data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null,
@@ -205,7 +208,7 @@ export default function Projects() {
       if (data.status !== undefined) projectData.status = data.status;
       if (data.color !== undefined) projectData.color = data.color;
       if (data.location !== undefined) projectData.location = data.location || null;
-      if (data.approver_po_afe !== undefined) projectData.approver_po_afe = data.approver_po_afe || null;
+      if (data.approver !== undefined || data.poAfe !== undefined || data.cc !== undefined) projectData.approver_po_afe = buildApproverPoAfe(data.approver ?? '', data.poAfe ?? '', data.cc ?? '') || null;
       if (data.other !== undefined) projectData.other = data.other || null;
       if (data.shop_junior_rate !== undefined) projectData.shop_junior_rate = data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null;
       if (data.shop_senior_rate !== undefined) projectData.shop_senior_rate = data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null;
@@ -260,7 +263,9 @@ export default function Projects() {
       status: 'active',
       color: '#4ecdc4',
       location: '',
-      approver_po_afe: '',
+      approver: '',
+      poAfe: '',
+      cc: '',
       other: '',
       shop_junior_rate: '',
       shop_senior_rate: '',
@@ -280,7 +285,7 @@ export default function Projects() {
       status: project.status || 'active',
       color: project.color || '#4ecdc4',
       location: project.location || '',
-      approver_po_afe: project.approver_po_afe || '',
+      ...parseApproverPoAfe(project.approver_po_afe || ''),
       other: project.other || '',
       shop_junior_rate: project.shop_junior_rate?.toString() || '',
       shop_senior_rate: project.shop_senior_rate?.toString() || '',
@@ -527,13 +532,33 @@ export default function Projects() {
                 />
               </div>
               <div className="form-group">
-                <label className="label">Approver / PO / AFE</label>
+                <label className="label">Approver</label>
                 <input
                   type="text"
                   className="input"
-                  value={formData.approver_po_afe}
-                  onChange={(e) => setFormData({ ...formData, approver_po_afe: e.target.value })}
-                  placeholder="e.g., G900 CN0031 24561 or G900, CN0031, 24561"
+                  value={formData.approver}
+                  onChange={(e) => setFormData({ ...formData, approver: e.target.value })}
+                  placeholder="e.g., G900, AC: C566"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">PO/AFE</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.poAfe}
+                  onChange={(e) => setFormData({ ...formData, poAfe: e.target.value })}
+                  placeholder="e.g., PO: FC250505-8887"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">CC</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.cc}
+                  onChange={(e) => setFormData({ ...formData, cc: e.target.value })}
+                  placeholder="e.g., CC: 12345"
                 />
               </div>
               <div className="form-group">
@@ -862,13 +887,33 @@ export default function Projects() {
                 />
               </div>
               <div className="form-group">
-                <label className="label">Approver / PO / AFE</label>
+                <label className="label">Approver</label>
                 <input
                   type="text"
                   className="input"
-                  value={formData.approver_po_afe}
-                  onChange={(e) => setFormData({ ...formData, approver_po_afe: e.target.value })}
-                  placeholder="e.g., G900 CN0031 24561 or G900, CN0031, 24561"
+                  value={formData.approver}
+                  onChange={(e) => setFormData({ ...formData, approver: e.target.value })}
+                  placeholder="e.g., G900, AC: C566"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">PO/AFE</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.poAfe}
+                  onChange={(e) => setFormData({ ...formData, poAfe: e.target.value })}
+                  placeholder="e.g., PO: FC250505-8887"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label">CC</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={formData.cc}
+                  onChange={(e) => setFormData({ ...formData, cc: e.target.value })}
+                  placeholder="e.g., CC: 12345"
                 />
               </div>
               <div className="form-group">
