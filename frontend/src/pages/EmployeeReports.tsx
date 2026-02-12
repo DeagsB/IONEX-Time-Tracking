@@ -28,7 +28,7 @@ export default function EmployeeReports() {
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
-  const [selectedPeriod, setSelectedPeriod] = useState('This Month');
+  const [selectedPeriod, setSelectedPeriod] = useState('All-Time');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export default function EmployeeReports() {
 
   // Get time period dates
   const periodPresets = getTimePeriodPresets();
-  const currentPeriod = periodPresets.find(p => p.label === selectedPeriod) || periodPresets[2];
+  const currentPeriod = periodPresets.find(p => p.label === selectedPeriod) || periodPresets[0];
   
   // Use custom dates if Custom Range is selected, otherwise use preset
   const getDateRange = () => {

@@ -1291,6 +1291,14 @@ export function aggregateAllEmployees(
 export function getTimePeriodPresets(): { label: string; getValue: () => { startDate: string; endDate: string } }[] {
   return [
     {
+      label: 'All-Time',
+      getValue: () => {
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        return { startDate: '2026-01-01', endDate: todayStr };
+      },
+    },
+    {
       label: 'Today',
       getValue: () => {
         const today = new Date();
