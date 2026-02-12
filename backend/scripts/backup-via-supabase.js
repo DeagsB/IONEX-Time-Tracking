@@ -1,12 +1,32 @@
 /**
  * Backup Supabase database via REST API (no pg_dump required)
  * Usage: node scripts/backup-via-supabase.js
- * Requires: SUPABASE_URL, SUPABASE_SERVICE_KEY in env
+ * Requires: SUPABASE_URL, SUPABASE_SERVICE_KEY in env (or backup-config.env / .env)
  */
 
 const path = require('path');
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
+
+// Load from backup-config.env or .env if vars not set
+function loadEnvFile(filePath) {
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    for (const line of content.split('\n')) {
+      const m = line.match(/^\s*([^#=]+)=(.*)$/);
+      if (m) {
+        const key = m[1].trim();
+        const val = m[2].trim().replace(/^["']|["']$/g, '');
+        process.env[key] = val;
+      }
+    }
+  } catch (_) {}
+}
+const root = path.join(__dirname, '../..');
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+  loadEnvFile(path.join(root, 'backup-config.env'));
+  loadEnvFile(path.join(root, '.env'));
+}
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_KEY;

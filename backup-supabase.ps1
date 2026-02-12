@@ -1,8 +1,30 @@
 # Backup Supabase database using Supabase CLI
-# Requires: Supabase CLI installed, SUPABASE_DB_URL set to your connection string
+# Requires: SUPABASE_DB_URL or (SUPABASE_URL + SUPABASE_SERVICE_KEY)
+# Loads from backup-config.env or .env if vars not set
 # Docs: BACKUP_SUPABASE.md
 
 $ErrorActionPreference = "Stop"
+
+# Load credentials if not already set
+if (-not $env:SUPABASE_DB_URL -and (-not $env:SUPABASE_URL -or -not $env:SUPABASE_SERVICE_KEY)) {
+    $configPaths = @(
+        (Join-Path $PSScriptRoot "backup-config.env"),
+        (Join-Path $PSScriptRoot ".env")
+    )
+    foreach ($p in $configPaths) {
+        if (Test-Path $p) {
+            Get-Content $p | ForEach-Object {
+                if ($_ -match '^\s*([^#=]+)=(.*)$') {
+                    $key = $matches[1].Trim()
+                    $val = $matches[2].Trim() -replace '^["'']|["'']$'
+                    Set-Item -Path "Env:$key" -Value $val -Force
+                }
+            }
+            Write-Host "Loaded config from $p" -ForegroundColor Gray
+            break
+        }
+    }
+}
 
 $url = $env:SUPABASE_DB_URL
 $hasApiCreds = $env:SUPABASE_URL -and $env:SUPABASE_SERVICE_KEY
