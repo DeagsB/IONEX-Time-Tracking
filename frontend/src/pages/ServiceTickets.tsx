@@ -816,6 +816,30 @@ export default function ServiceTickets() {
     }
   };
 
+  // Bulk restore from trash
+  const handleBulkRestore = async () => {
+    const ticketsToRestore = Array.from(selectedTicketIds)
+      .map(id => getTicketById(id))
+      .filter(Boolean) as (ServiceTicket & { displayTicketNumber?: string })[];
+    if (ticketsToRestore.length === 0) return;
+
+    try {
+      const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+      for (const ticket of ticketsToRestore) {
+        const record = findMatchingTicketRecord(ticket);
+        if (record?.id) {
+          await supabase.from(tableName).update({ is_discarded: false }).eq('id', record.id);
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+      setSelectedTicketIds(new Set());
+    } catch (error) {
+      console.error('Error bulk restoring:', error);
+      alert('Failed to restore tickets.');
+    }
+  };
+
   // Bulk move to trash
   const handleBulkMoveToTrash = async () => {
     const ticketsToTrash = Array.from(selectedTicketIds)
@@ -1798,57 +1822,77 @@ export default function ServiceTickets() {
               {selectedTicketIds.size} ticket{selectedTicketIds.size > 1 ? 's' : ''} selected
             </span>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={handleBulkUnassignTicketNumbers}
-                disabled={isBulkExporting}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
-                  opacity: isBulkExporting ? 0.6 : 1,
-                }}
-              >
-                ✗ Unapprove Selected
-              </button>
-              <button
-                onClick={handleBulkAssignTicketNumbers}
-                disabled={isBulkExporting}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
-                  opacity: isBulkExporting ? 0.6 : 1,
-                }}
-              >
-                ✓ Approve Selected
-              </button>
-              <button
-                onClick={handleBulkMoveToTrash}
-                disabled={isBulkExporting}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#6b7280',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: isBulkExporting ? 'not-allowed' : 'pointer',
-                  opacity: isBulkExporting ? 0.6 : 1,
-                }}
-              >
-                🗑️ Move to Trash
-              </button>
+              {showDiscarded ? (
+                <button
+                  onClick={handleBulkRestore}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Restore Selected
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleBulkUnassignTicketNumbers}
+                    disabled={isBulkExporting}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#dc2626',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                      opacity: isBulkExporting ? 0.6 : 1,
+                    }}
+                  >
+                    ✗ Unapprove Selected
+                  </button>
+                  <button
+                    onClick={handleBulkAssignTicketNumbers}
+                    disabled={isBulkExporting}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                      opacity: isBulkExporting ? 0.6 : 1,
+                    }}
+                  >
+                    ✓ Approve Selected
+                  </button>
+                  <button
+                    onClick={handleBulkMoveToTrash}
+                    disabled={isBulkExporting}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#6b7280',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                      opacity: isBulkExporting ? 0.6 : 1,
+                    }}
+                  >
+                    🗑️ Move to Trash
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => setSelectedTicketIds(new Set())}
                 disabled={isBulkExporting}
