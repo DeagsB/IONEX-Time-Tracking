@@ -2028,37 +2028,16 @@ export default function ServiceTickets() {
                     }
                     
                     // Apply saved header overrides.
-                    // APPROVED/EXPORTED tickets: use header_overrides ONLY – never merge with live customer.
-                    //    If header_overrides is empty, use empty strings (avoids overwriting with updated customer).
-                    // DRAFT/REJECTED: prefer non-empty override, else use initialEditable (updated customer).
+                    // APPROVED/EXPORTED: prefer non-empty header_overrides (frozen snapshot); when empty/missing, use initialEditable.
+                    //    This avoids blank display for tickets approved before header_overrides snapshot was added.
+                    // DRAFT/REJECTED: same prefer non-empty override, else use initialEditable (updated customer).
                     const ov = (ticketRecord?.header_overrides as Record<string, string | number> | null) ?? {};
                     const useOverride = (ovVal: string | number | undefined, fallback: string) =>
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
                     let merged: typeof initialEditable;
-                    if (isFrozen) {
-                      // Frozen: use header_overrides only; never live customer fallback (coerce to string; rate fields are numeric)
-                      const str = (v: string | number | undefined, d: string) => (v != null && typeof v === 'string') ? v : d;
+                    if (isFrozen || Object.keys(ov).length > 0) {
+                      // Use override when non-empty; else fallback to initialEditable (live ticket data)
                       merged = {
-                        customerName: str(ov.customer_name, ''),
-                        address: str(ov.address, ''),
-                        cityState: str(ov.city_state, ''),
-                        zipCode: str(ov.zip_code, ''),
-                        phone: str(ov.phone, ''),
-                        email: str(ov.email, ''),
-                        contactName: str(ov.contact_name, ''),
-                        serviceLocation: str(ov.service_location, ''),
-                        locationCode: str(ov.location_code, ''),
-                        poNumber: str(ov.po_number, ''),
-                        approverName: str(ov.approver_po_afe, ''),
-                        other: str(ov.other, ''),
-                        techName: str(ov.tech_name, initialEditable.techName),
-                        projectNumber: str(ov.project_number, initialEditable.projectNumber),
-                        date: str(ov.date, initialEditable.date),
-                      };
-                    } else if (Object.keys(ov).length > 0) {
-                      // Draft/rejected: prefer non-empty override, else use updated customer
-                      merged = {
-                        ...initialEditable,
                         customerName: useOverride(ov.customer_name, initialEditable.customerName),
                         address: useOverride(ov.address, initialEditable.address),
                         cityState: useOverride(ov.city_state, initialEditable.cityState),
