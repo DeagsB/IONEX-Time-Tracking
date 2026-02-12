@@ -2175,14 +2175,15 @@ export default function ServiceTickets() {
                 const rowExisting = findMatchingTicketRecord(ticket);
                 const isRejected = !showDiscarded && rowExisting?.workflow_status === 'rejected';
                 const isResubmitted = !showDiscarded && activeTab === 'submitted' && !!rowExisting?.rejected_at;
-                const rowBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : (isResubmitted ? 'rgba(234, 179, 8, 0.15)' : 'transparent')));
-                const rowHoverBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : (isResubmitted ? 'rgba(234, 179, 8, 0.22)' : 'var(--hover-bg)'));
+                const isNew = !showDiscarded && activeTab === 'draft' && !rowExisting && ticket.entries?.length > 0;
+                const rowBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : (isResubmitted ? 'rgba(234, 179, 8, 0.15)' : (isNew ? 'rgba(37, 99, 235, 0.06)' : 'transparent'))));
+                const rowHoverBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : (isResubmitted ? 'rgba(234, 179, 8, 0.22)' : (isNew ? 'rgba(37, 99, 235, 0.1)' : 'var(--hover-bg)')));
                 return (
                 <tr
                   key={ticket.id}
                   style={{
                     borderBottom: '1px solid var(--border-color)',
-                    borderLeft: isRejected ? '4px solid #ef5350' : (isResubmitted ? '4px solid #eab308' : undefined),
+                    borderLeft: isRejected ? '4px solid #ef5350' : (isResubmitted ? '4px solid #eab308' : (isNew ? '4px solid #2563eb' : undefined)),
                     transition: 'background-color 0.2s',
                     cursor: 'pointer',
                     backgroundColor: rowBg,
@@ -2253,6 +2254,21 @@ export default function ServiceTickets() {
                           textTransform: 'uppercase',
                           letterSpacing: '0.5px',
                         }} title="Resubmitted after rejection">Resubmitted</span>
+                      )}
+                      {isNew && (
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          fontFamily: 'system-ui, sans-serif',
+                          color: '#2563eb',
+                          backgroundColor: 'rgba(37, 99, 235, 0.15)',
+                          border: '1px solid rgba(37, 99, 235, 0.4)',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }} title="New ticket from time entries – not yet opened">New</span>
                       )}
                     </div>
                   </td>
