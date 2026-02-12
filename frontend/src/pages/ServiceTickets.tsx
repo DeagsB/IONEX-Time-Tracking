@@ -1757,7 +1757,10 @@ export default function ServiceTickets() {
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => {
+              setActiveTab(tab.id as any);
+              if (showDiscarded) setShowDiscarded(false);
+            }}
             style={{
               padding: '10px 20px',
               border: 'none',
