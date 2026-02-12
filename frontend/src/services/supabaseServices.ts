@@ -915,7 +915,7 @@ export const serviceTicketsService = {
     totalAmount: number;
     isDemo?: boolean;
     approvedByAdminId?: string;
-    headerOverrides?: Record<string, string>;
+    headerOverrides?: Record<string, string | number>;
   }) {
     const isDemo = ticket.isDemo || false;
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
@@ -1031,11 +1031,11 @@ export const serviceTicketsService = {
   },
 
   /**
-   * Update header_overrides for a service ticket (snapshot of customer info to freeze approved tickets)
+   * Update header_overrides for a service ticket (snapshot of customer info + rates to freeze approved tickets)
    */
   async updateHeaderOverrides(
     ticketId: string,
-    overrides: Record<string, string>,
+    overrides: Record<string, string | number>,
     isDemo: boolean = false
   ): Promise<void> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
@@ -1058,7 +1058,7 @@ export const serviceTicketsService = {
     ticketNumber: string | null,
     isDemo: boolean = false,
     approvedByAdminId?: string,
-    headerOverrides?: Record<string, string>
+    headerOverrides?: Record<string, string | number>
   ): Promise<void> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
 

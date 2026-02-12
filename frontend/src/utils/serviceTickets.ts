@@ -448,7 +448,7 @@ export interface InvoiceGroupKey {
   cc: string;
 }
 
-/** Header overrides from service_tickets.header_overrides (user edits saved on the ticket) */
+/** Header overrides from service_tickets.header_overrides (user edits + frozen rates saved on the ticket) */
 export interface HeaderOverrides {
   service_location?: string;
   approver_po_afe?: string;
@@ -465,10 +465,17 @@ export interface HeaderOverrides {
   tech_name?: string;
   project_number?: string;
   date?: string;
+  /** Frozen rates (approved tickets only) */
+  rate_rt?: number;
+  rate_tt?: number;
+  rate_ft?: number;
+  rate_shop_ot?: number;
+  rate_field_ot?: number;
 }
 
 /** Apply header_overrides to a ticket for PDF export (user edits take precedence).
- * When header_overrides is null, applies fallbacks from ticket.location and entry-level po_afe. */
+ * When header_overrides is null, applies fallbacks from ticket.location and entry-level po_afe.
+ * For approved tickets, frozen rates are applied when present in header_overrides. */
 export function applyHeaderOverridesToTicket(
   ticket: ServiceTicket,
   headerOverrides?: HeaderOverrides | null
@@ -477,6 +484,18 @@ export function applyHeaderOverridesToTicket(
   const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
   const locFallback = (ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
   const approverFallback = entryPo ?? ticket.projectApproverPoAfe ?? ticket.customerInfo?.approver_name ?? ticket.customerInfo?.po_number ?? '';
+
+  const hasFrozenRates = ov && (
+    typeof ov.rate_rt === 'number' || typeof ov.rate_tt === 'number' || typeof ov.rate_ft === 'number' ||
+    typeof ov.rate_shop_ot === 'number' || typeof ov.rate_field_ot === 'number'
+  );
+  const rates = hasFrozenRates ? {
+    rt: typeof ov!.rate_rt === 'number' ? ov.rate_rt : ticket.rates.rt,
+    tt: typeof ov!.rate_tt === 'number' ? ov.rate_tt : ticket.rates.tt,
+    ft: typeof ov!.rate_ft === 'number' ? ov.rate_ft : ticket.rates.ft,
+    shop_ot: typeof ov!.rate_shop_ot === 'number' ? ov.rate_shop_ot : ticket.rates.shop_ot,
+    field_ot: typeof ov!.rate_field_ot === 'number' ? ov.rate_field_ot : ticket.rates.field_ot,
+  } : ticket.rates;
 
   return {
     ...ticket,
@@ -497,6 +516,7 @@ export function applyHeaderOverridesToTicket(
     },
     projectApproverPoAfe: ov?.approver_po_afe ?? ticket.projectApproverPoAfe ?? entryPo ?? undefined,
     projectOther: ov?.other ?? ticket.projectOther,
+    rates,
   };
 }
 

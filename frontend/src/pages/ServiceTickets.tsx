@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -332,7 +332,7 @@ export default function ServiceTickets() {
     }
   };
 
-  const buildApprovalHeaderOverrides = (ticket: ServiceTicket): Record<string, string> => {
+  const buildApprovalHeaderOverrides = (ticket: ServiceTicket): Record<string, string | number> => {
     const cityState = ticket.customerInfo.city && ticket.customerInfo.state
       ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
       : ticket.customerInfo.city || ticket.customerInfo.state || '';
@@ -352,6 +352,11 @@ export default function ServiceTickets() {
       tech_name: ticket.userName ?? '',
       project_number: ticket.projectNumber ?? '',
       date: ticket.date ?? '',
+      rate_rt: ticket.rates.rt,
+      rate_tt: ticket.rates.tt,
+      rate_ft: ticket.rates.ft,
+      rate_shop_ot: ticket.rates.shop_ot,
+      rate_field_ot: ticket.rates.field_ot,
     };
   };
 
@@ -622,7 +627,9 @@ export default function ServiceTickets() {
             ticketNumber = existingRecord.ticket_number;
             ticketRecordId = existingRecord.id;
           
-          const ticketWithNumber = { ...ticket, ticketNumber };
+          const ov = (existingRecord as { header_overrides?: Record<string, string | number> })?.header_overrides ?? undefined;
+          const ticketWithOverrides = ov ? applyHeaderOverridesToTicket(ticket, ov) : ticket;
+          const ticketWithNumber = { ...ticketWithOverrides, ticketNumber };
           // Load expenses for bulk export
           let ticketExpenses = [];
           if (ticketRecordId) {
@@ -847,7 +854,9 @@ export default function ServiceTickets() {
           ticketNumber = existingRecord.ticket_number;
           ticketRecordId = existingRecord.id;
           
-          const ticketWithNumber = { ...ticket, ticketNumber };
+          const ov = (existingRecord as { header_overrides?: Record<string, string | number> })?.header_overrides ?? undefined;
+          const ticketWithOverrides = ov ? applyHeaderOverridesToTicket(ticket, ov) : ticket;
+          const ticketWithNumber = { ...ticketWithOverrides, ticketNumber };
           // Load expenses for bulk export
           let ticketExpenses = [];
           if (ticketRecordId) {
@@ -1165,6 +1174,7 @@ export default function ServiceTickets() {
       const otAmount = shopOtAmount + fieldOtAmount;
       const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
 
+      const headerOverrides = buildApprovalHeaderOverrides(ticket);
       const record = await serviceTicketsService.createTicketRecord({
         ticketNumber,
         employeeInitials: ticket.userInitials,
@@ -1178,6 +1188,7 @@ export default function ServiceTickets() {
         totalHours: ticket.totalHours,
         totalAmount,
         approvedByAdminId: user?.id,
+        headerOverrides,
       });
 
       return record.id;
@@ -2020,7 +2031,7 @@ export default function ServiceTickets() {
                     // APPROVED/EXPORTED tickets: use header_overrides ONLY – never merge with live customer.
                     //    If header_overrides is empty, use empty strings (avoids overwriting with updated customer).
                     // DRAFT/REJECTED: prefer non-empty override, else use initialEditable (updated customer).
-                    const ov = (ticketRecord?.header_overrides as Record<string, string> | null) ?? {};
+                    const ov = (ticketRecord?.header_overrides as Record<string, string | number> | null) ?? {};
                     const useOverride = (ovVal: string | undefined, fallback: string) =>
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
                     let merged: typeof initialEditable;
@@ -2068,6 +2079,12 @@ export default function ServiceTickets() {
                     }
                     setEditableTicket(merged);
                     initialEditableTicketRef.current = { ...merged };
+
+                    // Frozen tickets: apply frozen rates from header_overrides so amounts use snapshot, not live rates
+                    if (isFrozen && ov && (typeof ov.rate_rt === 'number' || typeof ov.rate_tt === 'number' || typeof ov.rate_ft === 'number')) {
+                      const displayTicket = applyHeaderOverridesToTicket(ticket, ov);
+                      setSelectedTicket(displayTicket);
+                    }
                     
                     if (ticketRecord && ticketRecord.is_edited) {
                       setIsTicketEdited(true);
