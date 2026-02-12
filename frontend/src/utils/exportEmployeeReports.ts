@@ -65,7 +65,7 @@ export async function exportEmployeeReportsToExcel(
   summarySheet.getCell('A11').value = 'Service Tickets:';
   summarySheet.getCell('B11').value = totals.serviceTicketCount;
 
-  summarySheet.getCell('A12').value = 'Avg Efficiency:';
+  summarySheet.getCell('A12').value = 'Avg Billable %:';
   summarySheet.getCell('B12').value = totals.totalHours > 0 
     ? (totals.billableHours / totals.totalHours) * 100 
     : 0;
@@ -73,7 +73,7 @@ export async function exportEmployeeReportsToExcel(
 
   // Employee details header (row 13)
   const headerRow = 13;
-  const headers = ['Employee', 'Position', 'Total Hours', 'Billable Hours', 'Non-Billable', 'Efficiency', 'Revenue', 'Cost', 'Net Profit', 'Profit Margin', 'Avg Rate', 'Tickets'];
+  const headers = ['Employee', 'Position', 'Total Hours', 'Billable Hours', 'Non-Billable', 'Billable %', 'Revenue', 'Cost', 'Net Profit', 'Profit Margin', 'Avg Rate', 'Tickets'];
   headers.forEach((header, index) => {
     const cell = summarySheet.getCell(headerRow, index + 1);
     cell.value = header;
@@ -360,7 +360,7 @@ export async function exportEmployeeReportsToPDF(
           <div class="summary-value">${totals.serviceTicketCount}</div>
         </div>
         <div class="summary-item">
-          <div class="summary-label">Efficiency</div>
+          <div class="summary-label">Billable %</div>
           <div class="summary-value">${totals.totalHours > 0 ? formatPercentage((totals.billableHours / totals.totalHours) * 100) : '0%'}</div>
         </div>
       </div>
@@ -373,7 +373,7 @@ export async function exportEmployeeReportsToPDF(
             <th>Position</th>
             <th class="text-right">Total Hours</th>
             <th class="text-right">Billable</th>
-            <th class="text-center">Efficiency</th>
+            <th class="text-center">Billable %</th>
             <th class="text-right">Revenue</th>
             <th class="text-right">Avg Rate</th>
             <th class="text-right">Tickets</th>

@@ -557,7 +557,7 @@ export default function EmployeeReports() {
         </div>
         <div className="card" style={{ padding: '16px' }}>
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '8px' }}>
-            Avg Efficiency
+            Avg Billable %
           </div>
           <div style={{ fontSize: '24px', fontWeight: '600' }}>
             {totals.totalHours > 0 
@@ -609,7 +609,7 @@ export default function EmployeeReports() {
                   onClick={() => handleSort('efficiency')}
                   style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}
                 >
-                  Efficiency {sortField === 'efficiency' && (sortDirection === 'asc' ? '↑' : '↓')}
+                  Billable % {sortField === 'efficiency' && (sortDirection === 'asc' ? '↑' : '↓')}
                 </th>
                 <th 
                   onClick={() => handleSort('totalRevenue')}
@@ -842,7 +842,7 @@ export default function EmployeeReports() {
                     color: metrics.efficiency >= 80 ? '#28a745' :
                            metrics.efficiency >= 60 ? '#ffc107' : '#dc3545'
                   }}>
-                    {formatPercentage(metrics.efficiency)} Efficiency
+                    {formatPercentage(metrics.efficiency)} Billable %
                   </span>
                 </div>
 
