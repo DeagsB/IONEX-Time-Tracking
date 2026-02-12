@@ -3598,9 +3598,10 @@ export default function ServiceTickets() {
                 );
               })()}
 
-              {/* Workflow Status Section - only visible to admins */}
+              {/* Workflow Status Section - only visible to admins, hidden when ticket is trashed */}
               {isAdmin && (() => {
                 const existing = findMatchingTicketRecord(selectedTicket);
+                if ((existing as any)?.is_discarded) return null;
                 const currentStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
                 const hasTicketNumber = !!existing?.ticket_number;
                 
