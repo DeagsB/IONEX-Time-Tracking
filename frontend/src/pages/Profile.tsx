@@ -44,7 +44,7 @@ interface PasswordData {
 }
 
 export default function Profile() {
-  const { user, updateUser, refreshUserProfile, isAdmin } = useAuth();
+  const { user, updateUser, refreshUserProfile, isAdmin, displayRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Profile form state
@@ -576,15 +576,19 @@ export default function Profile() {
               fontSize: '14px',
               color: 'var(--text-primary)',
             }}>
-              <span style={{
-                padding: '4px 10px',
-                borderRadius: '12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                backgroundColor: user?.role === 'ADMIN' ? 'rgba(199, 112, 240, 0.2)' : 'rgba(78, 205, 196, 0.2)',
-                color: user?.role === 'ADMIN' ? '#c770f0' : '#4ecdc4',
-              }}>
-                {user?.role || 'USER'}
+              <span
+                data-testid="profile-role"
+                data-role={displayRole}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  backgroundColor: displayRole === 'ADMIN' ? 'rgba(199, 112, 240, 0.2)' : 'rgba(78, 205, 196, 0.2)',
+                  color: displayRole === 'ADMIN' ? '#c770f0' : '#4ecdc4',
+                }}
+              >
+                {displayRole}
               </span>
             </div>
           </div>

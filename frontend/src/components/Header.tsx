@@ -370,16 +370,24 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {/* Developer Role Switcher */}
           {isDeveloper && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              backgroundColor: 'var(--bg-secondary)',
-              borderRadius: '6px',
-              padding: '4px',
-              border: '1px solid var(--border-color)',
-            }}>
+            <div
+              data-testid="role-switcher"
+              role="group"
+              aria-label="Switch role for testing"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                backgroundColor: 'var(--bg-secondary)',
+                borderRadius: '6px',
+                padding: '4px',
+                border: '1px solid var(--border-color)',
+              }}
+            >
               <button
+                data-testid="role-switcher-user"
+                data-role="user"
+                aria-pressed={effectiveRole === 'USER'}
                 onClick={() => setEffectiveRole('USER')}
                 style={{
                   padding: '4px 10px',
@@ -392,11 +400,14 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
                   color: effectiveRole === 'USER' ? 'white' : 'var(--text-secondary)',
                   transition: 'all 0.15s ease',
                 }}
-                title="Switch to User mode"
+                title="Switch to User mode - test as regular user"
               >
                 User
               </button>
               <button
+                data-testid="role-switcher-admin"
+                data-role="admin"
+                aria-pressed={effectiveRole === 'ADMIN'}
                 onClick={() => setEffectiveRole('ADMIN')}
                 style={{
                   padding: '4px 10px',
@@ -409,7 +420,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
                   color: effectiveRole === 'ADMIN' ? 'white' : 'var(--text-secondary)',
                   transition: 'all 0.15s ease',
                 }}
-                title="Switch to Admin mode"
+                title="Switch to Admin mode - test as admin"
               >
                 Admin
               </button>

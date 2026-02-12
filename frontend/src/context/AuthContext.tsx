@@ -31,6 +31,8 @@ interface AuthContextType {
   setEffectiveRole: (role: 'ADMIN' | 'USER') => void;
   // Computed admin check - considers developer's effective role
   isAdmin: boolean;
+  /** Display role for UI/testing: when developer with effectiveRole=USER, shows 'USER'; otherwise actual role */
+  displayRole: 'ADMIN' | 'USER' | 'DEVELOPER';
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -82,6 +84,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isAdmin = isDeveloper 
     ? effectiveRole === 'ADMIN' 
     : user?.role === 'ADMIN';
+
+  // Display role for UI/testing: when developer testing as user, show USER so identity matches behavior
+  const displayRole: 'ADMIN' | 'USER' | 'DEVELOPER' = isDeveloper
+    ? (effectiveRole === 'USER' ? 'USER' : 'ADMIN')
+    : (user?.role || 'USER');
 
   useEffect(() => {
     // Skip auth initialization in development mode
@@ -324,6 +331,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         effectiveRole,
         setEffectiveRole,
         isAdmin,
+        displayRole,
       }}
     >
       {children}
