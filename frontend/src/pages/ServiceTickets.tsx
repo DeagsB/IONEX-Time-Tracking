@@ -62,6 +62,11 @@ export default function ServiceTickets() {
     }
   }, [isAdmin]);
   const [showDiscarded, setShowDiscarded] = useState(false);
+
+  // Clear bulk selection when switching tabs or trash view (selection is per tab)
+  useEffect(() => {
+    setSelectedTicketIds(new Set());
+  }, [activeTab, showDiscarded]);
   
   // Sorting state - persisted per user in localStorage
   const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>(() => {
