@@ -373,21 +373,30 @@ export function getRateTypeSortOrder(rateType: string): number {
   return order[rateType] || 99;
 }
 
-/** Extract approver code (G###) from approver_po_afe string */
+/** Extract AC: value (approver) from approver_po_afe string */
+function extractACValue(approverPoAfe: string | undefined): string {
+  if (!approverPoAfe) return '';
+  const m = approverPoAfe.match(/AC\s*[:\-]?\s*([^\s,;]+)/i);
+  return m ? m[1].trim() : '';
+}
+
+/** Extract approver code (G###) or AC: value from approver_po_afe string */
 export function extractApproverCode(approverPoAfe: string | undefined): string {
   if (!approverPoAfe) return '';
+  const acVal = extractACValue(approverPoAfe);
+  if (acVal) return acVal;
   const m = approverPoAfe.match(/G\d{3,}/i);
   return m ? m[0].toUpperCase() : (approverPoAfe.trim() || '');
 }
 
-/** Extract CC value from approver_po_afe string (e.g. "CC: 123" or "CC 123") */
+/** Extract CC value from approver_po_afe string (e.g. "CC: 123" or "CC 123") - returns value only, no prefix */
 export function extractCcValue(approverPoAfe: string | undefined): string {
   if (!approverPoAfe) return '';
   const m = approverPoAfe.match(/CC\s*[:\-]?\s*([^\s,;]+)/i);
   return m ? m[1].trim() : '';
 }
 
-/** Extract PO value from approver_po_afe string (e.g. "PO: FC250374-9084" or "FC250374-9084") */
+/** Extract PO value from approver_po_afe string (e.g. "PO: FC250374-9084") - returns value only, no prefix */
 export function extractPoValue(approverPoAfe: string | undefined): string {
   if (!approverPoAfe) return '';
   const poMatch = approverPoAfe.match(/PO\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
@@ -400,33 +409,35 @@ export function extractPoValue(approverPoAfe: string | undefined): string {
 /** Plain numeric strings (e.g. 80046479) are typically CC, not PO/AFE */
 const PLAIN_NUMBER_CC = /^\d{6,10}$/;
 
-/** Parse combined approver_po_afe into approver (G###), poAfe, cc */
+/** Parse combined approver_po_afe into approver, poAfe, cc. AC:→approver, PO:→poAfe, CC:→cc. Prefixes stripped. */
 export function parseApproverPoAfe(combined: string | undefined): { approver: string; poAfe: string; cc: string } {
   const s = (combined || '').trim();
-  const approver = extractApproverCode(s);
+  const explicitAc = extractACValue(s);
   const explicitCc = extractCcValue(s);
   const explicitPo = extractPoValue(s);
+  const gMatch = s.match(/G\d{3,}/i);
+  const approver = explicitAc || (gMatch ? gMatch[0].toUpperCase() : '');
   const remainder = s
+    .replace(/AC\s*[:\-]?\s*[^\s,;]+/gi, '')
     .replace(/G\d{3,}\s*/i, '')
     .replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '')
     .replace(/([A-Z]{2,}\d{4,}-\d{4,})/gi, '')  // PO-style FC250374-9084
     .replace(/PO\s*[:\-]?\s*[A-Za-z0-9\-]+/gi, '')
     .trim();
-  // Plain numbers (6–10 digits) are typically CC; PO/AFE has letters, hyphens, or different format
   const isPlainNumber = PLAIN_NUMBER_CC.test(remainder);
   return {
-    approver,
+    approver: approver || '',
     poAfe: explicitPo || (isPlainNumber ? '' : remainder),
     cc: explicitCc || (isPlainNumber ? remainder : ''),
   };
 }
 
-/** Build combined approver_po_afe from approver, poAfe, cc */
+/** Build combined approver_po_afe from approver, poAfe, cc. Values only, no AC:/PO:/CC: prefixes. */
 export function buildApproverPoAfe(approver: string, poAfe: string, cc: string): string {
   const parts: string[] = [];
-  if (approver.trim()) parts.push(approver.trim());
-  if (poAfe.trim()) parts.push(poAfe.trim());
-  if (cc.trim()) parts.push(cc.trim().match(/^CC\s*[:\-]?/i) ? cc.trim() : `CC: ${cc.trim()}`);
+  if (approver.trim()) parts.push(approver.trim().replace(/^AC\s*[:\-]?\s*/i, ''));
+  if (poAfe.trim()) parts.push(poAfe.trim().replace(/^PO\s*[:\-]?\s*/i, ''));
+  if (cc.trim()) parts.push(cc.trim().replace(/^CC\s*[:\-]?\s*/i, ''));
   return parts.join(' ');
 }
 
