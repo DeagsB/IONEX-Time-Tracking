@@ -1675,26 +1675,28 @@ export default function ServiceTickets() {
             </div>
           )}
           </div>
-          <button
-            type="button"
-            onClick={() => setShowDiscarded(!showDiscarded)}
-            style={{
-              marginLeft: 'auto',
-              padding: '8px 16px',
-              fontSize: '13px',
-              fontWeight: '600',
-              color: showDiscarded ? 'white' : '#ef5350',
-              backgroundColor: showDiscarded ? '#ef5350' : 'transparent',
-              border: '1px solid #ef5350',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            🗑️ Show Trash
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 'auto' }}>
+            <div style={{ height: '20px', marginBottom: '8px' }} />
+            <button
+              type="button"
+              onClick={() => setShowDiscarded(!showDiscarded)}
+              style={{
+                padding: '8px 16px',
+                fontSize: '13px',
+                fontWeight: '600',
+                color: showDiscarded ? 'white' : '#ef5350',
+                backgroundColor: showDiscarded ? '#ef5350' : 'transparent',
+                border: '1px solid #ef5350',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              🗑️ Show Trash
+            </button>
+          </div>
         </div>
       </div>
 
