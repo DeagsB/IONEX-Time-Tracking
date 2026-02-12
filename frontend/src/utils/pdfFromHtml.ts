@@ -219,7 +219,7 @@ export async function downloadPdfFromHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
             </tr>
@@ -233,7 +233,7 @@ export async function downloadPdfFromHtml(
               <td style="padding: 2px 4px; width: 40px;">CC</td>
               <td style="padding: 2px 4px;">${cc}</td>
             </tr>
-            <tr style="border-top: 2px solid #000;">
+            <tr style="border-top: 1px solid #ccc;">
               <td style="padding: 2px 4px; width: 100px;">Approver</td>
               <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approver}</td>
               <td style="padding: 2px 4px; width: 40px;">Other</td>
@@ -768,7 +768,7 @@ function buildPdfHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Phone</td>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
             </tr>
@@ -782,7 +782,7 @@ function buildPdfHtml(
               <td style="padding: 2px 4px; width: 40px;">CC</td>
               <td style="padding: 2px 4px;">${cc}</td>
             </tr>
-            <tr style="border-top: 2px solid #000;">
+            <tr style="border-top: 1px solid #ccc;">
               <td style="padding: 2px 4px; width: 100px;">Approver</td>
               <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approver}</td>
               <td style="padding: 2px 4px; width: 40px;">Other</td>
