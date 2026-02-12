@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 import SearchableSelect from '../components/SearchableSelect';
-import { parseApproverPoAfe, buildApproverPoAfe } from '../utils/serviceTickets';
+import { parseApproverPoAfe, buildApproverPoAfe, parseOtherFieldForPrefixes } from '../utils/serviceTickets';
 
 export default function Projects() {
   const { user, isAdmin } = useAuth();
@@ -277,6 +277,8 @@ export default function Projects() {
 
   const handleEdit = (project: any) => {
     setEditingProject(project);
+    const apr = parseApproverPoAfe(project.approver_po_afe || '');
+    const oth = parseOtherFieldForPrefixes(project.other || '');
     setFormData({
       name: project.name || '',
       project_number: project.project_number || '',
@@ -285,8 +287,10 @@ export default function Projects() {
       status: project.status || 'active',
       color: project.color || '#4ecdc4',
       location: project.location || '',
-      ...parseApproverPoAfe(project.approver_po_afe || ''),
-      other: project.other || '',
+      approver: apr.approver || oth.approver,
+      poAfe: apr.poAfe || oth.poAfe,
+      cc: apr.cc || oth.cc,
+      other: oth.otherRemainder,
       shop_junior_rate: project.shop_junior_rate?.toString() || '',
       shop_senior_rate: project.shop_senior_rate?.toString() || '',
       ft_junior_rate: project.ft_junior_rate?.toString() || '',
@@ -558,7 +562,7 @@ export default function Projects() {
                   className="input"
                   value={formData.cc}
                   onChange={(e) => setFormData({ ...formData, cc: e.target.value })}
-                  placeholder="e.g., CC: 12345"
+                  placeholder="e.g., 12345 or 3210_430"
                 />
               </div>
               <div className="form-group">
@@ -913,7 +917,7 @@ export default function Projects() {
                   className="input"
                   value={formData.cc}
                   onChange={(e) => setFormData({ ...formData, cc: e.target.value })}
-                  placeholder="e.g., CC: 12345"
+                  placeholder="e.g., 12345 or 3210_430"
                 />
               </div>
               <div className="form-group">

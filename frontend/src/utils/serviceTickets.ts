@@ -409,12 +409,13 @@ export function extractPoValue(approverPoAfe: string | undefined): string {
 /** Plain numeric strings (e.g. 80046479) are typically CC, not PO/AFE */
 const PLAIN_NUMBER_CC = /^\d{6,10}$/;
 
-/** Parse combined approver_po_afe into approver, poAfe, cc. AC:→approver, PO:→poAfe, CC:→cc. Prefixes stripped. */
+/** Parse combined approver_po_afe into approver, poAfe, cc. AC:→approver, PO:/AFE:→poAfe, CC:→cc. Prefixes stripped. */
 export function parseApproverPoAfe(combined: string | undefined): { approver: string; poAfe: string; cc: string } {
   const s = (combined || '').trim();
   const explicitAc = extractACValue(s);
   const explicitCc = extractCcValue(s);
   const explicitPo = extractPoValue(s);
+  const explicitAfe = extractAFEValue(s);
   const gMatch = s.match(/G\d{3,}/i);
   const approver = explicitAc || (gMatch ? gMatch[0].toUpperCase() : '');
   const remainder = s
@@ -423,17 +424,24 @@ export function parseApproverPoAfe(combined: string | undefined): { approver: st
     .replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '')
     .replace(/([A-Z]{2,}\d{4,}-\d{4,})/gi, '')  // PO-style FC250374-9084
     .replace(/PO\s*[:\-]?\s*[A-Za-z0-9\-]+/gi, '')
+    .replace(/AFE\s*[:\-]?\s*[^\s,;]+/gi, '')
     .trim();
   const isPlainNumber = PLAIN_NUMBER_CC.test(remainder);
   return {
     approver: approver || '',
-    poAfe: explicitPo || (isPlainNumber ? '' : remainder),
+    poAfe: explicitPo || explicitAfe || (isPlainNumber ? '' : remainder),
     cc: explicitCc || (isPlainNumber ? remainder : ''),
   };
 }
 
+/** Extract AFE: value from string (goes to PO/AFE field) */
+function extractAFEValue(s: string): string {
+  const m = s.match(/AFE\s*[:\-]?\s*([^\s,;]+)/i);
+  return m ? m[1].trim() : '';
+}
+
 /**
- * Parse "other" field for CC:, AC:, PO: prefixes (legacy data).
+ * Parse "other" field for CC:, AC:, PO:, AFE: prefixes (legacy data).
  * Returns extracted values and remainder for other.
  */
 export function parseOtherFieldForPrefixes(other: string | undefined): { cc: string; approver: string; poAfe: string; otherRemainder: string } {
@@ -442,14 +450,16 @@ export function parseOtherFieldForPrefixes(other: string | undefined): { cc: str
   const ccVal = extractCcValue(s);
   const acVal = extractACValue(s);
   const poVal = extractPoValue(s);
+  const afeVal = extractAFEValue(s);
   // Also match PO: with underscores (e.g. in other field)
   const poInOther = s.match(/PO\s*[:\-]?\s*([^\s,;]+)/i);
   const poValFromOther = poInOther ? poInOther[1].trim() : '';
-  const poFinal = poVal || poValFromOther;
+  const poFinal = poVal || poValFromOther || afeVal;
   let remainder = s
     .replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '')
     .replace(/AC\s*[:\-]?\s*[^\s,;]+/gi, '')
     .replace(/PO\s*[:\-]?\s*[^\s,;]+/gi, '')
+    .replace(/AFE\s*[:\-]?\s*[^\s,;]+/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
   return { cc: ccVal, approver: acVal, poAfe: poFinal, otherRemainder: remainder };
@@ -459,7 +469,7 @@ export function parseOtherFieldForPrefixes(other: string | undefined): { cc: str
 export function buildApproverPoAfe(approver: string, poAfe: string, cc: string): string {
   const parts: string[] = [];
   if (approver.trim()) parts.push(approver.trim().replace(/^AC\s*[:\-]?\s*/i, ''));
-  if (poAfe.trim()) parts.push(poAfe.trim().replace(/^PO\s*[:\-]?\s*/i, ''));
+  if (poAfe.trim()) parts.push(poAfe.trim().replace(/^PO\s*[:\-]?\s*/i, '').replace(/^AFE\s*[:\-]?\s*/i, ''));
   if (cc.trim()) parts.push(cc.trim().replace(/^CC\s*[:\-]?\s*/i, ''));
   return parts.join(' ');
 }
