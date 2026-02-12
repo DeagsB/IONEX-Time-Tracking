@@ -833,7 +833,7 @@ export default function ServiceTickets() {
       for (const ticket of ticketsToRestore) {
         const record = findMatchingTicketRecord(ticket);
         if (record?.id) {
-          await supabase.from(tableName).update({ is_discarded: false }).eq('id', record.id);
+          await supabase.from(tableName).update({ is_discarded: false, restored_at: new Date().toISOString() }).eq('id', record.id);
         }
       }
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
@@ -949,14 +949,14 @@ export default function ServiceTickets() {
       const { data, error } = await supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, rejected_at, rejection_notes,
+          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `);
       if (error) {
         // If the join fails (column doesn't exist yet), try without the join
         const { data: fallbackData, error: fallbackError } = await supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, rejected_at, rejection_notes');
+          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes');
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
@@ -1293,11 +1293,17 @@ export default function ServiceTickets() {
       });
     }
     
-    // Sort tickets (new first in Drafts; rejected first in Drafts; resubmitted first in Submitted tab)
+    // Sort tickets (restored first; then new/rejected/resubmitted by tab; then by sort field)
     result = [...result].sort((a, b) => {
+      // Restored tickets (from trash) always at top until interacted with
+      const aRec = findMatchingTicketRecord(a);
+      const bRec = findMatchingTicketRecord(b);
+      const aRestored = !showDiscarded && !!(aRec as any)?.restored_at;
+      const bRestored = !showDiscarded && !!(bRec as any)?.restored_at;
+      if (aRestored && !bRestored) return -1;
+      if (!aRestored && bRestored) return 1;
+
       if (activeTab === 'draft' && !showDiscarded) {
-        const aRec = findMatchingTicketRecord(a);
-        const bRec = findMatchingTicketRecord(b);
         const aNew = !aRec && (a.entries?.length ?? 0) > 0;
         const bNew = !bRec && (b.entries?.length ?? 0) > 0;
         if (aNew && !bNew) return -1;
@@ -1308,8 +1314,6 @@ export default function ServiceTickets() {
         if (!aRej && bRej) return 1;
       }
       if (activeTab === 'submitted') {
-        const aRec = findMatchingTicketRecord(a);
-        const bRec = findMatchingTicketRecord(b);
         const aResub = !!aRec?.rejected_at;
         const bResub = !!bRec?.rejected_at;
         if (aResub && !bResub) return -1;
@@ -2063,6 +2067,14 @@ export default function ServiceTickets() {
                       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                     }
+                    // Clear restored_at when user interacts (opens ticket) so green indicator goes away
+                    const rec = findMatchingTicketRecord(ticket);
+                    if ((rec as any)?.restored_at) {
+                      const tbl = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                      await supabase.from(tbl).update({ restored_at: null }).eq('id', ticketRecordId);
+                      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                    }
                     await loadExpenses(ticketRecordId);
                     
                     // Load edited descriptions and hours (header_overrides optional until migration is run)
@@ -2191,15 +2203,16 @@ export default function ServiceTickets() {
                 const rowExisting = findMatchingTicketRecord(ticket);
                 const isRejected = !showDiscarded && rowExisting?.workflow_status === 'rejected';
                 const isResubmitted = !showDiscarded && activeTab === 'submitted' && !!rowExisting?.rejected_at;
+                const isRestored = !showDiscarded && !!(rowExisting as any)?.restored_at;
                 const isNew = !showDiscarded && activeTab === 'draft' && !rowExisting && ticket.entries?.length > 0;
-                const rowBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : (isResubmitted ? 'rgba(234, 179, 8, 0.15)' : (isNew ? 'rgba(37, 99, 235, 0.06)' : 'transparent'))));
-                const rowHoverBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : (isResubmitted ? 'rgba(234, 179, 8, 0.22)' : (isNew ? 'rgba(37, 99, 235, 0.1)' : 'var(--hover-bg)')));
+                const rowBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : (isResubmitted ? 'rgba(234, 179, 8, 0.15)' : (isRestored ? 'rgba(16, 185, 129, 0.06)' : (isNew ? 'rgba(37, 99, 235, 0.06)' : 'transparent')))));
+                const rowHoverBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : (isResubmitted ? 'rgba(234, 179, 8, 0.22)' : (isRestored ? 'rgba(16, 185, 129, 0.1)' : (isNew ? 'rgba(37, 99, 235, 0.1)' : 'var(--hover-bg)')));
                 return (
                 <tr
                   key={ticket.id}
                   style={{
                     borderBottom: '1px solid var(--border-color)',
-                    borderLeft: isRejected ? '4px solid #ef5350' : (isResubmitted ? '4px solid #eab308' : (isNew ? '4px solid #2563eb' : undefined)),
+                    borderLeft: isRejected ? '4px solid #ef5350' : (isResubmitted ? '4px solid #eab308' : (isRestored ? '4px solid #10b981' : (isNew ? '4px solid #2563eb' : undefined))),
                     transition: 'background-color 0.2s',
                     cursor: 'pointer',
                     backgroundColor: rowBg,
@@ -2271,6 +2284,21 @@ export default function ServiceTickets() {
                           letterSpacing: '0.5px',
                         }} title="Resubmitted after rejection">Resubmitted</span>
                       )}
+                      {isRestored && (
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          fontFamily: 'system-ui, sans-serif',
+                          color: '#10b981',
+                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                        }} title="Recently restored from trash – opens when clicked">Restored</span>
+                      )}
                       {isNew && (
                         <span style={{
                           display: 'inline-block',
@@ -2325,7 +2353,7 @@ export default function ServiceTickets() {
                           if (!record?.id) return;
                           try {
                             const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                            await supabase.from(tableName).update({ is_discarded: false }).eq('id', record.id);
+                            await supabase.from(tableName).update({ is_discarded: false, restored_at: new Date().toISOString() }).eq('id', record.id);
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
@@ -3996,7 +4024,7 @@ export default function ServiceTickets() {
                             const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
                             const { error } = await supabase
                               .from(tableName)
-                              .update({ is_discarded: false })
+                              .update({ is_discarded: false, restored_at: new Date().toISOString() })
                               .eq('id', currentTicketRecordId);
                             if (error) throw error;
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
