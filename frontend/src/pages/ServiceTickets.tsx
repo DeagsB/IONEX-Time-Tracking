@@ -148,6 +148,8 @@ export default function ServiceTickets() {
   const [isLockedForEditing, setIsLockedForEditing] = useState(false); // True when admin has approved
   const [showLockNotification, setShowLockNotification] = useState(false);
   const lockNotificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ticketPanelBackdropRef = useRef<HTMLDivElement>(null);
+  const ticketPanelMouseDownOnBackdropRef = useRef(false);
 
   const showLockedReason = () => {
     if (!isLockedForEditing) return;
@@ -2432,6 +2434,7 @@ export default function ServiceTickets() {
       {/* Ticket Preview Modal */}
       {selectedTicket && editableTicket && (
         <div
+          ref={ticketPanelBackdropRef}
           style={{
             position: 'fixed',
             top: 0,
@@ -2445,9 +2448,15 @@ export default function ServiceTickets() {
             zIndex: 1000,
             padding: '20px',
           }}
-          onClick={() => { 
-            if (hasPendingChanges) setShowCloseConfirm(true);
-            else closePanel();
+          onMouseDown={(e) => {
+            ticketPanelMouseDownOnBackdropRef.current = e.target === ticketPanelBackdropRef.current;
+          }}
+          onMouseUp={(e) => {
+            if (ticketPanelMouseDownOnBackdropRef.current && e.target === ticketPanelBackdropRef.current) {
+              if (hasPendingChanges) setShowCloseConfirm(true);
+              else closePanel();
+            }
+            ticketPanelMouseDownOnBackdropRef.current = false;
           }}
         >
           <div
