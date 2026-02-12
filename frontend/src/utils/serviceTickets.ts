@@ -103,6 +103,12 @@ export interface TimeEntryWithRelations {
       approver_name?: string;
       location_code?: string;
       service_location?: string;
+      // Customer special billing rates (fallback when project has no rate override)
+      rate_shop_junior?: number;
+      rate_shop_senior?: number;
+      rate_field_junior?: number;
+      rate_field_senior?: number;
+      rate_travel?: number;
     };
   };
   user_id: string;
@@ -227,34 +233,40 @@ export function groupEntriesIntoTickets(
         const employeePosition = employeePositionMap.get(userId) || 'Junior'; // Default to Junior if not specified
         const isSenior = employeePosition.toLowerCase() === 'senior';
         
-        // Apply project rates if they exist
+        // Apply project rates if they exist; fall back to customer special billing rates
         const project = entry.project;
+        const customer = project.customer;
         const projectRates = { ...employeeRates };
         
         if (isSenior) {
-          // Senior employee rates
-          if (project.shop_senior_rate != null) {
-            projectRates.rt = project.shop_senior_rate;
-            projectRates.shop_ot = project.shop_senior_rate * 1.5; // OT is 1.5x the special rate
+          // Senior: project.shop_senior_rate ?? customer.rate_shop_senior
+          const shopSenior = project.shop_senior_rate ?? customer?.rate_shop_senior;
+          if (shopSenior != null) {
+            projectRates.rt = shopSenior;
+            projectRates.shop_ot = shopSenior * 1.5;
           }
-          if (project.ft_senior_rate != null) {
-            projectRates.ft = project.ft_senior_rate;
-            projectRates.field_ot = project.ft_senior_rate * 1.5; // OT is 1.5x the special rate
+          const ftSenior = project.ft_senior_rate ?? customer?.rate_field_senior;
+          if (ftSenior != null) {
+            projectRates.ft = ftSenior;
+            projectRates.field_ot = ftSenior * 1.5;
           }
         } else {
-          // Junior employee rates
-          if (project.shop_junior_rate != null) {
-            projectRates.rt = project.shop_junior_rate;
-            projectRates.shop_ot = project.shop_junior_rate * 1.5; // OT is 1.5x the special rate
+          // Junior: project.shop_junior_rate ?? customer.rate_shop_junior
+          const shopJunior = project.shop_junior_rate ?? customer?.rate_shop_junior;
+          if (shopJunior != null) {
+            projectRates.rt = shopJunior;
+            projectRates.shop_ot = shopJunior * 1.5;
           }
-          if (project.ft_junior_rate != null) {
-            projectRates.ft = project.ft_junior_rate;
-            projectRates.field_ot = project.ft_junior_rate * 1.5; // OT is 1.5x the special rate
+          const ftJunior = project.ft_junior_rate ?? customer?.rate_field_junior;
+          if (ftJunior != null) {
+            projectRates.ft = ftJunior;
+            projectRates.field_ot = ftJunior * 1.5;
           }
         }
         
-        // Travel rate is the same regardless of Junior/Senior
-        if (project.travel_rate != null) projectRates.tt = project.travel_rate;
+        // Travel rate: project.travel_rate ?? customer.rate_travel
+        const travelRate = project.travel_rate ?? customer?.rate_travel;
+        if (travelRate != null) projectRates.tt = travelRate;
         
         employeeRates = projectRates;
       }

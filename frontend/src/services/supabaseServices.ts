@@ -1027,6 +1027,21 @@ export const serviceTicketsService = {
   },
 
   /**
+   * Update header_overrides for a service ticket (snapshot of customer info to freeze approved tickets)
+   */
+  async updateHeaderOverrides(
+    ticketId: string,
+    overrides: Record<string, string>,
+    isDemo: boolean = false
+  ): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { error } = await supabase.from(tableName).update({ header_overrides: overrides }).eq('id', ticketId);
+    if (error) {
+      console.warn('Failed to save header overrides:', error);
+    }
+  },
+
+  /**
    * Update ticket number for an existing service ticket record
    * @param ticketId - The ID of the ticket record to update
    * @param ticketNumber - The new ticket number (or null to unassign)
@@ -1237,7 +1252,7 @@ export const serviceTicketsService = {
       const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
       const { data: tickets, error: fetchError } = await supabase
         .from(tableName)
-        .select('id, header_overrides')
+        .select('id, header_overrides, ticket_number')
         .eq('customer_id', customerId)
         .in('workflow_status', ['draft', 'rejected']);
 
@@ -1247,6 +1262,7 @@ export const serviceTicketsService = {
       }
 
       for (const ticket of tickets || []) {
+        if ((ticket as any).ticket_number) continue; // Never touch approved/exported tickets
         const existing = (ticket.header_overrides as Record<string, string> | null) ?? {};
         const merged = { ...existing, ...customerOverrides };
         const { error: updateError } = await supabase
