@@ -838,6 +838,8 @@ export default function ServiceTickets() {
       }
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+      queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+      queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
       setSelectedTicketIds(new Set());
     } catch (error) {
       console.error('Error bulk restoring:', error);
@@ -2312,6 +2314,8 @@ export default function ServiceTickets() {
                             await supabase.from(tableName).update({ is_discarded: false }).eq('id', record.id);
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                            queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                            queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                           } catch (err) {
                             console.error('Error restoring ticket:', err);
                             alert('Failed to restore ticket.');
@@ -3913,6 +3917,10 @@ export default function ServiceTickets() {
                             if (error) throw error;
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                            if (isCurrentlyDiscarded) {
+                              queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                              queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+                            }
                             closePanel();
                           } catch (err) {
                             console.error(`Error ${action}ing ticket:`, err);
