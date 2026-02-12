@@ -1214,16 +1214,18 @@ export default function ServiceTickets() {
       
       // Try to find an existing ticket number for this ticket
       const existing = findMatchingTicketRecord(ticket);
+      const isDiscarded = !!(existing as any)?.is_discarded;
       
-      // If there's an existing ticket number, use it (even for demo tickets)
-      if (existing?.ticket_number) {
+      // If there's an existing ticket number and NOT trashed, use it (even for demo tickets)
+      // Trashed tickets must never display a ticket ID
+      if (existing?.ticket_number && !isDiscarded) {
         return {
           ...ticket,
           displayTicketNumber: existing.ticket_number
         };
       }
       
-      // Otherwise, show XXX placeholder
+      // Otherwise (no ticket number, or trashed), show XXX placeholder
       const yearPart = ticket.date ? String(parseInt(ticket.date.slice(0, 4), 10) % 100) : '';
       return {
         ...ticket,
