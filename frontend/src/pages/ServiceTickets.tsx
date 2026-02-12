@@ -332,6 +332,29 @@ export default function ServiceTickets() {
     }
   };
 
+  const buildApprovalHeaderOverrides = (ticket: ServiceTicket): Record<string, string> => {
+    const cityState = ticket.customerInfo.city && ticket.customerInfo.state
+      ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
+      : ticket.customerInfo.city || ticket.customerInfo.state || '';
+    return {
+      customer_name: ticket.customerInfo.name ?? '',
+      address: ticket.customerInfo.address ?? '',
+      city_state: cityState,
+      zip_code: ticket.customerInfo.zip_code ?? '',
+      phone: ticket.customerInfo.phone ?? '',
+      email: ticket.customerInfo.email ?? '',
+      contact_name: ticket.customerInfo.contact_name ?? '',
+      service_location: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
+      location_code: ticket.customerInfo.location_code ?? '',
+      po_number: ticket.customerInfo.po_number ?? '',
+      approver_po_afe: ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '',
+      other: ticket.projectOther ?? '',
+      tech_name: ticket.userName ?? '',
+      project_number: ticket.projectNumber ?? '',
+      date: ticket.date ?? '',
+    };
+  };
+
   const closePanel = () => {
     setShowCloseConfirm(false);
     setSelectedTicket(null);
@@ -654,29 +677,8 @@ export default function ServiceTickets() {
           return; // Already has a ticket number assigned
         }
         ticketRecordId = existing.id;
-        // Update existing record with the ticket number and admin who approved
-        await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket, user?.id);
-        // Snapshot current ticket data to header_overrides so approved ticket is frozen
-        const cityState = ticket.customerInfo.city && ticket.customerInfo.state
-          ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
-          : ticket.customerInfo.city || ticket.customerInfo.state || '';
-        await serviceTicketsService.updateHeaderOverrides(ticketRecordId, {
-          customer_name: ticket.customerInfo.name ?? '',
-          address: ticket.customerInfo.address ?? '',
-          city_state: cityState,
-          zip_code: ticket.customerInfo.zip_code ?? '',
-          phone: ticket.customerInfo.phone ?? '',
-          email: ticket.customerInfo.email ?? '',
-          contact_name: ticket.customerInfo.contact_name ?? '',
-          service_location: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
-          location_code: ticket.customerInfo.location_code ?? '',
-          po_number: ticket.customerInfo.po_number ?? '',
-          approver_po_afe: ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '',
-          other: ticket.projectOther ?? '',
-          tech_name: ticket.userName ?? '',
-          project_number: ticket.projectNumber ?? '',
-          date: ticket.date ?? '',
-        }, isDemoTicket);
+        const headerOverrides = buildApprovalHeaderOverrides(ticket);
+        await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket, user?.id, headerOverrides);
       } else {
         // Create ticket record with the ticket number already assigned
         const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
@@ -688,6 +690,7 @@ export default function ServiceTickets() {
         const otAmount = shopOtAmount + fieldOtAmount;
         const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
         
+        const headerOverrides = buildApprovalHeaderOverrides(ticket);
         const record = await serviceTicketsService.createTicketRecord({
           ticketNumber: ticketNumber,
           employeeInitials: ticket.userInitials,
@@ -702,29 +705,9 @@ export default function ServiceTickets() {
           totalAmount,
           isDemo: isDemoTicket,
           approvedByAdminId: user?.id,
+          headerOverrides,
         });
         ticketRecordId = record.id;
-        // Snapshot current ticket data to header_overrides so approved ticket is frozen
-        const cityState = ticket.customerInfo.city && ticket.customerInfo.state
-          ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
-          : ticket.customerInfo.city || ticket.customerInfo.state || '';
-        await serviceTicketsService.updateHeaderOverrides(ticketRecordId, {
-          customer_name: ticket.customerInfo.name ?? '',
-          address: ticket.customerInfo.address ?? '',
-          city_state: cityState,
-          zip_code: ticket.customerInfo.zip_code ?? '',
-          phone: ticket.customerInfo.phone ?? '',
-          email: ticket.customerInfo.email ?? '',
-          contact_name: ticket.customerInfo.contact_name ?? '',
-          service_location: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
-          location_code: ticket.customerInfo.location_code ?? '',
-          po_number: ticket.customerInfo.po_number ?? '',
-          approver_po_afe: ticket.entryPoAfe || ticket.projectApproverPoAfe || [ticket.customerInfo.approver_name, ticket.customerInfo.po_number, ticket.customerInfo.location_code].filter(Boolean).join(' / ') || '',
-          other: ticket.projectOther ?? '',
-          tech_name: ticket.userName ?? '',
-          project_number: ticket.projectNumber ?? '',
-          date: ticket.date ?? '',
-        }, isDemoTicket);
       }
 
       // Refresh the tickets list
@@ -1973,9 +1956,11 @@ export default function ServiceTickets() {
             <tbody>
               {filteredTickets.map((ticket) => {
                 const handleRowClick = async () => {
-                  // Check if admin has approved this ticket (has ticket_number)
+                  // Check if ticket is frozen (admin approved OR user submitted - must not overwrite with live customer)
                   const existingRecord = findMatchingTicketRecord(ticket);
                   const isAdminApproved = !!existingRecord?.ticket_number;
+                  const ws = (existingRecord as { workflow_status?: string })?.workflow_status;
+                  const isFrozen = isAdminApproved || (ws && !['draft', 'rejected'].includes(ws));
                   setIsLockedForEditing(isAdminApproved && !isAdmin); // Lock for non-admins when admin approved
                   
                   setSelectedTicket(ticket);
@@ -2032,56 +2017,57 @@ export default function ServiceTickets() {
                     }
                     
                     // Apply saved header overrides.
-                    // APPROVED/EXPORTED tickets: use header_overrides ONLY – ticket is frozen, no live customer merge.
+                    // APPROVED/EXPORTED tickets: use header_overrides ONLY – never merge with live customer.
+                    //    If header_overrides is empty, use empty strings (avoids overwriting with updated customer).
                     // DRAFT/REJECTED: prefer non-empty override, else use initialEditable (updated customer).
-                    const ov = ticketRecord?.header_overrides as Record<string, string> | null;
+                    const ov = (ticketRecord?.header_overrides as Record<string, string> | null) ?? {};
                     const useOverride = (ovVal: string | undefined, fallback: string) =>
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
-                    if (ov && Object.keys(ov).length > 0) {
-                      let merged: typeof initialEditable;
-                      if (isAdminApproved) {
-                        // Frozen: use header_overrides only; missing fields stay empty (no live overwrite)
-                        merged = {
-                          customerName: ov.customer_name ?? '',
-                          address: ov.address ?? '',
-                          cityState: ov.city_state ?? '',
-                          zipCode: ov.zip_code ?? '',
-                          phone: ov.phone ?? '',
-                          email: ov.email ?? '',
-                          contactName: ov.contact_name ?? '',
-                          serviceLocation: ov.service_location ?? '',
-                          locationCode: ov.location_code ?? '',
-                          poNumber: ov.po_number ?? '',
-                          approverName: ov.approver_po_afe ?? '',
-                          other: ov.other ?? '',
-                          techName: ov.tech_name ?? initialEditable.techName,
-                          projectNumber: ov.project_number ?? initialEditable.projectNumber,
-                          date: ov.date ?? initialEditable.date,
-                        };
-                      } else {
-                        // Draft/rejected: prefer non-empty override, else use updated customer
-                        merged = {
-                          ...initialEditable,
-                          customerName: useOverride(ov.customer_name, initialEditable.customerName),
-                          address: useOverride(ov.address, initialEditable.address),
-                          cityState: useOverride(ov.city_state, initialEditable.cityState),
-                          zipCode: useOverride(ov.zip_code, initialEditable.zipCode),
-                          phone: useOverride(ov.phone, initialEditable.phone),
-                          email: useOverride(ov.email, initialEditable.email),
-                          contactName: useOverride(ov.contact_name, initialEditable.contactName),
-                          serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
-                          locationCode: useOverride(ov.location_code, initialEditable.locationCode),
-                          poNumber: useOverride(ov.po_number, initialEditable.poNumber),
-                          approverName: useOverride(ov.approver_po_afe, initialEditable.approverName),
-                          other: useOverride(ov.other, initialEditable.other),
-                          techName: useOverride(ov.tech_name, initialEditable.techName),
-                          projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
-                          date: useOverride(ov.date, initialEditable.date),
-                        };
-                      }
-                      setEditableTicket(merged);
-                      initialEditableTicketRef.current = { ...merged };
+                    let merged: typeof initialEditable;
+                    if (isFrozen) {
+                      // Frozen: use header_overrides only; never live customer fallback
+                      merged = {
+                        customerName: ov.customer_name ?? '',
+                        address: ov.address ?? '',
+                        cityState: ov.city_state ?? '',
+                        zipCode: ov.zip_code ?? '',
+                        phone: ov.phone ?? '',
+                        email: ov.email ?? '',
+                        contactName: ov.contact_name ?? '',
+                        serviceLocation: ov.service_location ?? '',
+                        locationCode: ov.location_code ?? '',
+                        poNumber: ov.po_number ?? '',
+                        approverName: ov.approver_po_afe ?? '',
+                        other: ov.other ?? '',
+                        techName: ov.tech_name ?? initialEditable.techName,
+                        projectNumber: ov.project_number ?? initialEditable.projectNumber,
+                        date: ov.date ?? initialEditable.date,
+                      };
+                    } else if (Object.keys(ov).length > 0) {
+                      // Draft/rejected: prefer non-empty override, else use updated customer
+                      merged = {
+                        ...initialEditable,
+                        customerName: useOverride(ov.customer_name, initialEditable.customerName),
+                        address: useOverride(ov.address, initialEditable.address),
+                        cityState: useOverride(ov.city_state, initialEditable.cityState),
+                        zipCode: useOverride(ov.zip_code, initialEditable.zipCode),
+                        phone: useOverride(ov.phone, initialEditable.phone),
+                        email: useOverride(ov.email, initialEditable.email),
+                        contactName: useOverride(ov.contact_name, initialEditable.contactName),
+                        serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
+                        locationCode: useOverride(ov.location_code, initialEditable.locationCode),
+                        poNumber: useOverride(ov.po_number, initialEditable.poNumber),
+                        approverName: useOverride(ov.approver_po_afe, initialEditable.approverName),
+                        other: useOverride(ov.other, initialEditable.other),
+                        techName: useOverride(ov.tech_name, initialEditable.techName),
+                        projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
+                        date: useOverride(ov.date, initialEditable.date),
+                      };
+                    } else {
+                      merged = initialEditable;
                     }
+                    setEditableTicket(merged);
+                    initialEditableTicketRef.current = { ...merged };
                     
                     if (ticketRecord && ticketRecord.is_edited) {
                       setIsTicketEdited(true);

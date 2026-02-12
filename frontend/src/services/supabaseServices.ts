@@ -915,6 +915,7 @@ export const serviceTicketsService = {
     totalAmount: number;
     isDemo?: boolean;
     approvedByAdminId?: string;
+    headerOverrides?: Record<string, string>;
   }) {
     const isDemo = ticket.isDemo || false;
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
@@ -949,6 +950,9 @@ export const serviceTicketsService = {
         };
         if (ticket.approvedByAdminId) {
           insertData.approved_by_admin_id = ticket.approvedByAdminId;
+        }
+        if (ticket.headerOverrides && Object.keys(ticket.headerOverrides).length > 0) {
+          insertData.header_overrides = ticket.headerOverrides;
         }
         const { data, error } = await supabase
           .from(tableName)
@@ -1047,8 +1051,15 @@ export const serviceTicketsService = {
    * @param ticketNumber - The new ticket number (or null to unassign)
    * @param isDemo - If true, updates the demo table; otherwise updates the regular table
    * @param approvedByAdminId - Optional admin user ID who approved the ticket
+   * @param headerOverrides - When approving, snapshot to freeze ticket (saved in same update; DB trigger protects afterward)
    */
-  async updateTicketNumber(ticketId: string, ticketNumber: string | null, isDemo: boolean = false, approvedByAdminId?: string): Promise<void> {
+  async updateTicketNumber(
+    ticketId: string,
+    ticketNumber: string | null,
+    isDemo: boolean = false,
+    approvedByAdminId?: string,
+    headerOverrides?: Record<string, string>
+  ): Promise<void> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
 
     const updateData: any = {};
@@ -1078,6 +1089,9 @@ export const serviceTicketsService = {
       updateData.workflow_status = 'approved'; // Admin approval clears rejected/draft
       if (approvedByAdminId) {
         updateData.approved_by_admin_id = approvedByAdminId;
+      }
+      if (headerOverrides && Object.keys(headerOverrides).length > 0) {
+        updateData.header_overrides = headerOverrides;
       }
     }
 
@@ -1254,7 +1268,8 @@ export const serviceTicketsService = {
         .from(tableName)
         .select('id, header_overrides, ticket_number')
         .eq('customer_id', customerId)
-        .in('workflow_status', ['draft', 'rejected']);
+        .in('workflow_status', ['draft', 'rejected'])
+        .is('ticket_number', null);
 
       if (fetchError) {
         console.warn('Failed to fetch draft/rejected tickets for customer sync:', fetchError);
