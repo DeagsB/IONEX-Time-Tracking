@@ -829,7 +829,13 @@ export default function ServiceTickets() {
       for (const ticket of ticketsToTrash) {
         const record = findMatchingTicketRecord(ticket);
         if (record?.id) {
-          await supabase.from(tableName).update({ is_discarded: true }).eq('id', record.id);
+          await supabase.from(tableName).update({
+            is_discarded: true,
+            ticket_number: null,
+            sequence_number: null,
+            year: null,
+            approved_by_admin_id: null,
+          }).eq('id', record.id);
         } else if (ticket.customerId && ticket.customerId !== 'unassigned') {
           const created = await serviceTicketsService.getOrCreateTicket({
             date: ticket.date,
@@ -837,7 +843,13 @@ export default function ServiceTickets() {
             customerId: ticket.customerId,
             location: ticket.location || '',
           }, isDemoMode);
-          await supabase.from(tableName).update({ is_discarded: true }).eq('id', created.id);
+          await supabase.from(tableName).update({
+            is_discarded: true,
+            ticket_number: null,
+            sequence_number: null,
+            year: null,
+            approved_by_admin_id: null,
+          }).eq('id', created.id);
         }
       }
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
@@ -3794,9 +3806,16 @@ export default function ServiceTickets() {
                           setIsDiscarding(true);
                           try {
                             const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                            const updatePayload: Record<string, unknown> = { is_discarded: !isCurrentlyDiscarded };
+                            if (!isCurrentlyDiscarded) {
+                              updatePayload.ticket_number = null;
+                              updatePayload.sequence_number = null;
+                              updatePayload.year = null;
+                              updatePayload.approved_by_admin_id = null;
+                            }
                             const { error } = await supabase
                               .from(tableName)
-                              .update({ is_discarded: !isCurrentlyDiscarded })
+                              .update(updatePayload)
                               .eq('id', currentTicketRecordId);
                             if (error) throw error;
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
