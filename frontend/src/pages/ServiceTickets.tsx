@@ -2047,8 +2047,13 @@ export default function ServiceTickets() {
 
                   // Load expenses and edited data for this ticket
                   try {
+                    const hadNoRecord = !findMatchingTicketRecord(ticket);
                     const ticketRecordId = await getOrCreateTicketRecord(ticket);
                     setCurrentTicketRecordId(ticketRecordId);
+                    if (hadNoRecord) {
+                      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                    }
                     await loadExpenses(ticketRecordId);
                     
                     // Load edited descriptions and hours (header_overrides optional until migration is run)
