@@ -2173,8 +2173,8 @@ export default function ServiceTickets() {
                 };
 
                 const rowExisting = findMatchingTicketRecord(ticket);
-                const isRejected = rowExisting?.workflow_status === 'rejected';
-                const isResubmitted = activeTab === 'submitted' && !!rowExisting?.rejected_at;
+                const isRejected = !showDiscarded && rowExisting?.workflow_status === 'rejected';
+                const isResubmitted = !showDiscarded && activeTab === 'submitted' && !!rowExisting?.rejected_at;
                 const rowBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.1)' : (showDiscarded ? 'rgba(239, 83, 80, 0.04)' : (isRejected ? 'rgba(239, 83, 80, 0.08)' : (isResubmitted ? 'rgba(234, 179, 8, 0.15)' : 'transparent')));
                 const rowHoverBg = selectedTicketIds.has(ticket.id) ? 'rgba(37, 99, 235, 0.2)' : (isRejected ? 'rgba(239, 83, 80, 0.12)' : (isResubmitted ? 'rgba(234, 179, 8, 0.22)' : 'var(--hover-bg)'));
                 return (

@@ -1504,26 +1504,28 @@ export const serviceTicketsService = {
     return data;
   },
 
-  /** Count rejected tickets for a user (for sidebar notification) */
+  /** Count rejected tickets for a user (for sidebar notification) - excludes trashed */
   async getRejectedCountForUser(userId: string, isDemo: boolean = false): Promise<number> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     const { count, error } = await supabase
       .from(tableName)
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .eq('workflow_status', 'rejected');
+      .eq('workflow_status', 'rejected')
+      .or('is_discarded.eq.false,is_discarded.is.null');
     if (error) return 0;
     return count ?? 0;
   },
 
-  /** Count of tickets in Submitted tab that were resubmitted after rejection (admin only – for sidebar notification) */
+  /** Count of tickets in Submitted tab that were resubmitted after rejection (admin only – for sidebar notification) - excludes trashed */
   async getResubmittedCountForAdmin(isDemo: boolean = false): Promise<number> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     const { count, error } = await supabase
       .from(tableName)
       .select('*', { count: 'exact', head: true })
       .not('rejected_at', 'is', null)
-      .not('workflow_status', 'in', '("draft","rejected")');
+      .not('workflow_status', 'in', '("draft","rejected")')
+      .or('is_discarded.eq.false,is_discarded.is.null');
     if (error) return 0;
     return count ?? 0;
   },
