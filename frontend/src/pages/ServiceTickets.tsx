@@ -2002,7 +2002,8 @@ export default function ServiceTickets() {
                   const isAdminApproved = !!existingRecord?.ticket_number;
                   const ws = (existingRecord as { workflow_status?: string })?.workflow_status;
                   const isFrozen = isAdminApproved || (ws && !['draft', 'rejected'].includes(ws));
-                  setIsLockedForEditing(isAdminApproved && !isAdmin); // Lock for non-admins when admin approved
+                  const isDiscarded = !!(existingRecord as any)?.is_discarded;
+                  setIsLockedForEditing((isAdminApproved && !isAdmin) || isDiscarded); // Lock when admin approved (non-admin) or when trashed
                   
                   setSelectedTicket(ticket);
                   setPendingDeleteExpenseIds(new Set());
@@ -2641,27 +2642,34 @@ export default function ServiceTickets() {
                   </div>
                 );
               })()}
-              {/* Locked banner for non-admins when ticket is admin-approved */}
-              {isLockedForEditing && (
-                <div style={{
-                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                  border: '1px solid #10b981',
-                  borderRadius: '8px',
-                  padding: '12px 16px',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                }}>
-                  <span style={{ fontSize: '18px' }}>🔒</span>
-                  <div>
-                    <div style={{ fontWeight: '600', color: '#10b981' }}>Ticket Approved</div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      This ticket has been approved by an admin and can no longer be edited.
+              {/* Locked banner - when ticket is admin-approved or trashed */}
+              {isLockedForEditing && selectedTicket && (() => {
+                const isTrashed = !!(findMatchingTicketRecord(selectedTicket) as any)?.is_discarded;
+                return (
+                  <div style={{
+                    backgroundColor: isTrashed ? 'rgba(239, 83, 80, 0.08)' : 'rgba(16, 185, 129, 0.1)',
+                    border: `1px solid ${isTrashed ? '#ef5350' : '#10b981'}`,
+                    borderRadius: '8px',
+                    padding: '12px 16px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                  }}>
+                    <span style={{ fontSize: '18px' }}>🔒</span>
+                    <div>
+                      <div style={{ fontWeight: '600', color: isTrashed ? '#ef5350' : '#10b981' }}>
+                        {isTrashed ? 'Ticket in Trash' : 'Ticket Approved'}
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        {isTrashed
+                          ? 'This ticket is in trash and view-only. Click Restore Ticket to make changes.'
+                          : 'This ticket has been approved by an admin and can no longer be edited.'}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
               {/* Toast when user tries to edit while locked */}
               {showLockNotification && (
                 <div
@@ -2690,7 +2698,9 @@ export default function ServiceTickets() {
                       Cannot edit this ticket
                     </div>
                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                      This ticket has been approved by an admin and is locked. Contact an administrator if you need to make changes.
+                      {selectedTicket && (findMatchingTicketRecord(selectedTicket) as any)?.is_discarded
+                        ? 'This ticket is in trash. Click Restore Ticket to make changes.'
+                        : 'This ticket has been approved by an admin and is locked. Contact an administrator if you need to make changes.'}
                     </div>
                   </div>
                   <button
@@ -3899,26 +3909,20 @@ export default function ServiceTickets() {
                   >
                     Close
                   </button>
-                  {/* Trash / Restore button */}
+                  {/* Trash button - only when NOT in trash (Restore moves to right when in trash) */}
                   {selectedTicket && (() => {
                     const existingRecord = findMatchingTicketRecord(selectedTicket);
                     const isCurrentlyDiscarded = !!(existingRecord as any)?.is_discarded;
+                    if (isCurrentlyDiscarded) return null;
                     return (
                       <button
                         onClick={async () => {
                           if (!currentTicketRecordId) return;
-                          const action = isCurrentlyDiscarded ? 'restore' : 'trash';
-                          if (!isCurrentlyDiscarded && !confirm('Trash this service ticket? It will be hidden from the default view but can be restored later.')) return;
+                          if (!confirm('Trash this service ticket? It will be hidden from the default view but can be restored later.')) return;
                           setIsDiscarding(true);
                           try {
                             const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                            const updatePayload: Record<string, unknown> = { is_discarded: !isCurrentlyDiscarded };
-                            if (!isCurrentlyDiscarded) {
-                              updatePayload.ticket_number = null;
-                              updatePayload.sequence_number = null;
-                              updatePayload.year = null;
-                              updatePayload.approved_by_admin_id = null;
-                            }
+                            const updatePayload: Record<string, unknown> = { is_discarded: true, ticket_number: null, sequence_number: null, year: null, approved_by_admin_id: null };
                             const { error } = await supabase
                               .from(tableName)
                               .update(updatePayload)
@@ -3926,14 +3930,10 @@ export default function ServiceTickets() {
                             if (error) throw error;
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
-                            if (isCurrentlyDiscarded) {
-                              queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
-                              queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
-                            }
                             closePanel();
                           } catch (err) {
-                            console.error(`Error ${action}ing ticket:`, err);
-                            alert(`Failed to ${action === 'restore' ? 'restore' : 'trash'} ticket.`);
+                            console.error('Error trashing ticket:', err);
+                            alert('Failed to trash ticket.');
                           } finally {
                             setIsDiscarding(false);
                           }
@@ -3941,16 +3941,16 @@ export default function ServiceTickets() {
                         disabled={isDiscarding || !currentTicketRecordId}
                         style={{
                           padding: '10px 24px',
-                          backgroundColor: isCurrentlyDiscarded ? '#10b981' : 'transparent',
-                          color: isCurrentlyDiscarded ? 'white' : '#ef5350',
-                          border: isCurrentlyDiscarded ? '1px solid #10b981' : '1px solid #ef5350',
+                          backgroundColor: 'transparent',
+                          color: '#ef5350',
+                          border: '1px solid #ef5350',
                           borderRadius: '6px',
                           fontSize: '13px',
                           fontWeight: '600',
                           cursor: isDiscarding ? 'wait' : 'pointer',
                         }}
                       >
-                        {isDiscarding ? (isCurrentlyDiscarded ? 'Restoring...' : 'Trashing...') : (isCurrentlyDiscarded ? 'Restore Ticket' : '🗑️ Trash')}
+                        {isDiscarding ? 'Trashing...' : '🗑️ Trash'}
                       </button>
                     );
                   })()}
@@ -3976,8 +3976,55 @@ export default function ServiceTickets() {
                     {isSavingTicket ? 'Saving...' : 'Save Changes'}
                   </button>
                 )}
-                {isAdmin ? (() => {
+                {selectedTicket && (() => {
                   const existingTicketRecord = findMatchingTicketRecord(selectedTicket);
+                  const isCurrentlyDiscarded = !!(existingTicketRecord as any)?.is_discarded;
+
+                  // When in trash: show Restore Ticket in the same position as Submit for Approval
+                  if (isCurrentlyDiscarded) {
+                    return (
+                      <button
+                        onClick={async () => {
+                          if (!currentTicketRecordId) return;
+                          setIsDiscarding(true);
+                          try {
+                            const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                            const { error } = await supabase
+                              .from(tableName)
+                              .update({ is_discarded: false })
+                              .eq('id', currentTicketRecordId);
+                            if (error) throw error;
+                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                            queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                            queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+                            closePanel();
+                          } catch (err) {
+                            console.error('Error restoring ticket:', err);
+                            alert('Failed to restore ticket.');
+                          } finally {
+                            setIsDiscarding(false);
+                          }
+                        }}
+                        disabled={isDiscarding || !currentTicketRecordId}
+                        style={{
+                          padding: '10px 24px',
+                          backgroundColor: '#10b981',
+                          color: 'white',
+                          border: '1px solid #10b981',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          cursor: isDiscarding ? 'wait' : 'pointer',
+                        }}
+                      >
+                        {isDiscarding ? 'Restoring...' : 'Restore Ticket'}
+                      </button>
+                    );
+                  }
+
+                  // Not in trash: show admin buttons (Submit for Approval / Export PDF)
+                  if (!isAdmin) return null;
                   const hasTicketNumber = !!existingTicketRecord?.ticket_number;
                   const workflowStatus = existingTicketRecord?.workflow_status || 'draft';
                   const isUserApprovedNotYetApproved = !hasTicketNumber && workflowStatus !== 'draft' && workflowStatus !== 'rejected';
