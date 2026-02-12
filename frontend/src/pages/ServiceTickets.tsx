@@ -1656,7 +1656,7 @@ export default function ServiceTickets() {
 
       {/* Filters */}
       <div className="card" style={{ marginBottom: '16px', padding: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', flex: 1, minWidth: 0 }}>
           <div>
             <label className="label">Start Date</label>
@@ -1722,8 +1722,7 @@ export default function ServiceTickets() {
             </div>
           )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 'auto' }}>
-            <div style={{ height: '20px', marginBottom: '8px' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 'auto', alignSelf: 'flex-start' }}>
             <button
               type="button"
               onClick={() => setShowDiscarded(!showDiscarded)}
