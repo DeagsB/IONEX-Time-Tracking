@@ -373,6 +373,16 @@ export function getRateTypeSortOrder(rateType: string): number {
   return order[rateType] || 99;
 }
 
+/**
+ * MIGRATION PARSING - REMOVE AFTER MIGRATION COMPLETE
+ * This block handles legacy data: CC:, AC:, PO:, AFE: prefixes and extraction from "other" field.
+ * Once employees input data directly into Approver, PO/AFE, CC fields, this can be removed.
+ * Used in: ServiceTickets.tsx, Projects.tsx, pdfFromHtml.ts, Invoices.tsx
+ * Remove: extractACValue, extractApproverCode (AC part), extractCcValue, extractPoValue,
+ *         extractAFEValue, PLAIN_NUMBER_CC, parseApproverPoAfe, parseOtherFieldForPrefixes.
+ * Simplify: buildApproverPoAfe to just join values (no prefix stripping).
+ * Replace parseApproverPoAfe usage with direct field mapping; remove parseOtherFieldForPrefixes calls.
+ */
 /** Extract AC: value (approver) from approver_po_afe string */
 function extractACValue(approverPoAfe: string | undefined): string {
   if (!approverPoAfe) return '';
