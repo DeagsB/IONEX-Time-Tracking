@@ -20,7 +20,7 @@ const WORKFLOW_STATUSES = {
   qbo_created: { label: 'QBO Invoice', color: '#f59e0b', icon: '💰' },
   sent_to_cnrl: { label: 'Sent to CNRL', color: '#ec4899', icon: '📧' },
   cnrl_approved: { label: 'CNRL Approved', color: '#10b981', icon: '✅' },
-  submitted_to_cnrl: { label: 'Submitted', color: '#059669', icon: '🎉' },
+  submitted_to_cnrl: { label: 'Submitted', color: '#3b82f6', icon: '🎉' },
 } as const;
 
 type WorkflowStatus = keyof typeof WORKFLOW_STATUSES;
