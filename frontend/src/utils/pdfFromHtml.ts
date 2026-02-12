@@ -1,6 +1,6 @@
 import html2pdf from 'html2pdf.js';
 import { PDFDocument } from 'pdf-lib';
-import { ServiceTicket } from './serviceTickets';
+import { ServiceTicket, getApproverPoAfeFromTicket } from './serviceTickets';
 import { supabase } from '../lib/supabaseClient';
 
 interface PdfExportResult {
@@ -117,6 +117,7 @@ export async function downloadPdfFromHtml(
   const employeeEmail = ticket.entries[0]?.user?.email || '';
 
   const ticketDate = ticket.entries[0]?.date ? formatDate(ticket.entries[0].date) : formatDate(new Date().toISOString());
+  const approverPoAfe = ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? '';
 
   const html = `
     <div id="service-ticket" style="
@@ -225,7 +226,7 @@ export async function downloadPdfFromHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; width: 100px;">PO/CC/AFE</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? ''}</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approverPoAfe}</td>
               <td style="padding: 2px 4px; width: 40px;">Other</td>
               <td style="padding: 2px 4px;">${ticket.projectOther ?? ticket.customerInfo.location_code ?? ''}</td>
             </tr>
@@ -532,7 +533,8 @@ export async function generateAndStorePdf(
   const filename = `ServiceTicket_${ticket.ticketNumber || ticket.id.substring(0, 8)}.pdf`;
 
   // Build the same HTML as downloadPdfFromHtml (abbreviated for space)
-  const html = buildPdfHtml(ticket, expenses, descriptionLines, employeeName, employeeEmail, ticketDate, rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, rtRate, ttRate, ftRate, shopOtRate, fieldOtRate, rtAmount, ttAmount, ftAmount, shopOtAmount, fieldOtAmount, expensesTotal, grandTotal);
+  const headerOverrides = (ticket as ServiceTicket & { headerOverrides?: { approver_po_afe?: string } }).headerOverrides;
+  const html = buildPdfHtml(ticket, expenses, descriptionLines, employeeName, employeeEmail, ticketDate, rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, rtRate, ttRate, ftRate, shopOtRate, fieldOtRate, rtAmount, ttAmount, ftAmount, shopOtAmount, fieldOtAmount, expensesTotal, grandTotal, headerOverrides);
 
   // Create a temporary container - must be in viewport for html2canvas to capture correctly
   // (off-screen elements at -9999px cause missing/incomplete content in merged PDFs)
@@ -650,8 +652,13 @@ function buildPdfHtml(
   shopOtAmount: number,
   fieldOtAmount: number,
   expensesTotal: number,
-  grandTotal: number
+  grandTotal: number,
+  headerOverrides?: { approver_po_afe?: string } | null
 ): string {
+  // Use same resolution as Invoices grouping so PO/CC/AFE displays correctly in merged exports
+  const approverPoAfe = headerOverrides != null
+    ? getApproverPoAfeFromTicket(ticket, headerOverrides)
+    : (ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? '');
   return `
     <div id="service-ticket" style="
       width: 8.5in;
@@ -759,7 +766,7 @@ function buildPdfHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; width: 100px;">PO/CC/AFE</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? ''}</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approverPoAfe}</td>
               <td style="padding: 2px 4px; width: 40px;">Other</td>
               <td style="padding: 2px 4px;">${ticket.projectOther ?? ticket.customerInfo.location_code ?? ''}</td>
             </tr>
