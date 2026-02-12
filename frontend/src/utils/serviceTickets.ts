@@ -397,13 +397,27 @@ export function extractPoValue(approverPoAfe: string | undefined): string {
   return inlineMatch ? inlineMatch[1].trim() : '';
 }
 
+/** Plain numeric strings (e.g. 80046479) are typically CC, not PO/AFE */
+const PLAIN_NUMBER_CC = /^\d{6,10}$/;
+
 /** Parse combined approver_po_afe into approver (G###), poAfe, cc */
 export function parseApproverPoAfe(combined: string | undefined): { approver: string; poAfe: string; cc: string } {
   const s = (combined || '').trim();
+  const approver = extractApproverCode(s);
+  const explicitCc = extractCcValue(s);
+  const explicitPo = extractPoValue(s);
+  const remainder = s
+    .replace(/G\d{3,}\s*/i, '')
+    .replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '')
+    .replace(/([A-Z]{2,}\d{4,}-\d{4,})/gi, '')  // PO-style FC250374-9084
+    .replace(/PO\s*[:\-]?\s*[A-Za-z0-9\-]+/gi, '')
+    .trim();
+  // Plain numbers (6–10 digits) are typically CC; PO/AFE has letters, hyphens, or different format
+  const isPlainNumber = PLAIN_NUMBER_CC.test(remainder);
   return {
-    approver: extractApproverCode(s),
-    poAfe: extractPoValue(s) || (s.replace(/G\d{3,}\s*/i, '').replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '').trim() || ''),
-    cc: extractCcValue(s),
+    approver,
+    poAfe: explicitPo || (isPlainNumber ? '' : remainder),
+    cc: explicitCc || (isPlainNumber ? remainder : ''),
   };
 }
 
