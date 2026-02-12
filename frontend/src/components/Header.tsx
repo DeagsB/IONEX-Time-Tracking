@@ -29,6 +29,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const [poAfe, setPoAfe] = useState('');
   const [cc, setCc] = useState('');
   const [other, setOther] = useState('');
+  const [rateType, setRateType] = useState<string>('Shop Time');
   const projectSelectRef = useRef<SearchableSelectRef>(null);
 
   const { data: projects } = useQuery({
@@ -41,10 +42,26 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     queryFn: () => customersService.getAll(),
   });
 
-  // Filter projects based on selected customer
+  // Filter projects based on selected customer (or current entry's project when timer running)
+  const effectiveCustomerId = selectedCustomerId || (timerRunning && currentEntry?.projectId && projects?.find((p: any) => p.id === currentEntry.projectId)?.customer_id);
   const filteredProjects = projects?.filter((project: any) => {
-    return !selectedCustomerId || project.customer_id === selectedCustomerId;
+    return !effectiveCustomerId || project.customer_id === effectiveCustomerId;
   }) || [];
+
+  // When timer is running and we have a project but our state is empty (e.g. started from WeekView), populate from project
+  useEffect(() => {
+    if (timerRunning && currentEntry?.projectId && projects && (!location && !poAfe && !approver)) {
+      const project = projects.find((p: any) => p.id === currentEntry.projectId);
+      if (project) {
+        const fields = getProjectHeaderFields(project);
+        setLocation(project.location || '');
+        setApprover(fields.approver);
+        setPoAfe(fields.poAfe);
+        setCc(fields.cc);
+        setOther(fields.other);
+      }
+    }
+  }, [timerRunning, currentEntry?.projectId, projects]);
 
   const createTimeEntryMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -109,6 +126,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     setPoAfe('');
     setCc('');
     setOther('');
+    setRateType('Shop Time');
     // Focus project field so user can type immediately without clicking the dropdown
     if (customerId) {
       setTimeout(() => projectSelectRef.current?.focus(), 50);
@@ -124,6 +142,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     setPoAfe('');
     setCc('');
     setOther('');
+    setRateType('Shop Time');
     return;
   }
   
@@ -210,7 +229,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         hours: hours,
         rate: projectRate,
         billable: isBillable,
-        rateType: isBillable ? 'Shop Time' : 'Internal',
+        rateType: isBillable ? rateType : 'Internal',
         description: currentEntry.description,
         location: location || null, // Include location for service tickets
         po_afe: buildApproverPoAfe(approver, poAfe, cc) || null,
@@ -228,6 +247,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       setPoAfe('');
       setCc('');
       setOther('');
+      setRateType('Shop Time');
       
       // Navigate to week view (which will show today's week)
       // The entry will appear in the correct time slot
@@ -247,7 +267,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     }
   };
 
-  const showSecondRow = !timerRunning && selectedCustomerId;
+  const showSecondRow = selectedCustomerId || (timerRunning && currentEntry?.projectId);
 
   return (
     <div style={{
@@ -481,15 +501,15 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
               value: project.id,
               label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,
             }))}
-            value={selectedProjectId}
-            onChange={handleProjectChange}
+            value={timerRunning && currentEntry?.projectId ? currentEntry.projectId : selectedProjectId}
+            onChange={timerRunning ? () => {} : handleProjectChange}
             placeholder="Search projects..."
             emptyOption={{ value: '', label: 'Select Project' }}
             style={{ width: '220px' }}
           />
 
           {/* Location input */}
-          {selectedProjectId && (
+          {(selectedProjectId || (timerRunning && currentEntry?.projectId)) && (
             <input
               type="text"
               placeholder="Work Location..."
@@ -507,8 +527,8 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
             />
           )}
 
-          {/* PO/AFE, Approver, CC, Other - only when project selected */}
-          {selectedProjectId && (
+          {/* PO/AFE, Approver, CC, Other - when project selected or timer running */}
+          {(selectedProjectId || (timerRunning && currentEntry?.projectId)) && (
             <>
               <input
                 type="text"
@@ -538,6 +558,18 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
                 onChange={(e) => setOther(e.target.value)}
                 style={{ width: '100px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
               />
+              <select
+                value={rateType}
+                onChange={(e) => setRateType(e.target.value)}
+                style={{ width: '130px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              >
+                <option value="Shop Time">Shop Time</option>
+                <option value="Shop Overtime">Shop Overtime</option>
+                <option value="Travel Time">Travel Time</option>
+                <option value="Field Time">Field Time</option>
+                <option value="Field Overtime">Field Overtime</option>
+                <option value="Internal">Internal</option>
+              </select>
             </>
           )}
         </div>
