@@ -434,17 +434,13 @@ export default function ServiceTickets() {
       location_code: ticket.customerInfo.location_code ?? '',
       po_number: ticket.customerInfo.po_number ?? '',
       ...((): { approver: string; po_afe: string; cc: string } => {
-        // Prioritize time entry over project
+        // Prioritize time entry over project - NO PARSING, each field stays in its own field
         const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
         if (fromEntry) {
-          const ea = ticket.entryApprover ?? '';
-          const ep = ticket.entryPoAfe ?? ticket.customerInfo.po_number ?? '';
-          const ec = ticket.entryCc ?? '';
-          const approverDeduped = (ea === ep || ea === ec) ? (ticket.customerInfo.approver_name ?? '') : (ea || (ticket.customerInfo.approver_name ?? ''));
           return {
-            approver: approverDeduped,
-            po_afe: ep,
-            cc: ec,
+            approver: ticket.entryApprover ?? '',
+            po_afe: ticket.entryPoAfe ?? ticket.customerInfo.po_number ?? '',
+            cc: ticket.entryCc ?? '',
           };
         }
         const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
@@ -2339,23 +2335,14 @@ export default function ServiceTickets() {
                     locationCode: ticket.customerInfo.location_code || '',
                     poNumber: ticket.customerInfo.po_number || '',
                     ...((): { approver: string; poAfe: string; cc: string; other: string } => {
-                      // Prioritize time entry values over project - user can edit entry data on the ticket
+                      // Prioritize time entry values over project - NO PARSING, each field stays in its own field
                       const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc || ticket.entryOther;
                       if (fromEntry) {
-                        const entryApprover = ticket.entryApprover || '';
-                        const entryPoAfe = ticket.entryPoAfe || ticket.customerInfo.po_number || '';
-                        const entryCc = ticket.entryCc || '';
-                        const entryOther = ticket.entryOther ?? ticket.projectOther ?? '';
-                        // Don't use customerInfo.approver_name - it can be buildApproverPoAfe(po_afe,cc) from
-                        // applyHeaderOverridesToTicket, causing CC value to flash in approver field
-                        const approverDeduped = (entryApprover === entryPoAfe || entryApprover === entryCc)
-                          ? ''
-                          : (entryApprover || '');
                         return {
-                          approver: approverDeduped,
-                          poAfe: entryPoAfe,
-                          cc: entryCc,
-                          other: entryOther,
+                          approver: ticket.entryApprover || '',
+                          poAfe: ticket.entryPoAfe || ticket.customerInfo.po_number || '',
+                          cc: ticket.entryCc || '',
+                          other: ticket.entryOther ?? ticket.projectOther ?? '',
                         };
                       }
                       const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
@@ -2446,14 +2433,14 @@ export default function ServiceTickets() {
                     let merged: typeof initialEditable;
                     if (isFrozen || Object.keys(ov).length > 0) {
                       // For approver/po_afe/cc/other: approved tickets always use header_overrides; draft/rejected use last-saved
+                      // NO PARSING - each field stays in its own field
                       const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
                       const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
                       const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
                       const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
-                      const approverDeduped = (ovApprover === ovPoAfe || ovApprover === ovCc) ? '' : ovApprover;
                       const [finalApprover, finalPoAfe, finalCc, finalOther] = useEntryValues
                         ? [initialEditable.approver, initialEditable.poAfe, initialEditable.cc, initialEditable.other]
-                        : [approverDeduped, ovPoAfe, ovCc, ovOther];
+                        : [ovApprover, ovPoAfe, ovCc, ovOther];
                       merged = {
                         customerName: useOverride(ov.customer_name, initialEditable.customerName),
                         address: useOverride(ov.address, initialEditable.address),
@@ -4606,7 +4593,7 @@ export default function ServiceTickets() {
                               service_location: editableTicket.serviceLocation,
                               location_code: editableTicket.locationCode,
                               po_number: editableTicket.poNumber,
-                              approver_name: buildApproverPoAfe(editableTicket.approver, editableTicket.poAfe, editableTicket.cc),
+                              approver_name: editableTicket.approver ?? '',
                               approver: editableTicket.approver,
                               po_afe: editableTicket.poAfe,
                               cc: editableTicket.cc,

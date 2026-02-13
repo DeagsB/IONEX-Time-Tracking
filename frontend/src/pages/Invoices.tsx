@@ -13,12 +13,10 @@ import {
   groupEntriesIntoTickets,
   ServiceTicket,
   getInvoiceGroupKey,
-  getApproverPoAfeFromTicket,
+  getApproverPoAfeCcFromTicket,
   applyHeaderOverridesToTicket,
   getProjectApproverPoAfe,
   InvoiceGroupKey,
-  extractPoValue,
-  extractCcValue,
   calculateTicketTotalAmount,
 } from '../utils/serviceTickets';
 import { generateAndStorePdf, mergePdfBlobs } from '../utils/pdfFromHtml';
@@ -632,15 +630,15 @@ export default function Invoices() {
           label: `Creating invoice ${i + 1}/${total} in QuickBooks...`,
         });
 
-        // Sub-group by CC (each CC = one line item)
+        // Sub-group by CC (each CC = one line item) - NO PARSING, use direct cc field
         const ccMap = new Map<string, ServiceTicket[]>();
         for (const ticket of groupTickets) {
-          const t = ticket as ServiceTicket & { headerOverrides?: { approver_po_afe?: string } };
-          const approverPoAfe = getApproverPoAfeFromTicket(t, t.headerOverrides);
-          const cc = extractCcValue(approverPoAfe) || '(no CC)';
-          const list = ccMap.get(cc) ?? [];
+          const t = ticket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
+          const { cc } = getApproverPoAfeCcFromTicket(t, t.headerOverrides);
+          const ccKey = (cc || '').trim() || '(no CC)';
+          const list = ccMap.get(ccKey) ?? [];
           list.push(ticket);
-          ccMap.set(cc, list);
+          ccMap.set(ccKey, list);
         }
 
         const ccLineItems: Array<{ cc: string; tickets: string[]; totalAmount: number }> = [];
@@ -669,11 +667,10 @@ export default function Invoices() {
         }
 
         const firstTicket = groupTickets[0];
-        const approverPoAfe = getApproverPoAfeFromTicket(
+        const { poAfe: customerPo } = getApproverPoAfeCcFromTicket(
           firstTicket,
-          (firstTicket as ServiceTicket & { headerOverrides?: { approver_po_afe?: string } }).headerOverrides
+          (firstTicket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } }).headerOverrides
         );
-        const customerPo = extractPoValue(approverPoAfe);
         const reference = key.approverCode;
         const date = firstTicket.date || new Date().toISOString().split('T')[0];
         const docNumber = key.approverCode

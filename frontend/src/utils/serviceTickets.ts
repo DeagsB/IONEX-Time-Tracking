@@ -641,7 +641,8 @@ export interface HeaderOverrides {
 
 /** Apply header_overrides to a ticket for PDF export (user edits take precedence).
  * When header_overrides is null, applies fallbacks from ticket.location and entry-level po_afe.
- * For approved tickets, frozen rates are applied when present in header_overrides. */
+ * For approved tickets, frozen rates are applied when present in header_overrides.
+ * NO PARSING: approver, po_afe, cc stay in their own fields - never combined or extracted. */
 export function applyHeaderOverridesToTicket(
   ticket: ServiceTicket,
   headerOverrides?: HeaderOverrides | null
@@ -649,14 +650,21 @@ export function applyHeaderOverridesToTicket(
   const ov = headerOverrides && Object.keys(headerOverrides).length > 0 ? headerOverrides : null;
   const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
   const locFallback = (ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
-  const approverFallback = entryPo ?? ticket.projectApproverPoAfe ?? ticket.customerInfo?.approver_name ?? ticket.customerInfo?.po_number ?? '';
 
-  // Prefer new approver/po_afe/cc; fallback to approver_po_afe for old tickets
-  const approverOverride = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
-    ? buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '')
-    : (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
-      ? ov.approver_po_afe
-      : undefined;
+  // Use direct approver/po_afe/cc from overrides - no combining, no parsing
+  const approverVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
+    ? (ov.approver ?? '')
+    : undefined;
+  const poAfeVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
+    ? (ov.po_afe ?? '')
+    : undefined;
+  const ccVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
+    ? (ov.cc ?? '')
+    : undefined;
+  // Legacy: approver_po_afe is a single combined string from old tickets
+  const legacyApproverName = (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
+    ? ov.approver_po_afe
+    : undefined;
 
   const hasFrozenRates = ov && (
     typeof ov.rate_rt === 'number' || typeof ov.rate_tt === 'number' || typeof ov.rate_ft === 'number' ||
@@ -685,50 +693,76 @@ export function applyHeaderOverridesToTicket(
       service_location: ((ov?.service_location ?? ticket.customerInfo.service_location ?? locFallback).trim() || locFallback),
       location_code: ov?.location_code ?? ticket.customerInfo.location_code,
       po_number: ov?.po_number ?? ticket.customerInfo.po_number,
-      approver_name: (approverOverride ?? ticket.customerInfo.approver_name ?? approverFallback) || undefined,
+      approver: approverVal ?? ticket.customerInfo.approver ?? undefined,
+      po_afe: poAfeVal ?? ticket.customerInfo.po_afe ?? undefined,
+      cc: ccVal ?? ticket.customerInfo.cc ?? undefined,
+      approver_name: approverVal ?? legacyApproverName ?? ticket.customerInfo.approver_name ?? entryPo ?? undefined,
     },
-    projectApproverPoAfe: approverOverride ?? ticket.projectApproverPoAfe ?? entryPo ?? undefined,
+    projectApproverPoAfe: legacyApproverName ?? ticket.projectApproverPoAfe ?? entryPo ?? undefined,
+    projectApprover: approverVal ?? ticket.projectApprover,
+    projectPoAfe: poAfeVal ?? ticket.projectPoAfe,
+    projectCc: ccVal ?? ticket.projectCc,
     projectOther: ov?.other ?? ticket.projectOther,
+    entryApprover: approverVal ?? ticket.entryApprover,
+    entryPoAfe: poAfeVal ?? ticket.entryPoAfe,
+    entryCc: ccVal ?? ticket.entryCc,
+    entryOther: ov?.other ?? ticket.entryOther,
     rates,
   };
 }
 
-/** Get approver/PO/AFE string from a ticket (header overrides > project > entry-level).
- * Supports new approver/po_afe/cc and legacy approver_po_afe in overrides. */
+/** Get approver/PO/AFE/CC from a ticket - NO PARSING. Uses direct fields only. */
+export function getApproverPoAfeCcFromTicket(
+  ticket: { projectApprover?: string; projectPoAfe?: string; projectCc?: string; projectApproverPoAfe?: string; entryApprover?: string; entryPoAfe?: string; entryCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> },
+  headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string } | null
+): { approver: string; poAfe: string; cc: string } {
+  const ov = headerOverrides;
+  if (ov?.approver != null || ov?.po_afe != null || ov?.cc != null) {
+    return { approver: ov.approver ?? '', poAfe: ov.po_afe ?? '', cc: ov.cc ?? '' };
+  }
+  if (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '') {
+    return { approver: ov.approver_po_afe, poAfe: '', cc: '' };
+  }
+  const entryApprover = ticket.entryApprover ?? ticket.entries?.find((e) => e.approver?.trim())?.approver ?? '';
+  const entryPoAfe = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe ?? '';
+  const entryWithCc = ticket.entries?.find((e) => (e as any).cc?.trim());
+  const entryCc = ticket.entryCc ?? (entryWithCc as any)?.cc ?? '';
+  if (entryApprover || entryPoAfe || entryCc) {
+    return { approver: entryApprover, poAfe: entryPoAfe, cc: entryCc };
+  }
+  return {
+    approver: ticket.projectApprover ?? '',
+    poAfe: ticket.projectPoAfe ?? '',
+    cc: ticket.projectCc ?? '',
+  };
+}
+
+/** @deprecated Use getApproverPoAfeCcFromTicket for direct field access. Legacy combined string. */
 export function getApproverPoAfeFromTicket(
   ticket: { projectApproverPoAfe?: string; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
   headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string } | null
 ): string {
-  const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
-  const ov = headerOverrides;
-  const fromNew = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
-    ? buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '')
-    : '';
-  const fromLegacy = (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
-    ? ov.approver_po_afe
-    : '';
-  const override = fromNew || fromLegacy || undefined;
-  return override ?? ticket.projectApproverPoAfe ?? entryPo ?? '';
+  const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket as any, headerOverrides);
+  return buildApproverPoAfe(approver, poAfe, cc);
 }
 
-/** Get grouping key for a ticket (for merged PDF export) */
+/** Get grouping key for a ticket (for merged PDF export). NO PARSING - uses direct approver/po_afe/cc. */
 export function getInvoiceGroupKey(
-  ticket: { projectId?: string; projectName?: string; projectNumber?: string; location?: string; projectApproverPoAfe?: string; projectLocation?: string; projectOther?: string; customerInfo?: { service_location?: string }; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
+  ticket: { projectId?: string; projectName?: string; projectNumber?: string; location?: string; projectApprover?: string; projectPoAfe?: string; projectCc?: string; projectApproverPoAfe?: string; projectLocation?: string; projectOther?: string; customerInfo?: { service_location?: string }; entryApprover?: string; entryPoAfe?: string; entryCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> },
   headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | null
 ): InvoiceGroupKey {
-  const approverPoAfe = getApproverPoAfeFromTicket(ticket, headerOverrides);
-  const parsed = parseApproverPoAfe(approverPoAfe);
+  const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket as any, headerOverrides);
   const location = (headerOverrides?.service_location ?? ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
   const other = (headerOverrides?.other ?? ticket.projectOther ?? '').trim();
   return {
     projectId: ticket.projectId ?? '',
     projectName: ticket.projectName,
     projectNumber: ticket.projectNumber,
-    approverCode: extractApproverCode(approverPoAfe),
-    approver: parsed.approver,
-    poAfe: parsed.poAfe,
+    approverCode: approver || '_',
+    approver,
+    poAfe,
     location,
-    cc: parsed.cc,
+    cc,
     other,
   };
 }
