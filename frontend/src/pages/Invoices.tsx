@@ -757,7 +757,7 @@ export default function Invoices() {
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <h1 style={{ marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '14px' }}>
-        Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add Approver/PO/AFE to the project in Projects to include tickets.
+        Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add PO/AFE, Approver, and CC to the project in Projects to include tickets.
       </p>
 
       {exportProgress && (

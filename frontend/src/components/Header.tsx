@@ -548,19 +548,19 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
             />
           )}
 
-          {/* PO/AFE, Approver, CC, Other - when project selected or timer running */}
+          {/* PO/AFE, Approver, CC, Other (separate fields) - when project selected or timer running */}
           {(selectedProjectId || (timerRunning && currentEntry?.projectId)) && (
             <>
               <input
                 type="text"
-                placeholder="PO / AFE..."
+                placeholder="PO/AFE..."
                 value={poAfe}
                 onChange={(e) => setPoAfe(e.target.value)}
                 style={{ width: '140px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
               />
               <input
                 type="text"
-                placeholder="Approver (AC)..."
+                placeholder="Approver..."
                 value={approver}
                 onChange={(e) => setApprover(e.target.value)}
                 style={{ width: '100px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}

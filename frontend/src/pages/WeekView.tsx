@@ -2872,7 +2872,7 @@ export default function WeekView() {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="label">Approver (AC)</label>
+                      <label className="label">Approver</label>
                       <input
                         type="text"
                         className="input"
@@ -3317,7 +3317,7 @@ export default function WeekView() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="label">Approver (AC)</label>
+                    <label className="label">Approver</label>
                     <input
                       type="text"
                       placeholder="e.g. G829, C566"
@@ -3549,7 +3549,7 @@ export default function WeekView() {
                       <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.poAfe || '—'}</div>
                     </div>
                     <div className="form-group">
-                      <label className="label">Approver (AC)</label>
+                      <label className="label">Approver</label>
                       <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.approver || '—'}</div>
                     </div>
                     <div className="form-group">

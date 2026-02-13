@@ -73,7 +73,7 @@ const V100_FIXED = [
 // ─── Earlier (pre-v1.0) ───────────────────────────────────────────────────────
 const EARLIER_SERVICE_TICKETS = [
   'Save Changes and unsaved-changes confirmation; pending changes highlighted.',
-  'Header fields (customer/service info, Service Location, Approver/PO/AFE, Other) saved in header_overrides.',
+  'Header fields (customer/service info, Service Location, PO/AFE, Approver, CC, Other) saved in header_overrides.',
   'Expenses can be added/edited/removed with changes applied on Save.',
   'PDF export layout and styling improvements; lock message when editing another user\'s ticket.',
   'Entry-level location and PO/AFE take priority over project/customer defaults on tickets.',

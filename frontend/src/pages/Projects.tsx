@@ -524,9 +524,12 @@ export default function Projects() {
 
             {/* Service Ticket Defaults */}
             <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-              <h4 style={{ marginBottom: '15px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+              <h4 style={{ marginBottom: '8px', fontSize: '14px', color: 'var(--text-secondary)' }}>
                 Service Ticket Defaults (auto-populate service tickets)
               </h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                PO/AFE, Approver, CC, and Other are separate fields.
+              </p>
               <div className="form-group">
                 <label className="label">Location</label>
                 <input
@@ -879,9 +882,12 @@ export default function Projects() {
 
             {/* Service Ticket Defaults */}
             <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-              <h4 style={{ marginBottom: '15px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+              <h4 style={{ marginBottom: '8px', fontSize: '14px', color: 'var(--text-secondary)' }}>
                 Service Ticket Defaults (auto-populate service tickets)
               </h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                PO/AFE, Approver, CC, and Other are separate fields.
+              </p>
               <div className="form-group">
                 <label className="label">Location</label>
                 <input
