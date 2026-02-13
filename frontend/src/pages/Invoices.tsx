@@ -74,8 +74,8 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
 function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; cc: string; totalAmount: number }) {
   const [copied, setCopied] = useState(false);
   const isNone = cc === '(none)';
-  const copyText = isNone ? ticketList : `${ticketList}; CC: ${cc}`;
-  const displayText = isNone ? ticketList : `${ticketList}; CC: ${cc}`;
+  const copyText = isNone ? ticketList : `${ticketList}; Coding: ${cc}`;
+  const displayText = isNone ? ticketList : `${ticketList}; Coding: ${cc}`;
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(copyText);
@@ -95,7 +95,7 @@ function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; 
       </span>
       <button
         onClick={handleCopy}
-        title="Copy ticket list and CC (excludes total)"
+        title="Copy ticket list and Coding (excludes total)"
         style={{
           padding: '4px 8px',
           backgroundColor: copied ? 'var(--primary-color)' : 'var(--bg-secondary)',
@@ -124,7 +124,7 @@ function getGroupId(group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }): 
   return `${group.key.approverCode}|${ids.join(',')}`;
 }
 
-/** Build CC breakdown with totals: "AR_xx1, AR_xx2; CC: xxxxxxxx – $X,XXX.XX" */
+/** Build Coding breakdown with totals: "AR_xx1, AR_xx2; Coding: xxxxxxxx – $X,XXX.XX" */
 function buildCcBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
   getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
@@ -754,7 +754,7 @@ export default function Invoices() {
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <h1 style={{ marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '14px' }}>
-        Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add PO/AFE, Approver, and CC to the project in Projects to include tickets.
+        Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.
       </p>
 
       {exportProgress && (
@@ -922,9 +922,9 @@ export default function Invoices() {
                         })()}
                       </span>
                       <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
-                      <span><strong>PO/AFE:</strong> {key.poAfe || '(none)'}</span>
+                      <span><strong>PO/AFE/CC (Cost Center):</strong> {key.poAfe || '(none)'}</span>
                       <span><strong>Location:</strong> {key.location || '(none)'}</span>
-                      <span><strong>CC:</strong> {key.cc || '(none)'}</span>
+                      <span><strong>Coding:</strong> {key.cc || '(none)'}</span>
                       <span><strong>Other:</strong> {key.other || '(none)'}</span>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
@@ -1131,9 +1131,9 @@ export default function Invoices() {
                       })()}
                     </span>
                     <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
-                    <span><strong>PO/AFE:</strong> {key.poAfe || '(none)'}</span>
+                    <span><strong>PO/AFE/CC (Cost Center):</strong> {key.poAfe || '(none)'}</span>
                     <span><strong>Location:</strong> {key.location || '(none)'}</span>
-                    <span><strong>CC:</strong> {key.cc || '(none)'}</span>
+                    <span><strong>Coding:</strong> {key.cc || '(none)'}</span>
                     <span><strong>Other:</strong> {key.other || '(none)'}</span>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>

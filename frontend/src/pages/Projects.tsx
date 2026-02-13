@@ -528,7 +528,7 @@ export default function Projects() {
                 Service Ticket Defaults (auto-populate service tickets)
               </h4>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                PO/AFE, Approver, CC, and Other are separate fields.
+                PO/AFE/CC (Cost Center), Approver, Coding, and Other are separate fields.
               </p>
               <div className="form-group">
                 <label className="label">Location</label>
@@ -541,7 +541,7 @@ export default function Projects() {
                 />
               </div>
               <div className="form-group">
-                <label className="label">PO/AFE</label>
+                <label className="label">PO/AFE/CC (Cost Center)</label>
                 <input
                   type="text"
                   className="input"
@@ -561,7 +561,7 @@ export default function Projects() {
                 />
               </div>
               <div className="form-group">
-                <label className="label">CC</label>
+                <label className="label">Coding</label>
                 <input
                   type="text"
                   className="input"
@@ -886,7 +886,7 @@ export default function Projects() {
                 Service Ticket Defaults (auto-populate service tickets)
               </h4>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                PO/AFE, Approver, CC, and Other are separate fields.
+                PO/AFE/CC (Cost Center), Approver, Coding, and Other are separate fields.
               </p>
               <div className="form-group">
                 <label className="label">Location</label>
@@ -899,7 +899,7 @@ export default function Projects() {
                 />
               </div>
               <div className="form-group">
-                <label className="label">PO/AFE</label>
+                <label className="label">PO/AFE/CC (Cost Center)</label>
                 <input
                   type="text"
                   className="input"
@@ -919,7 +919,7 @@ export default function Projects() {
                 />
               </div>
               <div className="form-group">
-                <label className="label">CC</label>
+                <label className="label">Coding</label>
                 <input
                   type="text"
                   className="input"

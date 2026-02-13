@@ -66,7 +66,7 @@ const LAYOUT = {
   
   // Customer Approval / Coding (bottom left)
   afeValue: { x: 105, y: 218 },          // After "AFE:"
-  ccValue: { x: 105, y: 198 },           // After "CC:"
+  ccValue: { x: 105, y: 198 },           // After "Coding:"
 };
 
 /**

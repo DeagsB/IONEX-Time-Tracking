@@ -225,9 +225,9 @@ export async function downloadPdfFromHtml(
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px; width: 100px;">PO/AFE</td>
+              <td style="padding: 2px 4px; width: 100px;">PO/AFE/CC (Cost Center)</td>
               <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${poAfe}</td>
-              <td style="padding: 2px 4px; width: 40px;">CC</td>
+              <td style="padding: 2px 4px; width: 40px;">Coding</td>
               <td style="padding: 2px 4px;">${cc}</td>
             </tr>
             <tr style="border-top: 1px solid #ccc;">
@@ -662,7 +662,7 @@ function buildPdfHtml(
   headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string } | null
 ): string {
   // Use per-ticket header overrides when present; fall back to ticket's merged data (from applyHeaderOverridesToTicket)
-  // This fixes the bug where only the first ticket had PO/AFE, Approver, CC, Other filled in merged exports
+  // This fixes the bug where only the first ticket had PO/AFE/CC (Cost Center), Approver, Coding, Other filled in merged exports
   const ov = headerOverrides;
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket, ov ?? undefined);
   const otherVal = (ov?.other != null && String(ov.other).trim() !== '')
@@ -772,9 +772,9 @@ function buildPdfHtml(
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
             </tr>
             <tr>
-              <td style="padding: 2px 4px; width: 100px;">PO/AFE</td>
+              <td style="padding: 2px 4px; width: 100px;">PO/AFE/CC (Cost Center)</td>
               <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${poAfe}</td>
-              <td style="padding: 2px 4px; width: 40px;">CC</td>
+              <td style="padding: 2px 4px; width: 40px;">Coding</td>
               <td style="padding: 2px 4px;">${cc}</td>
             </tr>
             <tr style="border-top: 1px solid #ccc;">

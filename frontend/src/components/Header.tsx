@@ -505,7 +505,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         </div>
       </div>
 
-      {/* Row 2: Project, Location, PO/AFE - only when customer is selected */}
+      {/* Row 2: Project, Location, PO/AFE/CC (Cost Center) - only when customer is selected */}
       {showSecondRow && (
         <div style={{
           display: 'flex',
@@ -551,12 +551,12 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
             />
           )}
 
-          {/* PO/AFE, Approver, CC, Other (separate fields) - when project selected or timer running */}
+          {/* PO/AFE/CC (Cost Center), Approver, Coding, Other (separate fields) - when project selected or timer running */}
           {(selectedProjectId || (timerRunning && currentEntry?.projectId)) && (
             <>
               <input
                 type="text"
-                placeholder="PO/AFE..."
+                placeholder="PO/AFE/CC..."
                 value={poAfe}
                 onChange={(e) => setPoAfe(e.target.value)}
                 style={{ width: '140px', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)' }}

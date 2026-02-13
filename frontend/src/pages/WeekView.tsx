@@ -2868,7 +2868,7 @@ export default function WeekView() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: '20px' }}>
                     <div className="form-group">
-                      <label className="label">PO/AFE</label>
+                      <label className="label">PO/AFE/CC (Cost Center)</label>
                       <input
                         type="text"
                         className="input"
@@ -2890,11 +2890,11 @@ export default function WeekView() {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="label">CC</label>
+                      <label className="label">Coding</label>
                       <input
                         type="text"
                         className="input"
-                        placeholder="CC"
+                        placeholder="Coding"
                         value={newEntry.cc}
                         onChange={(e) => setNewEntry({ ...newEntry, cc: e.target.value })}
                         style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }}
@@ -3310,11 +3310,11 @@ export default function WeekView() {
                 </div>
               )}
 
-              {/* 5b. Approver, PO/AFE, CC, Other - only when customer selected */}
+              {/* 5b. Approver, PO/AFE/CC (Cost Center), Coding, Other - only when customer selected */}
               {editedEntry.customer_id && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: '20px' }}>
                   <div className="form-group">
-                    <label className="label">PO/AFE</label>
+                    <label className="label">PO/AFE/CC (Cost Center)</label>
                     <input
                       type="text"
                       placeholder="PO or AFE number"
@@ -3334,10 +3334,10 @@ export default function WeekView() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="label">CC</label>
+                    <label className="label">Coding</label>
                     <input
                       type="text"
-                      placeholder="CC"
+                      placeholder="Coding"
                       value={editedEntry.cc}
                       onChange={(e) => setEditedEntry({ ...editedEntry, cc: e.target.value })}
                       style={{ width: '100%', padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}
@@ -3552,7 +3552,7 @@ export default function WeekView() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: '20px' }}>
                     <div className="form-group">
-                      <label className="label">PO/AFE</label>
+                      <label className="label">PO/AFE/CC (Cost Center)</label>
                       <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.poAfe || '—'}</div>
                     </div>
                     <div className="form-group">
@@ -3560,7 +3560,7 @@ export default function WeekView() {
                       <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.approver || '—'}</div>
                     </div>
                     <div className="form-group">
-                      <label className="label">CC</label>
+                      <label className="label">Coding</label>
                       <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.cc || '—'}</div>
                     </div>
                     <div className="form-group">

@@ -9,9 +9,9 @@ const V110_ADDED = [
 ];
 
 const V110_CHANGED = [
-  '**PO/AFE/CC section** – Projects and service tickets now use separate **Approver**, **PO/AFE**, and **CC** fields instead of a single combined field. Time entry form shows these as distinct inputs; service ticket header overrides store them separately.',
+  '**PO/AFE/CC (Cost Center) section** – Projects and service tickets now use separate **Approver**, **PO/AFE/CC (Cost Center)**, and **Coding** fields instead of a single combined field. Time entry form shows these as distinct inputs; service ticket header overrides store them separately.',
   '**Service ticket handling** – Header overrides migrated from legacy approver_po_afe format to approver/po_afe/cc keys. Parsing fallbacks removed; data flows directly from the new project columns and editable fields.',
-  '**Time entries** – Approver, PO/AFE, and CC stored in separate columns. Parsing removed; create/edit forms and service ticket building use approver, po_afe, cc directly.',
+  '**Time entries** – Approver, PO/AFE/CC (Cost Center), and Coding stored in separate columns. Parsing removed; create/edit forms and service ticket building use approver, po_afe, cc directly.',
   '**Trashed tickets** – Restore button moved to the right (where Submit for Approval was). Submit for Approval hidden when in trash. Trashed tickets are view-only until restored.',
   '**Submit for Approval** – Changes are now auto-saved when you click Submit for Approval or Approve; no need to click Save Changes first.',
   '**Show Trash** – Clicking any tab (Drafts, Submitted, Approved, All Tickets) while viewing trash automatically leaves the trash view.',
@@ -41,7 +41,7 @@ const V100_ADDED = [
   '**Bulk actions** – Move to Trash, Restore Selected (in trash), Approve, Unapprove. Export PDF and Mark as Submitted removed from bulk bar.',
   '**Service Ticket Status Tabs** – Drafts, Submitted, Approved, All Tickets. Admins default to Submitted; non-admins to Drafts.',
   '**Admin Approve / Reject** – Approve and Reject buttons on submitted tickets. Rejected tickets return to Drafts with a **Rejected** badge and sidebar notification.',
-  '**PO/AFE on time entries** – PO/AFE field between Location and Rate Type when a customer is selected. Pre-filled from project; saved with the entry.',
+  '**PO/AFE/CC (Cost Center) on time entries** – PO/AFE/CC (Cost Center) field between Location and Rate Type when a customer is selected. Pre-filled from project; saved with the entry.',
   '**"Other" on service ticket PDF** – Other column on the same row as PO/CC/AFE in the exported PDF.',
   '**Payroll for all users** – Payroll available to everyone; non-admins see only their own data.',
 ];
@@ -73,10 +73,10 @@ const V100_FIXED = [
 // ─── Earlier (pre-v1.0) ───────────────────────────────────────────────────────
 const EARLIER_SERVICE_TICKETS = [
   'Save Changes and unsaved-changes confirmation; pending changes highlighted.',
-  'Header fields (customer/service info, Service Location, PO/AFE, Approver, CC, Other) saved in header_overrides.',
+  'Header fields (customer/service info, Service Location, PO/AFE/CC (Cost Center), Approver, Coding, Other) saved in header_overrides.',
   'Expenses can be added/edited/removed with changes applied on Save.',
   'PDF export layout and styling improvements; lock message when editing another user\'s ticket.',
-  'Entry-level location and PO/AFE take priority over project/customer defaults on tickets.',
+  'Entry-level location and PO/AFE/CC (Cost Center) take priority over project/customer defaults on tickets.',
   'Different locations no longer merge into one ticket; matching includes location.',
   'Non-admin users create draft ticket records (no ticket number) when opening or saving a ticket.',
   'Changelog link under Settings (admin only).',
@@ -87,7 +87,7 @@ const EARLIER_TIME_ENTRY = [
   'Editable hours field in Add Time Entry auto-adjusts end time.',
   'Customer and project required before enabling Add/play; button greyed out until selected.',
   'Location no longer auto-populated from last entry in manual time entry modals.',
-  'Header: PO/AFE field on live timer; project details on second row.',
+  'Header: PO/AFE/CC (Cost Center) field on live timer; project details on second row.',
   'IONEX Systems default to Internal; skipped for service ticket creation.',
 ];
 
