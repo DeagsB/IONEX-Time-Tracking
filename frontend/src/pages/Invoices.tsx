@@ -75,7 +75,9 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
 /** Single CC breakdown line with copy button (excludes total from copy) */
 function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; cc: string; totalAmount: number }) {
   const [copied, setCopied] = useState(false);
-  const copyText = `${ticketList}; CC: ${cc}`;
+  const isNone = cc === '(none)';
+  const copyText = isNone ? ticketList : `${ticketList}; CC: ${cc}`;
+  const displayText = isNone ? ticketList : `${ticketList}; CC: ${cc}`;
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(copyText);
@@ -88,7 +90,7 @@ function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '13px' }}>
       <span style={{ color: 'var(--text-primary)', flex: 1 }}>
-        {ticketList}; CC: {cc}
+        {displayText}
       </span>
       <span style={{ fontWeight: 700, color: 'var(--primary-color)', fontSize: '14px', minWidth: '70px', textAlign: 'right' }}>
         ${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -140,7 +142,6 @@ function buildCcBreakdown(
     byCc.set(cc, entry);
   }
   return [...byCc.entries()]
-    .filter(([cc]) => cc !== '(none)')
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([cc, { nums, tickets: ccTickets }]) => {
       let totalAmount = 0;
