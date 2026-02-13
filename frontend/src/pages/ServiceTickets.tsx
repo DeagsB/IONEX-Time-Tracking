@@ -1660,6 +1660,7 @@ export default function ServiceTickets() {
   }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
 
   // Close panel when selected ticket is no longer in filtered list; refresh when ticket data changes (e.g. entry deleted from calendar)
+  // Skip sync when fresh has empty entries but current has entries - prevents flicker after save (refetch can briefly return stale data)
   useEffect(() => {
     if (selectedTicket) {
       const freshTicket = filteredTickets.find(t => t.id === selectedTicket.id);
@@ -1667,7 +1668,8 @@ export default function ServiceTickets() {
         setSelectedTicket(null);
         setCurrentTicketRecordId(null);
       } else if (freshTicket !== selectedTicket) {
-        // Ticket still in list but data changed (e.g. entry deleted) - use fresh version
+        const wouldClearEntries = freshTicket.entries.length === 0 && selectedTicket.entries.length > 0;
+        if (wouldClearEntries) return; // Avoid disappearing entries after save/refetch
         setSelectedTicket(freshTicket);
         setServiceRows(entriesToServiceRows(freshTicket.entries));
         initialServiceRowsRef.current = entriesToServiceRows(freshTicket.entries).map(r => ({ ...r }));
