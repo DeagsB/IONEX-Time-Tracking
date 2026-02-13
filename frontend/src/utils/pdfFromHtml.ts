@@ -90,8 +90,9 @@ export async function downloadPdfFromHtml(
   };
 
   // Group entries by description (notes only; no date in PDF service description)
+  // Reverse order so oldest/first-created entries appear at top (matches service ticket UI)
   const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
-  ticket.entries.forEach(entry => {
+  [...ticket.entries].reverse().forEach(entry => {
     const desc = entry.description || 'Work performed';
     const rateCode = getRateCode(entry.rate_type);
     const roundedHours = roundToHalfHour(entry.hours);
@@ -502,7 +503,7 @@ export async function generateAndStorePdf(
   // For standalone tickets with no entries, build from hoursByRateType
   const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
   if (ticket.entries.length > 0) {
-    ticket.entries.forEach(entry => {
+    [...ticket.entries].reverse().forEach(entry => {
       const desc = entry.description || 'Work performed';
       const rateCode = getRateCode(entry.rate_type);
       const roundedHours = roundToHalfHour(entry.hours);

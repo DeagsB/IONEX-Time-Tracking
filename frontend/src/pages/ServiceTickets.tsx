@@ -520,8 +520,9 @@ export default function ServiceTickets() {
   const [isBulkExporting, setIsBulkExporting] = useState(false);
 
   // Convert time entries to service rows (description + 5 hour columns)
+  // Reverse order so oldest/first-created entries appear at top
   const entriesToServiceRows = (entries: ServiceTicket['entries']): ServiceRow[] => {
-    return entries.map((entry, index) => {
+    return [...entries].reverse().map((entry, index) => {
       const rateType = entry.rate_type || 'Shop Time';
       const hours = Number(entry.hours) || 0;
       return {
