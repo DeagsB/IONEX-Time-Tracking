@@ -231,9 +231,6 @@ export default function Sidebar() {
                 )}
               </span>
             </SidebarLink>
-            <SidebarLink to="/employees" active={isActive('/employees')}>
-              Members
-            </SidebarLink>
           </div>
         )}
 
@@ -295,6 +292,9 @@ export default function Sidebar() {
               <>
                 <SidebarLink to="/user-management" active={isActive('/user-management')}>
                   User Management
+                </SidebarLink>
+                <SidebarLink to="/employees" active={isActive('/employees')}>
+                  Employees
                 </SidebarLink>
               </>
             )}
