@@ -45,10 +45,9 @@ export const useAuth = () => {
   return context;
 };
 
-/** Invoices page is restricted to Deagan Bespalko only */
-export const INVOICES_ALLOWED_EMAILS = ['deagan.bespalko@ionexsystems.com', 'bespalkodeagan@gmail.com'];
-export const canAccessInvoices = (user: { email?: string } | null) =>
-  !!user?.email && INVOICES_ALLOWED_EMAILS.includes(user.email.toLowerCase());
+/** Invoices page: all admins and developers can access */
+export const canAccessInvoices = (user: { email?: string; role?: string } | null) =>
+  user?.role === 'ADMIN' || user?.role === 'DEVELOPER';
 
 // Development mode - bypass authentication
 const DEV_MODE = false; // Set to false for production
