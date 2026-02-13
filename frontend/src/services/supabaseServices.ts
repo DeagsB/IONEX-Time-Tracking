@@ -1533,6 +1533,17 @@ export const serviceTicketsService = {
     if (error) return 0;
     return count ?? 0;
   },
+
+  /**
+   * Permanently delete a service ticket from the database (admin only, when in trash).
+   * Deletes expenses first, then the ticket.
+   */
+  async deletePermanently(ticketId: string, isDemo: boolean = false): Promise<void> {
+    await serviceTicketExpensesService.deleteByTicketId(ticketId);
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { error } = await supabase.from(tableName).delete().eq('id', ticketId);
+    if (error) throw error;
+  },
 };
 
 export const serviceTicketExpensesService = {

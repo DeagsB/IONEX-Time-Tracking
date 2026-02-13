@@ -821,6 +821,32 @@ export default function ServiceTickets() {
     }
   };
 
+  // Bulk delete permanently from trash (admin only)
+  const handleBulkDeletePermanently = async () => {
+    const ticketsToDelete = Array.from(selectedTicketIds)
+      .map(id => getTicketById(id))
+      .filter(Boolean) as (ServiceTicket & { displayTicketNumber?: string })[];
+    if (ticketsToDelete.length === 0) return;
+    if (!confirm(`Permanently delete ${ticketsToDelete.length} ticket${ticketsToDelete.length > 1 ? 's' : ''}? This will remove them from the database and cannot be undone.`)) return;
+
+    try {
+      for (const ticket of ticketsToDelete) {
+        const record = findMatchingTicketRecord(ticket);
+        if (record?.id) {
+          await serviceTicketsService.deletePermanently(record.id, isDemoMode);
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+      queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+      queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+      setSelectedTicketIds(new Set());
+    } catch (error) {
+      console.error('Error bulk deleting:', error);
+      alert('Failed to delete tickets.');
+    }
+  };
+
   // Bulk restore from trash
   const handleBulkRestore = async () => {
     const ticketsToRestore = Array.from(selectedTicketIds)
@@ -1809,7 +1835,7 @@ export default function ServiceTickets() {
             Viewing trashed tickets
           </span>
           <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            &mdash; These tickets are hidden from the default view. Open a ticket and click &quot;Restore Ticket&quot; to move it back.
+            &mdash; These tickets are hidden from the default view. {isAdmin ? 'Open a ticket to Restore or Delete permanently. Select multiple to bulk restore or delete.' : 'Open a ticket and click Restore Ticket to move it back.'}
           </span>
         </div>
       )}
@@ -1852,21 +1878,38 @@ export default function ServiceTickets() {
             </span>
             <div style={{ display: 'flex', gap: '10px' }}>
               {showDiscarded ? (
-                <button
-                  onClick={handleBulkRestore}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Restore Selected
-                </button>
+                <>
+                  <button
+                    onClick={handleBulkRestore}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Restore Selected
+                  </button>
+                  <button
+                    onClick={handleBulkDeletePermanently}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: 'transparent',
+                      color: '#fca5a5',
+                      border: '1px solid #fca5a5',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Delete Permanently
+                  </button>
+                </>
               ) : (
                 <>
                   <button
@@ -4046,56 +4089,93 @@ export default function ServiceTickets() {
                   const existingTicketRecord = findMatchingTicketRecord(selectedTicket);
                   const isCurrentlyDiscarded = !!(existingTicketRecord as any)?.is_discarded;
 
-                  // When in trash: show Restore Ticket in the same position as Submit for Approval
+                  // When in trash: show Restore Ticket and (for admins) Delete Permanently
                   if (isCurrentlyDiscarded) {
                     return (
-                      <button
-                        onClick={async () => {
-                          if (!currentTicketRecordId) return;
-                          setIsDiscarding(true);
-                          try {
-                            const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                            const { error } = await supabase
-                              .from(tableName)
-                              .update({
-                                is_discarded: false,
-                                restored_at: new Date().toISOString(),
-                                workflow_status: 'draft',
-                                rejected_at: null,
-                                rejection_notes: null,
-                                approved_by_admin_id: null,
-                                ticket_number: null,
-                                sequence_number: null,
-                                year: null,
-                              })
-                              .eq('id', currentTicketRecordId);
-                            if (error) throw error;
-                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
-                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
-                            queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
-                            queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
-                            closePanel();
-                          } catch (err) {
-                            console.error('Error restoring ticket:', err);
-                            alert('Failed to restore ticket.');
-                          } finally {
-                            setIsDiscarding(false);
-                          }
-                        }}
-                        disabled={isDiscarding || !currentTicketRecordId}
-                        style={{
-                          padding: '10px 24px',
-                          backgroundColor: '#10b981',
-                          color: 'white',
-                          border: '1px solid #10b981',
-                          borderRadius: '6px',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          cursor: isDiscarding ? 'wait' : 'pointer',
-                        }}
-                      >
-                        {isDiscarding ? 'Restoring...' : 'Restore Ticket'}
-                      </button>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        <button
+                          onClick={async () => {
+                            if (!currentTicketRecordId) return;
+                            setIsDiscarding(true);
+                            try {
+                              const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                              const { error } = await supabase
+                                .from(tableName)
+                                .update({
+                                  is_discarded: false,
+                                  restored_at: new Date().toISOString(),
+                                  workflow_status: 'draft',
+                                  rejected_at: null,
+                                  rejection_notes: null,
+                                  approved_by_admin_id: null,
+                                  ticket_number: null,
+                                  sequence_number: null,
+                                  year: null,
+                                })
+                                .eq('id', currentTicketRecordId);
+                              if (error) throw error;
+                              await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                              await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                              queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                              queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+                              closePanel();
+                            } catch (err) {
+                              console.error('Error restoring ticket:', err);
+                              alert('Failed to restore ticket.');
+                            } finally {
+                              setIsDiscarding(false);
+                            }
+                          }}
+                          disabled={isDiscarding || !currentTicketRecordId}
+                          style={{
+                            padding: '10px 24px',
+                            backgroundColor: '#10b981',
+                            color: 'white',
+                            border: '1px solid #10b981',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: isDiscarding ? 'wait' : 'pointer',
+                          }}
+                        >
+                          {isDiscarding ? 'Restoring...' : 'Restore Ticket'}
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={async () => {
+                              if (!currentTicketRecordId) return;
+                              if (!confirm('Permanently delete this service ticket? This will remove it from the database and cannot be undone.')) return;
+                              setIsDiscarding(true);
+                              try {
+                                await serviceTicketsService.deletePermanently(currentTicketRecordId, isDemoMode);
+                                await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                                await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                                queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                                queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+                                closePanel();
+                              } catch (err) {
+                                console.error('Error deleting ticket:', err);
+                                alert('Failed to delete ticket.');
+                              } finally {
+                                setIsDiscarding(false);
+                              }
+                            }}
+                            disabled={isDiscarding || !currentTicketRecordId}
+                            style={{
+                              padding: '10px 24px',
+                              backgroundColor: 'transparent',
+                              color: '#ef5350',
+                              border: '1px solid #ef5350',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              cursor: isDiscarding ? 'wait' : 'pointer',
+                            }}
+                          >
+                            {isDiscarding ? 'Deleting...' : 'Delete Permanently'}
+                          </button>
+                        )}
+                      </div>
                     );
                   }
 
