@@ -154,25 +154,46 @@ export default function ServiceTickets() {
   const initialServiceRowsRef = useRef<ServiceRow[]>([]);
   const [isLockedForEditing, setIsLockedForEditing] = useState(false); // True when admin has approved
   const [showLockNotification, setShowLockNotification] = useState(false);
+  const [lockNotificationEntered, setLockNotificationEntered] = useState(false);
+  const [lockNotificationExiting, setLockNotificationExiting] = useState(false);
   const lockNotificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockNotificationExitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ticketPanelBackdropRef = useRef<HTMLDivElement>(null);
   const ticketPanelMouseDownOnBackdropRef = useRef(false);
 
   const showLockedReason = () => {
     if (!isLockedForEditing) return;
     if (lockNotificationTimeoutRef.current) clearTimeout(lockNotificationTimeoutRef.current);
+    if (lockNotificationExitRef.current) clearTimeout(lockNotificationExitRef.current);
+    setLockNotificationExiting(false);
+    setLockNotificationEntered(false);
     setShowLockNotification(true);
     lockNotificationTimeoutRef.current = setTimeout(() => {
-      setShowLockNotification(false);
       lockNotificationTimeoutRef.current = null;
+      setLockNotificationExiting(true);
+      lockNotificationExitRef.current = setTimeout(() => {
+        lockNotificationExitRef.current = null;
+        setShowLockNotification(false);
+        setLockNotificationExiting(false);
+        setLockNotificationEntered(false);
+      }, 300);
     }, 4500);
   };
 
   useEffect(() => {
     return () => {
       if (lockNotificationTimeoutRef.current) clearTimeout(lockNotificationTimeoutRef.current);
+      if (lockNotificationExitRef.current) clearTimeout(lockNotificationExitRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!showLockNotification) return;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setLockNotificationEntered(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [showLockNotification]);
 
   const [isSavingTicket, setIsSavingTicket] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -2841,7 +2862,13 @@ export default function ServiceTickets() {
                     position: 'fixed',
                     bottom: '24px',
                     left: '50%',
-                    transform: 'translateX(-50%)',
+                    transform: lockNotificationExiting
+                      ? 'translateX(-50%) translateY(-24px)'
+                      : lockNotificationEntered
+                        ? 'translateX(-50%) translateY(0)'
+                        : 'translateX(-50%) translateY(24px)',
+                    opacity: lockNotificationExiting ? 0 : lockNotificationEntered ? 1 : 0,
+                    transition: 'opacity 0.3s ease, transform 0.3s ease',
                     zIndex: 10000,
                     backgroundColor: 'var(--bg-primary)',
                     border: '1px solid var(--border-color)',
@@ -2867,23 +2894,6 @@ export default function ServiceTickets() {
                         : 'This ticket has been approved by an admin and is locked. Contact an administrator if you need to make changes.'}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setShowLockNotification(false); }}
-                    style={{
-                      marginLeft: 'auto',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '2px',
-                      fontSize: '18px',
-                      lineHeight: 1,
-                      color: 'var(--text-secondary)',
-                    }}
-                    aria-label="Dismiss"
-                  >
-                    ×
-                  </button>
                 </div>
               )}
               
