@@ -140,6 +140,7 @@ function buildCcBreakdown(
     byCc.set(cc, entry);
   }
   return [...byCc.entries()]
+    .filter(([cc]) => cc !== '(none)')
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([cc, { nums, tickets: ccTickets }]) => {
       let totalAmount = 0;
