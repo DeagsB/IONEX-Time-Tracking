@@ -189,6 +189,7 @@ export default function ServiceTickets() {
   const lockNotificationExitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ticketPanelBackdropRef = useRef<HTMLDivElement>(null);
   const ticketPanelMouseDownOnBackdropRef = useRef(false);
+  const [ticketPanelEntered, setTicketPanelEntered] = useState(false);
 
   const showLockedReason = () => {
     if (!isLockedForEditing) return;
@@ -223,6 +224,23 @@ export default function ServiceTickets() {
     });
     return () => cancelAnimationFrame(id);
   }, [showLockNotification]);
+
+  const prevTicketPanelOpenRef = useRef(false);
+  useEffect(() => {
+    const isOpen = !!(selectedTicket && editableTicket);
+    if (isOpen && !prevTicketPanelOpenRef.current) {
+      prevTicketPanelOpenRef.current = true;
+      setTicketPanelEntered(false);
+      const id = requestAnimationFrame(() => {
+        requestAnimationFrame(() => setTicketPanelEntered(true));
+      });
+      return () => cancelAnimationFrame(id);
+    }
+    if (!isOpen) {
+      prevTicketPanelOpenRef.current = false;
+      setTicketPanelEntered(false);
+    }
+  }, [selectedTicket, editableTicket]);
 
   const [isSavingTicket, setIsSavingTicket] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -2757,6 +2775,8 @@ export default function ServiceTickets() {
             right: 0,
             bottom: 0,
             backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            opacity: ticketPanelEntered ? 1 : 0,
+            transition: 'opacity 0.15s ease',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -2784,6 +2804,9 @@ export default function ServiceTickets() {
               overflow: 'auto',
               boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
               border: '1px solid var(--border-color)',
+              opacity: ticketPanelEntered ? 1 : 0,
+              transform: ticketPanelEntered ? 'scale(1)' : 'scale(0.98)',
+              transition: 'opacity 0.15s ease, transform 0.15s ease',
             }}
             onClick={(e) => e.stopPropagation()}
           >
