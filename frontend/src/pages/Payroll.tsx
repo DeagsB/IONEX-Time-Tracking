@@ -393,6 +393,40 @@ export default function Payroll() {
     );
   }, [employeeHours]);
 
+  // Grand total costs (admin only) - labor cost using employee pay rates
+  const grandTotalsCosts = useMemo(() => {
+    if (!isAdmin || !allEmployees || allEmployees.length === 0) return null;
+    const empByUserId = new Map<string, any>();
+    for (const e of allEmployees as any[]) {
+      if (e.user_id) empByUserId.set(e.user_id, e);
+    }
+    let totalCost = 0;
+    let internalCost = 0;
+    let shopTimeCost = 0;
+    let shopOvertimeCost = 0;
+    let travelTimeCost = 0;
+    let fieldTimeCost = 0;
+    let fieldOvertimeCost = 0;
+    for (const emp of employeeHours) {
+      const employee = empByUserId.get(emp.userId);
+      const shopRate = Number(employee?.shop_pay_rate) || 0;
+      const shopOtRate = Number(employee?.shop_ot_pay_rate) || shopRate * 1.5;
+      const fieldRate = Number(employee?.field_pay_rate) || shopRate;
+      const fieldOtRate = Number(employee?.field_ot_pay_rate) || fieldRate * 1.5;
+      const isPanelShop = employee?.department === 'Panel Shop';
+      const ftRate = isPanelShop ? (fieldRate || shopRate) : fieldRate;
+      const foRate = isPanelShop ? (fieldOtRate || shopOtRate) : fieldOtRate;
+      internalCost += emp.internalHours * shopRate;
+      shopTimeCost += emp.shopTime * shopRate;
+      shopOvertimeCost += emp.shopOvertime * shopOtRate;
+      travelTimeCost += emp.travelTime * shopRate;
+      fieldTimeCost += emp.fieldTime * ftRate;
+      fieldOvertimeCost += emp.fieldOvertime * foRate;
+    }
+    totalCost = internalCost + shopTimeCost + shopOvertimeCost + travelTimeCost + fieldTimeCost + fieldOvertimeCost;
+    return { totalCost, internalCost, shopTimeCost, shopOvertimeCost, travelTimeCost, fieldTimeCost, fieldOvertimeCost };
+  }, [isAdmin, allEmployees, employeeHours]);
+
   // Which preset (if any) matches the current date range — used to highlight the active button
   const activePreset = useMemo(() => {
     for (const key of PRESET_KEYS) {
@@ -560,35 +594,51 @@ export default function Payroll() {
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
+          {/* Summary Cards - admin sees total costs, non-admin sees hours */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '24px' }}>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Total Hours</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)' }}>{grandTotals.totalHours.toFixed(2)}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                {isAdmin && grandTotalsCosts ? 'Total Cost' : 'Total Hours'}
+              </div>
+              <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.totalCost.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
+              </div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Internal Time</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#dc3545' }}>{grandTotals.internalHours.toFixed(2)}</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', color: '#dc3545' }}>
+                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.internalCost.toFixed(2)}` : grandTotals.internalHours.toFixed(2)}
+              </div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Shop Time</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#4caf50' }}>{grandTotals.shopTime.toFixed(2)}</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', color: '#4caf50' }}>
+                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.shopTimeCost.toFixed(2)}` : grandTotals.shopTime.toFixed(2)}
+              </div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Shop OT</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#ff9800' }}>{grandTotals.shopOvertime.toFixed(2)}</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', color: '#ff9800' }}>
+                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.shopOvertimeCost.toFixed(2)}` : grandTotals.shopOvertime.toFixed(2)}
+              </div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Travel Time</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#2196f3' }}>{grandTotals.travelTime.toFixed(2)}</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', color: '#2196f3' }}>
+                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.travelTimeCost.toFixed(2)}` : grandTotals.travelTime.toFixed(2)}
+              </div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Field Time</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#9c27b0' }}>{grandTotals.fieldTime.toFixed(2)}</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', color: '#9c27b0' }}>
+                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.fieldTimeCost.toFixed(2)}` : grandTotals.fieldTime.toFixed(2)}
+              </div>
             </div>
             <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Field OT</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#e91e63' }}>{grandTotals.fieldOvertime.toFixed(2)}</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', color: '#e91e63' }}>
+                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.fieldOvertimeCost.toFixed(2)}` : grandTotals.fieldOvertime.toFixed(2)}
+              </div>
             </div>
           </div>
 
