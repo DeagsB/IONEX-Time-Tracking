@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { buildApproverPoAfe, extractApproverCode, buildBillingKey } from '../utils/serviceTickets';
+import { buildApproverPoAfe, extractApproverCode, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
 
 // Service functions for interacting with Supabase tables
 
@@ -1115,9 +1115,9 @@ export const serviceTicketsService = {
 
   /**
    * Get or create a service ticket record for a given date/user/customer/project/location combination.
-   * Hierarchy: Project > Location > PO/AFE/CC (Cost Center). Different at any level = new ticket.
-   * When billingKey is provided (approver::poAfe::cc), matches by all three so different
-   * approver, PO/AFE, or CC create separate tickets. Requires a valid customerId.
+   * Hierarchy: Project > Location > PO/AFE + Approver (CC excluded - different coding does NOT create new tickets).
+   * When groupingKey is provided (approver::poAfe::_), matches by approver and poAfe only.
+   * Requires a valid customerId.
    */
   async getOrCreateTicket(params: {
     date: string;
@@ -1154,11 +1154,11 @@ export const serviceTicketsService = {
       throw findError;
     }
     
-    const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
+    const getRecordGroupingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+      return buildGroupingKey(ov.po_afe ?? '');
     };
-    const existing = candidates?.find(et => getRecordBillingKey(et) === targetBillingKey);
+    const existing = candidates?.find(et => getRecordGroupingKey(et) === targetBillingKey);
     if (existing) {
       return { id: existing.id };
     }
@@ -1230,7 +1230,7 @@ export const serviceTicketsService = {
     if (!params.customerId) return;
     const tableName = params.isDemo ? 'service_tickets_demo' : 'service_tickets';
     const ticketLocation = params.location ?? '';
-    const targetBillingKey = buildBillingKey(params.approver ?? '', params.po_afe ?? '', params.cc ?? '');
+    const targetGroupingKey = buildGroupingKey(params.po_afe ?? '');
     let query = supabase
       .from(tableName)
       .select('id, header_overrides, workflow_status')
@@ -1243,11 +1243,11 @@ export const serviceTicketsService = {
     }
     const { data: candidates, error: findError } = await query;
     if (findError || !candidates?.length) return;
-    const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
+    const getRecordGroupingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+      return buildGroupingKey(ov.po_afe ?? '');
     };
-    const ticket = candidates.find(et => getRecordBillingKey(et) === targetBillingKey);
+    const ticket = candidates.find(et => getRecordGroupingKey(et) === targetGroupingKey);
     if (!ticket || ticket.workflow_status !== 'draft' && ticket.workflow_status !== 'rejected') return;
     const existing = (ticket.header_overrides as Record<string, unknown>) ?? {};
     const merged = {
@@ -1277,11 +1277,10 @@ export const serviceTicketsService = {
   }, isDemo: boolean = false): Promise<void> {
     if (!params.customerId) return;
 
-    const { date, userId, customerId, projectId, location, approver, po_afe, cc } = params;
+    const { date, userId, customerId, projectId, location, approver, po_afe } = params;
     const ticketLocation = location ?? '';
-    const targetBillingKey = buildBillingKey(approver ?? '', po_afe ?? '', cc ?? '');
 
-    // Count remaining billable entries for this specific ticket (project + location + billing)
+    // Count remaining billable entries for this ticket (project + location + po_afe only - Cost Center drives grouping)
     if (!projectId) return; // Need projectId to identify the ticket
     const { count: entryCount, error: countError } = await supabase
       .from('time_entries')
@@ -1290,9 +1289,7 @@ export const serviceTicketsService = {
       .eq('user_id', userId)
       .eq('project_id', projectId)
       .eq('location', ticketLocation)
-      .eq('approver', approver ?? '')
       .eq('po_afe', po_afe ?? '')
-      .eq('cc', cc ?? '')
       .eq('billable', true)
       .eq('is_demo', isDemo);
     if (countError || (entryCount != null && entryCount > 0)) return;
@@ -1310,13 +1307,14 @@ export const serviceTicketsService = {
 
     if (findError || !tickets?.length) return;
 
-    const getRecordBillingKey = (t: { header_overrides?: unknown }) => {
+    const targetGroupingKey = buildGroupingKey(po_afe ?? '');
+    const getRecordGroupingKey = (t: { header_overrides?: unknown }) => {
       const ov = (t.header_overrides as Record<string, string> | null) ?? {};
-      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+      return buildGroupingKey(ov.po_afe ?? '');
     };
-    const matching = tickets.filter(t => getRecordBillingKey(t) === targetBillingKey);
+    const matching = tickets.filter(t => getRecordGroupingKey(t) === targetGroupingKey);
     const legacyKey = '_::_::_';
-    const toDelete = matching.length > 0 ? matching : tickets.filter(t => getRecordBillingKey(t) === legacyKey);
+    const toDelete = matching.length > 0 ? matching : tickets.filter(t => getRecordGroupingKey(t) === legacyKey);
 
     for (const ticket of toDelete) {
       await serviceTicketExpensesService.deleteByTicketId(ticket.id);

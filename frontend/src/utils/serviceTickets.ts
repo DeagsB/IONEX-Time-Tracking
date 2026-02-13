@@ -228,16 +228,14 @@ export function groupEntriesIntoTickets(
     // Use entry location, or fall back to project location, or empty string
     const entryLocation = entry.location || entry.project?.location || '';
 
-    // Build approver/PO/AFE/CC from entry, fall back to project - different approver, PO/AFE, or CC create separate tickets
-    const approver = entry.approver ?? entry.project?.approver ?? '';
+    // Only PO/AFE/CC (Cost Center) creates new tickets - different approver or Coding do NOT
     const poAfe = entry.po_afe ?? entry.project?.po_afe ?? '';
-    const cc = (entry as any).cc ?? entry.project?.cc ?? '';
-    const billingKey = buildBillingKey(approver, poAfe, cc);
+    const groupingKey = buildGroupingKey(poAfe);
 
     // Create composite key - hierarchy: Project > Location > PO/AFE/CC (Cost Center)
-    // Same project → check location → check billing key. Different at any level = new ticket.
+    // Same project → check location → check grouping key. Different at any level = new ticket.
     const projectId = entry.project?.id ?? '';
-    const ticketKey = `${date}-${customerId}-${userId}-${projectId}-${entryLocation}-${billingKey}`;
+    const ticketKey = `${date}-${customerId}-${userId}-${projectId}-${entryLocation}-${groupingKey}`;
 
     // Get or create ticket
     let ticket = ticketMap.get(ticketKey);
@@ -528,6 +526,12 @@ export function buildBillingKey(approver: string, poAfe: string, cc: string): st
   const p = (poAfe ?? '').trim() || '_';
   const c = (cc ?? '').trim() || '_';
   return `${a}${BILLING_KEY_SEP}${p}${BILLING_KEY_SEP}${c}`;
+}
+
+/** Grouping key for tickets - only PO/AFE/CC (Cost Center) creates new tickets. Approver and Coding do not. Hierarchy: Project > Location > Cost Center (po_afe). */
+export function buildGroupingKey(poAfe: string): string {
+  const p = (poAfe ?? '').trim() || '_';
+  return `_${BILLING_KEY_SEP}${p}${BILLING_KEY_SEP}_`;
 }
 
 /** Extract billing key from ticket.id (last segment after final "-"). */
