@@ -338,8 +338,21 @@ export default function WeekView() {
     },
     onSuccess: async (data) => {
       console.log('Time entry saved successfully:', data);
-      // Invalidate and refetch all timeEntries queries to ensure entries appear immediately
+      // Sync approver/po_afe/cc to draft service ticket
+      if (data?.customer_id) {
+        await serviceTicketsService.syncTicketHeaderFromTimeEntry({
+          date: data.date,
+          userId: data.user_id,
+          customerId: data.customer_id,
+          location: data.location,
+          approver: data.approver,
+          po_afe: data.po_afe,
+          cc: data.cc,
+          isDemo: isDemoMode,
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await refetchTimeEntries();
       setShowTimeEntryModal(false);
       setNewEntry({ description: '', customer_id: '', project_id: '', hours: 0.25, billable: false, rate_type: 'Internal', location: '', approver: '', poAfe: '', cc: '', other: '' });
@@ -358,10 +371,23 @@ export default function WeekView() {
       console.log('Time entry updated:', result);
       return result;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       console.log('Time entry updated successfully');
-      // Invalidate and refetch all timeEntries queries to ensure entries appear immediately
+      // Sync approver/po_afe/cc to draft service ticket
+      if (data?.customer_id) {
+        await serviceTicketsService.syncTicketHeaderFromTimeEntry({
+          date: typeof data.date === 'string' ? data.date : new Date(data.date).toISOString().split('T')[0],
+          userId: data.user_id,
+          customerId: data.customer_id,
+          location: data.location,
+          approver: data.approver,
+          po_afe: data.po_afe,
+          cc: data.cc,
+          isDemo: isDemoMode,
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await refetchTimeEntries();
       setShowEditModal(false);
       setEditingEntry(null);

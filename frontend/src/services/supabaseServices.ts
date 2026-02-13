@@ -1188,6 +1188,43 @@ export const serviceTicketsService = {
   },
 
   /**
+   * When a time entry is saved, sync approver/po_afe/cc to the service ticket's header_overrides.
+   * Only updates draft or rejected tickets - submitted/approved tickets are not modified.
+   */
+  async syncTicketHeaderFromTimeEntry(params: {
+    date: string;
+    userId: string;
+    customerId: string | null;
+    location?: string | null;
+    approver?: string | null;
+    po_afe?: string | null;
+    cc?: string | null;
+    isDemo?: boolean;
+  }): Promise<void> {
+    if (!params.customerId) return;
+    const tableName = params.isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const ticketLocation = params.location ?? '';
+    const { data: ticket, error: findError } = await supabase
+      .from(tableName)
+      .select('id, header_overrides, workflow_status')
+      .eq('date', params.date)
+      .eq('user_id', params.userId)
+      .eq('customer_id', params.customerId)
+      .eq('location', ticketLocation)
+      .maybeSingle();
+    if (findError || !ticket) return;
+    if (ticket.workflow_status !== 'draft' && ticket.workflow_status !== 'rejected') return;
+    const existing = (ticket.header_overrides as Record<string, unknown>) ?? {};
+    const merged = {
+      ...existing,
+      approver: params.approver ?? '',
+      po_afe: params.po_afe ?? '',
+      cc: params.cc ?? '',
+    };
+    await supabase.from(tableName).update({ header_overrides: merged }).eq('id', ticket.id);
+  },
+
+  /**
    * After time entries are removed, delete any service ticket that was created from those entries
    * (same date, user, customer) when no time entries remain for that combination.
    */

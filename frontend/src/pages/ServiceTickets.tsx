@@ -358,8 +358,11 @@ export default function ServiceTickets() {
         if (overrideError) {
           console.warn('Header overrides not saved (run migration_add_service_ticket_header_overrides to enable):', overrideError);
         }
-        // Push approver, po_afe, cc back to underlying time entries so edits persist to the calendar
-        if (selectedTicket?.entries?.length && editableTicket) {
+        // Push approver, po_afe, cc back to underlying time entries only when ticket is draft/rejected
+        const ticketRecord = findMatchingTicketRecord(selectedTicket);
+        const ws = (ticketRecord as { workflow_status?: string })?.workflow_status;
+        const isDraftOrRejected = ws === 'draft' || ws === 'rejected';
+        if (isDraftOrRejected && selectedTicket?.entries?.length && editableTicket) {
           const headerUpdates = {
             approver: editableTicket.approver?.trim() || null,
             po_afe: editableTicket.poAfe?.trim() || null,

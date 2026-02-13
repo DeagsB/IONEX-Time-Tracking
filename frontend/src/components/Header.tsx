@@ -67,10 +67,13 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
     mutationFn: async (data: any) => {
       const { timeEntriesService } = await import('../services/supabaseServices');
       if (!user) throw new Error('Not authenticated');
-      
+      const customerId = data.projectId && projects
+        ? projects.find((p: any) => p.id === data.projectId)?.customer_id ?? null
+        : null;
       const entryData = {
         user_id: user.id,
         project_id: data.projectId || null,
+        customer_id: customerId,
         date: data.date,
         start_time: data.startTime || null,
         end_time: data.endTime || null,
@@ -88,8 +91,22 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
       
       return await timeEntriesService.create(entryData);
     },
-    onSuccess: () => {
+    onSuccess: async (data) => {
+      const { serviceTicketsService } = await import('../services/supabaseServices');
+      if (data?.customer_id) {
+        await serviceTicketsService.syncTicketHeaderFromTimeEntry({
+          date: data.date,
+          userId: data.user_id,
+          customerId: data.customer_id,
+          location: data.location,
+          approver: data.approver,
+          po_afe: data.po_afe,
+          cc: data.cc,
+          isDemo: isDemoMode,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
     },
   });
 
