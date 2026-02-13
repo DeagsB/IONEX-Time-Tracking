@@ -653,17 +653,18 @@ export function applyHeaderOverridesToTicket(
   const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
   const locFallback = (ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
 
-  // Use direct approver/po_afe/cc from overrides - no combining, no parsing
-  const approverVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
-    ? (ov.approver ?? '')
-    : undefined;
-  const poAfeVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
-    ? (ov.po_afe ?? '')
-    : undefined;
-  const ccVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
-    ? (ov.cc ?? '')
-    : undefined;
-  // Legacy: approver_po_afe is a single combined string from old tickets
+  // Use direct approver/po_afe/cc from overrides, or parse legacy approver_po_afe when needed
+  const hasDirectFields = ov?.approver != null || ov?.po_afe != null || ov?.cc != null;
+  const approverVal = hasDirectFields ? (ov.approver ?? '') : undefined;
+  const poAfeVal = hasDirectFields ? (ov.po_afe ?? '') : undefined;
+  const ccVal = hasDirectFields ? (ov.cc ?? '') : undefined;
+  // Legacy: approver_po_afe is a combined string - parse into separate fields when approver/po_afe/cc not present
+  const legacyParsed = (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '' && (ov?.approver == null && ov?.po_afe == null && ov?.cc == null))
+    ? parseApproverPoAfe(String(ov.approver_po_afe))
+    : null;
+  const approverValFromLegacy = legacyParsed ? legacyParsed.approver : undefined;
+  const poAfeValFromLegacy = legacyParsed ? legacyParsed.poAfe : undefined;
+  const ccValFromLegacy = legacyParsed ? legacyParsed.cc : undefined;
   const legacyApproverName = (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
     ? ov.approver_po_afe
     : undefined;
@@ -695,25 +696,25 @@ export function applyHeaderOverridesToTicket(
       service_location: ((ov?.service_location ?? ticket.customerInfo.service_location ?? locFallback).trim() || locFallback),
       location_code: ov?.location_code ?? ticket.customerInfo.location_code,
       po_number: ov?.po_number ?? ticket.customerInfo.po_number,
-      approver: approverVal ?? ticket.customerInfo.approver ?? undefined,
-      po_afe: poAfeVal ?? ticket.customerInfo.po_afe ?? undefined,
-      cc: ccVal ?? ticket.customerInfo.cc ?? undefined,
-      approver_name: approverVal ?? legacyApproverName ?? ticket.customerInfo.approver_name ?? entryPo ?? undefined,
+      approver: approverVal ?? approverValFromLegacy ?? ticket.customerInfo.approver ?? undefined,
+      po_afe: poAfeVal ?? poAfeValFromLegacy ?? ticket.customerInfo.po_afe ?? undefined,
+      cc: ccVal ?? ccValFromLegacy ?? ticket.customerInfo.cc ?? undefined,
+      approver_name: approverVal ?? approverValFromLegacy ?? legacyApproverName ?? ticket.customerInfo.approver_name ?? entryPo ?? undefined,
     },
     projectApproverPoAfe: legacyApproverName ?? ticket.projectApproverPoAfe ?? entryPo ?? undefined,
-    projectApprover: approverVal ?? ticket.projectApprover,
-    projectPoAfe: poAfeVal ?? ticket.projectPoAfe,
-    projectCc: ccVal ?? ticket.projectCc,
+    projectApprover: approverVal ?? approverValFromLegacy ?? ticket.projectApprover,
+    projectPoAfe: poAfeVal ?? poAfeValFromLegacy ?? ticket.projectPoAfe,
+    projectCc: ccVal ?? ccValFromLegacy ?? ticket.projectCc,
     projectOther: ov?.other ?? ticket.projectOther,
-    entryApprover: approverVal ?? ticket.entryApprover,
-    entryPoAfe: poAfeVal ?? ticket.entryPoAfe,
-    entryCc: ccVal ?? ticket.entryCc,
+    entryApprover: approverVal ?? approverValFromLegacy ?? ticket.entryApprover,
+    entryPoAfe: poAfeVal ?? poAfeValFromLegacy ?? ticket.entryPoAfe,
+    entryCc: ccVal ?? ccValFromLegacy ?? ticket.entryCc,
     entryOther: ov?.other ?? ticket.entryOther,
     rates,
   };
 }
 
-/** Get approver/PO/AFE/CC from a ticket - NO PARSING. Uses direct fields only. */
+/** Get approver/PO/AFE/CC from a ticket. Uses direct fields when present; parses legacy approver_po_afe when needed. */
 export function getApproverPoAfeCcFromTicket(
   ticket: { projectApprover?: string; projectPoAfe?: string; projectCc?: string; projectApproverPoAfe?: string; entryApprover?: string; entryPoAfe?: string; entryCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> },
   headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string } | null
@@ -722,8 +723,9 @@ export function getApproverPoAfeCcFromTicket(
   if (ov?.approver != null || ov?.po_afe != null || ov?.cc != null) {
     return { approver: ov.approver ?? '', poAfe: ov.po_afe ?? '', cc: ov.cc ?? '' };
   }
+  // Legacy: approver_po_afe is a combined string - parse it into separate fields for correct display
   if (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '') {
-    return { approver: ov.approver_po_afe, poAfe: '', cc: '' };
+    return parseApproverPoAfe(String(ov.approver_po_afe));
   }
   const entryApprover = ticket.entryApprover ?? ticket.entries?.find((e) => e.approver?.trim())?.approver ?? '';
   const entryPoAfe = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe ?? '';
