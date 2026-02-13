@@ -80,6 +80,9 @@ export default function WeekView() {
   // Edit existing entry modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<any>(null);
+  // View-only modal (admin viewing another user's calendar)
+  const [viewOnlyEntry, setViewOnlyEntry] = useState<any>(null);
+  const [viewOnlyDisplay, setViewOnlyDisplay] = useState<Record<string, any>>({});
   const [editedEntry, setEditedEntry] = useState({
     description: '',
     customer_id: '', // For filtering projects
@@ -658,12 +661,38 @@ export default function WeekView() {
     createTimeEntryMutation.mutate(timeEntryData);
   };
 
-  // Handle clicking on an existing time entry to edit it
+  // Handle clicking on an existing time entry to edit it (or view-only when admin viewing another user)
   const handleEntryClick = (entry: any, event: React.MouseEvent) => {
     event.stopPropagation();
-    // Prevent editing entries when viewing another employee's calendar
+    // When admin viewing another employee's calendar: open view-only modal
     if (viewUserId && isAdmin) {
-      alert('You cannot edit entries for other employees. Switch to your own calendar to edit entries.');
+      const parseTime = (timeStr: string) => {
+        if (timeStr.includes('T') || timeStr.includes(' ')) {
+          const date = new Date(timeStr);
+          return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        }
+        return timeStr.slice(0, 5);
+      };
+      const entryProject = projects?.find((p: any) => p.id === entry.project_id);
+      const parsed = parseApproverPoAfe(entry.po_afe || '');
+      const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
+      setViewOnlyDisplay({
+        description: entry.description || '',
+        customer_name: entryProject?.customer?.name || customers?.find((c: any) => c.id === entryProject?.customer_id)?.name || '',
+        project_label: entryProject ? (entryProject.project_number ? `${entryProject.project_number} - ${entryProject.name}` : entryProject.name) : '(No Project)',
+        start_time: parseTime(entry.start_time),
+        end_time: parseTime(entry.end_time),
+        hours: entry.hours || 0,
+        billable: entry.billable !== undefined ? entry.billable : true,
+        rate_type: entry.rate_type || 'Shop Time',
+        location: entry.location || '',
+        approver: parsed.approver || oth.approver || '',
+        poAfe: parsed.poAfe || oth.poAfe || '',
+        cc: parsed.cc || oth.cc || '',
+        other: oth.otherRemainder || '',
+        project_color: entryProject?.color || '#666',
+      });
+      setViewOnlyEntry(entry);
       return;
     }
     setEditingEntry(entry);
@@ -3380,6 +3409,160 @@ export default function WeekView() {
                   title={editingEntry.isRunningTimer ? 'Stop timer' : 'Delete entry'}
                 >
                   {editingEntry.isRunningTimer ? '⏹️' : (deleteTimeEntryMutation.isPending ? '...' : '🗑️')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View-Only Time Entry Modal (admin viewing another user's calendar) */}
+      {viewOnlyEntry && viewUserId && isAdmin && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setModalMouseDownPos({ x: e.clientX, y: e.clientY });
+          }}
+          onMouseUp={(e) => {
+            if (e.target === e.currentTarget && modalMouseDownPos) {
+              const moved = Math.abs(e.clientX - modalMouseDownPos.x) > 5 || Math.abs(e.clientY - modalMouseDownPos.y) > 5;
+              if (!moved) setViewOnlyEntry(null);
+              setModalMouseDownPos(null);
+            }
+          }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-secondary)',
+              borderRadius: '12px',
+              padding: '25px',
+              width: '500px',
+              maxWidth: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+              border: '1px solid var(--border-color)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '15px' }}>
+              <div>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                  {(() => {
+                    const d = viewOnlyEntry.date;
+                    const dateObj = typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d)
+                      ? (([y, m, day]) => new Date(Number(y), Number(m) - 1, Number(day)))(d.split('-'))
+                      : new Date(d);
+                    return dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                  })()}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                  View only · {viewedEmployee ? `${viewedEmployee.first_name} ${viewedEmployee.last_name}` : 'Employee'}
+                </div>
+              </div>
+              <button
+                onClick={() => setViewOnlyEntry(null)}
+                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: 'var(--text-secondary)', padding: 0, width: '30px', height: '30px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Time</label>
+                <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>
+                  {viewOnlyDisplay.start_time} → {viewOnlyDisplay.end_time} ({viewOnlyDisplay.hours?.toFixed(2)}h)
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Customer</label>
+                <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>
+                  {viewOnlyDisplay.customer_name || '—'}
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Project</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ backgroundColor: viewOnlyDisplay.project_color || '#666', width: '14px', height: '14px', borderRadius: '50%', flexShrink: 0 }} />
+                  <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', flex: 1 }}>
+                    {viewOnlyDisplay.project_label || '—'}
+                  </div>
+                </div>
+              </div>
+
+              {viewOnlyDisplay.customer_name && (
+                <>
+                  <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label className="label">Location</label>
+                    <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>
+                      {viewOnlyDisplay.location || '—'}
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px', marginBottom: '20px' }}>
+                    <div className="form-group">
+                      <label className="label">PO/AFE</label>
+                      <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.poAfe || '—'}</div>
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Approver (AC)</label>
+                      <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.approver || '—'}</div>
+                    </div>
+                    <div className="form-group">
+                      <label className="label">CC</label>
+                      <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.cc || '—'}</div>
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Other</label>
+                      <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>{viewOnlyDisplay.other || '—'}</div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Rate Type</label>
+                <div style={{ padding: '10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px' }}>
+                  {viewOnlyDisplay.rate_type || '—'} {viewOnlyDisplay.billable ? '(Billable)' : '(Internal)'}
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="label">Description</label>
+                <div style={{ padding: '12px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', minHeight: '60px', whiteSpace: 'pre-wrap' }}>
+                  {viewOnlyDisplay.description || '—'}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setViewOnlyEntry(null)}
+                  style={{
+                    padding: '12px 24px',
+                    backgroundColor: 'var(--primary-color)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Close
                 </button>
               </div>
             </div>
