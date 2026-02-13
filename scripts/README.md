@@ -2,6 +2,18 @@
 
 One-off and maintenance scripts for IONEX Time Tracking.
 
+## migrate-header-overrides-to-separate-fields.mjs
+
+One-time migration: backfills `approver`, `po_afe`, `cc` in `header_overrides` from `approver_po_afe` so the frontend can read separate fields directly (no parsing).
+
+**How to run**
+
+```bash
+cd backend && node -r dotenv/config ../scripts/migrate-header-overrides-to-separate-fields.mjs
+```
+
+Requires `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in `backend/.env`.
+
 ## remove-duplicate-service-tickets-morgan-wolfe.sql
 
 Removes duplicate service tickets for **Morgan Wolfe** that were created when location was added to service ticket matching (same date + customer ended up with multiple tickets, e.g. one with empty location and one with a location).

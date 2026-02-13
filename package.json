@@ -14,7 +14,8 @@
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "cd backend && npm run build",
     "build:frontend": "cd frontend && npm run build",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "migrate:header-overrides": "cd backend && node -r dotenv/config ../scripts/migrate-header-overrides-to-separate-fields.mjs"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
