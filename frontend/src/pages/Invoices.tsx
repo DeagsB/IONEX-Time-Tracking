@@ -1098,7 +1098,6 @@ export default function Invoices() {
                 fontWeight: 600,
                 cursor: 'pointer',
                 marginLeft: 'auto',
-                marginRight: '16px',
               }}
               title="View groups marked as invoiced"
             >
