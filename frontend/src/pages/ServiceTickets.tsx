@@ -438,10 +438,14 @@ export default function ServiceTickets() {
         }
         const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
         if (fromEntry) {
+          const ea = ticket.entryApprover ?? '';
+          const ep = ticket.entryPoAfe ?? ticket.customerInfo.po_number ?? '';
+          const ec = ticket.entryCc ?? '';
+          const approverDeduped = (ea === ep || ea === ec) ? (ticket.customerInfo.approver_name ?? '') : (ea || (ticket.customerInfo.approver_name ?? ''));
           return {
-            approver: ticket.entryApprover ?? ticket.customerInfo.approver_name ?? '',
-            po_afe: ticket.entryPoAfe ?? ticket.customerInfo.po_number ?? '',
-            cc: ticket.entryCc ?? '',
+            approver: approverDeduped,
+            po_afe: ep,
+            cc: ec,
           };
         }
         return {
@@ -2254,10 +2258,17 @@ export default function ServiceTickets() {
                       }
                       const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
                       if (fromEntry) {
+                        // Deduplicate: if approver equals po_afe or cc, treat as data error - show only in po_afe/cc
+                        const entryApprover = ticket.entryApprover || '';
+                        const entryPoAfe = ticket.entryPoAfe || ticket.customerInfo.po_number || '';
+                        const entryCc = ticket.entryCc || '';
+                        const approverDeduped = (entryApprover === entryPoAfe || entryApprover === entryCc)
+                          ? (ticket.customerInfo.approver_name || '')
+                          : (entryApprover || ticket.customerInfo.approver_name || '');
                         return {
-                          approver: ticket.entryApprover || ticket.customerInfo.approver_name || '',
-                          poAfe: ticket.entryPoAfe || ticket.customerInfo.po_number || '',
-                          cc: ticket.entryCc || '',
+                          approver: approverDeduped,
+                          poAfe: entryPoAfe,
+                          cc: entryCc,
                           other: ticket.projectOther || '',
                         };
                       }
@@ -2326,6 +2337,11 @@ export default function ServiceTickets() {
                     let merged: typeof initialEditable;
                     if (isFrozen || Object.keys(ov).length > 0) {
                       // Use override when non-empty; else fallback to initialEditable (live ticket data)
+                      const ovApprover = (ov.approver != null && String(ov.approver).trim() !== '') ? String(ov.approver).trim() : initialEditable.approver;
+                      const ovPoAfe = (ov.po_afe != null && String(ov.po_afe).trim() !== '') ? String(ov.po_afe).trim() : initialEditable.poAfe;
+                      const ovCc = (ov.cc != null && String(ov.cc).trim() !== '') ? String(ov.cc).trim() : initialEditable.cc;
+                      // Deduplicate: if approver equals po_afe or cc, clear approver (treat as data error)
+                      const approverDeduped = (ovApprover === ovPoAfe || ovApprover === ovCc) ? '' : ovApprover;
                       merged = {
                         customerName: useOverride(ov.customer_name, initialEditable.customerName),
                         address: useOverride(ov.address, initialEditable.address),
@@ -2337,9 +2353,9 @@ export default function ServiceTickets() {
                         serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
                         locationCode: useOverride(ov.location_code, initialEditable.locationCode),
                         poNumber: useOverride(ov.po_number, initialEditable.poNumber),
-                        approver: (ov.approver != null && String(ov.approver).trim() !== '') ? String(ov.approver).trim() : initialEditable.approver,
-                        poAfe: (ov.po_afe != null && String(ov.po_afe).trim() !== '') ? String(ov.po_afe).trim() : initialEditable.poAfe,
-                        cc: (ov.cc != null && String(ov.cc).trim() !== '') ? String(ov.cc).trim() : initialEditable.cc,
+                        approver: approverDeduped,
+                        poAfe: ovPoAfe,
+                        cc: ovCc,
                         other: useOverride(ov.other, initialEditable.other),
                         techName: useOverride(ov.tech_name, initialEditable.techName),
                         projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
