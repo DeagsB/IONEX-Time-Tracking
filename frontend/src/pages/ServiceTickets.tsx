@@ -1121,12 +1121,23 @@ export default function ServiceTickets() {
     },
   });
 
-  /** Extract billing key from ticket.id (approver::poAfe::cc) for merge logic */
+  /** Extract grouping key from ticket.id (_::poAfe::_) */
   const getTicketBillingKeyForMerge = (ticketId: string): string =>
     getTicketBillingKey(ticketId);
   const getRecordGroupingKeyForMerge = (et: { header_overrides?: unknown }): string => {
     const ov = (et.header_overrides as Record<string, string> | null) ?? {};
     return buildGroupingKey(ov.po_afe ?? '');
+  };
+  const getRecordBillingKeyForMerge = (et: { header_overrides?: unknown }): string => {
+    const ov = (et.header_overrides as Record<string, string> | null) ?? {};
+    return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+  };
+  /** Full billing key from ticket entries - for precise matching of approved records */
+  const getTicketFullBillingKey = (ticket: { entryApprover?: string; entryPoAfe?: string; entryCc?: string; projectApprover?: string; projectPoAfe?: string; projectCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> }): string => {
+    const approver = ticket.entryApprover ?? ticket.entries?.[0]?.approver ?? ticket.projectApprover ?? '';
+    const poAfe = ticket.entryPoAfe ?? ticket.entries?.[0]?.po_afe ?? ticket.projectPoAfe ?? '';
+    const cc = ticket.entryCc ?? (ticket.entries?.[0] as any)?.cc ?? ticket.projectCc ?? '';
+    return buildBillingKey(approver, poAfe, cc);
   };
 
   const tickets = useMemo(() => {
@@ -1146,11 +1157,19 @@ export default function ServiceTickets() {
           (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
           (et.project_id || '') === (ticket.projectId || '') &&
           (et.location || '') === ticketLocation;
+        const ticketFullKey = getTicketFullBillingKey(ticket);
+        // Prefer full billing key match for approved records (approver::po_afe::cc) so AR and other approved tickets are found
         let matchingRecords = existingTickets.filter(
-          et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === ticketBillingKey
+          et => baseFilterMerge(et) && getRecordBillingKeyForMerge(et) === ticketFullKey
         );
         let ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
-        // Do NOT match tickets with specific billing keys to legacy records - causes wrong display for non-admins
+        // Fallback to grouping key match (po_afe only) for draft tickets
+        if (!ticketRecord) {
+          matchingRecords = existingTickets.filter(
+            et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === ticketBillingKey
+          );
+          ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
+        }
         if (!ticketRecord && ticketBillingKey === legacyBillingKey) {
           matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === legacyBillingKey);
           ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
@@ -1199,12 +1218,14 @@ export default function ServiceTickets() {
           (bt.location || '') === (et.location || '');
         const etGroupingKey = getRecordGroupingKeyForMerge(et);
         const legacyKey = '_::_::_';
+        const etBillingKey = getRecordBillingKeyForMerge(et);
         return !baseTickets.some(bt => {
+          const btFullKey = getTicketFullBillingKey(bt);
           const btGroupingKey = bt.id ? getTicketBillingKeyForMerge(bt.id) : legacyKey;
           if (!baseFilterSt(bt)) return false;
+          if (etBillingKey === btFullKey) return true; // full billing key match (approved records)
           if (etGroupingKey === btGroupingKey) return true;
-          // Do NOT match legacy records to tickets with specific keys - causes wrong display
-          if (btGroupingKey === legacyKey) return true; // legacy fallback 2 only
+          if (btGroupingKey === legacyKey) return true; // legacy fallback 2
           return false;
         });
       });
@@ -1347,13 +1368,22 @@ export default function ServiceTickets() {
       (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
       (et.project_id || '') === (ticket.projectId || '') &&
       (et.location || '') === ticketLocation;
-    const matches = existingTickets?.filter(
-      et => baseFilter(et) && getRecordGroupingKey(et) === ticketBillingKey
+    const ticketFullKey = getTicketFullBillingKey(ticket);
+    const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
+      const ov = (et.header_overrides as Record<string, string> | null) ?? {};
+      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+    };
+    // Prefer full billing key match for approved records so AR and other approved tickets are found
+    let matches = existingTickets?.filter(
+      et => baseFilter(et) && getRecordBillingKey(et) === ticketFullKey
     ) || [];
     let found = matches.find(et => !(et as any).is_discarded) || matches[0];
-    // Do NOT match tickets with specific billing keys to legacy records - that overwrites correct
-    // entry values with wrong header_overrides. Only legacy fallback 2: ticket has legacy key.
-    // Legacy fallback 2: base ticket has legacy key but record has grouping key from admin approval
+    if (!found) {
+      matches = existingTickets?.filter(
+        et => baseFilter(et) && getRecordGroupingKey(et) === ticketBillingKey
+      ) || [];
+      found = matches.find(et => !(et as any).is_discarded) || matches[0];
+    }
     if (!found && ticketBillingKey === legacyBillingKey) {
       const legacyMatches = existingTickets?.filter(et => baseFilter(et) && getRecordGroupingKey(et) === legacyBillingKey) || [];
       found = legacyMatches.find(et => !(et as any).is_discarded) || legacyMatches[0];

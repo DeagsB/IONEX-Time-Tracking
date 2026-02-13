@@ -18,6 +18,9 @@ import {
   getProjectApproverPoAfe,
   InvoiceGroupKey,
   calculateTicketTotalAmount,
+  buildBillingKey,
+  buildGroupingKey,
+  getTicketBillingKey,
 } from '../utils/serviceTickets';
 import { generateAndStorePdf, mergePdfBlobs } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
@@ -240,15 +243,35 @@ export default function Invoices() {
 
     const ticketList: (ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string })[] = [];
 
+    const getRecordGroupingKey = (r: ApprovedRecord) => {
+      const ov = (r.header_overrides as Record<string, string> | null) ?? {};
+      return buildGroupingKey(ov.po_afe ?? '');
+    };
+    const getRecordBillingKey = (r: ApprovedRecord) => {
+      const ov = (r.header_overrides as Record<string, string> | null) ?? {};
+      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+    };
+    const getTicketFullBillingKey = (bt: ServiceTicket) => {
+      const approver = bt.entryApprover ?? bt.entries?.[0]?.approver ?? bt.projectApprover ?? '';
+      const poAfe = bt.entryPoAfe ?? bt.entries?.[0]?.po_afe ?? bt.projectPoAfe ?? '';
+      const cc = bt.entryCc ?? (bt.entries?.[0] as any)?.cc ?? bt.projectCc ?? '';
+      return buildBillingKey(approver, poAfe, cc);
+    };
     // Add tickets that match approved records (from base or standalone)
     for (const rec of approved) {
       const ticketLocation = rec.location || '';
+      const recGroupingKey = getRecordGroupingKey(rec);
+      const recBillingKey = getRecordBillingKey(rec);
       const match = baseTickets.find(
-        (bt) =>
-          bt.date === rec.date &&
-          bt.userId === rec.user_id &&
-          (bt.customerId === rec.customer_id || (!rec.customer_id && bt.customerId === 'unassigned')) &&
-          (bt.location || '') === ticketLocation
+        (bt) => {
+          if (bt.date !== rec.date || bt.userId !== rec.user_id) return false;
+          if (bt.customerId !== rec.customer_id && !(rec.customer_id == null && bt.customerId === 'unassigned')) return false;
+          if ((bt.location || '') !== ticketLocation) return false;
+          if ((bt.projectId || '') !== (rec.project_id || '')) return false;
+          const btGroupingKey = bt.id ? getTicketBillingKey(bt.id) : '_::_::_';
+          const btFullKey = getTicketFullBillingKey(bt);
+          return recBillingKey === btFullKey || recGroupingKey === btGroupingKey;
+        }
       );
 
       if (match) {
