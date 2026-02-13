@@ -662,17 +662,28 @@ function buildPdfHtml(
   fieldOtAmount: number,
   expensesTotal: number,
   grandTotal: number,
-  headerOverrides?: { approver_po_afe?: string } | null
+  headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string } | null
 ): string {
-  // Use same resolution as Invoices grouping so PO/CC/AFE displays correctly in merged exports
-  const approverPoAfe = headerOverrides != null
-    ? getApproverPoAfeFromTicket(ticket, headerOverrides)
-    : (ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? ticket.projectApproverPoAfe ?? '');
-  const ci = ticket.customerInfo as { approver?: string; po_afe?: string; cc?: string };
-  const { approver, poAfe, cc } = ci.approver != null || ci.po_afe != null || ci.cc != null
-    ? { approver: ci.approver ?? '', poAfe: ci.po_afe ?? '', cc: ci.cc ?? '' }
+  // Use per-ticket header overrides when present; fall back to ticket's merged data (from applyHeaderOverridesToTicket)
+  // This fixes the bug where only the first ticket had PO/AFE, Approver, CC, Other filled in merged exports
+  const ov = headerOverrides;
+  const hasOverride = ov && (
+    ov.approver != null || ov.po_afe != null || ov.cc != null ||
+    (ov.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
+  );
+  const approverPoAfe = hasOverride
+    ? getApproverPoAfeFromTicket(ticket, ov)
+    : (ticket.projectApproverPoAfe ?? ticket.customerInfo.approver_name ?? ticket.customerInfo.po_number ?? '');
+  const { approver, poAfe, cc } = ov && (ov.approver != null || ov.po_afe != null || ov.cc != null)
+    ? {
+        approver: (ov.approver ?? '').toString().trim(),
+        poAfe: (ov.po_afe ?? '').toString().trim(),
+        cc: (ov.cc ?? '').toString().trim(),
+      }
     : parseApproverPoAfe(approverPoAfe);
-  const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
+  const otherVal = (ov?.other != null && String(ov.other).trim() !== '')
+    ? String(ov.other).trim()
+    : (ticket.projectOther ?? ticket.customerInfo.location_code ?? '');
   return `
     <div id="service-ticket" style="
       width: 8.5in;
