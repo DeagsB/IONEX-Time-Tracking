@@ -420,7 +420,9 @@ export default function ServiceTickets() {
             }
           }
           queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
-          queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+          // Skip billableEntries invalidation on save to prevent ticket list refetch from clearing
+          // panel (grouping can change when location/approver pushed to entries). List refreshes
+          // on next date/filter change or navigation.
         }
       }
       // Apply pending expense deletes (expenses marked for removal)
@@ -1660,10 +1662,14 @@ export default function ServiceTickets() {
   }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
 
   // Close panel when selected ticket is no longer in filtered list; refresh when ticket data changes (e.g. entry deleted from calendar)
-  // Skip sync when fresh has empty entries but current has entries - prevents flicker after save (refetch can briefly return stale data)
+  // After save, ticket id can change (e.g. location update) - find by record id to avoid closing panel
   useEffect(() => {
     if (selectedTicket) {
-      const freshTicket = filteredTickets.find(t => t.id === selectedTicket.id);
+      let freshTicket = filteredTickets.find(t => t.id === selectedTicket.id);
+      if (!freshTicket && currentTicketRecordId) {
+        // Ticket id may have changed after save (e.g. location pushed to entries); find by record
+        freshTicket = filteredTickets.find(t => findMatchingTicketRecord(t)?.id === currentTicketRecordId);
+      }
       if (!freshTicket) {
         setSelectedTicket(null);
         setCurrentTicketRecordId(null);
@@ -1675,7 +1681,7 @@ export default function ServiceTickets() {
         initialServiceRowsRef.current = entriesToServiceRows(freshTicket.entries).map(r => ({ ...r }));
       }
     }
-  }, [activeTab, showDiscarded, filteredTickets, selectedTicket]);
+  }, [activeTab, showDiscarded, filteredTickets, selectedTicket, currentTicketRecordId]);
 
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
