@@ -259,6 +259,7 @@ export default function Invoices() {
           projectNumber: proj?.project_number,
           projectLocation: proj?.location,
           projectApproverPoAfe: getProjectApproverPoAfe(proj) || undefined,
+          projectOther: proj?.other,
         };
         const standaloneWithOverrides = applyHeaderOverridesToTicket(rawStandalone, rec.header_overrides ?? undefined);
         ticketList.push({ ...standaloneWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawStandalone.recordProjectId });
@@ -277,13 +278,16 @@ export default function Invoices() {
       const keyObj = getInvoiceGroupKey(
         {
           projectId: t.recordProjectId ?? t.projectId,
+          projectName: t.projectName,
+          projectNumber: t.projectNumber,
           location: t.location,
           projectApproverPoAfe: t.projectApproverPoAfe,
           projectLocation: t.projectLocation,
+          projectOther: t.projectOther,
           customerInfo: t.customerInfo,
           entries: t.entries,
         },
-        t.headerOverrides as { approver_po_afe?: string; service_location?: string } | undefined
+        t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
       );
       if (!keyObj.approverCode) continue; // Skip tickets without approver code — not ready for invoicing
       const groupKey = keyObj.approverCode;
@@ -305,13 +309,16 @@ export default function Invoices() {
       const keyObj = getInvoiceGroupKey(
         {
           projectId: first.recordProjectId ?? first.projectId,
+          projectName: first.projectName,
+          projectNumber: first.projectNumber,
           location: first.location,
           projectApproverPoAfe: first.projectApproverPoAfe,
           projectLocation: first.projectLocation,
+          projectOther: first.projectOther,
           customerInfo: first.customerInfo,
           entries: first.entries,
         },
-        first.headerOverrides as { approver_po_afe?: string; service_location?: string } | undefined
+        first.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
       );
       result.push({ key: keyObj, tickets: list });
     }
@@ -723,10 +730,23 @@ export default function Invoices() {
                   border: '1px solid var(--border-color)',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-                    Project: {key.projectId || '(none)'} | Approver: {key.approverCode || '(none)'} | Location:{' '}
-                    {key.location || '(none)'} | CC: {key.cc || '(none)'}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                    <span title={[key.projectNumber, key.projectName].filter(Boolean).join(' – ') || key.projectId || '(none)'}>
+                      <strong>Project:</strong>{' '}
+                      {(() => {
+                        const num = key.projectNumber?.trim();
+                        const name = key.projectName?.trim();
+                        const display = num && name ? `${num} – ${name}` : num || name || key.projectId || '(none)';
+                        const maxLen = 40;
+                        return display.length > maxLen ? `${display.slice(0, maxLen)}…` : display;
+                      })()}
+                    </span>
+                    <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
+                    <span><strong>PO/AFE:</strong> {key.poAfe || '(none)'}</span>
+                    <span><strong>Location:</strong> {key.location || '(none)'}</span>
+                    <span><strong>CC:</strong> {key.cc || '(none)'}</span>
+                    <span><strong>Other:</strong> {key.other || '(none)'}</span>
                   </div>
                   <button
                     onClick={() => handleExportSingleGroup(idx)}

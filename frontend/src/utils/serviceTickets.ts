@@ -570,9 +570,14 @@ function getRateCode(rateType?: string): 'RT' | 'TT' | 'FT' | 'OT' {
 /** Grouping keys for invoice export: project, approver, location, CC */
 export interface InvoiceGroupKey {
   projectId: string;
+  projectName?: string;
+  projectNumber?: string;
   approverCode: string;
+  approver: string;
+  poAfe: string;
   location: string;
   cc: string;
+  other: string;
 }
 
 /** Header overrides from service_tickets.header_overrides (user edits + frozen rates saved on the ticket) */
@@ -678,16 +683,23 @@ export function getApproverPoAfeFromTicket(
 
 /** Get grouping key for a ticket (for merged PDF export) */
 export function getInvoiceGroupKey(
-  ticket: { projectId?: string; location?: string; projectApproverPoAfe?: string; projectLocation?: string; customerInfo?: { service_location?: string }; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
-  headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; service_location?: string } | null
+  ticket: { projectId?: string; projectName?: string; projectNumber?: string; location?: string; projectApproverPoAfe?: string; projectLocation?: string; projectOther?: string; customerInfo?: { service_location?: string }; entryPoAfe?: string; entries?: Array<{ po_afe?: string }> },
+  headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | null
 ): InvoiceGroupKey {
   const approverPoAfe = getApproverPoAfeFromTicket(ticket, headerOverrides);
+  const parsed = parseApproverPoAfe(approverPoAfe);
   const location = (headerOverrides?.service_location ?? ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
+  const other = (headerOverrides?.other ?? ticket.projectOther ?? '').trim();
   return {
     projectId: ticket.projectId ?? '',
+    projectName: ticket.projectName,
+    projectNumber: ticket.projectNumber,
     approverCode: extractApproverCode(approverPoAfe),
+    approver: parsed.approver,
+    poAfe: parsed.poAfe,
     location,
-    cc: extractCcValue(approverPoAfe),
+    cc: parsed.cc,
+    other,
   };
 }
 
