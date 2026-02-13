@@ -68,6 +68,7 @@ export interface TimeEntryWithRelations {
   id: string;
   date: string;
   hours: number;
+  updated_at?: string;
   description?: string;
   rate_type?: string;
   start_time?: string;

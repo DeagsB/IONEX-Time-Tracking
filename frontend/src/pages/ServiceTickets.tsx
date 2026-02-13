@@ -2336,7 +2336,7 @@ export default function ServiceTickets() {
                     
                     // Use whichever was last saved: time entry or service ticket header_overrides
                     const entryMaxUpdated = ticket.entries?.length
-                      ? Math.max(...ticket.entries.map((e: { updated_at?: string }) => e.updated_at ? new Date(e.updated_at).getTime() : 0))
+                      ? Math.max(...ticket.entries.map((e) => e.updated_at ? new Date(e.updated_at).getTime() : 0))
                       : 0;
                     const ticketUpdated = ticketRecord?.updated_at ? new Date(ticketRecord.updated_at).getTime() : 0;
                     const useEntryValues = entryMaxUpdated > ticketUpdated;
