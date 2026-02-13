@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, extractApproverCode } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -991,11 +991,13 @@ export default function ServiceTickets() {
             approved_by_admin_id: null,
           }).eq('id', record.id);
         } else if (ticket.customerId && ticket.customerId !== 'unassigned') {
+          const approverCode = ticket.id ? getTicketApproverCode(ticket.id) : '_';
           const created = await serviceTicketsService.getOrCreateTicket({
             date: ticket.date,
             userId: ticket.userId,
             customerId: ticket.customerId,
             location: ticket.location || '',
+            approverCode,
           }, isDemoMode);
           await supabase.from(tableName).update({
             is_discarded: true,
@@ -1092,6 +1094,17 @@ export default function ServiceTickets() {
     },
   });
 
+  /** Extract approver code from ticket.id (last segment after final "-") for merge logic */
+  const getTicketApproverCodeForMerge = (ticketId: string): string => {
+    const lastDash = ticketId.lastIndexOf('-');
+    return lastDash >= 0 ? ticketId.slice(lastDash + 1) : '_';
+  };
+  const getRecordApproverCodeForMerge = (et: { header_overrides?: unknown }): string => {
+    const ov = (et.header_overrides as Record<string, string> | null) ?? {};
+    const combined = buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+    return extractApproverCode(combined) || '_';
+  };
+
   const tickets = useMemo(() => {
     const baseTickets = billableEntries ? groupEntriesIntoTickets(billableEntries, employees) : [];
     
@@ -1099,13 +1112,15 @@ export default function ServiceTickets() {
     let mergedTickets = baseTickets;
     if (existingTickets && existingTickets.length > 0) {
       mergedTickets = baseTickets.map(ticket => {
-        // Find matching ticket record in database by date+user+customer+location (prefer non-discarded)
+        // Find matching ticket record by date+user+customer+location+approver (DB uses UUID for id)
         const ticketLocation = ticket.location || '';
+        const ticketApprover = ticket.id ? getTicketApproverCodeForMerge(ticket.id) : '_';
         const matchingRecords = existingTickets.filter(
-          et => et.date === ticket.date && 
-                et.user_id === ticket.userId && 
+          et => et.date === ticket.date &&
+                et.user_id === ticket.userId &&
                 (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-                (et.location || '') === ticketLocation
+                (et.location || '') === ticketLocation &&
+                getRecordApproverCodeForMerge(et) === ticketApprover
         );
         const ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         
@@ -1143,11 +1158,13 @@ export default function ServiceTickets() {
         if (!et.customer_id) return false;
         // Skip discarded records — they should not appear in the main list
         if ((et as any).is_discarded) return false;
-        // Check if any base ticket already matches this record (including location)
-        return !baseTickets.some(
-          bt => bt.date === et.date && bt.userId === et.user_id &&
-                (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
-                (bt.location || '') === (et.location || '')
+        // Check if any base ticket already matches this record (date+user+customer+location+approver)
+        const etApprover = getRecordApproverCodeForMerge(et);
+        return !baseTickets.some(bt =>
+          bt.date === et.date && bt.userId === et.user_id &&
+          (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
+          (bt.location || '') === (et.location || '') &&
+          (bt.id ? getTicketApproverCodeForMerge(bt.id) : '_') === etApprover
         );
       });
 
@@ -1258,20 +1275,34 @@ export default function ServiceTickets() {
     }
   };
 
+  /** Extract approver code from ticket.id (last segment after final "-") */
+  const getTicketApproverCode = (ticketId: string): string => {
+    const lastDash = ticketId.lastIndexOf('-');
+    return lastDash >= 0 ? ticketId.slice(lastDash + 1) : '_';
+  };
+
+  /** Get approver code from existing record's header_overrides */
+  const getRecordApproverCode = (et: { header_overrides?: unknown }): string => {
+    const ov = (et.header_overrides as Record<string, string> | null) ?? {};
+    const combined = buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+    return extractApproverCode(combined) || '_';
+  };
+
   /**
    * Find a matching existing ticket record for a computed ticket.
-   * Matches on date + user + customer + location (the full composite key).
-   * Prefers non-discarded records to avoid stale discarded matches hiding real tickets.
+   * Matches by date+user+customer+location+approver. Different approver codes = separate tickets.
+   * DB uses UUID for id; ticket.id is composite key. Prefers non-discarded records.
    */
-  const findMatchingTicketRecord = (ticket: { date: string; userId: string; customerId: string; location?: string }) => {
+  const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; location?: string }) => {
     const ticketLocation = ticket.location || '';
+    const ticketApprover = ticket.id ? getTicketApproverCode(ticket.id) : '_';
     const matches = existingTickets?.filter(
-      et => et.date === ticket.date && 
-            et.user_id === ticket.userId && 
+      et => et.date === ticket.date &&
+            et.user_id === ticket.userId &&
             (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-            (et.location || '') === ticketLocation
+            (et.location || '') === ticketLocation &&
+            getRecordApproverCode(et) === ticketApprover
     ) || [];
-    // Prefer non-discarded records; fall back to first match
     return matches.find(et => !(et as any).is_discarded) || matches[0] || null;
   };
 
@@ -1324,11 +1355,13 @@ export default function ServiceTickets() {
     }
 
     // For non-admins, create a draft record without a ticket number
+    const approverCode = ticket.id ? getTicketApproverCode(ticket.id) : '_';
     const record = await serviceTicketsService.getOrCreateTicket({
       date: ticket.date,
       userId: ticket.userId,
       customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
       location: ticket.location || '',
+      approverCode,
     }, isDemoMode);
 
     return record.id;
@@ -2757,11 +2790,13 @@ export default function ServiceTickets() {
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
+                                const approverCode = ticket.id ? getTicketApproverCode(ticket.id) : '_';
                                 const ticketRecord = await serviceTicketsService.getOrCreateTicket({
                                   date: ticket.date,
                                   userId: ticket.userId,
                                   customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
                                   location: ticket.location || '',
+                                  approverCode,
                                 }, isDemoMode);
                                 const newStatus = isApproved ? 'draft' : 'approved';
                                 await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
@@ -4178,11 +4213,13 @@ export default function ServiceTickets() {
                         onClick={async () => {
                           setIsApproving(true);
                           try {
+                            const approverCode = selectedTicket.id ? getTicketApproverCode(selectedTicket.id) : '_';
                             const record = await serviceTicketsService.getOrCreateTicket({
                               date: selectedTicket.date,
                               userId: selectedTicket.userId,
                               customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
                               location: selectedTicket.location || '',
+                              approverCode,
                             }, isDemoMode);
                             await serviceTicketsService.updateWorkflowStatus(record.id, 'rejected', isDemoMode, rejectNote.trim() || null);
                             queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
@@ -4434,11 +4471,13 @@ export default function ServiceTickets() {
                             try {
                               const ok = await performSave();
                               if (!ok) { setIsApproving(false); return; }
+                              const approverCode = selectedTicket.id ? getTicketApproverCode(selectedTicket.id) : '_';
                               const ticketRecord = await serviceTicketsService.getOrCreateTicket({
                                 date: selectedTicket.date,
                                 userId: selectedTicket.userId,
                                 customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
                                 location: selectedTicket.location || '',
+                                approverCode,
                               }, isDemoMode);
                               const newStatus = isTicketApproved ? 'draft' : 'approved';
                               await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);

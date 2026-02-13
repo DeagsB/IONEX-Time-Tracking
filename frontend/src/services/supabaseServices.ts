@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import { buildApproverPoAfe, extractApproverCode } from '../utils/serviceTickets';
 
 // Service functions for interacting with Supabase tables
 
@@ -1113,15 +1114,16 @@ export const serviceTicketsService = {
   },
 
   /**
-   * Get or create a service ticket record for a given date/user/customer combination
-   * Used for basic user approvals when no ticket record exists yet
-   * Requires a valid customerId - tickets without customers can't be invoiced
+   * Get or create a service ticket record for a given date/user/customer combination.
+   * When approverCode is provided, matches by approver (from header_overrides) so different
+   * approvers create separate tickets. Requires a valid customerId.
    */
   async getOrCreateTicket(params: {
     date: string;
     userId: string;
     customerId: string | null;
     location?: string;
+    approverCode?: string;
   }, isDemo: boolean = false): Promise<{ id: string }> {
     // Don't create tickets without a customer - they need a project/customer to be valid
     if (!params.customerId) {
@@ -1130,22 +1132,28 @@ export const serviceTicketsService = {
     
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     const ticketLocation = params.location || '';
+    const targetApprover = params.approverCode ?? '_';
     
-    // First try to find an existing ticket (matching on location too)
-    const { data: existing, error: findError } = await supabase
+    // Find existing tickets matching date+user+customer+location (may be multiple with different approvers)
+    const { data: candidates, error: findError } = await supabase
       .from(tableName)
-      .select('id')
+      .select('id, header_overrides')
       .eq('date', params.date)
       .eq('user_id', params.userId)
       .eq('customer_id', params.customerId)
-      .eq('location', ticketLocation)
-      .maybeSingle();
+      .eq('location', ticketLocation);
     
     if (findError) {
       console.error('Error finding ticket:', findError);
       throw findError;
     }
     
+    const getRecordApprover = (et: { header_overrides?: unknown }): string => {
+      const ov = (et.header_overrides as Record<string, string> | null) ?? {};
+      const combined = buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+      return extractApproverCode(combined) || '_';
+    };
+    const existing = candidates?.find(et => getRecordApprover(et) === targetApprover);
     if (existing) {
       return { id: existing.id };
     }
@@ -1166,16 +1174,21 @@ export const serviceTicketsService = {
     }
     
     // Create a new ticket record (without a ticket number - that's assigned on approval/export)
+    // Set approver in header_overrides so future finds can match by approver
+    const insertData: Record<string, unknown> = {
+      date: params.date,
+      user_id: params.userId,
+      customer_id: params.customerId,
+      location: ticketLocation,
+      workflow_status: 'draft',
+      employee_initials: employeeInitials,
+    };
+    if (targetApprover && targetApprover !== '_') {
+      insertData.header_overrides = { approver: targetApprover };
+    }
     const { data: newTicket, error: createError } = await supabase
       .from(tableName)
-      .insert({
-        date: params.date,
-        user_id: params.userId,
-        customer_id: params.customerId,
-        location: ticketLocation,
-        workflow_status: 'draft',
-        employee_initials: employeeInitials,
-      })
+      .insert(insertData)
       .select('id')
       .single();
     
@@ -1190,6 +1203,7 @@ export const serviceTicketsService = {
   /**
    * When a time entry is saved, sync approver/po_afe/cc to the service ticket's header_overrides.
    * Only updates draft or rejected tickets - submitted/approved tickets are not modified.
+   * When multiple tickets exist (different approvers), matches by approver code.
    */
   async syncTicketHeaderFromTimeEntry(params: {
     date: string;
@@ -1205,16 +1219,22 @@ export const serviceTicketsService = {
     if (!params.customerId) return;
     const tableName = params.isDemo ? 'service_tickets_demo' : 'service_tickets';
     const ticketLocation = params.location ?? '';
-    const { data: ticket, error: findError } = await supabase
+    const targetApprover = extractApproverCode(buildApproverPoAfe(params.approver ?? '', params.po_afe ?? '', params.cc ?? '')) || '_';
+    const { data: candidates, error: findError } = await supabase
       .from(tableName)
       .select('id, header_overrides, workflow_status')
       .eq('date', params.date)
       .eq('user_id', params.userId)
       .eq('customer_id', params.customerId)
-      .eq('location', ticketLocation)
-      .maybeSingle();
-    if (findError || !ticket) return;
-    if (ticket.workflow_status !== 'draft' && ticket.workflow_status !== 'rejected') return;
+      .eq('location', ticketLocation);
+    if (findError || !candidates?.length) return;
+    const getRecordApprover = (et: { header_overrides?: unknown }): string => {
+      const ov = (et.header_overrides as Record<string, string> | null) ?? {};
+      const combined = buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+      return extractApproverCode(combined) || '_';
+    };
+    const ticket = candidates.find(et => getRecordApprover(et) === targetApprover);
+    if (!ticket || ticket.workflow_status !== 'draft' && ticket.workflow_status !== 'rejected') return;
     const existing = (ticket.header_overrides as Record<string, unknown>) ?? {};
     const merged = {
       ...existing,

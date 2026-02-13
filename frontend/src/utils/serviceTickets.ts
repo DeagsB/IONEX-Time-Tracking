@@ -228,8 +228,14 @@ export function groupEntriesIntoTickets(
     // Use entry location, or fall back to project location, or empty string
     const entryLocation = entry.location || entry.project?.location || '';
 
-    // Create composite key - include location to create separate tickets per location
-    const ticketKey = `${date}-${customerId}-${userId}-${entryLocation}`;
+    // Build approver/PO/AFE/CC from entry, fall back to project - different approver codes create separate tickets
+    const entryApproverPoAfe = buildApproverPoAfe(entry.approver ?? '', entry.po_afe ?? '', entry.cc ?? '');
+    const projectApproverPoAfe = entry.project ? buildApproverPoAfe(entry.project.approver ?? '', entry.project.po_afe ?? '', entry.project.cc ?? '') : '';
+    const approverPoAfe = entryApproverPoAfe || projectApproverPoAfe;
+    const approverCode = extractApproverCode(approverPoAfe) || '_';
+
+    // Create composite key - include location and approver code to create separate tickets per location/approver
+    const ticketKey = `${date}-${customerId}-${userId}-${entryLocation}-${approverCode}`;
 
     // Get or create ticket
     let ticket = ticketMap.get(ticketKey);

@@ -353,6 +353,7 @@ export default function WeekView() {
         });
       }
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await refetchTimeEntries();
       setShowTimeEntryModal(false);
@@ -389,6 +390,7 @@ export default function WeekView() {
         });
       }
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await refetchTimeEntries();
       setShowEditModal(false);
@@ -411,6 +413,7 @@ export default function WeekView() {
     onSuccess: async () => {
       console.log('Time entry deleted successfully');
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
+      await queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await refetchTimeEntries();
       setShowEditModal(false);
