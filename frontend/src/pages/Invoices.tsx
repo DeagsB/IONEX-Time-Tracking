@@ -495,6 +495,26 @@ export default function Invoices() {
     });
   };
 
+  const handleUnmarkAsInvoiced = (groupId: string) => {
+    setMarkedInvoicedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(groupId);
+      try {
+        localStorage.setItem(MARKED_INVOICED_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const [showInvoiced, setShowInvoiced] = useState(false);
+
+  const invoicedGroups = useMemo(
+    () => groupedTickets.filter((g) => markedInvoicedIds.has(getGroupId(g))),
+    [groupedTickets, markedInvoicedIds]
+  );
+
   const visibleGroups = useMemo(
     () => groupedTickets.filter((g) => !markedInvoicedIds.has(getGroupId(g))),
     [groupedTickets, markedInvoicedIds]
@@ -849,9 +869,178 @@ export default function Invoices() {
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           No approved tickets ready for export. Approve service tickets first in the Service Tickets page.
         </div>
+      ) : showInvoiced ? (
+        <div>
+          <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowInvoiced(false)}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              ← Back to pending
+            </button>
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+              {invoicedGroups.length} invoiced group(s)
+            </span>
+          </div>
+          {invoicedGroups.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+              No invoiced groups. Use "Back to pending" to return.
+            </div>
+          ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {invoicedGroups.map((group) => {
+              const { key, tickets: groupTickets } = group;
+              const groupId = getGroupId(group);
+              return (
+                <div
+                  key={groupId}
+                  style={{
+                    padding: '16px',
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                      <span title={[key.projectNumber, key.projectName].filter(Boolean).join(' – ') || key.projectId || '(none)'}>
+                        <strong>Project:</strong>{' '}
+                        {(() => {
+                          const num = key.projectNumber?.trim();
+                          const name = key.projectName?.trim();
+                          const display = num && name ? `${num} – ${name}` : num || name || key.projectId || '(none)';
+                          const maxLen = 40;
+                          return display.length > maxLen ? `${display.slice(0, maxLen)}…` : display;
+                        })()}
+                      </span>
+                      <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
+                      <span><strong>PO/AFE:</strong> {key.poAfe || '(none)'}</span>
+                      <span><strong>Location:</strong> {key.location || '(none)'}</span>
+                      <span><strong>CC:</strong> {key.cc || '(none)'}</span>
+                      <span><strong>Other:</strong> {key.other || '(none)'}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                      <button
+                        onClick={() => handleExportSingleGroup(group)}
+                        disabled={!!exportProgress || !!qboProgress || exportingGroupIdx !== null}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: 'var(--primary-color)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: exportProgress || qboProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
+                        }}
+                        title="Download this group's merged PDF"
+                      >
+                        {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
+                      </button>
+                      <button
+                        onClick={() => handleUnmarkAsInvoiced(groupId)}
+                        disabled={!!exportProgress || !!qboProgress}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: exportProgress || qboProgress ? 'not-allowed' : 'pointer',
+                        }}
+                        title="Move this group back to pending"
+                      >
+                        Unmark as invoiced
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{
+                    marginBottom: '12px',
+                    padding: '12px',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    borderLeft: '4px solid var(--primary-color)',
+                  }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                      Invoice Line Item Breakdown
+                    </div>
+                    {buildCcBreakdown(
+                      groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
+                      (t) =>
+                        getInvoiceGroupKey(
+                          {
+                            projectId: t.recordProjectId ?? t.projectId,
+                            projectName: t.projectName,
+                            projectNumber: t.projectNumber,
+                            location: t.location,
+                            projectApproverPoAfe: t.projectApproverPoAfe,
+                            projectLocation: t.projectLocation,
+                            projectOther: t.projectOther,
+                            customerInfo: t.customerInfo,
+                            entries: t.entries,
+                          },
+                          t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                        ),
+                      expensesByRecordId
+                    ).map(({ ticketList, cc, totalAmount }, i) => (
+                      <CcBreakdownLine key={i} ticketList={ticketList} cc={cc} totalAmount={totalAmount} />
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {groupTickets.map((t) => (
+                      <span
+                        key={t.id}
+                        style={{
+                          padding: '4px 10px',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                        }}
+                      >
+                        {t.ticketNumber} – {t.userName} ({t.totalHours}h)
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          )}
+        </div>
       ) : visibleGroups.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All groups have been marked as invoiced.
+          {invoicedGroups.length > 0 && (
+            <div style={{ marginTop: '16px' }}>
+              <button
+                onClick={() => setShowInvoiced(true)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                See invoiced ({invoicedGroups.length})
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -897,6 +1086,24 @@ export default function Invoices() {
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
               {visibleGroups.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {visibleGroups.length} group(s)
             </span>
+            {invoicedGroups.length > 0 && (
+              <button
+                onClick={() => setShowInvoiced(true)}
+                style={{
+                  padding: '6px 14px',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+                title="View groups marked as invoiced"
+              >
+                See invoiced ({invoicedGroups.length})
+              </button>
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
