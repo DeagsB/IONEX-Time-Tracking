@@ -1125,7 +1125,7 @@ export default function ServiceTickets() {
         // Find matching ticket record by date+user+customer+location+approver (DB uses UUID for id)
         const ticketLocation = ticket.location || '';
         const ticketApprover = ticket.id ? getTicketApproverCodeForMerge(ticket.id) : '_';
-        const baseFilterMerge = (et: typeof existingTickets[0]) =>
+        const baseFilterMerge = (et: NonNullable<typeof existingTickets>[number]) =>
           et.date === ticket.date &&
           et.user_id === ticket.userId &&
           (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
@@ -1328,7 +1328,7 @@ export default function ServiceTickets() {
     }
     const ticketLocation = ticket.location || '';
     const ticketApprover = ticket.id ? getTicketApproverCode(ticket.id) : '_';
-    const baseFilter = (et: typeof existingTickets[0]) =>
+    const baseFilter = (et: NonNullable<typeof existingTickets>[number]) =>
       et.date === ticket.date &&
       et.user_id === ticket.userId &&
       (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
