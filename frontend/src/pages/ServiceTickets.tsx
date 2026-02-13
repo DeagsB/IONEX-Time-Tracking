@@ -1029,22 +1029,27 @@ export default function ServiceTickets() {
   // All users can access this page - non-admins will only see their own tickets
 
   // Group entries into tickets (with employee rates)
-  // Fetch existing ticket numbers and edited hours for display (from appropriate table based on demo mode)
+  // Fetch existing ticket numbers and edited hours for display (scoped to date range for performance)
   const { data: existingTickets } = useQuery({
-    queryKey: ['existingServiceTickets', isDemoMode],
+    queryKey: ['existingServiceTickets', isDemoMode, startDate, endDate],
     queryFn: async () => {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-      const { data, error } = await supabase
+      let query = supabase
         .from(tableName)
         .select(`
           id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
-        `);
+        `)
+        .gte('date', startDate)
+        .lte('date', endDate);
+      const { data, error } = await query;
       if (error) {
         // If the join fails (column doesn't exist yet), try without the join
         const { data: fallbackData, error: fallbackError } = await supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides');
+          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
+          .gte('date', startDate)
+          .lte('date', endDate);
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
