@@ -1086,24 +1086,22 @@ export default function Invoices() {
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
               {visibleGroups.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {visibleGroups.length} group(s)
             </span>
-            {invoicedGroups.length > 0 && (
-              <button
-                onClick={() => setShowInvoiced(true)}
-                style={{
-                  padding: '6px 14px',
-                  backgroundColor: 'var(--bg-tertiary)',
-                  color: 'var(--text-secondary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-                title="View groups marked as invoiced"
-              >
-                See invoiced ({invoicedGroups.length})
-              </button>
-            )}
+            <button
+              onClick={() => setShowInvoiced(true)}
+              style={{
+                padding: '6px 14px',
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              title="View groups marked as invoiced"
+            >
+              See invoiced ({invoicedGroups.length})
+            </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
