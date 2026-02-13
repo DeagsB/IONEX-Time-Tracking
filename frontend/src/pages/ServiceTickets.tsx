@@ -1199,6 +1199,11 @@ export default function ServiceTickets() {
           matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === legacyBillingKey);
           ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         }
+        // Legacy: record has empty header_overrides - match to base ticket by date+user+customer+project (approved tickets without billing fields)
+        if (!ticketRecord) {
+          matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === legacyBillingKey);
+          ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
+        }
         
         // If ticket has been edited, use edited hours instead of original
         if (ticketRecord?.is_edited && ticketRecord.edited_hours) {
@@ -1257,6 +1262,7 @@ export default function ServiceTickets() {
           if (etBillingKey === btFullKey) return true; // full billing key match (approved records)
           if (etGroupingKey === btGroupingKey) return true;
           if (btGroupingKey === legacyKey) return true; // legacy fallback 2
+          if (etGroupingKey === legacyKey) return true; // record has empty header_overrides - match to any base ticket
           return false;
         });
       });
@@ -1432,6 +1438,11 @@ export default function ServiceTickets() {
       found = matches.find(et => !(et as any).is_discarded) || matches[0];
     }
     if (!found && ticketBillingKey === legacyBillingKey) {
+      const legacyMatches = existingTickets?.filter(et => baseFilter(et) && getRecordGroupingKey(et) === legacyBillingKey) || [];
+      found = legacyMatches.find(et => !(et as any).is_discarded) || legacyMatches[0];
+    }
+    // Legacy: record has empty header_overrides - match to any record with same date+user+customer+project
+    if (!found) {
       const legacyMatches = existingTickets?.filter(et => baseFilter(et) && getRecordGroupingKey(et) === legacyBillingKey) || [];
       found = legacyMatches.find(et => !(et as any).is_discarded) || legacyMatches[0];
     }

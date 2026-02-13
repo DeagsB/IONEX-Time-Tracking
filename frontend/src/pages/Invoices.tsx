@@ -268,7 +268,7 @@ export default function Invoices() {
           if ((bt.projectId || '') !== (rec.project_id || '')) return false;
           const btGroupingKey = bt.id ? getTicketBillingKey(bt.id) : '_::_::_';
           const btFullKey = getTicketFullBillingKey(bt);
-          return recBillingKey === btFullKey || recGroupingKey === btGroupingKey;
+          return recBillingKey === btFullKey || recGroupingKey === btGroupingKey || recGroupingKey === '_::_::_';
         }
       );
 
