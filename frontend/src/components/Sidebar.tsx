@@ -231,6 +231,9 @@ export default function Sidebar() {
                 )}
               </span>
             </SidebarLink>
+            <SidebarLink to="/employees" active={isActive('/employees')}>
+              Employees
+            </SidebarLink>
           </div>
         )}
 
@@ -275,53 +278,28 @@ export default function Sidebar() {
           </div>
         )}
 
-        {isAdmin && (
+        {isAdmin && !isDemoMode && (
           <div style={{ marginBottom: '30px' }}>
-            <div style={{ 
-              fontSize: '11px', 
-              fontWeight: '600', 
-              textTransform: 'uppercase', 
+            <div style={{
+              fontSize: '11px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
               letterSpacing: '1px',
               color: 'var(--text-tertiary)',
               marginBottom: '10px',
-              padding: '0 10px'
+              padding: '0 10px',
             }}>
-              ADMIN
+              SETTINGS
             </div>
-            {isAdmin && (
-              <>
-                <SidebarLink to="/user-management" active={isActive('/user-management')}>
-                  User Management
-                </SidebarLink>
-                <SidebarLink to="/employees" active={isActive('/employees')}>
-                  Employees
-                </SidebarLink>
-              </>
-            )}
-            <SidebarLink to="/user-archive" active={isActive('/user-archive')}>
-              User Archive
+            <SidebarLink to="/profile" active={isActive('/profile')}>
+              Profile
             </SidebarLink>
-            {!isDemoMode && (
-              <div style={{ marginTop: '30px' }}>
-                <div style={{
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  textTransform: 'uppercase',
-                  letterSpacing: '1px',
-                  color: 'var(--text-tertiary)',
-                  marginBottom: '10px',
-                  padding: '0 10px',
-                }}>
-                  SETTINGS
-                </div>
-                <SidebarLink to="/profile" active={isActive('/profile')}>
-                  Profile
-                </SidebarLink>
-                <SidebarLink to="/changelog" active={isActive('/changelog')}>
-                  Changelog
-                </SidebarLink>
-              </div>
-            )}
+            <SidebarLink to="/user-management" active={isActive('/user-management')}>
+              User Management
+            </SidebarLink>
+            <SidebarLink to="/changelog" active={isActive('/changelog')}>
+              Changelog
+            </SidebarLink>
           </div>
         )}
       </div>

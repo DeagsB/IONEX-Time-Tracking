@@ -17,7 +17,6 @@ import Profile from './pages/Profile';
 import ServiceTickets from './pages/ServiceTickets';
 import Invoices from './pages/Invoices';
 import EmployeeReports from './pages/EmployeeReports';
-import UserArchive from './pages/UserArchive';
 import UserManagement from './pages/UserManagement';
 import Changelog from './pages/Changelog';
 import Layout from './components/Layout';
@@ -163,14 +162,7 @@ function AppRoutes() {
             </AdminRoute>
           }
         />
-        <Route
-          path="user-archive"
-          element={
-            <AdminRoute>
-              <UserArchive />
-            </AdminRoute>
-          }
-        />
+        <Route path="user-archive" element={<Navigate to="/user-management" replace />} />
         <Route
           path="user-management"
           element={
