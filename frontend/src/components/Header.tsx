@@ -86,6 +86,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         approver: data.approver?.trim() || null,
         po_afe: data.po_afe?.trim() || null,
         cc: data.cc?.trim() || null,
+        other: data.other?.trim() || null,
         is_demo: isDemoMode, // Mark as demo entry if in demo mode
       };
       
@@ -102,6 +103,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
           approver: data.approver,
           po_afe: data.po_afe,
           cc: data.cc,
+          other: data.other,
           isDemo: isDemoMode,
         });
       }
@@ -254,6 +256,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         approver: approver?.trim() || null,
         po_afe: poAfe?.trim() || null,
         cc: cc?.trim() || null,
+        other: other?.trim() || null,
       });
 
       // Stop timer after saving

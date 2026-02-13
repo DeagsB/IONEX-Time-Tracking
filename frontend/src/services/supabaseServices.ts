@@ -1199,6 +1199,7 @@ export const serviceTicketsService = {
     approver?: string | null;
     po_afe?: string | null;
     cc?: string | null;
+    other?: string | null;
     isDemo?: boolean;
   }): Promise<void> {
     if (!params.customerId) return;
@@ -1220,6 +1221,7 @@ export const serviceTicketsService = {
       approver: params.approver ?? '',
       po_afe: params.po_afe ?? '',
       cc: params.cc ?? '',
+      other: params.other ?? '',
     };
     await supabase.from(tableName).update({ header_overrides: merged }).eq('id', ticket.id);
   },

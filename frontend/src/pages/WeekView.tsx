@@ -348,6 +348,7 @@ export default function WeekView() {
           approver: data.approver,
           po_afe: data.po_afe,
           cc: data.cc,
+          other: data.other,
           isDemo: isDemoMode,
         });
       }
@@ -383,6 +384,7 @@ export default function WeekView() {
           approver: data.approver,
           po_afe: data.po_afe,
           cc: data.cc,
+          other: data.other,
           isDemo: isDemoMode,
         });
       }
@@ -680,6 +682,7 @@ export default function WeekView() {
       approver: newEntry.approver?.trim() || null,
       po_afe: newEntry.poAfe?.trim() || null,
       cc: newEntry.cc?.trim() || null,
+      other: newEntry.other?.trim() || null,
     };
 
     if (newEntry.project_id) {
@@ -703,7 +706,7 @@ export default function WeekView() {
       };
       const entryProject = projects?.find((p: any) => p.id === entry.project_id);
       const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
-      // Use entry's approver, po_afe, cc only - no fallback from project.other
+      // Use entry's approver, po_afe, cc, other - no fallback from project.other
       setViewOnlyDisplay({
         description: entry.description || '',
         customer_name: entryProject?.customer?.name || customers?.find((c: any) => c.id === entryProject?.customer_id)?.name || '',
@@ -717,7 +720,7 @@ export default function WeekView() {
         approver: entry.approver ?? '',
         poAfe: entry.po_afe ?? '',
         cc: entry.cc ?? '',
-        other: oth.otherRemainder || '',
+        other: entry.other ?? oth.otherRemainder ?? '',
         project_color: entryProject?.color || '#666',
       });
       setViewOnlyEntry(entry);
@@ -737,7 +740,7 @@ export default function WeekView() {
     // Look up the customer_id and project from the project
     const entryProject = projects?.find((p: any) => p.id === entry.project_id);
     const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
-    // Use entry's approver, po_afe, cc only - no fallback from project.other to avoid cross-field contamination
+    // Use entry's approver, po_afe, cc, other - no fallback from project.other to avoid cross-field contamination
     setEditedEntry({
       description: entry.description || '',
       customer_id: entryProject?.customer_id || '',
@@ -751,7 +754,7 @@ export default function WeekView() {
       approver: entry.approver ?? '',
       poAfe: entry.po_afe ?? '',
       cc: entry.cc ?? '',
-      other: oth.otherRemainder,
+      other: entry.other ?? oth.otherRemainder ?? '',
     });
     setEditDurationInputRaw(null);
     setShowEditModal(true);
@@ -912,6 +915,7 @@ export default function WeekView() {
       approver: editedEntry.approver?.trim() || null,
       po_afe: editedEntry.poAfe?.trim() || null,
       cc: editedEntry.cc?.trim() || null,
+      other: editedEntry.other?.trim() || null,
     };
 
     updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });

@@ -367,6 +367,7 @@ export default function ServiceTickets() {
             approver: editableTicket.approver?.trim() || null,
             po_afe: editableTicket.poAfe?.trim() || null,
             cc: editableTicket.cc?.trim() || null,
+            other: editableTicket.other?.trim() || null,
           };
           for (const entry of selectedTicket.entries) {
             if (entry.id) {
@@ -2252,11 +2253,12 @@ export default function ServiceTickets() {
                     poNumber: ticket.customerInfo.po_number || '',
                     ...((): { approver: string; poAfe: string; cc: string; other: string } => {
                       // Prioritize time entry values over project - user can edit entry data on the ticket
-                      const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
+                      const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc || ticket.entryOther;
                       if (fromEntry) {
                         const entryApprover = ticket.entryApprover || '';
                         const entryPoAfe = ticket.entryPoAfe || ticket.customerInfo.po_number || '';
                         const entryCc = ticket.entryCc || '';
+                        const entryOther = ticket.entryOther ?? ticket.projectOther ?? '';
                         // Don't use customerInfo.approver_name - it can be buildApproverPoAfe(po_afe,cc) from
                         // applyHeaderOverridesToTicket, causing CC value to flash in approver field
                         const approverDeduped = (entryApprover === entryPoAfe || entryApprover === entryCc)
@@ -2266,7 +2268,7 @@ export default function ServiceTickets() {
                           approver: approverDeduped,
                           poAfe: entryPoAfe,
                           cc: entryCc,
-                          other: ticket.projectOther || '',
+                          other: entryOther,
                         };
                       }
                       const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
@@ -2346,16 +2348,15 @@ export default function ServiceTickets() {
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
                     let merged: typeof initialEditable;
                     if (isFrozen || Object.keys(ov).length > 0) {
-                      // For approver/po_afe/cc: use whichever was last saved (time entry vs ticket)
+                      // For approver/po_afe/cc/other: use whichever was last saved (time entry vs ticket)
                       const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
                       const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
                       const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
+                      const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
                       const approverDeduped = (ovApprover === ovPoAfe || ovApprover === ovCc) ? '' : ovApprover;
-                      const [finalApprover, finalPoAfe, finalCc] = useEntryValues
-                        ? [initialEditable.approver, initialEditable.poAfe, initialEditable.cc]
-                        : [approverDeduped, ovPoAfe, ovCc];
-                      // Other: always prefer ticket header_overrides (time entries don't have other column; only ticket can save it)
-                      const finalOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
+                      const [finalApprover, finalPoAfe, finalCc, finalOther] = useEntryValues
+                        ? [initialEditable.approver, initialEditable.poAfe, initialEditable.cc, initialEditable.other]
+                        : [approverDeduped, ovPoAfe, ovCc, ovOther];
                       merged = {
                         customerName: useOverride(ov.customer_name, initialEditable.customerName),
                         address: useOverride(ov.address, initialEditable.address),

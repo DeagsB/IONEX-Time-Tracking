@@ -44,6 +44,7 @@ export interface ServiceTicket {
   entryApprover?: string;
   entryPoAfe?: string;
   entryCc?: string;
+  entryOther?: string;
   ticketNumber?: string; // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
   totalHours: number;
   entries: TimeEntryWithRelations[];
@@ -77,6 +78,7 @@ export interface TimeEntryWithRelations {
   approver?: string;
   po_afe?: string; // PO/AFE entered on the time entry
   cc?: string;
+  other?: string;
   is_demo?: boolean;
   user?: {
     id: string;
@@ -322,6 +324,7 @@ export function groupEntriesIntoTickets(
         entryApprover: (entry as any).approver || undefined,
         entryPoAfe: entry.po_afe || undefined,
         entryCc: (entry as any).cc || undefined,
+        entryOther: (entry as any).other || undefined,
         totalHours: 0,
         entries: [],
         hoursByRateType: {
