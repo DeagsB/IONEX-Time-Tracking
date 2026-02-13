@@ -45,6 +45,51 @@ function ticketNumberSortValue(ticketNumber: string | undefined): number {
   return m ? parseInt(m[0], 10) : 0;
 }
 
+/** Format ticket numbers with ranges (e.g. DB_25001, DB_25002, DB_25005 -> "DB_25001 - DB_25002, DB_25005") */
+function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
+  if (ticketNumbers.length === 0) return '';
+  const parsed = ticketNumbers
+    .filter(Boolean)
+    .map((tn) => {
+      const m = tn.match(/^(.+?)(\d{3,})$/);
+      return m ? { prefix: m[1], num: parseInt(m[2], 10), full: tn } : { prefix: tn, num: 0, full: tn };
+    })
+    .sort((a, b) => (a.prefix !== b.prefix ? a.prefix.localeCompare(b.prefix) : a.num - b.num));
+  const parts: string[] = [];
+  let i = 0;
+  while (i < parsed.length) {
+    const start = i;
+    while (i + 1 < parsed.length && parsed[i + 1].prefix === parsed[i].prefix && parsed[i + 1].num === parsed[i].num + 1) {
+      i++;
+    }
+    if (i > start) {
+      parts.push(`${parsed[start].full} - ${parsed[i].full}`);
+    } else {
+      parts.push(parsed[i].full);
+    }
+    i++;
+  }
+  return parts.join(', ');
+}
+
+/** Build CC breakdown: "AR_xx1, AR_xx2, HV_xx3 - HV_xx7 - CC: xxxxxxxx" */
+function buildCcBreakdown(
+  tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string })[],
+  getKey: (t: typeof tickets[0]) => InvoiceGroupKey
+): { ticketList: string; cc: string }[] {
+  const byCc = new Map<string, string[]>();
+  for (const t of tickets) {
+    const key = getKey(t);
+    const cc = (key.cc || '').trim() || '(none)';
+    const list = byCc.get(cc) ?? [];
+    if (t.ticketNumber) list.push(t.ticketNumber);
+    byCc.set(cc, list);
+  }
+  return [...byCc.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([cc, nums]) => ({ ticketList: formatTicketNumbersWithRanges(nums), cc }));
+}
+
 export default function Invoices() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -766,6 +811,30 @@ export default function Invoices() {
                   >
                     {exportingGroupIdx === idx ? 'Generating…' : 'Download'}
                   </button>
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                  {buildCcBreakdown(
+                    groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string })[],
+                    (t) =>
+                      getInvoiceGroupKey(
+                        {
+                          projectId: t.recordProjectId ?? t.projectId,
+                          projectName: t.projectName,
+                          projectNumber: t.projectNumber,
+                          location: t.location,
+                          projectApproverPoAfe: t.projectApproverPoAfe,
+                          projectLocation: t.projectLocation,
+                          projectOther: t.projectOther,
+                          customerInfo: t.customerInfo,
+                          entries: t.entries,
+                        },
+                        t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                      )
+                  ).map(({ ticketList, cc }, i) => (
+                    <div key={i} style={{ marginBottom: '4px' }}>
+                      {ticketList} – CC: {cc}
+                    </div>
+                  ))}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {groupTickets.map((t) => (
