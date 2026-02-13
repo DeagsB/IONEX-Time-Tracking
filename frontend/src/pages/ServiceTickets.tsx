@@ -380,6 +380,7 @@ export default function ServiceTickets() {
             }
           }
           queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+          queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
         }
       }
       // Apply pending expense deletes (expenses marked for removal)
@@ -2338,18 +2339,20 @@ export default function ServiceTickets() {
                     }
                     
                     // Use whichever was last saved: time entry or service ticket header_overrides
+                    // Approved tickets: always use header_overrides (we never push to entries, so entries are stale)
+                    const ov = (ticketRecord?.header_overrides as Record<string, string | number> | null) ?? {};
+                    const hasApprovedTicketNumber = !!existingRecord?.ticket_number;
                     const entryMaxUpdated = ticket.entries?.length
                       ? Math.max(...ticket.entries.map((e) => e.updated_at ? new Date(e.updated_at).getTime() : 0))
                       : 0;
                     const ticketUpdated = ticketRecord?.updated_at ? new Date(ticketRecord.updated_at).getTime() : 0;
-                    const useEntryValues = entryMaxUpdated > ticketUpdated;
+                    const useEntryValues = !hasApprovedTicketNumber && entryMaxUpdated > ticketUpdated;
                     
-                    const ov = (ticketRecord?.header_overrides as Record<string, string | number> | null) ?? {};
                     const useOverride = (ovVal: string | number | undefined, fallback: string) =>
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
                     let merged: typeof initialEditable;
                     if (isFrozen || Object.keys(ov).length > 0) {
-                      // For approver/po_afe/cc/other: use whichever was last saved (time entry vs ticket)
+                      // For approver/po_afe/cc/other: approved tickets always use header_overrides; draft/rejected use last-saved
                       const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
                       const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
                       const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
