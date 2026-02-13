@@ -231,10 +231,9 @@ export default function ServiceTickets() {
     if (isOpen && !prevTicketPanelOpenRef.current) {
       prevTicketPanelOpenRef.current = true;
       setTicketPanelEntered(false);
-      const id = requestAnimationFrame(() => {
-        requestAnimationFrame(() => setTicketPanelEntered(true));
-      });
-      return () => cancelAnimationFrame(id);
+      // Let layout complete before animating in (avoids visible stretch with many entries)
+      const t = setTimeout(() => setTicketPanelEntered(true), 50);
+      return () => clearTimeout(t);
     }
     if (!isOpen) {
       prevTicketPanelOpenRef.current = false;
@@ -2800,6 +2799,7 @@ export default function ServiceTickets() {
               borderRadius: '12px',
               maxWidth: '900px',
               width: '100%',
+              height: '90vh',
               maxHeight: '90vh',
               overflow: 'auto',
               boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
