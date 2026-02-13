@@ -1195,7 +1195,7 @@ export default function ServiceTickets() {
         const userInitials = (firstName && lastName) ? `${firstName[0]}${lastName[0]}`.toUpperCase() : 'XX';
 
         const standaloneTicket: ServiceTicket & { displayTicketNumber?: string } = {
-          id: `${st.date}-${st.customer_id}-${st.user_id}`,
+          id: st.id,
           date: st.date,
           customerId: st.customer_id,
           customerName,
@@ -1291,10 +1291,14 @@ export default function ServiceTickets() {
 
   /**
    * Find a matching existing ticket record for a computed ticket.
-   * Matches by date+user+customer+location+approver. Different approver codes = separate tickets.
-   * DB uses UUID for id; ticket.id is composite key. Prefers non-discarded records.
+   * Standalone tickets use DB UUID as id - match by et.id === ticket.id first.
+   * Base tickets use composite key - match by date+user+customer+location+approver.
    */
   const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; location?: string }) => {
+    if (ticket.id && existingTickets) {
+      const byId = existingTickets.find(et => et.id === ticket.id);
+      if (byId) return (existingTickets.find(et => et.id === ticket.id && !(et as any).is_discarded) || byId) as typeof byId;
+    }
     const ticketLocation = ticket.location || '';
     const ticketApprover = ticket.id ? getTicketApproverCode(ticket.id) : '_';
     const matches = existingTickets?.filter(
@@ -1522,7 +1526,18 @@ export default function ServiceTickets() {
     
     return result;
   }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
-  
+
+  // Close panel when selected ticket is no longer in filtered list (e.g. after tab switch)
+  useEffect(() => {
+    if (selectedTicket) {
+      const stillInList = filteredTickets.some(t => t.id === selectedTicket.id);
+      if (!stillInList) {
+        setSelectedTicket(null);
+        setCurrentTicketRecordId(null);
+      }
+    }
+  }, [activeTab, showDiscarded, filteredTickets, selectedTicket]);
+
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
     let newDirection: 'asc' | 'desc';
