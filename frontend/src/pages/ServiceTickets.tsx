@@ -1488,6 +1488,8 @@ export default function ServiceTickets() {
         const workflowStatus = existing?.workflow_status || 'draft';
         
         if (activeTab === 'draft') {
+          // Hide zero-hour tickets from drafts
+          if ((t.totalHours ?? 0) <= 0) return false;
           // For admin: hide "new" tickets (no record yet) for other employees
           const isNewForOther = !existing && t.userId !== user?.id;
           if (isAdmin && isNewForOther) return false;
@@ -2389,17 +2391,23 @@ export default function ServiceTickets() {
                     const hadNoRecord = !findMatchingTicketRecord(ticket);
                     const ticketRecordId = await getOrCreateTicketRecord(ticket);
                     setCurrentTicketRecordId(ticketRecordId);
+                    // Don't refetch when opening a new ticket - it can cause the panel to auto-close.
+                    // Mark as stale so data refreshes on next navigation or user action.
                     if (hadNoRecord) {
-                      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
-                      void queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                      queryClient.invalidateQueries({
+                        queryKey: ['existingServiceTickets', isDemoMode],
+                        refetchType: 'none',
+                      });
                     }
                     // Clear restored_at when user interacts (opens ticket) so green indicator goes away
                     const rec = findMatchingTicketRecord(ticket);
                     if ((rec as any)?.restored_at) {
                       const tbl = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
                       supabase.from(tbl).update({ restored_at: null }).eq('id', ticketRecordId).then(() => {
-                        queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
-                        void queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                        queryClient.invalidateQueries({
+                          queryKey: ['existingServiceTickets', isDemoMode],
+                          refetchType: 'none',
+                        });
                       });
                     }
                     // Load expenses and ticket record in parallel for faster panel open
