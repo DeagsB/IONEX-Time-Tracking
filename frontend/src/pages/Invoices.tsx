@@ -72,6 +72,48 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
   return parts.join(', ');
 }
 
+/** Single CC breakdown line with copy button (excludes total from copy) */
+function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; cc: string; totalAmount: number }) {
+  const [copied, setCopied] = useState(false);
+  const copyText = `${ticketList} – CC: ${cc}`;
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '13px' }}>
+      <span style={{ color: 'var(--text-primary)', flex: 1 }}>
+        {ticketList} – CC: {cc}
+      </span>
+      <span style={{ fontWeight: 700, color: 'var(--primary-color)', fontSize: '14px', minWidth: '70px', textAlign: 'right' }}>
+        ${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </span>
+      <button
+        onClick={handleCopy}
+        title="Copy ticket list and CC (excludes total)"
+        style={{
+          padding: '4px 8px',
+          backgroundColor: copied ? 'var(--primary-color)' : 'var(--bg-secondary)',
+          color: copied ? 'white' : 'var(--text-secondary)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '4px',
+          fontSize: '11px',
+          fontWeight: 600,
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
 /** Build CC breakdown with totals: "AR_xx1, AR_xx2 – CC: xxxxxxxx – $X,XXX.XX" */
 function buildCcBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
@@ -859,7 +901,17 @@ export default function Invoices() {
                     {exportingGroupIdx === idx ? 'Generating…' : 'Download'}
                   </button>
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                <div style={{
+                  marginBottom: '12px',
+                  padding: '12px',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  borderLeft: '4px solid var(--primary-color)',
+                }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                    CC Breakdown
+                  </div>
                   {buildCcBreakdown(
                     groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
                     (t) =>
@@ -879,9 +931,7 @@ export default function Invoices() {
                       ),
                     expensesByRecordId
                   ).map(({ ticketList, cc, totalAmount }, i) => (
-                    <div key={i} style={{ marginBottom: '4px' }}>
-                      {ticketList} – CC: {cc} – ${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
+                    <CcBreakdownLine key={i} ticketList={ticketList} cc={cc} totalAmount={totalAmount} />
                   ))}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
