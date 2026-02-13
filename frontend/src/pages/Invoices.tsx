@@ -910,7 +910,7 @@ export default function Invoices() {
                   borderLeft: '4px solid var(--primary-color)',
                 }}>
                   <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
-                    CC Breakdown
+                    Invoice Line Item Break Down
                   </div>
                   {buildCcBreakdown(
                     groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
