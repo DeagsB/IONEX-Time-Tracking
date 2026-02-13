@@ -1572,13 +1572,18 @@ export default function ServiceTickets() {
     return result;
   }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
 
-  // Close panel when selected ticket is no longer in filtered list (e.g. after tab switch)
+  // Close panel when selected ticket is no longer in filtered list; refresh when ticket data changes (e.g. entry deleted from calendar)
   useEffect(() => {
     if (selectedTicket) {
-      const stillInList = filteredTickets.some(t => t.id === selectedTicket.id);
-      if (!stillInList) {
+      const freshTicket = filteredTickets.find(t => t.id === selectedTicket.id);
+      if (!freshTicket) {
         setSelectedTicket(null);
         setCurrentTicketRecordId(null);
+      } else if (freshTicket !== selectedTicket) {
+        // Ticket still in list but data changed (e.g. entry deleted) - use fresh version
+        setSelectedTicket(freshTicket);
+        setServiceRows(entriesToServiceRows(freshTicket.entries));
+        initialServiceRowsRef.current = entriesToServiceRows(freshTicket.entries).map(r => ({ ...r }));
       }
     }
   }, [activeTab, showDiscarded, filteredTickets, selectedTicket]);

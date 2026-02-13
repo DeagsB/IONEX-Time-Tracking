@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { timeEntriesService, projectsService } from '../services/supabaseServices';
+import { timeEntriesService, projectsService, serviceTicketsService } from '../services/supabaseServices';
 import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
 
 interface TimeEntry {
@@ -99,11 +99,27 @@ export default function DayDetail() {
   });
 
   const deleteEntryMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (payload: { id: string; entry?: any }) => {
+      const { id, entry } = payload;
       await timeEntriesService.delete(id);
+      if (entry?.project_id && entry?.project?.customer?.id) {
+        const dateStr = typeof entry.date === 'string' ? entry.date : new Date(entry.date).toISOString().split('T')[0];
+        await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({
+          date: dateStr,
+          userId: entry.user_id,
+          customerId: entry.project.customer.id,
+          projectId: entry.project_id,
+          location: entry.location,
+          approver: entry.approver,
+          po_afe: entry.po_afe,
+          cc: (entry as any).cc,
+        }, isDemoMode);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
     },
   });
 
@@ -190,9 +206,9 @@ export default function DayDetail() {
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (entry: { id: string; date?: string; user_id?: string; project_id?: string; location?: string; approver?: string; po_afe?: string; cc?: string; project?: { customer?: { id: string } } }) => {
     if (window.confirm('Are you sure?')) {
-      deleteEntryMutation.mutate(id);
+      deleteEntryMutation.mutate({ id: entry.id, entry });
     }
   };
 
@@ -392,7 +408,7 @@ export default function DayDetail() {
                   <button 
                     type="button" 
                     className="button button-danger"
-                    onClick={() => handleDelete(editingEntry.id)}
+                    onClick={() => handleDelete(editingEntry)}
                   >
                     Delete
                   </button>

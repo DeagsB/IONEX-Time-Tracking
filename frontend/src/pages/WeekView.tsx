@@ -424,6 +424,7 @@ export default function WeekView() {
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       await queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['billableEntries'] });
       await refetchTimeEntries();
       setShowEditModal(false);
       setEditingEntry(null);
