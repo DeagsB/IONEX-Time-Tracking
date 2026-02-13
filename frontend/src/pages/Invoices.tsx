@@ -114,6 +114,16 @@ function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; 
   );
 }
 
+const MARKED_INVOICED_STORAGE_KEY = 'ionex-invoices-marked';
+
+function getGroupId(group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }): string {
+  const ids = group.tickets
+    .map((t) => (t as ServiceTicket & { recordId?: string }).recordId || t.id)
+    .filter(Boolean)
+    .sort();
+  return `${group.key.approverCode}|${ids.join(',')}`;
+}
+
 /** Build CC breakdown with totals: "AR_xx1, AR_xx2; CC: xxxxxxxx – $X,XXX.XX" */
 function buildCcBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
@@ -459,11 +469,41 @@ export default function Invoices() {
     return () => { cancelled = true; };
   }, [groupedTickets]);
 
-  const [exportingGroupIdx, setExportingGroupIdx] = useState<number | null>(null);
+  const [exportingGroupIdx, setExportingGroupIdx] = useState<string | null>(null);
 
-  const handleExportSingleGroup = async (groupIdx: number) => {
-    const { key, tickets: groupTickets } = groupedTickets[groupIdx];
-    setExportingGroupIdx(groupIdx);
+  const [markedInvoicedIds, setMarkedInvoicedIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(MARKED_INVOICED_STORAGE_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw) as string[];
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch {
+      return new Set();
+    }
+  });
+
+  const handleMarkAsInvoiced = (groupId: string) => {
+    setMarkedInvoicedIds((prev) => {
+      const next = new Set(prev);
+      next.add(groupId);
+      try {
+        localStorage.setItem(MARKED_INVOICED_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const visibleGroups = useMemo(
+    () => groupedTickets.filter((g) => !markedInvoicedIds.has(getGroupId(g))),
+    [groupedTickets, markedInvoicedIds]
+  );
+
+  const handleExportSingleGroup = async (group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }) => {
+    const { key, tickets: groupTickets } = group;
+    const groupId = getGroupId(group);
+    setExportingGroupIdx(groupId);
     setExportError(null);
     try {
       const blobs: Blob[] = [];
@@ -499,20 +539,22 @@ export default function Invoices() {
     }
   };
 
+  const isExportingGroup = (groupId: string) => exportingGroupIdx === groupId;
+
   const handleExportForInvoicing = async () => {
     setExportError(null);
-    const total = groupedTickets.reduce((sum, g) => sum + g.tickets.length, 0);
+    const total = visibleGroups.reduce((sum, g) => sum + g.tickets.length, 0);
     let processed = 0;
 
     setExportProgress({ current: 0, total, label: 'Preparing...' });
 
     try {
-      for (let i = 0; i < groupedTickets.length; i++) {
-        const { key, tickets: groupTickets } = groupedTickets[i];
+      for (let i = 0; i < visibleGroups.length; i++) {
+        const { key, tickets: groupTickets } = visibleGroups[i];
         setExportProgress({
           current: processed,
           total,
-          label: `Processing group ${i + 1}/${groupedTickets.length} (${groupTickets.length} ticket(s))`,
+          label: `Processing group ${i + 1}/${visibleGroups.length} (${groupTickets.length} ticket(s))`,
         });
 
         const blobs: Blob[] = [];
@@ -556,12 +598,12 @@ export default function Invoices() {
   const handleCreateInQuickBooks = async () => {
     setQboError(null);
     setQboCreatedIds([]);
-    const total = groupedTickets.length;
+    const total = visibleGroups.length;
     setQboProgress({ current: 0, total, label: 'Connecting to QuickBooks...' });
 
     try {
-      for (let i = 0; i < groupedTickets.length; i++) {
-        const { key, tickets: groupTickets } = groupedTickets[i];
+      for (let i = 0; i < visibleGroups.length; i++) {
+        const { key, tickets: groupTickets } = visibleGroups[i];
         setQboProgress({
           current: i,
           total,
@@ -807,12 +849,16 @@ export default function Invoices() {
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           No approved tickets ready for export. Approve service tickets first in the Service Tickets page.
         </div>
+      ) : visibleGroups.length === 0 ? (
+        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+          All groups have been marked as invoiced.
+        </div>
       ) : (
         <>
           <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={handleExportForInvoicing}
-              disabled={!!exportProgress || !!qboProgress}
+              disabled={!!exportProgress || !!qboProgress || visibleGroups.length === 0}
               style={{
                 padding: '10px 20px',
                 backgroundColor: 'var(--primary-color)',
@@ -828,7 +874,7 @@ export default function Invoices() {
             </button>
             <button
               onClick={handleCreateInQuickBooks}
-              disabled={!qboConnected || !!exportProgress || !!qboProgress}
+              disabled={!qboConnected || !!exportProgress || !!qboProgress || visibleGroups.length === 0}
               style={{
                 padding: '10px 20px',
                 backgroundColor: qboConnected ? '#0ea5e9' : 'var(--bg-tertiary)',
@@ -849,14 +895,17 @@ export default function Invoices() {
               </span>
             )}
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              {tickets.length} ticket(s) in {groupedTickets.length} group(s)
+              {visibleGroups.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {visibleGroups.length} group(s)
             </span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {groupedTickets.map(({ key, tickets: groupTickets }, idx) => (
+            {visibleGroups.map((group) => {
+              const { key, tickets: groupTickets } = group;
+              const groupId = getGroupId(group);
+              return (
               <div
-                key={idx}
+                key={groupId}
                 style={{
                   padding: '16px',
                   backgroundColor: 'var(--bg-secondary)',
@@ -882,24 +931,42 @@ export default function Invoices() {
                     <span><strong>CC:</strong> {key.cc || '(none)'}</span>
                     <span><strong>Other:</strong> {key.other || '(none)'}</span>
                   </div>
-                  <button
-                    onClick={() => handleExportSingleGroup(idx)}
-                    disabled={!!exportProgress || !!qboProgress || exportingGroupIdx !== null}
-                    style={{
-                      padding: '6px 12px',
-                      backgroundColor: 'var(--primary-color)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: exportProgress || qboProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
-                      flexShrink: 0,
-                    }}
-                    title="Download this group's merged PDF"
-                  >
-                    {exportingGroupIdx === idx ? 'Generating…' : 'Download'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                    <button
+                      onClick={() => handleExportSingleGroup(group)}
+                      disabled={!!exportProgress || !!qboProgress || exportingGroupIdx !== null}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: 'var(--primary-color)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: exportProgress || qboProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
+                      }}
+                      title="Download this group's merged PDF"
+                    >
+                      {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
+                    </button>
+                    <button
+                      onClick={() => handleMarkAsInvoiced(groupId)}
+                      disabled={!!exportProgress || !!qboProgress}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: 'var(--bg-tertiary)',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: exportProgress || qboProgress ? 'not-allowed' : 'pointer',
+                      }}
+                      title="Mark this group as invoiced and hide it"
+                    >
+                      Mark as invoiced
+                    </button>
+                  </div>
                 </div>
                 <div style={{
                   marginBottom: '12px',
@@ -950,7 +1017,8 @@ export default function Invoices() {
                   ))}
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </>
       )}
