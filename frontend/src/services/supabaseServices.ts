@@ -1248,7 +1248,8 @@ export const serviceTicketsService = {
 
   /**
    * After time entries are removed, delete any service ticket that was created from those entries
-   * (same date, user, customer) when no time entries remain for that combination.
+   * (same date, user, customer) when no billable time entries remain for that combination.
+   * Time entries use project_id; customer comes from projects.customer_id.
    */
   async deleteTicketIfNoTimeEntriesFor(params: {
     date: string;
@@ -1259,17 +1260,32 @@ export const serviceTicketsService = {
 
     const { date, userId, customerId } = params;
 
-    // Count remaining time entries for this date/user/customer
-    const { count, error: countError } = await supabase
-      .from('time_entries')
-      .select('*', { count: 'exact', head: true })
-      .eq('date', date)
-      .eq('user_id', userId)
-      .eq('customer_id', customerId)
-      .eq('is_demo', isDemo);
+    // Get project IDs for this customer (time_entries have project_id, not customer_id)
+    const { data: projects, error: projError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('customer_id', customerId);
+    if (projError || !projects?.length) {
+      // No projects for customer - still check for orphaned tickets to clean up
+    }
 
-    if (countError) return;
-    if (count != null && count > 0) return;
+    const projectIds = (projects ?? []).map((p: { id: string }) => p.id);
+
+    // Count remaining billable time entries for this date/user/customer (via project)
+    let count = 0;
+    if (projectIds.length > 0) {
+      const { count: entryCount, error: countError } = await supabase
+        .from('time_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('date', date)
+        .eq('user_id', userId)
+        .in('project_id', projectIds)
+        .eq('billable', true)
+        .eq('is_demo', isDemo);
+      if (!countError && entryCount != null) count = entryCount;
+    }
+
+    if (count > 0) return;
 
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     const { data: tickets, error: findError } = await supabase
@@ -1617,16 +1633,21 @@ export const serviceTicketsService = {
     if (delError) throw delError;
 
     // Delete time entries that this ticket was built from so it doesn't reappear as "new"
+    // Time entries use project_id; get projects for this customer first
     if (date && user_id && customer_id) {
-      const { error: entriesError } = await supabase
-        .from('time_entries')
-        .delete()
-        .eq('date', date)
-        .eq('user_id', user_id)
-        .eq('customer_id', customer_id)
-        .eq('billable', true)
-        .eq('is_demo', isDemo);
-      if (entriesError) console.warn('Failed to delete time entries for ticket:', entriesError);
+      const { data: projs } = await supabase.from('projects').select('id').eq('customer_id', customer_id);
+      const projectIds = (projs ?? []).map((p: { id: string }) => p.id);
+      if (projectIds.length > 0) {
+        const { error: entriesError } = await supabase
+          .from('time_entries')
+          .delete()
+          .eq('date', date)
+          .eq('user_id', user_id)
+          .in('project_id', projectIds)
+          .eq('billable', true)
+          .eq('is_demo', isDemo);
+        if (entriesError) console.warn('Failed to delete time entries for ticket:', entriesError);
+      }
     }
   },
 };

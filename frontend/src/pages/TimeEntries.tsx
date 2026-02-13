@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { timeEntriesService, projectsService } from '../services/supabaseServices';
+import { timeEntriesService, projectsService, serviceTicketsService } from '../services/supabaseServices';
 
 export default function TimeEntries() {
   const { user } = useAuth();
@@ -80,11 +80,15 @@ export default function TimeEntries() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (payload: { id: string; date: string; userId: string; customerId: string | null }) => {
+      const { id, date, userId, customerId } = payload;
       await timeEntriesService.delete(id);
+      await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({ date, userId, customerId }, isDemoMode);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
     },
   });
 
@@ -125,10 +129,16 @@ export default function TimeEntries() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this time entry?')) {
-      deleteMutation.mutate(id);
-    }
+  const handleDelete = (entry: any) => {
+    if (!window.confirm('Are you sure you want to delete this time entry?')) return;
+    const dateStr = typeof entry.date === 'string' ? entry.date : new Date(entry.date).toISOString().split('T')[0];
+    const customerId = entry.project?.customer?.id ?? entry.customer_id ?? projects?.find((p: any) => p.id === entry.project_id)?.customer_id ?? null;
+    deleteMutation.mutate({
+      id: entry.id,
+      date: dateStr,
+      userId: entry.user_id,
+      customerId,
+    });
   };
 
   // Transform data for display (handle nested relations)
@@ -301,7 +311,7 @@ export default function TimeEntries() {
                         <button
                           className="button button-danger"
                           style={{ padding: '5px 10px', fontSize: '12px' }}
-                          onClick={() => handleDelete(entry.id)}
+                          onClick={() => handleDelete(entry)}
                         >
                           Delete
                         </button>
