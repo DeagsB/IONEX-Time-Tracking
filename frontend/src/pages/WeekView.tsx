@@ -677,6 +677,7 @@ export default function WeekView() {
       };
       const entryProject = projects?.find((p: any) => p.id === entry.project_id);
       const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
+      // Use entry's approver, po_afe, cc only - no fallback from project.other
       setViewOnlyDisplay({
         description: entry.description || '',
         customer_name: entryProject?.customer?.name || customers?.find((c: any) => c.id === entryProject?.customer_id)?.name || '',
@@ -687,9 +688,9 @@ export default function WeekView() {
         billable: entry.billable !== undefined ? entry.billable : true,
         rate_type: entry.rate_type || 'Shop Time',
         location: entry.location || '',
-        approver: (entry.approver || oth.approver) || '',
-        poAfe: (entry.po_afe || oth.poAfe) || '',
-        cc: (entry.cc || oth.cc) || '',
+        approver: entry.approver ?? '',
+        poAfe: entry.po_afe ?? '',
+        cc: entry.cc ?? '',
         other: oth.otherRemainder || '',
         project_color: entryProject?.color || '#666',
       });
@@ -710,6 +711,7 @@ export default function WeekView() {
     // Look up the customer_id and project from the project
     const entryProject = projects?.find((p: any) => p.id === entry.project_id);
     const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
+    // Use entry's approver, po_afe, cc only - no fallback from project.other to avoid cross-field contamination
     setEditedEntry({
       description: entry.description || '',
       customer_id: entryProject?.customer_id || '',
@@ -720,9 +722,9 @@ export default function WeekView() {
       billable: entry.billable !== undefined ? entry.billable : true,
       rate_type: entry.rate_type || 'Shop Time',
       location: entry.location || '',
-      approver: (entry.approver || oth.approver) || '',
-      poAfe: (entry.po_afe || oth.poAfe) || '',
-      cc: (entry.cc || oth.cc) || '',
+      approver: entry.approver ?? '',
+      poAfe: entry.po_afe ?? '',
+      cc: entry.cc ?? '',
       other: oth.otherRemainder,
     });
     setEditDurationInputRaw(null);
