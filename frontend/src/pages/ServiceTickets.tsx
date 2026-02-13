@@ -2170,8 +2170,8 @@ export default function ServiceTickets() {
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Action
                 </th>
-                {/* Workflow column - only visible to admins, hidden in trash view */}
-                {isAdmin && !showDiscarded && (
+                {/* Workflow column - only visible to admins in Approved tab, hidden in trash view */}
+                {isAdmin && !showDiscarded && activeTab === 'approved' && (
                   <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                     Workflow
                   </th>
@@ -2707,8 +2707,8 @@ export default function ServiceTickets() {
                       }
                     })()}
                   </td>
-                  {/* Workflow status cell - only visible to admins, hidden in trash view */}
-                  {isAdmin && !showDiscarded && (
+                  {/* Workflow status cell - only visible to admins in Approved tab, hidden in trash view */}
+                  {isAdmin && !showDiscarded && activeTab === 'approved' && (
                     <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                       {(() => {
                         const existing = findMatchingTicketRecord(ticket);
