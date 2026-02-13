@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, parseApproverPoAfe, buildApproverPoAfe, getProjectHeaderFields } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -418,12 +418,18 @@ export default function ServiceTickets() {
             cc: ticket.projectCc ?? '',
           };
         }
-        const fromEntry = ticket.entryPoAfe || ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe || ticket.projectApproverPoAfe || '';
-        const parsed = fromEntry ? parseApproverPoAfe(fromEntry) : { approver: '', poAfe: '', cc: '' };
+        const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
+        if (fromEntry) {
+          return {
+            approver: ticket.entryApprover ?? ticket.customerInfo.approver_name ?? '',
+            po_afe: ticket.entryPoAfe ?? ticket.customerInfo.po_number ?? '',
+            cc: ticket.entryCc ?? '',
+          };
+        }
         return {
-          approver: parsed.approver || ticket.customerInfo.approver_name || '',
-          po_afe: parsed.poAfe || ticket.customerInfo.po_number || '',
-          cc: parsed.cc || '',
+          approver: ticket.customerInfo.approver_name ?? '',
+          po_afe: ticket.customerInfo.po_number ?? '',
+          cc: '',
         };
       })(),
       other: ticket.projectOther ?? '',
@@ -2228,12 +2234,19 @@ export default function ServiceTickets() {
                           other: ticket.projectOther || '',
                         };
                       }
-                      const fromEntry = ticket.entryPoAfe || ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe || ticket.projectApproverPoAfe || '';
-                      const parsed = fromEntry ? parseApproverPoAfe(fromEntry) : { approver: '', poAfe: '', cc: '' };
+                      const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
+                      if (fromEntry) {
+                        return {
+                          approver: ticket.entryApprover || ticket.customerInfo.approver_name || '',
+                          poAfe: ticket.entryPoAfe || ticket.customerInfo.po_number || '',
+                          cc: ticket.entryCc || '',
+                          other: ticket.projectOther || '',
+                        };
+                      }
                       return {
-                        approver: parsed.approver || ticket.customerInfo.approver_name || '',
-                        poAfe: parsed.poAfe || ticket.customerInfo.po_number || '',
-                        cc: parsed.cc || '',
+                        approver: ticket.customerInfo.approver_name || '',
+                        poAfe: ticket.customerInfo.po_number || '',
+                        cc: '',
                         other: ticket.projectOther || '',
                       };
                     })(),

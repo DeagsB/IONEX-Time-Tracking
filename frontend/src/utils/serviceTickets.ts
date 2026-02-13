@@ -41,7 +41,9 @@ export interface ServiceTicket {
   projectOther?: string;
   // Entry-level overrides (from time entry form - take priority over project/customer defaults)
   entryLocation?: string;
+  entryApprover?: string;
   entryPoAfe?: string;
+  entryCc?: string;
   ticketNumber?: string; // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
   totalHours: number;
   entries: TimeEntryWithRelations[];
@@ -71,7 +73,9 @@ export interface TimeEntryWithRelations {
   start_time?: string;
   end_time?: string;
   location?: string; // Work location for grouping into service tickets
+  approver?: string;
   po_afe?: string; // PO/AFE entered on the time entry
+  cc?: string;
   is_demo?: boolean;
   user?: {
     id: string;
@@ -300,24 +304,23 @@ export function groupEntriesIntoTickets(
         projectApprover: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.approver;
-          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
-          return parsed.approver;
+          return (entry as any).approver || '';
         })(),
         projectPoAfe: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.poAfe;
-          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
-          return parsed.poAfe;
+          return entry.po_afe || '';
         })(),
         projectCc: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.cc;
-          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
-          return parsed.cc;
+          return (entry as any).cc || '';
         })(),
         projectOther: entry.project?.other,
         entryLocation: entry.location || undefined,
+        entryApprover: (entry as any).approver || undefined,
         entryPoAfe: entry.po_afe || undefined,
+        entryCc: (entry as any).cc || undefined,
         totalHours: 0,
         entries: [],
         hoursByRateType: {

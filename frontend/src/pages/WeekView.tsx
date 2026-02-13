@@ -8,7 +8,7 @@ import { timeEntriesService, projectsService, employeesService, customersService
 import SearchableSelect, { SearchableSelectRef } from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
 import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
-import { getProjectApproverPoAfe, getProjectHeaderFields, buildApproverPoAfe, parseApproverPoAfe, parseOtherFieldForPrefixes } from '../utils/serviceTickets';
+import { getProjectApproverPoAfe, getProjectHeaderFields, parseOtherFieldForPrefixes } from '../utils/serviceTickets';
 
 interface TimeEntry {
   id: string;
@@ -651,7 +651,9 @@ export default function WeekView() {
       location: newEntry.location || null,
       customer_id: newEntry.customer_id || null,
       project_id: newEntry.project_id || null,
-      po_afe: buildApproverPoAfe(newEntry.approver, newEntry.poAfe, newEntry.cc) || null,
+      approver: newEntry.approver?.trim() || null,
+      po_afe: newEntry.poAfe?.trim() || null,
+      cc: newEntry.cc?.trim() || null,
     };
 
     if (newEntry.project_id) {
@@ -674,7 +676,6 @@ export default function WeekView() {
         return timeStr.slice(0, 5);
       };
       const entryProject = projects?.find((p: any) => p.id === entry.project_id);
-      const parsed = parseApproverPoAfe(entry.po_afe || '');
       const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
       setViewOnlyDisplay({
         description: entry.description || '',
@@ -686,9 +687,9 @@ export default function WeekView() {
         billable: entry.billable !== undefined ? entry.billable : true,
         rate_type: entry.rate_type || 'Shop Time',
         location: entry.location || '',
-        approver: parsed.approver || oth.approver || '',
-        poAfe: parsed.poAfe || oth.poAfe || '',
-        cc: parsed.cc || oth.cc || '',
+        approver: (entry.approver || oth.approver) || '',
+        poAfe: (entry.po_afe || oth.poAfe) || '',
+        cc: (entry.cc || oth.cc) || '',
         other: oth.otherRemainder || '',
         project_color: entryProject?.color || '#666',
       });
@@ -708,7 +709,6 @@ export default function WeekView() {
     
     // Look up the customer_id and project from the project
     const entryProject = projects?.find((p: any) => p.id === entry.project_id);
-    const parsed = parseApproverPoAfe(entry.po_afe || '');
     const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
     setEditedEntry({
       description: entry.description || '',
@@ -720,9 +720,9 @@ export default function WeekView() {
       billable: entry.billable !== undefined ? entry.billable : true,
       rate_type: entry.rate_type || 'Shop Time',
       location: entry.location || '',
-      approver: parsed.approver || oth.approver,
-      poAfe: parsed.poAfe || oth.poAfe,
-      cc: parsed.cc || oth.cc,
+      approver: (entry.approver || oth.approver) || '',
+      poAfe: (entry.po_afe || oth.poAfe) || '',
+      cc: (entry.cc || oth.cc) || '',
       other: oth.otherRemainder,
     });
     setEditDurationInputRaw(null);
@@ -881,7 +881,9 @@ export default function WeekView() {
       location: editedEntry.location || null,
       customer_id: editedEntry.customer_id || null,
       project_id: editedEntry.project_id || null,
-      po_afe: buildApproverPoAfe(editedEntry.approver, editedEntry.poAfe, editedEntry.cc) || null,
+      approver: editedEntry.approver?.trim() || null,
+      po_afe: editedEntry.poAfe?.trim() || null,
+      cc: editedEntry.cc?.trim() || null,
     };
 
     updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });

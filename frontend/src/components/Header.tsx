@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
 import { useNavigate } from 'react-router-dom';
 import SearchableSelect, { SearchableSelectRef } from './SearchableSelect';
-import { getProjectHeaderFields, buildApproverPoAfe } from '../utils/serviceTickets';
+import { getProjectHeaderFields } from '../utils/serviceTickets';
 
 interface HeaderProps {
   onTimerStart: (description: string, projectId?: string) => void;
@@ -80,7 +80,9 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rate_type: data.rateType || 'Shop Time',
         description: data.description || null,
         location: data.location || null, // Work location for service tickets
-        po_afe: data.po_afe || null, // Combined approver+po_afe+cc for service tickets
+        approver: data.approver?.trim() || null,
+        po_afe: data.po_afe?.trim() || null,
+        cc: data.cc?.trim() || null,
         is_demo: isDemoMode, // Mark as demo entry if in demo mode
       };
       
@@ -232,7 +234,9 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
         rateType: isBillable ? rateType : 'Internal',
         description: currentEntry.description,
         location: location || null, // Include location for service tickets
-        po_afe: buildApproverPoAfe(approver, poAfe, cc) || null,
+        approver: approver?.trim() || null,
+        po_afe: poAfe?.trim() || null,
+        cc: cc?.trim() || null,
       });
 
       // Stop timer after saving

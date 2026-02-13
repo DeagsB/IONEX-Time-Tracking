@@ -11,6 +11,7 @@ const V110_ADDED = [
 const V110_CHANGED = [
   '**PO/AFE/CC section** – Projects and service tickets now use separate **Approver**, **PO/AFE**, and **CC** fields instead of a single combined field. Time entry form shows these as distinct inputs; service ticket header overrides store them separately.',
   '**Service ticket handling** – Header overrides migrated from legacy approver_po_afe format to approver/po_afe/cc keys. Parsing fallbacks removed; data flows directly from the new project columns and editable fields.',
+  '**Time entries** – Approver, PO/AFE, and CC stored in separate columns. Parsing removed; create/edit forms and service ticket building use approver, po_afe, cc directly.',
   '**Trashed tickets** – Restore button moved to the right (where Submit for Approval was). Submit for Approval hidden when in trash. Trashed tickets are view-only until restored.',
   '**Submit for Approval** – Changes are now auto-saved when you click Submit for Approval or Approve; no need to click Save Changes first.',
   '**Show Trash** – Clicking any tab (Drafts, Submitted, Approved, All Tickets) while viewing trash automatically leaves the trash view.',
