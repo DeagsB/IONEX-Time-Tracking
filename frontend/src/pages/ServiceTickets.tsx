@@ -2271,15 +2271,16 @@ export default function ServiceTickets() {
                       }
                       const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
                       if (fromProject) {
+                        // Use only separate project fields - never customerInfo.approver_name (combined string)
                         return {
-                          approver: ticket.projectApprover || ticket.customerInfo.approver_name || '',
+                          approver: ticket.projectApprover || '',
                           poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
                           cc: ticket.projectCc || '',
                           other: ticket.projectOther || '',
                         };
                       }
                       return {
-                        approver: ticket.customerInfo.approver_name || '',
+                        approver: '',
                         poAfe: ticket.customerInfo.po_number || '',
                         cc: '',
                         other: ticket.projectOther || '',
