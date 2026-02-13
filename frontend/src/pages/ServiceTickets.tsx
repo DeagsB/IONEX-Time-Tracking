@@ -2337,10 +2337,11 @@ export default function ServiceTickets() {
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
                     let merged: typeof initialEditable;
                     if (isFrozen || Object.keys(ov).length > 0) {
-                      // Use override when non-empty; else fallback to initialEditable (live ticket data)
-                      const ovApprover = (ov.approver != null && String(ov.approver).trim() !== '') ? String(ov.approver).trim() : initialEditable.approver;
-                      const ovPoAfe = (ov.po_afe != null && String(ov.po_afe).trim() !== '') ? String(ov.po_afe).trim() : initialEditable.poAfe;
-                      const ovCc = (ov.cc != null && String(ov.cc).trim() !== '') ? String(ov.cc).trim() : initialEditable.cc;
+                      // Use saved values when present (including empty string) - don't fall back to initialEditable
+                      // which can have buildApproverPoAfe(po_afe,cc) in customerInfo.approver_name
+                      const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
+                      const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
+                      const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
                       // Deduplicate: if approver equals po_afe or cc, clear approver (treat as data error)
                       const approverDeduped = (ovApprover === ovPoAfe || ovApprover === ovCc) ? '' : ovApprover;
                       merged = {
