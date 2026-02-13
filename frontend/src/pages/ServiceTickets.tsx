@@ -2390,43 +2390,51 @@ export default function ServiceTickets() {
                   // Set display ticket number (will be XXX until exported)
                   setDisplayTicketNumber(ticket.displayTicketNumber);
 
+                  // Show initial service rows immediately from entries (refined when edited data loads)
+                  const initialRows = entriesToServiceRows(ticket.entries);
+                  setServiceRows(initialRows);
+                  initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
+
                   // Load expenses and edited data for this ticket
                   try {
                     const hadNoRecord = !findMatchingTicketRecord(ticket);
                     const ticketRecordId = await getOrCreateTicketRecord(ticket);
                     setCurrentTicketRecordId(ticketRecordId);
                     if (hadNoRecord) {
-                      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
-                      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                      void queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                     }
                     // Clear restored_at when user interacts (opens ticket) so green indicator goes away
                     const rec = findMatchingTicketRecord(ticket);
                     if ((rec as any)?.restored_at) {
                       const tbl = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                      await supabase.from(tbl).update({ restored_at: null }).eq('id', ticketRecordId);
-                      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
-                      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                      supabase.from(tbl).update({ restored_at: null }).eq('id', ticketRecordId).then(() => {
+                        queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                        void queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                      });
                     }
-                    await loadExpenses(ticketRecordId);
-                    
-                    // Load edited descriptions and hours (header_overrides optional until migration is run)
+                    // Load expenses and ticket record in parallel for faster panel open
                     const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                    let ticketRecord: { is_edited?: boolean; edited_descriptions?: unknown; edited_hours?: unknown; header_overrides?: unknown; updated_at?: string } | null = null;
-                    const { data: dataWithOverrides, error: selectError } = await supabase
-                      .from(tableName)
-                      .select('is_edited, edited_descriptions, edited_hours, header_overrides, updated_at')
-                      .eq('id', ticketRecordId)
-                      .single();
-                    if (selectError) {
-                      const { data: dataWithout } = await supabase
-                        .from(tableName)
-                        .select('is_edited, edited_descriptions, edited_hours, updated_at')
-                        .eq('id', ticketRecordId)
-                        .single();
-                      ticketRecord = dataWithout ?? null;
-                    } else {
-                      ticketRecord = dataWithOverrides;
-                    }
+                    const [_, ticketRecordResult] = await Promise.all([
+                      loadExpenses(ticketRecordId),
+                      (async () => {
+                        const { data: dataWithOverrides, error: selectError } = await supabase
+                          .from(tableName)
+                          .select('is_edited, edited_descriptions, edited_hours, header_overrides, updated_at')
+                          .eq('id', ticketRecordId)
+                          .single();
+                        if (selectError) {
+                          const { data: dataWithout } = await supabase
+                            .from(tableName)
+                            .select('is_edited, edited_descriptions, edited_hours, updated_at')
+                            .eq('id', ticketRecordId)
+                            .single();
+                          return dataWithout ? { ...dataWithout, header_overrides: null } : null;
+                        }
+                        return dataWithOverrides;
+                      })(),
+                    ]);
+                    const ticketRecord = ticketRecordResult;
                     
                     // Use whichever was last saved: time entry or service ticket header_overrides
                     // Approved tickets: always use header_overrides (we never push to entries, so entries are stale)
