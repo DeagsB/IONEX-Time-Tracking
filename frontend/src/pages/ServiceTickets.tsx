@@ -1116,14 +1116,23 @@ export default function ServiceTickets() {
         // Find matching ticket record by date+user+customer+location+approver (DB uses UUID for id)
         const ticketLocation = ticket.location || '';
         const ticketApprover = ticket.id ? getTicketApproverCodeForMerge(ticket.id) : '_';
-        const matchingRecords = existingTickets.filter(
-          et => et.date === ticket.date &&
-                et.user_id === ticket.userId &&
-                (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-                (et.location || '') === ticketLocation &&
-                getRecordApproverCodeForMerge(et) === ticketApprover
+        const baseFilterMerge = (et: typeof existingTickets[0]) =>
+          et.date === ticket.date &&
+          et.user_id === ticket.userId &&
+          (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+          (et.location || '') === ticketLocation;
+        let matchingRecords = existingTickets.filter(
+          et => baseFilterMerge(et) && getRecordApproverCodeForMerge(et) === ticketApprover
         );
-        const ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
+        let ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
+        if (!ticketRecord && ticketApprover !== '_') {
+          matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordApproverCodeForMerge(et) === '_');
+          ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
+        }
+        if (!ticketRecord && ticketApprover === '_') {
+          matchingRecords = existingTickets.filter(et => baseFilterMerge(et));
+          ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
+        }
         
         // If ticket has been edited, use edited hours instead of original
         if (ticketRecord?.is_edited && ticketRecord.edited_hours) {
@@ -1154,19 +1163,26 @@ export default function ServiceTickets() {
       });
 
       // Append standalone tickets (manually created with no matching time entries)
+      // Use same legacy-aware matching as findMatchingTicketRecord so we don't double-match
       const standaloneTickets = existingTickets.filter(et => {
         // Skip records without a customer_id — these can't be standalone
         if (!et.customer_id) return false;
         // Skip discarded records — they should not appear in the main list
         if ((et as any).is_discarded) return false;
-        // Check if any base ticket already matches this record (date+user+customer+location+approver)
-        const etApprover = getRecordApproverCodeForMerge(et);
-        return !baseTickets.some(bt =>
+        // Check if any base ticket already matches this record (date+user+customer+location+approver, with legacy fallbacks)
+        const baseFilterSt = (bt: typeof baseTickets[0]) =>
           bt.date === et.date && bt.userId === et.user_id &&
           (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
-          (bt.location || '') === (et.location || '') &&
-          (bt.id ? getTicketApproverCodeForMerge(bt.id) : '_') === etApprover
-        );
+          (bt.location || '') === (et.location || '');
+        const etApprover = getRecordApproverCodeForMerge(et);
+        return !baseTickets.some(bt => {
+          const btApprover = bt.id ? getTicketApproverCodeForMerge(bt.id) : '_';
+          if (!baseFilterSt(bt)) return false;
+          if (etApprover === btApprover) return true;
+          if (btApprover !== '_' && etApprover === '_') return true; // legacy fallback 1
+          if (btApprover === '_') return true; // legacy fallback 2
+          return false;
+        });
       });
 
       for (const st of standaloneTickets) {
@@ -1293,6 +1309,8 @@ export default function ServiceTickets() {
    * Find a matching existing ticket record for a computed ticket.
    * Standalone tickets use DB UUID as id - match by et.id === ticket.id first.
    * Base tickets use composite key - match by date+user+customer+location+approver.
+   * Backward compat: records with no approver (_) match base tickets with same date+user+customer+location
+   * when no exact approver match exists (legacy tickets created before approver was in the key).
    */
   const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; location?: string }) => {
     if (ticket.id && existingTickets) {
@@ -1301,14 +1319,28 @@ export default function ServiceTickets() {
     }
     const ticketLocation = ticket.location || '';
     const ticketApprover = ticket.id ? getTicketApproverCode(ticket.id) : '_';
+    const baseFilter = (et: typeof existingTickets[0]) =>
+      et.date === ticket.date &&
+      et.user_id === ticket.userId &&
+      (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+      (et.location || '') === ticketLocation;
     const matches = existingTickets?.filter(
-      et => et.date === ticket.date &&
-            et.user_id === ticket.userId &&
-            (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-            (et.location || '') === ticketLocation &&
-            getRecordApproverCode(et) === ticketApprover
+      et => baseFilter(et) && getRecordApproverCode(et) === ticketApprover
     ) || [];
-    return matches.find(et => !(et as any).is_discarded) || matches[0] || null;
+    let found = matches.find(et => !(et as any).is_discarded) || matches[0];
+    // Legacy fallback 1: base ticket has approver (e.g. G001) but record has '_' (no approver in header_overrides)
+    if (!found && ticketApprover !== '_') {
+      const legacyMatches = existingTickets?.filter(
+        et => baseFilter(et) && getRecordApproverCode(et) === '_'
+      ) || [];
+      found = legacyMatches.find(et => !(et as any).is_discarded) || legacyMatches[0];
+    }
+    // Legacy fallback 2: base ticket has '_' (no approver in entries) but record has approver (e.g. G001) from admin approval
+    if (!found && ticketApprover === '_') {
+      const legacyMatches = existingTickets?.filter(et => baseFilter(et)) || [];
+      found = legacyMatches.find(et => !(et as any).is_discarded) || legacyMatches[0];
+    }
+    return found || null;
   };
 
   // Get or create service ticket record ID when a ticket is selected
