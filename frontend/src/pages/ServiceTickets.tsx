@@ -1134,10 +1134,7 @@ export default function ServiceTickets() {
           et => baseFilterMerge(et) && getRecordBillingKeyForMerge(et) === ticketBillingKey
         );
         let ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
-        if (!ticketRecord && ticketBillingKey !== legacyBillingKey) {
-          matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordBillingKeyForMerge(et) === legacyBillingKey);
-          ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
-        }
+        // Do NOT match tickets with specific billing keys to legacy records - causes wrong display for non-admins
         if (!ticketRecord && ticketBillingKey === legacyBillingKey) {
           matchingRecords = existingTickets.filter(et => baseFilterMerge(et));
           ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
@@ -1190,8 +1187,8 @@ export default function ServiceTickets() {
           const btBillingKey = bt.id ? getTicketBillingKeyForMerge(bt.id) : legacyKey;
           if (!baseFilterSt(bt)) return false;
           if (etBillingKey === btBillingKey) return true;
-          if (btBillingKey !== legacyKey && etBillingKey === legacyKey) return true; // legacy fallback 1
-          if (btBillingKey === legacyKey) return true; // legacy fallback 2
+          // Do NOT match legacy records to tickets with specific keys - causes wrong display
+          if (btBillingKey === legacyKey) return true; // legacy fallback 2 only
           return false;
         });
       });
@@ -1338,13 +1335,8 @@ export default function ServiceTickets() {
       et => baseFilter(et) && getRecordBillingKey(et) === ticketBillingKey
     ) || [];
     let found = matches.find(et => !(et as any).is_discarded) || matches[0];
-    // Legacy fallback 1: base ticket has billing key but record has legacy key (no approver/po_afe/cc in header_overrides)
-    if (!found && ticketBillingKey !== legacyBillingKey) {
-      const legacyMatches = existingTickets?.filter(
-        et => baseFilter(et) && getRecordBillingKey(et) === legacyBillingKey
-      ) || [];
-      found = legacyMatches.find(et => !(et as any).is_discarded) || legacyMatches[0];
-    }
+    // Do NOT match tickets with specific billing keys to legacy records - that overwrites correct
+    // entry values with wrong header_overrides. Only legacy fallback 2: ticket has legacy key.
     // Legacy fallback 2: base ticket has legacy key but record has billing key from admin approval
     if (!found && ticketBillingKey === legacyBillingKey) {
       const legacyMatches = existingTickets?.filter(et => baseFilter(et)) || [];

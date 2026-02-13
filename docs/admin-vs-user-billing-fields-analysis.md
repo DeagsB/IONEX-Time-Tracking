@@ -45,6 +45,6 @@ This matches a ticket with **specific** billing info (e.g. `'John::PO123::CC456'
 | User, first time opening | `John::PO123::CC456` | Only legacy record | Legacy fallback 1 | Wrong (combined string) |
 | User, after refetch | `John::PO123::CC456` | Proper + legacy | Primary match | Correct |
 
-### Fix (no parsing)
+### Fix (implemented)
 
-**Remove or restrict Legacy fallback 1**: Do not match a ticket with a specific billing key to a record with legacy key `'_::_::_'`. That fallback incorrectly applies legacy `approver_po_afe` to tickets that have proper entry data. If no exact match exists, create a new record (which `getOrCreateTicketRecord` already does when opening) rather than reusing a legacy record.
+**Removed Legacy fallback 1**: Tickets with specific billing keys (e.g. `C566::FC250375-9086::3210.430`) are no longer matched to records with legacy key `'_::_::_'`. When no exact match exists, the ticket displays values from the time entries (correct) instead of wrong header_overrides from a legacy record. Opening the ticket creates a new proper record via `getOrCreateTicketRecord`.
