@@ -2189,7 +2189,9 @@ export default function ServiceTickets() {
                   const ws = (existingRecord as { workflow_status?: string })?.workflow_status;
                   const isFrozen = isAdminApproved || (ws && !['draft', 'rejected'].includes(ws));
                   const isDiscarded = !!(existingRecord as any)?.is_discarded;
-                  setIsLockedForEditing((isAdminApproved && !isAdmin) || isDiscarded); // Lock when admin approved (non-admin) or when trashed
+                  // Admins can edit approved tickets; non-admins can edit their own approved tickets
+                  const isOwnTicket = ticket.userId === user?.id;
+                  setIsLockedForEditing(isDiscarded || (isAdminApproved && !isAdmin && !isOwnTicket));
                   
                   setSelectedTicket(ticket);
                   setPendingDeleteExpenseIds(new Set());
