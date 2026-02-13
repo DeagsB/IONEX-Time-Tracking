@@ -1252,6 +1252,7 @@ export const serviceTicketsService = {
     const existing = (ticket.header_overrides as Record<string, unknown>) ?? {};
     const merged = {
       ...existing,
+      service_location: params.location ?? '',
       approver: params.approver ?? '',
       po_afe: params.po_afe ?? '',
       cc: params.cc ?? '',

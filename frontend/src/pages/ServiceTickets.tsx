@@ -231,6 +231,9 @@ export default function ServiceTickets() {
   const [rejectNote, setRejectNote] = useState('');
   const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
 
+  // Track which "new" tickets have been opened (clicked) so we remove the New badge
+  const [openedNewTicketIds, setOpenedNewTicketIds] = useState<Set<string>>(new Set());
+
   // Create new ticket panel state
   const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [isCreatingTicket, setIsCreatingTicket] = useState(false);
@@ -358,13 +361,14 @@ export default function ServiceTickets() {
         if (overrideError) {
           console.warn('Header overrides not saved (run migration_add_service_ticket_header_overrides to enable):', overrideError);
         }
-        // Push approver, po_afe, cc, other to time entries ONLY when ticket is draft/rejected.
+        // Push service_location, approver, po_afe, cc, other to time entries ONLY when ticket is draft/rejected.
         // Approved tickets: admin edits save to header_overrides only; time entries are never updated.
         const ticketRecord = findMatchingTicketRecord(selectedTicket);
         const ws = (ticketRecord as { workflow_status?: string })?.workflow_status;
         const isDraftOrRejected = ws === 'draft' || ws === 'rejected';
         if (isDraftOrRejected && selectedTicket?.entries?.length && editableTicket) {
           const headerUpdates = {
+            location: editableTicket.serviceLocation?.trim() || null,
             approver: editableTicket.approver?.trim() || null,
             po_afe: editableTicket.poAfe?.trim() || null,
             cc: editableTicket.cc?.trim() || null,
@@ -2330,6 +2334,10 @@ export default function ServiceTickets() {
                   setSelectedTicket(ticket);
                   setPendingDeleteExpenseIds(new Set());
                   setPendingAddExpenses([]);
+                  // Remove New badge once ticket is opened
+                  if (!existingRecord && ticket.entries?.length > 0) {
+                    setOpenedNewTicketIds(prev => new Set(prev).add(ticket.id));
+                  }
                   const initialEditable = {
                     customerName: ticket.customerInfo.name || '',
                     address: ticket.customerInfo.address || '',
@@ -2554,7 +2562,7 @@ export default function ServiceTickets() {
                 const isRejected = !showDiscarded && rowExisting?.workflow_status === 'rejected';
                 const isResubmitted = !showDiscarded && activeTab === 'submitted' && !!rowExisting?.rejected_at;
                 const isRestored = !showDiscarded && !!(rowExisting as any)?.restored_at;
-                const isNew = !showDiscarded && activeTab === 'draft' && !rowExisting && ticket.entries?.length > 0;
+                const isNew = !showDiscarded && activeTab === 'draft' && !rowExisting && ticket.entries?.length > 0 && !openedNewTicketIds.has(ticket.id);
                 const rowBg = selectedTicketIds.has(ticket.id)
                   ? 'rgba(37, 99, 235, 0.1)'
                   : showDiscarded ? 'rgba(239, 83, 80, 0.04)'
