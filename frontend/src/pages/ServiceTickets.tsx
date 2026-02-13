@@ -2317,16 +2317,16 @@ export default function ServiceTickets() {
                     
                     // Load edited descriptions and hours (header_overrides optional until migration is run)
                     const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                    let ticketRecord: { is_edited?: boolean; edited_descriptions?: unknown; edited_hours?: unknown; header_overrides?: unknown } | null = null;
+                    let ticketRecord: { is_edited?: boolean; edited_descriptions?: unknown; edited_hours?: unknown; header_overrides?: unknown; updated_at?: string } | null = null;
                     const { data: dataWithOverrides, error: selectError } = await supabase
                       .from(tableName)
-                      .select('is_edited, edited_descriptions, edited_hours, header_overrides')
+                      .select('is_edited, edited_descriptions, edited_hours, header_overrides, updated_at')
                       .eq('id', ticketRecordId)
                       .single();
                     if (selectError) {
                       const { data: dataWithout } = await supabase
                         .from(tableName)
-                        .select('is_edited, edited_descriptions, edited_hours')
+                        .select('is_edited, edited_descriptions, edited_hours, updated_at')
                         .eq('id', ticketRecordId)
                         .single();
                       ticketRecord = dataWithout ?? null;
@@ -2334,22 +2334,26 @@ export default function ServiceTickets() {
                       ticketRecord = dataWithOverrides;
                     }
                     
-                    // Apply saved header overrides.
-                    // APPROVED/EXPORTED: prefer non-empty header_overrides (frozen snapshot); when empty/missing, use initialEditable.
-                    //    This avoids blank display for tickets approved before header_overrides snapshot was added.
-                    // DRAFT/REJECTED: same prefer non-empty override, else use initialEditable (updated customer).
+                    // Use whichever was last saved: time entry or service ticket header_overrides
+                    const entryMaxUpdated = ticket.entries?.length
+                      ? Math.max(...ticket.entries.map((e: { updated_at?: string }) => e.updated_at ? new Date(e.updated_at).getTime() : 0))
+                      : 0;
+                    const ticketUpdated = ticketRecord?.updated_at ? new Date(ticketRecord.updated_at).getTime() : 0;
+                    const useEntryValues = entryMaxUpdated > ticketUpdated;
+                    
                     const ov = (ticketRecord?.header_overrides as Record<string, string | number> | null) ?? {};
                     const useOverride = (ovVal: string | number | undefined, fallback: string) =>
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
                     let merged: typeof initialEditable;
                     if (isFrozen || Object.keys(ov).length > 0) {
-                      // Use saved values when present (including empty string) - don't fall back to initialEditable
-                      // which can have buildApproverPoAfe(po_afe,cc) in customerInfo.approver_name
+                      // For approver/po_afe/cc: use whichever was last saved (time entry vs ticket)
                       const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
                       const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
                       const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
-                      // Deduplicate: if approver equals po_afe or cc, clear approver (treat as data error)
                       const approverDeduped = (ovApprover === ovPoAfe || ovApprover === ovCc) ? '' : ovApprover;
+                      const [finalApprover, finalPoAfe, finalCc] = useEntryValues
+                        ? [initialEditable.approver, initialEditable.poAfe, initialEditable.cc]
+                        : [approverDeduped, ovPoAfe, ovCc];
                       merged = {
                         customerName: useOverride(ov.customer_name, initialEditable.customerName),
                         address: useOverride(ov.address, initialEditable.address),
@@ -2361,9 +2365,9 @@ export default function ServiceTickets() {
                         serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
                         locationCode: useOverride(ov.location_code, initialEditable.locationCode),
                         poNumber: useOverride(ov.po_number, initialEditable.poNumber),
-                        approver: approverDeduped,
-                        poAfe: ovPoAfe,
-                        cc: ovCc,
+                        approver: finalApprover,
+                        poAfe: finalPoAfe,
+                        cc: finalCc,
                         other: useOverride(ov.other, initialEditable.other),
                         techName: useOverride(ov.tech_name, initialEditable.techName),
                         projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
