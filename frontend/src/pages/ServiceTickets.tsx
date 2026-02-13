@@ -1418,7 +1418,12 @@ export default function ServiceTickets() {
       const existing = findMatchingTicketRecord(ticket);
       const isDiscarded = !!(existing as any)?.is_discarded;
       const ov = (existing as { header_overrides?: Record<string, string | number> })?.header_overrides;
-      const ticketWithOverrides = ov ? applyHeaderOverridesToTicket(ticket, ov) : ticket;
+      // Non-admins: don't apply header_overrides for draft tickets - use base ticket (entry values)
+      // so billing fields show correctly. Admins get full overrides.
+      const isDraftNoNumber = !existing?.ticket_number;
+      const ticketWithOverrides = (ov && (isAdmin || !isDraftNoNumber))
+        ? applyHeaderOverridesToTicket(ticket, ov)
+        : ticket;
       
       // If there's an existing ticket number and NOT trashed, use it (even for demo tickets)
       // Trashed tickets must never display a ticket ID
@@ -1436,7 +1441,7 @@ export default function ServiceTickets() {
         displayTicketNumber: `${ticket.userInitials}_${yearPart}XXX`
       };
     });
-  }, [tickets, existingTickets]);
+  }, [tickets, existingTickets, isAdmin]);
 
   // Filter and sort tickets
   const filteredTickets = useMemo(() => {
@@ -2446,7 +2451,11 @@ export default function ServiceTickets() {
                       ? Math.max(...ticket.entries.map((e) => e.updated_at ? new Date(e.updated_at).getTime() : 0))
                       : 0;
                     const ticketUpdated = ticketRecord?.updated_at ? new Date(ticketRecord.updated_at).getTime() : 0;
-                    const useEntryValues = !hasApprovedTicketNumber && entryMaxUpdated > ticketUpdated;
+                    // Non-admins (incl. developer in USER mode): always use entry values for draft tickets
+                    // so billing fields are correct. Admin uses last-saved (entry vs record by timestamp).
+                    const useEntryValues = !hasApprovedTicketNumber && (
+                      !isAdmin || entryMaxUpdated > ticketUpdated
+                    );
                     
                     const useOverride = (ovVal: string | number | undefined, fallback: string) =>
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
