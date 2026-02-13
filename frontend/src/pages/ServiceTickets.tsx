@@ -428,14 +428,7 @@ export default function ServiceTickets() {
       location_code: ticket.customerInfo.location_code ?? '',
       po_number: ticket.customerInfo.po_number ?? '',
       ...((): { approver: string; po_afe: string; cc: string } => {
-        const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
-        if (fromProject) {
-          return {
-            approver: ticket.projectApprover ?? ticket.customerInfo.approver_name ?? '',
-            po_afe: ticket.projectPoAfe ?? ticket.customerInfo.po_number ?? '',
-            cc: ticket.projectCc ?? '',
-          };
-        }
+        // Prioritize time entry over project
         const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
         if (fromEntry) {
           const ea = ticket.entryApprover ?? '';
@@ -446,6 +439,14 @@ export default function ServiceTickets() {
             approver: approverDeduped,
             po_afe: ep,
             cc: ec,
+          };
+        }
+        const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
+        if (fromProject) {
+          return {
+            approver: ticket.projectApprover ?? ticket.customerInfo.approver_name ?? '',
+            po_afe: ticket.projectPoAfe ?? ticket.customerInfo.po_number ?? '',
+            cc: ticket.projectCc ?? '',
           };
         }
         return {
@@ -2247,18 +2248,9 @@ export default function ServiceTickets() {
                     locationCode: ticket.customerInfo.location_code || '',
                     poNumber: ticket.customerInfo.po_number || '',
                     ...((): { approver: string; poAfe: string; cc: string; other: string } => {
-                      const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
-                      if (fromProject) {
-                        return {
-                          approver: ticket.projectApprover || ticket.customerInfo.approver_name || '',
-                          poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
-                          cc: ticket.projectCc || '',
-                          other: ticket.projectOther || '',
-                        };
-                      }
+                      // Prioritize time entry values over project - user can edit entry data on the ticket
                       const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
                       if (fromEntry) {
-                        // Deduplicate: if approver equals po_afe or cc, treat as data error - show only in po_afe/cc
                         const entryApprover = ticket.entryApprover || '';
                         const entryPoAfe = ticket.entryPoAfe || ticket.customerInfo.po_number || '';
                         const entryCc = ticket.entryCc || '';
@@ -2269,6 +2261,15 @@ export default function ServiceTickets() {
                           approver: approverDeduped,
                           poAfe: entryPoAfe,
                           cc: entryCc,
+                          other: ticket.projectOther || '',
+                        };
+                      }
+                      const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
+                      if (fromProject) {
+                        return {
+                          approver: ticket.projectApprover || ticket.customerInfo.approver_name || '',
+                          poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
+                          cc: ticket.projectCc || '',
                           other: ticket.projectOther || '',
                         };
                       }
