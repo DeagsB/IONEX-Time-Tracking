@@ -1037,14 +1037,14 @@ export default function ServiceTickets() {
       const { data, error } = await supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes,
+          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `);
       if (error) {
         // If the join fails (column doesn't exist yet), try without the join
         const { data: fallbackData, error: fallbackError } = await supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes');
+          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides');
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
@@ -1295,6 +1295,7 @@ export default function ServiceTickets() {
   };
 
   // Match tickets with existing ticket numbers or generate preview
+  // Apply header_overrides so admin-edited approved tickets show correct data in list and when opened
   const ticketsWithNumbers = useMemo(() => {
     return tickets.map(ticket => {
       // Check if this is a demo ticket (all entries are demo; empty = not demo)
@@ -1303,12 +1304,14 @@ export default function ServiceTickets() {
       // Try to find an existing ticket number for this ticket
       const existing = findMatchingTicketRecord(ticket);
       const isDiscarded = !!(existing as any)?.is_discarded;
+      const ov = (existing as { header_overrides?: Record<string, string | number> })?.header_overrides;
+      const ticketWithOverrides = ov ? applyHeaderOverridesToTicket(ticket, ov) : ticket;
       
       // If there's an existing ticket number and NOT trashed, use it (even for demo tickets)
       // Trashed tickets must never display a ticket ID
       if (existing?.ticket_number && !isDiscarded) {
         return {
-          ...ticket,
+          ...ticketWithOverrides,
           displayTicketNumber: existing.ticket_number
         };
       }
@@ -1316,7 +1319,7 @@ export default function ServiceTickets() {
       // Otherwise (no ticket number, or trashed), show XXX placeholder
       const yearPart = ticket.date ? String(parseInt(ticket.date.slice(0, 4), 10) % 100) : '';
       return {
-        ...ticket,
+        ...ticketWithOverrides,
         displayTicketNumber: `${ticket.userInitials}_${yearPart}XXX`
       };
     });
