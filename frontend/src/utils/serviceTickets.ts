@@ -300,20 +300,17 @@ export function groupEntriesIntoTickets(
         projectApprover: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.approver;
-          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
-          return parsed.approver;
+          return '';
         })(),
         projectPoAfe: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.poAfe;
-          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
-          return parsed.poAfe;
+          return entry.po_afe?.trim() || '';
         })(),
         projectCc: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.cc;
-          const parsed = entry.po_afe ? parseApproverPoAfe(entry.po_afe) : { approver: '', poAfe: '', cc: '' };
-          return parsed.cc;
+          return '';
         })(),
         projectOther: entry.project?.other,
         entryLocation: entry.location || undefined,
