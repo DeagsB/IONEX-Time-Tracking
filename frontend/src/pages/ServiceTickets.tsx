@@ -316,9 +316,22 @@ export default function ServiceTickets() {
   const normStr = (v: unknown): string => String(v ?? '').trim();
 
   const performSave = async (): Promise<boolean> => {
-    if (!currentTicketRecordId || !selectedTicket) return false;
+    if (!selectedTicket) return false;
     setIsSavingTicket(true);
     try {
+      // Ensure we have a ticket record (handles race when user saves before open completes)
+      let recordId = currentTicketRecordId;
+      if (!recordId) {
+        try {
+          recordId = await getOrCreateTicketRecord(selectedTicket);
+          setCurrentTicketRecordId(recordId);
+        } catch (e) {
+          console.error('Failed to get or create ticket record:', e);
+          alert('Failed to save: could not find or create ticket record.');
+          return false;
+        }
+      }
+
       const legacy = serviceRowsToLegacyFormat(serviceRows);
       let totalEditedHours = 0;
       let totalAmount = 0;
@@ -332,23 +345,8 @@ export default function ServiceTickets() {
       });
       totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-      // Core fields first (always exist); header_overrides in a second update so save works before migration is run
-      const { error } = await supabase
-        .from(tableName)
-        .update({
-          is_edited: true,
-          edited_descriptions: legacy.descriptions,
-          edited_hours: legacy.hours,
-          total_hours: totalEditedHours,
-          total_amount: totalAmount,
-        })
-        .eq('id', currentTicketRecordId);
-      if (error) {
-        console.error('Error saving edited ticket:', error);
-        alert('Failed to save edited ticket data.');
-        return false;
-      }
-      // Persist ALL editable header fields (requires migration_add_service_ticket_header_overrides)
+
+      // Persist header_overrides FIRST so header edits always save (critical for draft tickets)
       if (editableTicket) {
         const { error: overrideError } = await supabase
           .from(tableName)
@@ -373,10 +371,32 @@ export default function ServiceTickets() {
               date: editableTicket.date ?? '',
             },
           })
-          .eq('id', currentTicketRecordId);
+          .eq('id', recordId);
         if (overrideError) {
-          console.warn('Header overrides not saved (run migration_add_service_ticket_header_overrides to enable):', overrideError);
+          console.error('Header overrides save failed:', overrideError);
+          alert('Failed to save header edits (customer info, approver, PO/AFE/CC, etc.). Ensure migration_add_service_ticket_header_overrides has been run.');
+          return false;
         }
+      }
+
+      // Core fields (service rows, hours, amounts)
+      const { error } = await supabase
+        .from(tableName)
+        .update({
+          is_edited: true,
+          edited_descriptions: legacy.descriptions,
+          edited_hours: legacy.hours,
+          total_hours: totalEditedHours,
+          total_amount: totalAmount,
+        })
+        .eq('id', recordId);
+      if (error) {
+        console.error('Error saving edited ticket:', error);
+        alert('Failed to save service rows/hours.');
+        return false;
+      }
+
+      if (editableTicket) {
         // Push service_location, approver, po_afe, cc, other to time entries ONLY when ticket is draft/rejected.
         // Approved tickets: admin edits save to header_overrides only; time entries are never updated.
         const ticketRecord = findMatchingTicketRecord(selectedTicket);
@@ -410,10 +430,10 @@ export default function ServiceTickets() {
       }
       if (pendingDeleteExpenseIds.size > 0) setPendingDeleteExpenseIds(new Set());
       // Apply pending expense adds (new expenses not yet saved)
-      if (currentTicketRecordId && pendingAddExpenses.length > 0) {
+      if (recordId && pendingAddExpenses.length > 0) {
         for (const exp of pendingAddExpenses) {
           await serviceTicketExpensesService.create({
-            service_ticket_id: currentTicketRecordId,
+            service_ticket_id: recordId,
             expense_type: exp.expense_type,
             description: exp.description,
             quantity: exp.quantity,
@@ -423,8 +443,8 @@ export default function ServiceTickets() {
         }
         setPendingAddExpenses([]);
       }
-      if (currentTicketRecordId && hadPendingExpenseChanges) {
-        await loadExpenses(currentTicketRecordId);
+      if (recordId && hadPendingExpenseChanges) {
+        await loadExpenses(recordId);
       }
       setIsTicketEdited(false);
       queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
@@ -1094,7 +1114,7 @@ export default function ServiceTickets() {
       let query = supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
+          id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `)
         .gte('date', startDate)
@@ -1107,7 +1127,7 @@ export default function ServiceTickets() {
         // If the join fails (column doesn't exist yet), try without the join
         let fallbackQuery = supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
+          .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
           .gte('date', startDate)
           .lte('date', endDate);
         if (!isAdmin && user?.id) {
@@ -1199,6 +1219,13 @@ export default function ServiceTickets() {
             totalHours,
           };
         }
+
+        // Fallback: base ticket has 0 hours but DB has total_hours (e.g. entries deleted, or orphaned approved record)
+        const dbTotal = Number((ticketRecord as { total_hours?: number })?.total_hours) || 0;
+        if (ticketRecord && ticket.totalHours === 0 && dbTotal > 0) {
+          const fallbackHoursByRateType = { ...ticket.hoursByRateType, 'Shop Time': dbTotal };
+          return { ...ticket, hoursByRateType: fallbackHoursByRateType, totalHours: dbTotal };
+        }
         
         return ticket;
       });
@@ -1231,7 +1258,7 @@ export default function ServiceTickets() {
       });
 
       for (const st of standaloneTickets) {
-        // Build hours from edited_hours if available
+        // Build hours from edited_hours if available; fallback to total_hours from DB when empty
         const editedHours = (st.edited_hours as Record<string, number | number[]>) || {};
         const hoursByRateType: ServiceTicket['hoursByRateType'] = {
           'Shop Time': 0, 'Shop Overtime': 0, 'Travel Time': 0, 'Field Time': 0, 'Field Overtime': 0,
@@ -1242,7 +1269,14 @@ export default function ServiceTickets() {
             (hoursByRateType as any)[rateType] = Array.isArray(hours) ? hours.reduce((s: number, h: number) => s + (h || 0), 0) : (hours as number) || 0;
           }
         });
-        const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+        let totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+        if (totalHours === 0 && (st as { total_hours?: number }).total_hours != null) {
+          const dbTotal = Number((st as { total_hours?: number }).total_hours) || 0;
+          if (dbTotal > 0) {
+            hoursByRateType['Shop Time'] = dbTotal;
+            totalHours = dbTotal;
+          }
+        }
 
         // Look up customer info
         const customer = customers?.find((c: any) => c.id === st.customer_id);
@@ -1255,12 +1289,18 @@ export default function ServiceTickets() {
         const userName = `${firstName} ${lastName}`.trim() || 'Unknown';
         const userInitials = (firstName && lastName) ? `${firstName[0]}${lastName[0]}`.toUpperCase() : 'XX';
 
-        const standaloneTicket: ServiceTicket & { displayTicketNumber?: string } = {
+        // Look up project for projectNumber (header_overrides takes precedence for approved tickets)
+        const project = allProjects?.find((p: any) => p.id === (st as any).project_id) ?? null;
+        const ovForProject = (st as { header_overrides?: Record<string, string> })?.header_overrides;
+        const projectNumber = ovForProject?.project_number ?? project?.project_number ?? '';
+        const projectName = project?.name ?? '';
+
+        const baseStandalone: ServiceTicket & { displayTicketNumber?: string } = {
           id: st.id,
           date: st.date,
           customerId: st.customer_id,
           projectId: (st as any).project_id,
-          location: (st as any).location,
+          location: (st as any).location ?? '',
           customerName,
           customerInfo: {
             name: customerName,
@@ -1274,23 +1314,27 @@ export default function ServiceTickets() {
             po_number: customer?.po_number,
             approver_name: customer?.approver_name,
             location_code: customer?.location_code,
-            service_location: customer?.service_location,
+            service_location: customer?.service_location ?? ((st as any).location ?? ''),
           },
           userId: st.user_id,
           userName,
           userInitials,
+          projectNumber,
+          projectName,
           ticketNumber: st.ticket_number || undefined,
           totalHours,
           entries: [],
           hoursByRateType,
           rates: { rt: 0, tt: 0, ft: 0, shop_ot: 0, field_ot: 0 },
         };
+        const ov = (st as { header_overrides?: Record<string, string | number> })?.header_overrides;
+        const standaloneTicket = ov ? applyHeaderOverridesToTicket(baseStandalone, ov) : baseStandalone;
         mergedTickets.push(standaloneTicket);
       }
     }
     
     return mergedTickets;
-  }, [billableEntries, employees, existingTickets, customers]);
+  }, [billableEntries, employees, existingTickets, customers, allProjects]);
 
   // Expense mutations
   const createExpenseMutation = useMutation({
