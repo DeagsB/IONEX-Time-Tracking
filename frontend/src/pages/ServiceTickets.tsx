@@ -177,6 +177,7 @@ export default function ServiceTickets() {
   const [isSavingTicket, setIsSavingTicket] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [showRejectNoteModal, setShowRejectNoteModal] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [rejectNote, setRejectNote] = useState('');
   const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
 
@@ -821,14 +822,14 @@ export default function ServiceTickets() {
     }
   };
 
-  // Bulk delete permanently from trash (admin only)
+  // Bulk delete permanently from trash (admin only) - called after in-app confirm
   const handleBulkDeletePermanently = async () => {
     const ticketsToDelete = Array.from(selectedTicketIds)
       .map(id => getTicketById(id))
       .filter(Boolean) as (ServiceTicket & { displayTicketNumber?: string })[];
     if (ticketsToDelete.length === 0) return;
-    if (!confirm(`Permanently delete ${ticketsToDelete.length} ticket${ticketsToDelete.length > 1 ? 's' : ''}? This will remove the tickets and their time entries from the database. This cannot be undone.`)) return;
 
+    setShowBulkDeleteConfirm(false);
     try {
       for (const ticket of ticketsToDelete) {
         const record = findMatchingTicketRecord(ticket);
@@ -1687,6 +1688,57 @@ export default function ServiceTickets() {
 
   return (
     <div>
+      {/* Bulk delete permanently confirm modal - top level so it shows when no panel open */}
+      {showBulkDeleteConfirm && selectedTicketIds.size > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10001,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setShowBulkDeleteConfirm(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '8px',
+              padding: '24px',
+              maxWidth: '420px',
+              width: '100%',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p style={{ margin: '0 0 12px', color: 'var(--text-primary)', fontSize: '15px', fontWeight: '600' }}>
+              Permanently delete {selectedTicketIds.size} ticket{selectedTicketIds.size > 1 ? 's' : ''}?
+            </p>
+            <p style={{ margin: '0 0 20px', color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.5 }}>
+              This will remove the tickets and their time entries from the database. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                className="button button-secondary"
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                style={{ padding: '8px 16px' }}
+              >
+                Cancel
+              </button>
+              <button
+                className="button button-danger"
+                onClick={() => handleBulkDeletePermanently()}
+                style={{ padding: '8px 16px', backgroundColor: '#dc2626', borderColor: '#dc2626' }}
+              >
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
           Service Tickets
@@ -1884,6 +1936,21 @@ export default function ServiceTickets() {
               {showDiscarded ? (
                 <>
                   <button
+                    onClick={() => setShowBulkDeleteConfirm(true)}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: 'transparent',
+                      color: '#fca5a5',
+                      border: '1px solid #fca5a5',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Delete Permanently
+                  </button>
+                  <button
                     onClick={handleBulkRestore}
                     style={{
                       padding: '8px 16px',
@@ -1897,21 +1964,6 @@ export default function ServiceTickets() {
                     }}
                   >
                     Restore Selected
-                  </button>
-                  <button
-                    onClick={handleBulkDeletePermanently}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: 'transparent',
-                      color: '#fca5a5',
-                      border: '1px solid #fca5a5',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Delete Permanently
                   </button>
                 </>
               ) : (
