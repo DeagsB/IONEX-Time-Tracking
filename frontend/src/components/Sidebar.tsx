@@ -115,7 +115,7 @@ export default function Sidebar() {
               Clients
             </SidebarLink>
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'inherit' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isActive('/service-tickets') ? 'var(--logo-red)' : 'inherit' }}>
                 Service Tickets
                 {showRejectedBadge && (
                   <span
@@ -187,7 +187,7 @@ export default function Sidebar() {
               </SidebarLink>
             )}
             <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'inherit' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isActive('/service-tickets') ? 'var(--logo-red)' : 'inherit' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'inherit' }}>
                   Service Tickets
                   {showResubmittedBadge && (
