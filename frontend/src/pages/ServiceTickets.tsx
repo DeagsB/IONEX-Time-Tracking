@@ -2346,14 +2346,15 @@ export default function ServiceTickets() {
                       (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
                     let merged: typeof initialEditable;
                     if (isFrozen || Object.keys(ov).length > 0) {
-                      // For approver/po_afe/cc: use whichever was last saved (time entry vs ticket)
+                      // For approver/po_afe/cc/other: use whichever was last saved (time entry vs ticket)
                       const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
                       const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
                       const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
+                      const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
                       const approverDeduped = (ovApprover === ovPoAfe || ovApprover === ovCc) ? '' : ovApprover;
-                      const [finalApprover, finalPoAfe, finalCc] = useEntryValues
-                        ? [initialEditable.approver, initialEditable.poAfe, initialEditable.cc]
-                        : [approverDeduped, ovPoAfe, ovCc];
+                      const [finalApprover, finalPoAfe, finalCc, finalOther] = useEntryValues
+                        ? [initialEditable.approver, initialEditable.poAfe, initialEditable.cc, initialEditable.other]
+                        : [approverDeduped, ovPoAfe, ovCc, ovOther];
                       merged = {
                         customerName: useOverride(ov.customer_name, initialEditable.customerName),
                         address: useOverride(ov.address, initialEditable.address),
@@ -2368,7 +2369,7 @@ export default function ServiceTickets() {
                         approver: finalApprover,
                         poAfe: finalPoAfe,
                         cc: finalCc,
-                        other: useOverride(ov.other, initialEditable.other),
+                        other: finalOther,
                         techName: useOverride(ov.tech_name, initialEditable.techName),
                         projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
                         date: useOverride(ov.date, initialEditable.date),
