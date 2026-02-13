@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, extractApproverCode } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, getTicketBillingKey, buildBillingKey } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -992,13 +992,13 @@ export default function ServiceTickets() {
             approved_by_admin_id: null,
           }).eq('id', record.id);
         } else if (ticket.customerId && ticket.customerId !== 'unassigned') {
-          const approverCode = ticket.id ? getTicketApproverCode(ticket.id) : '_';
+          const billingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
           const created = await serviceTicketsService.getOrCreateTicket({
             date: ticket.date,
             userId: ticket.userId,
             customerId: ticket.customerId,
             location: ticket.location || '',
-            approverCode,
+            billingKey,
           }, isDemoMode);
           await supabase.from(tableName).update({
             is_discarded: true,
@@ -1104,15 +1104,12 @@ export default function ServiceTickets() {
     },
   });
 
-  /** Extract approver code from ticket.id (last segment after final "-") for merge logic */
-  const getTicketApproverCodeForMerge = (ticketId: string): string => {
-    const lastDash = ticketId.lastIndexOf('-');
-    return lastDash >= 0 ? ticketId.slice(lastDash + 1) : '_';
-  };
-  const getRecordApproverCodeForMerge = (et: { header_overrides?: unknown }): string => {
+  /** Extract billing key from ticket.id (approver::poAfe::cc) for merge logic */
+  const getTicketBillingKeyForMerge = (ticketId: string): string =>
+    getTicketBillingKey(ticketId);
+  const getRecordBillingKeyForMerge = (et: { header_overrides?: unknown }): string => {
     const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-    const combined = buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
-    return extractApproverCode(combined) || '_';
+    return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
   };
 
   const tickets = useMemo(() => {
@@ -1124,21 +1121,22 @@ export default function ServiceTickets() {
       mergedTickets = baseTickets.map(ticket => {
         // Find matching ticket record by date+user+customer+location+approver (DB uses UUID for id)
         const ticketLocation = ticket.location || '';
-        const ticketApprover = ticket.id ? getTicketApproverCodeForMerge(ticket.id) : '_';
+        const ticketBillingKey = ticket.id ? getTicketBillingKeyForMerge(ticket.id) : '_::_::_';
+        const legacyBillingKey = '_::_::_';
         const baseFilterMerge = (et: NonNullable<typeof existingTickets>[number]) =>
           et.date === ticket.date &&
           et.user_id === ticket.userId &&
           (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
           (et.location || '') === ticketLocation;
         let matchingRecords = existingTickets.filter(
-          et => baseFilterMerge(et) && getRecordApproverCodeForMerge(et) === ticketApprover
+          et => baseFilterMerge(et) && getRecordBillingKeyForMerge(et) === ticketBillingKey
         );
         let ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
-        if (!ticketRecord && ticketApprover !== '_') {
-          matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordApproverCodeForMerge(et) === '_');
+        if (!ticketRecord && ticketBillingKey !== legacyBillingKey) {
+          matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordBillingKeyForMerge(et) === legacyBillingKey);
           ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         }
-        if (!ticketRecord && ticketApprover === '_') {
+        if (!ticketRecord && ticketBillingKey === legacyBillingKey) {
           matchingRecords = existingTickets.filter(et => baseFilterMerge(et));
           ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         }
@@ -1178,18 +1176,19 @@ export default function ServiceTickets() {
         if (!et.customer_id) return false;
         // Skip discarded records — they should not appear in the main list
         if ((et as any).is_discarded) return false;
-        // Check if any base ticket already matches this record (date+user+customer+location+approver, with legacy fallbacks)
+        // Check if any base ticket already matches this record (date+user+customer+location+billingKey, with legacy fallbacks)
         const baseFilterSt = (bt: typeof baseTickets[0]) =>
           bt.date === et.date && bt.userId === et.user_id &&
           (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
           (bt.location || '') === (et.location || '');
-        const etApprover = getRecordApproverCodeForMerge(et);
+        const etBillingKey = getRecordBillingKeyForMerge(et);
+        const legacyKey = '_::_::_';
         return !baseTickets.some(bt => {
-          const btApprover = bt.id ? getTicketApproverCodeForMerge(bt.id) : '_';
+          const btBillingKey = bt.id ? getTicketBillingKeyForMerge(bt.id) : legacyKey;
           if (!baseFilterSt(bt)) return false;
-          if (etApprover === btApprover) return true;
-          if (btApprover !== '_' && etApprover === '_') return true; // legacy fallback 1
-          if (btApprover === '_') return true; // legacy fallback 2
+          if (etBillingKey === btBillingKey) return true;
+          if (btBillingKey !== legacyKey && etBillingKey === legacyKey) return true; // legacy fallback 1
+          if (btBillingKey === legacyKey) return true; // legacy fallback 2
           return false;
         });
       });
@@ -1301,25 +1300,20 @@ export default function ServiceTickets() {
     }
   };
 
-  /** Extract approver code from ticket.id (last segment after final "-") */
-  const getTicketApproverCode = (ticketId: string): string => {
-    const lastDash = ticketId.lastIndexOf('-');
-    return lastDash >= 0 ? ticketId.slice(lastDash + 1) : '_';
-  };
+  /** Extract billing key from ticket.id (approver::poAfe::cc) */
+  const getTicketBillingKeyLocal = (ticketId: string): string => getTicketBillingKey(ticketId);
 
-  /** Get approver code from existing record's header_overrides */
-  const getRecordApproverCode = (et: { header_overrides?: unknown }): string => {
+  /** Get billing key from existing record's header_overrides */
+  const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
     const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-    const combined = buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
-    return extractApproverCode(combined) || '_';
+    return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
   };
 
   /**
    * Find a matching existing ticket record for a computed ticket.
    * Standalone tickets use DB UUID as id - match by et.id === ticket.id first.
-   * Base tickets use composite key - match by date+user+customer+location+approver.
-   * Backward compat: records with no approver (_) match base tickets with same date+user+customer+location
-   * when no exact approver match exists (legacy tickets created before approver was in the key).
+   * Base tickets use composite key - match by date+user+customer+location+billingKey (approver::poAfe::cc).
+   * Backward compat: records with legacy key (_::_::_) match when no exact billing key match exists.
    */
   const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; location?: string }) => {
     if (ticket.id && existingTickets) {
@@ -1327,25 +1321,26 @@ export default function ServiceTickets() {
       if (byId) return (existingTickets.find(et => et.id === ticket.id && !(et as any).is_discarded) || byId) as typeof byId;
     }
     const ticketLocation = ticket.location || '';
-    const ticketApprover = ticket.id ? getTicketApproverCode(ticket.id) : '_';
+    const ticketBillingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
+    const legacyBillingKey = '_::_::_';
     const baseFilter = (et: NonNullable<typeof existingTickets>[number]) =>
       et.date === ticket.date &&
       et.user_id === ticket.userId &&
       (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
       (et.location || '') === ticketLocation;
     const matches = existingTickets?.filter(
-      et => baseFilter(et) && getRecordApproverCode(et) === ticketApprover
+      et => baseFilter(et) && getRecordBillingKey(et) === ticketBillingKey
     ) || [];
     let found = matches.find(et => !(et as any).is_discarded) || matches[0];
-    // Legacy fallback 1: base ticket has approver (e.g. G001) but record has '_' (no approver in header_overrides)
-    if (!found && ticketApprover !== '_') {
+    // Legacy fallback 1: base ticket has billing key but record has legacy key (no approver/po_afe/cc in header_overrides)
+    if (!found && ticketBillingKey !== legacyBillingKey) {
       const legacyMatches = existingTickets?.filter(
-        et => baseFilter(et) && getRecordApproverCode(et) === '_'
+        et => baseFilter(et) && getRecordBillingKey(et) === legacyBillingKey
       ) || [];
       found = legacyMatches.find(et => !(et as any).is_discarded) || legacyMatches[0];
     }
-    // Legacy fallback 2: base ticket has '_' (no approver in entries) but record has approver (e.g. G001) from admin approval
-    if (!found && ticketApprover === '_') {
+    // Legacy fallback 2: base ticket has legacy key but record has billing key from admin approval
+    if (!found && ticketBillingKey === legacyBillingKey) {
       const legacyMatches = existingTickets?.filter(et => baseFilter(et)) || [];
       found = legacyMatches.find(et => !(et as any).is_discarded) || legacyMatches[0];
     }
@@ -1401,13 +1396,13 @@ export default function ServiceTickets() {
     }
 
     // For non-admins, create a draft record without a ticket number
-    const approverCode = ticket.id ? getTicketApproverCode(ticket.id) : '_';
+    const billingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
     const record = await serviceTicketsService.getOrCreateTicket({
       date: ticket.date,
       userId: ticket.userId,
       customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
       location: ticket.location || '',
-      approverCode,
+      billingKey,
     }, isDemoMode);
 
     return record.id;
@@ -2855,13 +2850,13 @@ export default function ServiceTickets() {
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
-                                const approverCode = ticket.id ? getTicketApproverCode(ticket.id) : '_';
+                                const billingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
                                 const ticketRecord = await serviceTicketsService.getOrCreateTicket({
                                   date: ticket.date,
                                   userId: ticket.userId,
                                   customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
                                   location: ticket.location || '',
-                                  approverCode,
+                                  billingKey,
                                 }, isDemoMode);
                                 const newStatus = isApproved ? 'draft' : 'approved';
                                 await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
@@ -4278,13 +4273,13 @@ export default function ServiceTickets() {
                         onClick={async () => {
                           setIsApproving(true);
                           try {
-                            const approverCode = selectedTicket.id ? getTicketApproverCode(selectedTicket.id) : '_';
+                            const billingKey = selectedTicket.id ? getTicketBillingKeyLocal(selectedTicket.id) : '_::_::_';
                             const record = await serviceTicketsService.getOrCreateTicket({
                               date: selectedTicket.date,
                               userId: selectedTicket.userId,
                               customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
                               location: selectedTicket.location || '',
-                              approverCode,
+                              billingKey,
                             }, isDemoMode);
                             await serviceTicketsService.updateWorkflowStatus(record.id, 'rejected', isDemoMode, rejectNote.trim() || null);
                             queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
@@ -4536,13 +4531,13 @@ export default function ServiceTickets() {
                             try {
                               const ok = await performSave();
                               if (!ok) { setIsApproving(false); return; }
-                              const approverCode = selectedTicket.id ? getTicketApproverCode(selectedTicket.id) : '_';
+                              const billingKey = selectedTicket.id ? getTicketBillingKeyLocal(selectedTicket.id) : '_::_::_';
                               const ticketRecord = await serviceTicketsService.getOrCreateTicket({
                                 date: selectedTicket.date,
                                 userId: selectedTicket.userId,
                                 customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
                                 location: selectedTicket.location || '',
-                                approverCode,
+                                billingKey,
                               }, isDemoMode);
                               const newStatus = isTicketApproved ? 'draft' : 'approved';
                               await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);

@@ -228,14 +228,14 @@ export function groupEntriesIntoTickets(
     // Use entry location, or fall back to project location, or empty string
     const entryLocation = entry.location || entry.project?.location || '';
 
-    // Build approver/PO/AFE/CC from entry, fall back to project - different approver codes create separate tickets
-    const entryApproverPoAfe = buildApproverPoAfe(entry.approver ?? '', entry.po_afe ?? '', entry.cc ?? '');
-    const projectApproverPoAfe = entry.project ? buildApproverPoAfe(entry.project.approver ?? '', entry.project.po_afe ?? '', entry.project.cc ?? '') : '';
-    const approverPoAfe = entryApproverPoAfe || projectApproverPoAfe;
-    const approverCode = extractApproverCode(approverPoAfe) || '_';
+    // Build approver/PO/AFE/CC from entry, fall back to project - different approver, PO/AFE, or CC create separate tickets
+    const approver = entry.approver ?? entry.project?.approver ?? '';
+    const poAfe = entry.po_afe ?? entry.project?.po_afe ?? '';
+    const cc = (entry as any).cc ?? entry.project?.cc ?? '';
+    const billingKey = buildBillingKey(approver, poAfe, cc);
 
-    // Create composite key - include location and approver code to create separate tickets per location/approver
-    const ticketKey = `${date}-${customerId}-${userId}-${entryLocation}-${approverCode}`;
+    // Create composite key - include location and billing key (approver, PO/AFE, CC) to create separate tickets
+    const ticketKey = `${date}-${customerId}-${userId}-${entryLocation}-${billingKey}`;
 
     // Get or create ticket
     let ticket = ticketMap.get(ticketKey);
@@ -515,6 +515,23 @@ export function parseOtherFieldForPrefixes(other: string | undefined): { cc: str
 export function buildApproverPoAfe(approver: string, poAfe: string, cc: string): string {
   const parts = [approver?.trim(), poAfe?.trim(), cc?.trim()].filter(Boolean);
   return parts.join(' ');
+}
+
+/** Billing key delimiter - used to separate approver, PO/AFE, CC in ticket grouping. */
+const BILLING_KEY_SEP = '::';
+
+/** Build billing key for ticket grouping - different approver, PO/AFE, or CC create separate tickets. */
+export function buildBillingKey(approver: string, poAfe: string, cc: string): string {
+  const a = (approver ?? '').trim() || '_';
+  const p = (poAfe ?? '').trim() || '_';
+  const c = (cc ?? '').trim() || '_';
+  return `${a}${BILLING_KEY_SEP}${p}${BILLING_KEY_SEP}${c}`;
+}
+
+/** Extract billing key from ticket.id (last segment after final "-"). */
+export function getTicketBillingKey(ticketId: string): string {
+  const lastDash = ticketId.lastIndexOf('-');
+  return lastDash >= 0 ? ticketId.slice(lastDash + 1) : '_::_::_';
 }
 
 /** Get combined approver/PO/AFE/CC from project. Uses approver, po_afe, cc columns only. */

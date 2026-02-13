@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { buildApproverPoAfe, extractApproverCode } from '../utils/serviceTickets';
+import { buildApproverPoAfe, extractApproverCode, buildBillingKey } from '../utils/serviceTickets';
 
 // Service functions for interacting with Supabase tables
 
@@ -1115,15 +1115,15 @@ export const serviceTicketsService = {
 
   /**
    * Get or create a service ticket record for a given date/user/customer combination.
-   * When approverCode is provided, matches by approver (from header_overrides) so different
-   * approvers create separate tickets. Requires a valid customerId.
+   * When billingKey is provided (approver::poAfe::cc), matches by all three so different
+   * approver, PO/AFE, or CC create separate tickets. Requires a valid customerId.
    */
   async getOrCreateTicket(params: {
     date: string;
     userId: string;
     customerId: string | null;
     location?: string;
-    approverCode?: string;
+    billingKey?: string;
   }, isDemo: boolean = false): Promise<{ id: string }> {
     // Don't create tickets without a customer - they need a project/customer to be valid
     if (!params.customerId) {
@@ -1132,9 +1132,9 @@ export const serviceTicketsService = {
     
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     const ticketLocation = params.location || '';
-    const targetApprover = params.approverCode ?? '_';
+    const targetBillingKey = params.billingKey ?? '_::_::_';
     
-    // Find existing tickets matching date+user+customer+location (may be multiple with different approvers)
+    // Find existing tickets matching date+user+customer+location (may be multiple with different billing keys)
     const { data: candidates, error: findError } = await supabase
       .from(tableName)
       .select('id, header_overrides')
@@ -1148,12 +1148,11 @@ export const serviceTicketsService = {
       throw findError;
     }
     
-    const getRecordApprover = (et: { header_overrides?: unknown }): string => {
+    const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-      const combined = buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
-      return extractApproverCode(combined) || '_';
+      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
     };
-    const existing = candidates?.find(et => getRecordApprover(et) === targetApprover);
+    const existing = candidates?.find(et => getRecordBillingKey(et) === targetBillingKey);
     if (existing) {
       return { id: existing.id };
     }
@@ -1173,8 +1172,8 @@ export const serviceTicketsService = {
       employeeInitials = 'XX'; // fallback when user has no first/last name; DB requires NOT NULL
     }
     
-    // Create a new ticket record (without a ticket number - that's assigned on approval/export)
-    // Set approver in header_overrides so future finds can match by approver
+    // Parse billingKey to set header_overrides (approver::poAfe::cc)
+    const [approver, poAfe, cc] = targetBillingKey.split('::');
     const insertData: Record<string, unknown> = {
       date: params.date,
       user_id: params.userId,
@@ -1183,8 +1182,12 @@ export const serviceTicketsService = {
       workflow_status: 'draft',
       employee_initials: employeeInitials,
     };
-    if (targetApprover && targetApprover !== '_') {
-      insertData.header_overrides = { approver: targetApprover };
+    if (targetBillingKey !== '_::_::_') {
+      insertData.header_overrides = {
+        approver: approver || '_',
+        po_afe: poAfe || '_',
+        cc: cc || '_',
+      };
     }
     const { data: newTicket, error: createError } = await supabase
       .from(tableName)
@@ -1203,7 +1206,7 @@ export const serviceTicketsService = {
   /**
    * When a time entry is saved, sync approver/po_afe/cc to the service ticket's header_overrides.
    * Only updates draft or rejected tickets - submitted/approved tickets are not modified.
-   * When multiple tickets exist (different approvers), matches by approver code.
+   * When multiple tickets exist (different approver/PO/AFE/CC), matches by billing key.
    */
   async syncTicketHeaderFromTimeEntry(params: {
     date: string;
@@ -1219,7 +1222,7 @@ export const serviceTicketsService = {
     if (!params.customerId) return;
     const tableName = params.isDemo ? 'service_tickets_demo' : 'service_tickets';
     const ticketLocation = params.location ?? '';
-    const targetApprover = extractApproverCode(buildApproverPoAfe(params.approver ?? '', params.po_afe ?? '', params.cc ?? '')) || '_';
+    const targetBillingKey = buildBillingKey(params.approver ?? '', params.po_afe ?? '', params.cc ?? '');
     const { data: candidates, error: findError } = await supabase
       .from(tableName)
       .select('id, header_overrides, workflow_status')
@@ -1228,12 +1231,11 @@ export const serviceTicketsService = {
       .eq('customer_id', params.customerId)
       .eq('location', ticketLocation);
     if (findError || !candidates?.length) return;
-    const getRecordApprover = (et: { header_overrides?: unknown }): string => {
+    const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-      const combined = buildApproverPoAfe(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
-      return extractApproverCode(combined) || '_';
+      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
     };
-    const ticket = candidates.find(et => getRecordApprover(et) === targetApprover);
+    const ticket = candidates.find(et => getRecordBillingKey(et) === targetBillingKey);
     if (!ticket || ticket.workflow_status !== 'draft' && ticket.workflow_status !== 'rejected') return;
     const existing = (ticket.header_overrides as Record<string, unknown>) ?? {};
     const merged = {
