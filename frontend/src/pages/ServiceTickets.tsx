@@ -1019,13 +1019,14 @@ export default function ServiceTickets() {
   };
 
   // Fetch billable entries (filtered by demo mode)
+  // Non-admins only see their own entries; admins can filter by selectedUserId
   const { data: billableEntries, isLoading: isLoadingEntries, error: entriesError } = useQuery({
-    queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, selectedUserId, isDemoMode],
+    queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, selectedUserId, isDemoMode, isAdmin, user?.id],
     queryFn: () => serviceTicketsService.getBillableEntries({
       startDate,
       endDate,
       customerId: selectedCustomerId || undefined,
-      userId: selectedUserId || undefined,
+      userId: isAdmin ? (selectedUserId || undefined) : (user?.id ?? undefined),
       isDemoMode, // Only show demo entries in demo mode, real entries otherwise
     }),
   });
@@ -1068,8 +1069,9 @@ export default function ServiceTickets() {
 
   // Group entries into tickets (with employee rates)
   // Fetch existing ticket numbers and edited hours for display (scoped to date range for performance)
+  // Non-admins only fetch their own tickets; admins fetch all
   const { data: existingTickets } = useQuery({
-    queryKey: ['existingServiceTickets', isDemoMode, startDate, endDate],
+    queryKey: ['existingServiceTickets', isDemoMode, startDate, endDate, isAdmin, user?.id],
     queryFn: async () => {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
       let query = supabase
@@ -1080,14 +1082,21 @@ export default function ServiceTickets() {
         `)
         .gte('date', startDate)
         .lte('date', endDate);
+      if (!isAdmin && user?.id) {
+        query = query.eq('user_id', user.id);
+      }
       const { data, error } = await query;
       if (error) {
         // If the join fails (column doesn't exist yet), try without the join
-        const { data: fallbackData, error: fallbackError } = await supabase
+        let fallbackQuery = supabase
           .from(tableName)
           .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
           .gte('date', startDate)
           .lte('date', endDate);
+        if (!isAdmin && user?.id) {
+          fallbackQuery = fallbackQuery.eq('user_id', user.id);
+        }
+        const { data: fallbackData, error: fallbackError } = await fallbackQuery;
         if (fallbackError) throw fallbackError;
         return fallbackData;
       }
