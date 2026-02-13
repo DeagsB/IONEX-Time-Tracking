@@ -827,7 +827,7 @@ export default function ServiceTickets() {
       .map(id => getTicketById(id))
       .filter(Boolean) as (ServiceTicket & { displayTicketNumber?: string })[];
     if (ticketsToDelete.length === 0) return;
-    if (!confirm(`Permanently delete ${ticketsToDelete.length} ticket${ticketsToDelete.length > 1 ? 's' : ''}? This will remove them from the database and cannot be undone.`)) return;
+    if (!confirm(`Permanently delete ${ticketsToDelete.length} ticket${ticketsToDelete.length > 1 ? 's' : ''}? This will remove the tickets and their time entries from the database. This cannot be undone.`)) return;
 
     try {
       for (const ticket of ticketsToDelete) {
@@ -837,6 +837,7 @@ export default function ServiceTickets() {
         }
       }
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+      await queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
       queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
       queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
@@ -4147,11 +4148,12 @@ export default function ServiceTickets() {
                           <button
                             onClick={async () => {
                               if (!currentTicketRecordId) return;
-                              if (!confirm('Permanently delete this service ticket? This will remove it from the database and cannot be undone.')) return;
+                              if (!confirm('Permanently delete this service ticket? This will remove the ticket and its time entries from the database. This cannot be undone.')) return;
                               setIsDiscarding(true);
                               try {
                                 await serviceTicketsService.deletePermanently(currentTicketRecordId, isDemoMode);
                                 await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                                await queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
                                 await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                                 queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                                 queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
