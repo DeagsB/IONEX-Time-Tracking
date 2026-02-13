@@ -189,6 +189,7 @@ export default function ServiceTickets() {
   const lockNotificationExitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ticketPanelBackdropRef = useRef<HTMLDivElement>(null);
   const ticketPanelMouseDownOnBackdropRef = useRef(false);
+  const justSavedRef = useRef(false); // Skip sync effect overwriting service rows for a moment after save
 
   const showLockedReason = () => {
     if (!isLockedForEditing) return;
@@ -449,6 +450,8 @@ export default function ServiceTickets() {
         await loadExpenses(recordId);
       }
       setIsTicketEdited(false);
+      justSavedRef.current = true;
+      setTimeout(() => { justSavedRef.current = false; }, 2000);
       queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       // Update initial snapshots so pending highlights and Save Changes button clear after save
       if (editableTicket) initialEditableTicketRef.current = { ...editableTicket };
@@ -1662,12 +1665,12 @@ export default function ServiceTickets() {
   }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
 
   // Close panel when selected ticket is no longer in filtered list; refresh when ticket data changes (e.g. entry deleted from calendar)
-  // After save, ticket id can change (e.g. location update) - find by record id to avoid closing panel
+  // After save, skip sync for 2s so we don't overwrite service rows (refetch can produce different ticket structure)
   useEffect(() => {
+    if (justSavedRef.current) return;
     if (selectedTicket) {
       let freshTicket = filteredTickets.find(t => t.id === selectedTicket.id);
       if (!freshTicket && currentTicketRecordId) {
-        // Ticket id may have changed after save (e.g. location pushed to entries); find by record
         freshTicket = filteredTickets.find(t => findMatchingTicketRecord(t)?.id === currentTicketRecordId);
       }
       if (!freshTicket) {
@@ -1675,7 +1678,7 @@ export default function ServiceTickets() {
         setCurrentTicketRecordId(null);
       } else if (freshTicket !== selectedTicket) {
         const wouldClearEntries = freshTicket.entries.length === 0 && selectedTicket.entries.length > 0;
-        if (wouldClearEntries) return; // Avoid disappearing entries after save/refetch
+        if (wouldClearEntries) return;
         setSelectedTicket(freshTicket);
         setServiceRows(entriesToServiceRows(freshTicket.entries));
         initialServiceRowsRef.current = entriesToServiceRows(freshTicket.entries).map(r => ({ ...r }));
