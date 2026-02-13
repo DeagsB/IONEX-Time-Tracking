@@ -231,8 +231,24 @@ export default function ServiceTickets() {
   const [rejectNote, setRejectNote] = useState('');
   const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
 
-  // Track which "new" tickets have been opened (clicked) so we remove the New badge
-  const [openedNewTicketIds, setOpenedNewTicketIds] = useState<Set<string>>(new Set());
+  const OPENED_NEW_IDS_KEY = 'ionex_serviceTickets_openedNewIds';
+  const [openedNewTicketIds, setOpenedNewTicketIds] = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem(OPENED_NEW_IDS_KEY);
+      return s ? new Set(JSON.parse(s)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const addOpenedNewTicketId = (id: string) => {
+    setOpenedNewTicketIds(prev => {
+      const next = new Set(prev).add(id);
+      try {
+        localStorage.setItem(OPENED_NEW_IDS_KEY, JSON.stringify([...next]));
+      } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   // Create new ticket panel state
   const [showCreatePanel, setShowCreatePanel] = useState(false);
@@ -2336,9 +2352,9 @@ export default function ServiceTickets() {
                   setSelectedTicket(ticket);
                   setPendingDeleteExpenseIds(new Set());
                   setPendingAddExpenses([]);
-                  // Remove New badge once ticket is opened
+                  // Remove New badge once ticket is opened - persist so it stays gone across page visits
                   if (!existingRecord && ticket.entries?.length > 0) {
-                    setOpenedNewTicketIds(prev => new Set(prev).add(ticket.id));
+                    addOpenedNewTicketId(ticket.id);
                   }
                   const initialEditable = {
                     customerName: ticket.customerInfo.name || '',
