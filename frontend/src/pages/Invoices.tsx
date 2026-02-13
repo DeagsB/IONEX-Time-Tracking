@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -72,22 +72,36 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
   return parts.join(', ');
 }
 
-/** Build CC breakdown: "AR_xx1, AR_xx2, HV_xx3 - HV_xx7 - CC: xxxxxxxx" */
+/** Build CC breakdown with totals: "AR_xx1, AR_xx2 – CC: xxxxxxxx – $X,XXX.XX" */
 function buildCcBreakdown(
-  tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string })[],
-  getKey: (t: typeof tickets[0]) => InvoiceGroupKey
-): { ticketList: string; cc: string }[] {
-  const byCc = new Map<string, string[]>();
+  tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
+  getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
+  expensesByRecordId: Map<string, Array<{ quantity: number; rate: number }>>
+): { ticketList: string; cc: string; totalAmount: number }[] {
+  const byCc = new Map<string, { nums: string[]; tickets: typeof tickets }>();
   for (const t of tickets) {
     const key = getKey(t);
     const cc = (key.cc || '').trim() || '(none)';
-    const list = byCc.get(cc) ?? [];
-    if (t.ticketNumber) list.push(t.ticketNumber);
-    byCc.set(cc, list);
+    const entry = byCc.get(cc) ?? { nums: [], tickets: [] };
+    if (t.ticketNumber) entry.nums.push(t.ticketNumber);
+    entry.tickets.push(t);
+    byCc.set(cc, entry);
   }
   return [...byCc.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([cc, nums]) => ({ ticketList: formatTicketNumbersWithRanges(nums), cc }));
+    .map(([cc, { nums, tickets: ccTickets }]) => {
+      let totalAmount = 0;
+      for (const t of ccTickets) {
+        const recordId = (t as { recordId?: string }).recordId;
+        const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
+        totalAmount += calculateTicketTotalAmount(t, expenses);
+      }
+      return {
+        ticketList: formatTicketNumbersWithRanges(nums),
+        cc,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+      };
+    });
 }
 
 export default function Invoices() {
@@ -369,6 +383,39 @@ export default function Invoices() {
     }
     return result;
   }, [tickets]);
+
+  // Fetch expenses for all tickets (for CC breakdown totals)
+  const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, Array<{ quantity: number; rate: number }>>>(new Map());
+  useEffect(() => {
+    const recordIds = new Set<string>();
+    for (const { tickets: groupTickets } of groupedTickets) {
+      for (const t of groupTickets) {
+        const rid = (t as ServiceTicket & { recordId?: string }).recordId;
+        if (rid) recordIds.add(rid);
+      }
+    }
+    if (recordIds.size === 0) {
+      setExpensesByRecordId(new Map());
+      return;
+    }
+    let cancelled = false;
+    const fetchAll = async () => {
+      const map = new Map<string, Array<{ quantity: number; rate: number }>>();
+      await Promise.all(
+        [...recordIds].map(async (rid) => {
+          try {
+            const exp = await serviceTicketExpensesService.getByTicketId(rid);
+            if (!cancelled) map.set(rid, exp.map((e) => ({ quantity: e.quantity, rate: e.rate })));
+          } catch {
+            if (!cancelled) map.set(rid, []);
+          }
+        })
+      );
+      if (!cancelled) setExpensesByRecordId(map);
+    };
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [groupedTickets]);
 
   const [exportingGroupIdx, setExportingGroupIdx] = useState<number | null>(null);
 
@@ -814,7 +861,7 @@ export default function Invoices() {
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                   {buildCcBreakdown(
-                    groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string })[],
+                    groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
                     (t) =>
                       getInvoiceGroupKey(
                         {
@@ -829,10 +876,11 @@ export default function Invoices() {
                           entries: t.entries,
                         },
                         t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-                      )
-                  ).map(({ ticketList, cc }, i) => (
+                      ),
+                    expensesByRecordId
+                  ).map(({ ticketList, cc, totalAmount }, i) => (
                     <div key={i} style={{ marginBottom: '4px' }}>
-                      {ticketList} – CC: {cc}
+                      {ticketList} – CC: {cc} – ${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   ))}
                 </div>
