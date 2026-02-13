@@ -80,10 +80,15 @@ export default function TimeEntries() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (payload: { id: string; date: string; userId: string; customerId: string | null }) => {
-      const { id, date, userId, customerId } = payload;
+    mutationFn: async (payload: {
+      id: string; date: string; userId: string; customerId: string | null;
+      projectId?: string | null; location?: string | null; approver?: string | null; po_afe?: string | null; cc?: string | null;
+    }) => {
+      const { id, date, userId, customerId, projectId, location, approver, po_afe, cc } = payload;
       await timeEntriesService.delete(id);
-      await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({ date, userId, customerId }, isDemoMode);
+      await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({
+        date, userId, customerId, projectId, location, approver, po_afe, cc,
+      }, isDemoMode);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
@@ -138,6 +143,11 @@ export default function TimeEntries() {
       date: dateStr,
       userId: entry.user_id,
       customerId,
+      projectId: entry.project_id,
+      location: entry.location,
+      approver: entry.approver,
+      po_afe: entry.po_afe,
+      cc: (entry as any).cc,
     });
   };
 

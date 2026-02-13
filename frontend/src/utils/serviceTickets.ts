@@ -234,8 +234,10 @@ export function groupEntriesIntoTickets(
     const cc = (entry as any).cc ?? entry.project?.cc ?? '';
     const billingKey = buildBillingKey(approver, poAfe, cc);
 
-    // Create composite key - include location and billing key (approver, PO/AFE, CC) to create separate tickets
-    const ticketKey = `${date}-${customerId}-${userId}-${entryLocation}-${billingKey}`;
+    // Create composite key - hierarchy: Project > Location > PO/AFE/CC (Cost Center)
+    // Same project → check location → check billing key. Different at any level = new ticket.
+    const projectId = entry.project?.id ?? '';
+    const ticketKey = `${date}-${customerId}-${userId}-${projectId}-${entryLocation}-${billingKey}`;
 
     // Get or create ticket
     let ticket = ticketMap.get(ticketKey);

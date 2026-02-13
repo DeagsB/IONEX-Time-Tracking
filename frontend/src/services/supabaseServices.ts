@@ -1114,7 +1114,8 @@ export const serviceTicketsService = {
   },
 
   /**
-   * Get or create a service ticket record for a given date/user/customer combination.
+   * Get or create a service ticket record for a given date/user/customer/project/location combination.
+   * Hierarchy: Project > Location > PO/AFE/CC (Cost Center). Different at any level = new ticket.
    * When billingKey is provided (approver::poAfe::cc), matches by all three so different
    * approver, PO/AFE, or CC create separate tickets. Requires a valid customerId.
    */
@@ -1122,6 +1123,7 @@ export const serviceTicketsService = {
     date: string;
     userId: string;
     customerId: string | null;
+    projectId?: string | null;
     location?: string;
     billingKey?: string;
   }, isDemo: boolean = false): Promise<{ id: string }> {
@@ -1134,14 +1136,18 @@ export const serviceTicketsService = {
     const ticketLocation = params.location || '';
     const targetBillingKey = params.billingKey ?? '_::_::_';
     
-    // Find existing tickets matching date+user+customer+location (may be multiple with different billing keys)
-    const { data: candidates, error: findError } = await supabase
+    // Find existing tickets matching date+user+customer+project+location (may be multiple with different billing keys)
+    let query = supabase
       .from(tableName)
       .select('id, header_overrides')
       .eq('date', params.date)
       .eq('user_id', params.userId)
       .eq('customer_id', params.customerId)
       .eq('location', ticketLocation);
+    if (params.projectId) {
+      query = query.eq('project_id', params.projectId);
+    }
+    const { data: candidates, error: findError } = await query;
     
     if (findError) {
       console.error('Error finding ticket:', findError);
@@ -1178,6 +1184,7 @@ export const serviceTicketsService = {
       date: params.date,
       user_id: params.userId,
       customer_id: params.customerId,
+      project_id: params.projectId ?? null,
       location: ticketLocation,
       workflow_status: 'draft',
       employee_initials: employeeInitials,
@@ -1206,12 +1213,13 @@ export const serviceTicketsService = {
   /**
    * When a time entry is saved, sync approver/po_afe/cc to the service ticket's header_overrides.
    * Only updates draft or rejected tickets - submitted/approved tickets are not modified.
-   * When multiple tickets exist (different approver/PO/AFE/CC), matches by billing key.
+   * Matches by project > location > billing key (hierarchy for ticket grouping).
    */
   async syncTicketHeaderFromTimeEntry(params: {
     date: string;
     userId: string;
     customerId: string | null;
+    projectId?: string | null;
     location?: string | null;
     approver?: string | null;
     po_afe?: string | null;
@@ -1223,13 +1231,17 @@ export const serviceTicketsService = {
     const tableName = params.isDemo ? 'service_tickets_demo' : 'service_tickets';
     const ticketLocation = params.location ?? '';
     const targetBillingKey = buildBillingKey(params.approver ?? '', params.po_afe ?? '', params.cc ?? '');
-    const { data: candidates, error: findError } = await supabase
+    let query = supabase
       .from(tableName)
       .select('id, header_overrides, workflow_status')
       .eq('date', params.date)
       .eq('user_id', params.userId)
       .eq('customer_id', params.customerId)
       .eq('location', ticketLocation);
+    if (params.projectId) {
+      query = query.eq('project_id', params.projectId);
+    }
+    const { data: candidates, error: findError } = await query;
     if (findError || !candidates?.length) return;
     const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
@@ -1249,57 +1261,63 @@ export const serviceTicketsService = {
   },
 
   /**
-   * After time entries are removed, delete any service ticket that was created from those entries
-   * (same date, user, customer) when no billable time entries remain for that combination.
-   * Time entries use project_id; customer comes from projects.customer_id.
+   * After a time entry is removed, delete the service ticket if no billable entries remain
+   * for that ticket (same project, location, billing key). Hierarchy: Project > Location > PO/AFE/CC.
    */
   async deleteTicketIfNoTimeEntriesFor(params: {
     date: string;
     userId: string;
     customerId: string | null;
+    projectId?: string | null;
+    location?: string | null;
+    approver?: string | null;
+    po_afe?: string | null;
+    cc?: string | null;
   }, isDemo: boolean = false): Promise<void> {
     if (!params.customerId) return;
 
-    const { date, userId, customerId } = params;
+    const { date, userId, customerId, projectId, location, approver, po_afe, cc } = params;
+    const ticketLocation = location ?? '';
+    const targetBillingKey = buildBillingKey(approver ?? '', po_afe ?? '', cc ?? '');
 
-    // Get project IDs for this customer (time_entries have project_id, not customer_id)
-    const { data: projects, error: projError } = await supabase
-      .from('projects')
-      .select('id')
-      .eq('customer_id', customerId);
-    if (projError || !projects?.length) {
-      // No projects for customer - still check for orphaned tickets to clean up
-    }
-
-    const projectIds = (projects ?? []).map((p: { id: string }) => p.id);
-
-    // Count remaining billable time entries for this date/user/customer (via project)
-    let count = 0;
-    if (projectIds.length > 0) {
-      const { count: entryCount, error: countError } = await supabase
-        .from('time_entries')
-        .select('*', { count: 'exact', head: true })
-        .eq('date', date)
-        .eq('user_id', userId)
-        .in('project_id', projectIds)
-        .eq('billable', true)
-        .eq('is_demo', isDemo);
-      if (!countError && entryCount != null) count = entryCount;
-    }
-
-    if (count > 0) return;
-
-    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-    const { data: tickets, error: findError } = await supabase
-      .from(tableName)
-      .select('id')
+    // Count remaining billable entries for this specific ticket (project + location + billing)
+    if (!projectId) return; // Need projectId to identify the ticket
+    const { count: entryCount, error: countError } = await supabase
+      .from('time_entries')
+      .select('*', { count: 'exact', head: true })
       .eq('date', date)
       .eq('user_id', userId)
-      .eq('customer_id', customerId);
+      .eq('project_id', projectId)
+      .eq('location', ticketLocation)
+      .eq('approver', approver ?? '')
+      .eq('po_afe', po_afe ?? '')
+      .eq('cc', cc ?? '')
+      .eq('billable', true)
+      .eq('is_demo', isDemo);
+    if (countError || (entryCount != null && entryCount > 0)) return;
+
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    let findQuery = supabase
+      .from(tableName)
+      .select('id, header_overrides')
+      .eq('date', date)
+      .eq('user_id', userId)
+      .eq('customer_id', customerId)
+      .eq('location', ticketLocation);
+    if (projectId) findQuery = findQuery.eq('project_id', projectId);
+    const { data: tickets, error: findError } = await findQuery;
 
     if (findError || !tickets?.length) return;
 
-    for (const ticket of tickets) {
+    const getRecordBillingKey = (t: { header_overrides?: unknown }) => {
+      const ov = (t.header_overrides as Record<string, string> | null) ?? {};
+      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+    };
+    const matching = tickets.filter(t => getRecordBillingKey(t) === targetBillingKey);
+    const legacyKey = '_::_::_';
+    const toDelete = matching.length > 0 ? matching : tickets.filter(t => getRecordBillingKey(t) === legacyKey);
+
+    for (const ticket of toDelete) {
       await serviceTicketExpensesService.deleteByTicketId(ticket.id);
       const { error: delError } = await supabase.from(tableName).delete().eq('id', ticket.id);
       if (delError) console.error('Error deleting service ticket:', delError);

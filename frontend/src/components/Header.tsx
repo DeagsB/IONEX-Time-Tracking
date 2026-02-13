@@ -99,6 +99,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
           date: data.date,
           userId: data.user_id,
           customerId: data.customer_id,
+          projectId: data.project_id,
           location: data.location,
           approver: data.approver,
           po_afe: data.po_afe,

@@ -993,6 +993,7 @@ export default function ServiceTickets() {
             date: ticket.date,
             userId: ticket.userId,
             customerId: ticket.customerId,
+            projectId: ticket.projectId,
             location: ticket.location || '',
             billingKey,
           }, isDemoMode);
@@ -1073,7 +1074,7 @@ export default function ServiceTickets() {
       let query = supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
+          id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `)
         .gte('date', startDate)
@@ -1086,7 +1087,7 @@ export default function ServiceTickets() {
         // If the join fails (column doesn't exist yet), try without the join
         let fallbackQuery = supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
+          .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
           .gte('date', startDate)
           .lte('date', endDate);
         if (!isAdmin && user?.id) {
@@ -1123,6 +1124,7 @@ export default function ServiceTickets() {
           et.date === ticket.date &&
           et.user_id === ticket.userId &&
           (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+          (et.project_id || '') === (ticket.projectId || '') &&
           (et.location || '') === ticketLocation;
         let matchingRecords = existingTickets.filter(
           et => baseFilterMerge(et) && getRecordBillingKeyForMerge(et) === ticketBillingKey
@@ -1176,6 +1178,7 @@ export default function ServiceTickets() {
         const baseFilterSt = (bt: typeof baseTickets[0]) =>
           bt.date === et.date && bt.userId === et.user_id &&
           (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
+          (bt.projectId || '') === (et.project_id || '') &&
           (bt.location || '') === (et.location || '');
         const etBillingKey = getRecordBillingKeyForMerge(et);
         const legacyKey = '_::_::_';
@@ -1218,6 +1221,8 @@ export default function ServiceTickets() {
           id: st.id,
           date: st.date,
           customerId: st.customer_id,
+          projectId: (st as any).project_id,
+          location: (st as any).location,
           customerName,
           customerInfo: {
             name: customerName,
@@ -1311,7 +1316,7 @@ export default function ServiceTickets() {
    * Base tickets use composite key - match by date+user+customer+location+billingKey (approver::poAfe::cc).
    * Backward compat: records with legacy key (_::_::_) match when no exact billing key match exists.
    */
-  const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; location?: string }) => {
+  const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string }) => {
     if (ticket.id && existingTickets) {
       const byId = existingTickets.find(et => et.id === ticket.id);
       if (byId) return (existingTickets.find(et => et.id === ticket.id && !(et as any).is_discarded) || byId) as typeof byId;
@@ -1323,6 +1328,7 @@ export default function ServiceTickets() {
       et.date === ticket.date &&
       et.user_id === ticket.userId &&
       (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+      (et.project_id || '') === (ticket.projectId || '') &&
       (et.location || '') === ticketLocation;
     const matches = existingTickets?.filter(
       et => baseFilter(et) && getRecordBillingKey(et) === ticketBillingKey
@@ -1397,6 +1403,7 @@ export default function ServiceTickets() {
       date: ticket.date,
       userId: ticket.userId,
       customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+      projectId: ticket.projectId,
       location: ticket.location || '',
       billingKey,
     }, isDemoMode);
@@ -2842,6 +2849,7 @@ export default function ServiceTickets() {
                                   date: ticket.date,
                                   userId: ticket.userId,
                                   customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+                                  projectId: ticket.projectId,
                                   location: ticket.location || '',
                                   billingKey,
                                 }, isDemoMode);
@@ -3316,8 +3324,7 @@ export default function ServiceTickets() {
                               readOnly={isLockedForEditing}
                             />
                           </div>
-                          <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '8px', display: 'block' }}>PO/AFE/CC (Cost Center) · Approver · Coding · Other</span>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
                             <div>
                               <label style={labelStyle}>PO/AFE/CC (Cost Center)</label>
                               <input
@@ -4265,6 +4272,7 @@ export default function ServiceTickets() {
                               date: selectedTicket.date,
                               userId: selectedTicket.userId,
                               customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                              projectId: selectedTicket.projectId,
                               location: selectedTicket.location || '',
                               billingKey,
                             }, isDemoMode);
@@ -4523,6 +4531,7 @@ export default function ServiceTickets() {
                                 date: selectedTicket.date,
                                 userId: selectedTicket.userId,
                                 customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                                projectId: selectedTicket.projectId,
                                 location: selectedTicket.location || '',
                                 billingKey,
                               }, isDemoMode);
@@ -4950,7 +4959,6 @@ export default function ServiceTickets() {
                     style={{ width: '100%', padding: '8px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
                   />
 
-                  <span style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: '10px', marginBottom: '4px' }}>PO/AFE/CC (Cost Center) · Approver · Coding · Other</span>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>PO/AFE/CC (Cost Center)</label>

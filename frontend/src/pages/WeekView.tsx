@@ -142,7 +142,10 @@ export default function WeekView() {
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // In-app delete confirmation for time entry (replaces browser confirm)
-  const [deleteConfirmEntry, setDeleteConfirmEntry] = useState<{ id: string; date: string; userId: string; customerId: string | null } | null>(null);
+  const [deleteConfirmEntry, setDeleteConfirmEntry] = useState<{
+    id: string; date: string; userId: string; customerId: string | null;
+    projectId?: string | null; location?: string | null; approver?: string | null; po_afe?: string | null; cc?: string | null;
+  } | null>(null);
 
   // Header visibility state (hide on scroll down, show on scroll up)
   const [headerVisible, setHeaderVisible] = useState(true);
@@ -344,6 +347,7 @@ export default function WeekView() {
           date: data.date,
           userId: data.user_id,
           customerId: data.customer_id,
+          projectId: data.project_id,
           location: data.location,
           approver: data.approver,
           po_afe: data.po_afe,
@@ -381,6 +385,7 @@ export default function WeekView() {
           date: typeof data.date === 'string' ? data.date : new Date(data.date).toISOString().split('T')[0],
           userId: data.user_id,
           customerId: data.customer_id,
+          projectId: data.project_id,
           location: data.location,
           approver: data.approver,
           po_afe: data.po_afe,
@@ -403,12 +408,16 @@ export default function WeekView() {
   });
 
   const deleteTimeEntryMutation = useMutation({
-    mutationFn: async (payload: { id: string; date: string; userId: string; customerId: string | null }) => {
-      const { id, date, userId, customerId } = payload;
+    mutationFn: async (payload: {
+      id: string; date: string; userId: string; customerId: string | null;
+      projectId?: string | null; location?: string | null; approver?: string | null; po_afe?: string | null; cc?: string | null;
+    }) => {
+      const { id, date, userId, customerId, projectId, location, approver, po_afe, cc } = payload;
       console.log('Deleting time entry:', id);
       await timeEntriesService.delete(id);
-      // If no time entries remain for this date/user/customer, delete the associated service ticket
-      await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({ date, userId, customerId }, isDemoMode);
+      await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({
+        date, userId, customerId, projectId, location, approver, po_afe, cc,
+      }, isDemoMode);
     },
     onSuccess: async () => {
       console.log('Time entry deleted successfully');
@@ -956,6 +965,11 @@ export default function WeekView() {
         date: dateStr,
         userId: editingEntry.user_id,
         customerId: customerId ?? null,
+        projectId: editingEntry.project_id,
+        location: editingEntry.location,
+        approver: editingEntry.approver,
+        po_afe: editingEntry.po_afe,
+        cc: (editingEntry as any).cc,
       });
     }
   };
@@ -2490,6 +2504,11 @@ export default function WeekView() {
                 date: dateStr,
                 userId: entry.user_id,
                 customerId: customerId ?? null,
+                projectId: entry.project_id,
+                location: entry.location,
+                approver: entry.approver,
+                po_afe: entry.po_afe,
+                cc: (entry as any).cc,
               });
             }}
             style={{
