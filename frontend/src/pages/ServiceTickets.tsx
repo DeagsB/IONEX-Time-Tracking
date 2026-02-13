@@ -51,6 +51,9 @@ export default function ServiceTickets() {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   // Filter tabs: 'draft' (Not Submitted), 'submitted' (Pending Approval), 'approved' (Finalized), 'all'
   // Admin defaults to Submitted tab on first open; non-admin to Drafts
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const tabRefsMap = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [tabIndicatorStyle, setTabIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
   const [activeTab, setActiveTab] = useState<'draft' | 'submitted' | 'approved' | 'all'>(() =>
     isAdmin ? 'submitted' : 'draft'
   );
@@ -67,7 +70,33 @@ export default function ServiceTickets() {
   useEffect(() => {
     setSelectedTicketIds(new Set());
   }, [activeTab, showDiscarded]);
-  
+
+  // Update sliding tab indicator position
+  const updateTabIndicator = () => {
+    const btn = tabRefsMap.current[activeTab];
+    const container = tabsContainerRef.current;
+    if (!btn || !container) return;
+    const crect = container.getBoundingClientRect();
+    const brect = btn.getBoundingClientRect();
+    setTabIndicatorStyle({
+      left: brect.left - crect.left,
+      width: brect.width,
+    });
+  };
+  useEffect(() => {
+    updateTabIndicator();
+    const ro = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateTabIndicator)
+      : null;
+    if (ro && tabsContainerRef.current) ro.observe(tabsContainerRef.current);
+    const onResize = () => updateTabIndicator();
+    window.addEventListener('resize', onResize);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', onResize);
+    };
+  }, [activeTab]);
+
   // Sorting state - persisted per user in localStorage
   const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>(() => {
     const saved = localStorage.getItem(`serviceTickets_sortField_${user?.id}`);
@@ -1866,7 +1895,10 @@ export default function ServiceTickets() {
       </div>
 
       {/* Status Tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
+      <div
+        ref={tabsContainerRef}
+        style={{ position: 'relative', display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}
+      >
         {[
           { id: 'draft', label: 'Drafts' },
           { id: 'submitted', label: 'Submitted' },
@@ -1875,6 +1907,7 @@ export default function ServiceTickets() {
         ].map(tab => (
           <button
             key={tab.id}
+            ref={(el) => { tabRefsMap.current[tab.id] = el; }}
             onClick={() => {
               setActiveTab(tab.id as any);
               if (showDiscarded) setShowDiscarded(false);
@@ -1886,14 +1919,27 @@ export default function ServiceTickets() {
               color: activeTab === tab.id ? 'var(--primary-color)' : 'var(--text-secondary)',
               fontWeight: activeTab === tab.id ? '600' : '500',
               cursor: 'pointer',
-              borderBottom: activeTab === tab.id ? '2px solid var(--primary-color)' : '2px solid transparent',
+              borderBottom: '2px solid transparent',
               marginBottom: '-1px',
-              transition: 'all 0.2s',
+              transition: 'color 0.2s ease, font-weight 0.2s ease',
             }}
           >
             {tab.label}
           </button>
         ))}
+        {tabIndicatorStyle && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '-1px',
+              left: tabIndicatorStyle.left,
+              width: tabIndicatorStyle.width,
+              height: '2px',
+              backgroundColor: 'var(--primary-color)',
+              transition: 'left 0.3s ease, width 0.3s ease',
+            }}
+          />
+        )}
       </div>
 
       {/* Trashed banner */}
