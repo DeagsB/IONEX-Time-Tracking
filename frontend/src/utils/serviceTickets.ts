@@ -228,14 +228,13 @@ export function groupEntriesIntoTickets(
     // Use entry location, or fall back to project location, or empty string
     const entryLocation = entry.location || entry.project?.location || '';
 
-    // Only PO/AFE/CC (Cost Center) creates new tickets - different approver or Coding do NOT
+    // Only PO/AFE/CC (Cost Center) creates new tickets - different approver, Coding, or Location do NOT
     const poAfe = entry.po_afe ?? entry.project?.po_afe ?? '';
     const groupingKey = buildGroupingKey(poAfe);
 
-    // Create composite key - hierarchy: Project > Location > PO/AFE/CC (Cost Center)
-    // Same project → check location → check grouping key. Different at any level = new ticket.
+    // Create composite key - hierarchy: Project > PO/AFE/CC (Cost Center). Location is editable, not a grouping dimension.
     const projectId = entry.project?.id ?? '';
-    const ticketKey = `${date}-${customerId}-${userId}-${projectId}-${entryLocation}-${groupingKey}`;
+    const ticketKey = `${date}-${customerId}-${userId}-${projectId}-${groupingKey}`;
 
     // Get or create ticket
     let ticket = ticketMap.get(ticketKey);

@@ -259,14 +259,12 @@ export default function Invoices() {
     };
     // Add tickets that match approved records (from base or standalone)
     for (const rec of approved) {
-      const ticketLocation = rec.location || '';
       const recGroupingKey = getRecordGroupingKey(rec);
       const recBillingKey = getRecordBillingKey(rec);
       const match = baseTickets.find(
         (bt) => {
           if (bt.date !== rec.date || bt.userId !== rec.user_id) return false;
           if (bt.customerId !== rec.customer_id && !(rec.customer_id == null && bt.customerId === 'unassigned')) return false;
-          if ((bt.location || '') !== ticketLocation) return false;
           if ((bt.projectId || '') !== (rec.project_id || '')) return false;
           const btGroupingKey = bt.id ? getTicketBillingKey(bt.id) : '_::_::_';
           const btFullKey = getTicketFullBillingKey(bt);
@@ -357,12 +355,13 @@ export default function Invoices() {
               field_ot: emp.field_ot_rate ?? DEFAULT_RATES.field_ot,
             }
           : DEFAULT_RATES;
+        const recLocation = rec.location || '';
         const rawStandalone: ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string } = {
-          id: `${rec.date}-${rec.customer_id}-${rec.user_id}-${ticketLocation}`,
+          id: `${rec.date}-${rec.customer_id}-${rec.user_id}-${recLocation}`,
           date: rec.date,
           customerId: rec.customer_id || 'unassigned',
           customerName,
-          location: ticketLocation || undefined,
+          location: recLocation || undefined,
           customerInfo: {
             name: customerName,
             contact_name: customer?.contact_name,

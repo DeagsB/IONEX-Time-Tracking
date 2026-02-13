@@ -347,11 +347,13 @@ export default function ServiceTickets() {
       totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
 
-      // Persist header_overrides FIRST so header edits always save (critical for draft tickets)
+      // Persist header_overrides and location FIRST so header edits always save (critical for draft tickets)
       if (editableTicket) {
+        const newLocation = editableTicket.serviceLocation?.trim() || '';
         const { error: overrideError } = await supabase
           .from(tableName)
           .update({
+            location: newLocation,
             header_overrides: {
               customer_name: editableTicket.customerName ?? '',
               address: editableTicket.address ?? '',
@@ -1172,16 +1174,14 @@ export default function ServiceTickets() {
     let mergedTickets = baseTickets;
     if (existingTickets && existingTickets.length > 0) {
       mergedTickets = baseTickets.map(ticket => {
-        // Find matching ticket record by date+user+customer+location+approver (DB uses UUID for id)
-        const ticketLocation = ticket.location || '';
+        // Find matching ticket record by date+user+customer+project+billing (location is editable, not a grouping dimension)
         const ticketBillingKey = ticket.id ? getTicketBillingKeyForMerge(ticket.id) : '_::_::_';
         const legacyBillingKey = '_::_::_';
         const baseFilterMerge = (et: NonNullable<typeof existingTickets>[number]) =>
           et.date === ticket.date &&
           et.user_id === ticket.userId &&
           (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-          (et.project_id || '') === (ticket.projectId || '') &&
-          (et.location || '') === ticketLocation;
+          (et.project_id || '') === (ticket.projectId || '');
         const ticketFullKey = getTicketFullBillingKey(ticket);
         // Prefer full billing key match for approved records (approver::po_afe::cc) so AR and other approved tickets are found
         let matchingRecords = existingTickets.filter(
@@ -1242,12 +1242,11 @@ export default function ServiceTickets() {
         if (!et.customer_id) return false;
         // Skip discarded records — they should not appear in the main list
         if ((et as any).is_discarded) return false;
-        // Check if any base ticket already matches this record (date+user+customer+location+billingKey, with legacy fallbacks)
+        // Check if any base ticket already matches this record (date+user+customer+project+billingKey; location not used)
         const baseFilterSt = (bt: typeof baseTickets[0]) =>
           bt.date === et.date && bt.userId === et.user_id &&
           (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
-          (bt.projectId || '') === (et.project_id || '') &&
-          (bt.location || '') === (et.location || '');
+          (bt.projectId || '') === (et.project_id || '');
         const etGroupingKey = getRecordGroupingKeyForMerge(et);
         const legacyKey = '_::_::_';
         const etBillingKey = getRecordBillingKeyForMerge(et);
@@ -1400,23 +1399,20 @@ export default function ServiceTickets() {
   /**
    * Find a matching existing ticket record for a computed ticket.
    * Standalone tickets use DB UUID as id - match by et.id === ticket.id first.
-   * Base tickets use composite key - match by date+user+customer+location+billingKey (approver::poAfe::cc).
-   * Backward compat: records with legacy key (_::_::_) match when no exact billing key match exists.
+   * Base tickets use composite key - match by date+user+customer+project+billingKey (location is editable).
    */
   const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string; entryApprover?: string; entryPoAfe?: string; entryCc?: string; projectApprover?: string; projectPoAfe?: string; projectCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> }) => {
     if (ticket.id && existingTickets) {
       const byId = existingTickets.find(et => et.id === ticket.id);
       if (byId) return (existingTickets.find(et => et.id === ticket.id && !(et as any).is_discarded) || byId) as typeof byId;
     }
-    const ticketLocation = ticket.location || '';
     const ticketBillingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
     const legacyBillingKey = '_::_::_';
     const baseFilter = (et: NonNullable<typeof existingTickets>[number]) =>
       et.date === ticket.date &&
       et.user_id === ticket.userId &&
       (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-      (et.project_id || '') === (ticket.projectId || '') &&
-      (et.location || '') === ticketLocation;
+      (et.project_id || '') === (ticket.projectId || '');
     const ticketFullKey = (ticket.entries ?? ticket.entryApprover ?? ticket.projectApprover) != null
       ? getTicketFullBillingKey(ticket)
       : ticketBillingKey;

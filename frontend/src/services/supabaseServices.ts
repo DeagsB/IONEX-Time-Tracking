@@ -1136,14 +1136,13 @@ export const serviceTicketsService = {
     const ticketLocation = params.location || '';
     const targetBillingKey = params.billingKey ?? '_::_::_';
     
-    // Find existing tickets matching date+user+customer+project+location (may be multiple with different billing keys)
+    // Find existing tickets matching date+user+customer+project (location is editable, not a grouping dimension)
     let query = supabase
       .from(tableName)
-      .select('id, header_overrides')
+      .select('id, header_overrides, location')
       .eq('date', params.date)
       .eq('user_id', params.userId)
-      .eq('customer_id', params.customerId)
-      .eq('location', ticketLocation);
+      .eq('customer_id', params.customerId);
     if (params.projectId) {
       query = query.eq('project_id', params.projectId);
     }
@@ -1213,7 +1212,7 @@ export const serviceTicketsService = {
   /**
    * When a time entry is saved, sync approver/po_afe/cc to the service ticket's header_overrides.
    * Only updates draft or rejected tickets - submitted/approved tickets are not modified.
-   * Matches by project > location > billing key (hierarchy for ticket grouping).
+   * Matches by project > billing key (location is editable, not a grouping dimension).
    */
   async syncTicketHeaderFromTimeEntry(params: {
     date: string;
@@ -1229,15 +1228,13 @@ export const serviceTicketsService = {
   }): Promise<void> {
     if (!params.customerId) return;
     const tableName = params.isDemo ? 'service_tickets_demo' : 'service_tickets';
-    const ticketLocation = params.location ?? '';
     const targetGroupingKey = buildGroupingKey(params.po_afe ?? '');
     let query = supabase
       .from(tableName)
       .select('id, header_overrides, workflow_status')
       .eq('date', params.date)
       .eq('user_id', params.userId)
-      .eq('customer_id', params.customerId)
-      .eq('location', ticketLocation);
+      .eq('customer_id', params.customerId);
     if (params.projectId) {
       query = query.eq('project_id', params.projectId);
     }
@@ -1263,7 +1260,7 @@ export const serviceTicketsService = {
 
   /**
    * After a time entry is removed, delete the service ticket if no billable entries remain
-   * for that ticket (same project, location, billing key). Hierarchy: Project > Location > PO/AFE/CC.
+   * for that ticket (same project, po_afe). Location is editable, not a grouping dimension.
    */
   async deleteTicketIfNoTimeEntriesFor(params: {
     date: string;
@@ -1277,18 +1274,16 @@ export const serviceTicketsService = {
   }, isDemo: boolean = false): Promise<void> {
     if (!params.customerId) return;
 
-    const { date, userId, customerId, projectId, location, approver, po_afe } = params;
-    const ticketLocation = location ?? '';
+    const { date, userId, customerId, projectId, po_afe } = params;
 
-    // Count remaining billable entries for this ticket (project + location + po_afe only - Cost Center drives grouping)
-    if (!projectId) return; // Need projectId to identify the ticket
+    // Count remaining billable entries for this ticket (project + po_afe only)
+    if (!projectId) return;
     const { count: entryCount, error: countError } = await supabase
       .from('time_entries')
       .select('*', { count: 'exact', head: true })
       .eq('date', date)
       .eq('user_id', userId)
       .eq('project_id', projectId)
-      .eq('location', ticketLocation)
       .eq('po_afe', po_afe ?? '')
       .eq('billable', true)
       .eq('is_demo', isDemo);
@@ -1300,8 +1295,7 @@ export const serviceTicketsService = {
       .select('id, header_overrides')
       .eq('date', date)
       .eq('user_id', userId)
-      .eq('customer_id', customerId)
-      .eq('location', ticketLocation);
+      .eq('customer_id', customerId);
     if (projectId) findQuery = findQuery.eq('project_id', projectId);
     const { data: tickets, error: findError } = await findQuery;
 
