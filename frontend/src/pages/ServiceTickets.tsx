@@ -1354,7 +1354,7 @@ export default function ServiceTickets() {
    * Base tickets use composite key - match by date+user+customer+location+billingKey (approver::poAfe::cc).
    * Backward compat: records with legacy key (_::_::_) match when no exact billing key match exists.
    */
-  const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string }) => {
+  const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string; entryApprover?: string; entryPoAfe?: string; entryCc?: string; projectApprover?: string; projectPoAfe?: string; projectCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> }) => {
     if (ticket.id && existingTickets) {
       const byId = existingTickets.find(et => et.id === ticket.id);
       if (byId) return (existingTickets.find(et => et.id === ticket.id && !(et as any).is_discarded) || byId) as typeof byId;
@@ -1368,7 +1368,9 @@ export default function ServiceTickets() {
       (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
       (et.project_id || '') === (ticket.projectId || '') &&
       (et.location || '') === ticketLocation;
-    const ticketFullKey = getTicketFullBillingKey(ticket);
+    const ticketFullKey = (ticket.entries ?? ticket.entryApprover ?? ticket.projectApprover) != null
+      ? getTicketFullBillingKey(ticket)
+      : ticketBillingKey;
     const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
       return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
