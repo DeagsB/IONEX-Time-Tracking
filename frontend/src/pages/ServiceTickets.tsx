@@ -358,7 +358,8 @@ export default function ServiceTickets() {
         if (overrideError) {
           console.warn('Header overrides not saved (run migration_add_service_ticket_header_overrides to enable):', overrideError);
         }
-        // Push approver, po_afe, cc back to underlying time entries only when ticket is draft/rejected
+        // Push approver, po_afe, cc, other to time entries ONLY when ticket is draft/rejected.
+        // Approved tickets: admin edits save to header_overrides only; time entries are never updated.
         const ticketRecord = findMatchingTicketRecord(selectedTicket);
         const ws = (ticketRecord as { workflow_status?: string })?.workflow_status;
         const isDraftOrRejected = ws === 'draft' || ws === 'rejected';
@@ -2949,7 +2950,34 @@ export default function ServiceTickets() {
                   </div>
                 );
               })()}
-              {/* Locked banner - when ticket is admin-approved or trashed */}
+              {/* Admin editing approved ticket - info banner (edits don't affect time entries) */}
+              {isAdmin && !isLockedForEditing && selectedTicket && (() => {
+                const rec = findMatchingTicketRecord(selectedTicket);
+                const hasTicketNumber = !!rec?.ticket_number;
+                const isDiscarded = !!(rec as any)?.is_discarded;
+                if (!hasTicketNumber || isDiscarded) return null;
+                return (
+                  <div style={{
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    border: '1px solid #3b82f6',
+                    borderRadius: '8px',
+                    padding: '12px 16px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                  }}>
+                    <span style={{ fontSize: '18px' }}>✏️</span>
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#3b82f6' }}>Admin edit</div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        You can edit this approved ticket. Changes are saved to this ticket only. Time entries are not updated.
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* Locked banner - when ticket is admin-approved or trashed (non-admin) */}
               {isLockedForEditing && selectedTicket && (() => {
                 const isTrashed = !!(findMatchingTicketRecord(selectedTicket) as any)?.is_discarded;
                 return (
