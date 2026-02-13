@@ -1316,6 +1316,9 @@ export default function ServiceTickets() {
         const workflowStatus = existing?.workflow_status || 'draft';
         
         if (activeTab === 'draft') {
+          // For admin: hide "new" tickets (no record yet) for other employees
+          const isNewForOther = !existing && t.userId !== user?.id;
+          if (isAdmin && isNewForOther) return false;
           // Drafts: Not submitted (workflow not approved) and no ticket number
           return !hasTicketNumber && (workflowStatus === 'draft' || workflowStatus === 'rejected');
         } else if (activeTab === 'submitted') {
