@@ -75,7 +75,7 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
 /** Single CC breakdown line with copy button (excludes total from copy) */
 function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; cc: string; totalAmount: number }) {
   const [copied, setCopied] = useState(false);
-  const copyText = `${ticketList} CC: ${cc}`;
+  const copyText = `${ticketList}; CC: ${cc}`;
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(copyText);
@@ -88,7 +88,7 @@ function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '13px' }}>
       <span style={{ color: 'var(--text-primary)', flex: 1 }}>
-        {ticketList} CC: {cc}
+        {ticketList}; CC: {cc}
       </span>
       <span style={{ fontWeight: 700, color: 'var(--primary-color)', fontSize: '14px', minWidth: '70px', textAlign: 'right' }}>
         ${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -114,7 +114,7 @@ function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; 
   );
 }
 
-/** Build CC breakdown with totals: "AR_xx1, AR_xx2 CC: xxxxxxxx – $X,XXX.XX" */
+/** Build CC breakdown with totals: "AR_xx1, AR_xx2; CC: xxxxxxxx – $X,XXX.XX" */
 function buildCcBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
   getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
