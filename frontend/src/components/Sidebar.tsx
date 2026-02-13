@@ -109,7 +109,7 @@ export default function Sidebar() {
               MANAGE
             </div>
             <SidebarLink to="/projects" active={isActive('/projects')}>
-              Projects
+              <span style={{ color: isActive('/projects') ? 'var(--logo-red)' : 'inherit' }}>Projects</span>
             </SidebarLink>
             <SidebarLink to="/customers" active={isActive('/customers')}>
               Clients
@@ -156,7 +156,7 @@ export default function Sidebar() {
               MANAGE
             </div>
             <SidebarLink to="/projects" active={isActive('/projects')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isActive('/projects') ? 'var(--logo-red)' : 'inherit' }}>
                 Projects
                 {showMissingProjectNumberBadge && (
                   <span
