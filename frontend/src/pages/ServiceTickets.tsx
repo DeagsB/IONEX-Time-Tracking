@@ -2257,9 +2257,11 @@ export default function ServiceTickets() {
                         const entryApprover = ticket.entryApprover || '';
                         const entryPoAfe = ticket.entryPoAfe || ticket.customerInfo.po_number || '';
                         const entryCc = ticket.entryCc || '';
+                        // Don't use customerInfo.approver_name - it can be buildApproverPoAfe(po_afe,cc) from
+                        // applyHeaderOverridesToTicket, causing CC value to flash in approver field
                         const approverDeduped = (entryApprover === entryPoAfe || entryApprover === entryCc)
-                          ? (ticket.customerInfo.approver_name || '')
-                          : (entryApprover || ticket.customerInfo.approver_name || '');
+                          ? ''
+                          : (entryApprover || '');
                         return {
                           approver: approverDeduped,
                           poAfe: entryPoAfe,
