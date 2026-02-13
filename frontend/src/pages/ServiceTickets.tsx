@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService } from '../services/supabaseServices';
+import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService } from '../services/supabaseServices';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
@@ -357,6 +357,24 @@ export default function ServiceTickets() {
           .eq('id', currentTicketRecordId);
         if (overrideError) {
           console.warn('Header overrides not saved (run migration_add_service_ticket_header_overrides to enable):', overrideError);
+        }
+        // Push approver, po_afe, cc back to underlying time entries so edits persist to the calendar
+        if (selectedTicket?.entries?.length && editableTicket) {
+          const headerUpdates = {
+            approver: editableTicket.approver?.trim() || null,
+            po_afe: editableTicket.poAfe?.trim() || null,
+            cc: editableTicket.cc?.trim() || null,
+          };
+          for (const entry of selectedTicket.entries) {
+            if (entry.id) {
+              try {
+                await timeEntriesService.update(entry.id, headerUpdates);
+              } catch (e) {
+                console.warn('Failed to update time entry', entry.id, e);
+              }
+            }
+          }
+          queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
         }
       }
       // Apply pending expense deletes (expenses marked for removal)
