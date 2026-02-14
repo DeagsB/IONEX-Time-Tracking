@@ -1393,12 +1393,25 @@ export default function ServiceTickets() {
     };
 
     // --- Assemble ---
-    // Draft tickets: from time entries, not claimed by locked records
+    // Draft tickets: from time entries (not claimed by locked records) + orphaned draft records (manual edits, no time entries)
     const draftTickets: (ServiceTicket & { _matchedRecordId?: string | null })[] = [];
     for (const bt of baseTickets) {
       if (claimedBaseTicketIds.has(bt.id)) continue;
       const draftRec = findDraftRecordForBaseTicket(bt);
       draftTickets.push({ ...bt, _matchedRecordId: draftRec?.id ?? null });
+    }
+    
+    // Add orphaned draft records (draft records with manual edits but no matching time entries)
+    const orphanedDraftRecords = draftRecords.filter(rec => {
+      if (usedDraftRecordIds.has(rec.id)) return false;
+      // Include if has manual edits (per-entry overrides or legacy is_edited flag)
+      const hasOverrides = (rec as any).edited_entry_overrides != null && Object.keys((rec as any).edited_entry_overrides as object).length > 0;
+      const isLegacyEdited = rec.is_edited === true;
+      return hasOverrides || isLegacyEdited;
+    });
+    for (const rec of orphanedDraftRecords) {
+      const orphanTicket = buildLockedTicketFromRecord(rec);
+      draftTickets.push(orphanTicket);
     }
 
     // Locked tickets: from DB records (submitted + approved)
@@ -1406,6 +1419,17 @@ export default function ServiceTickets() {
 
     return [...draftTickets, ...lockedTickets];
   }, [billableEntries, employees, existingTickets, customers, allProjects]);
+
+  // Live hours computed from serviceRows when a ticket is selected
+  const liveHoursForSelectedTicket = useMemo((): { st: number; tt: number; ft: number; so: number; fo: number; total: number } | null => {
+    if (!selectedTicket || serviceRows.length === 0) return null;
+    const st = serviceRows.reduce((sum, r) => sum + (r.st || 0), 0);
+    const tt = serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0);
+    const ft = serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0);
+    const so = serviceRows.reduce((sum, r) => sum + (r.so || 0), 0);
+    const fo = serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0);
+    return { st, tt, ft, so, fo, total: st + tt + ft + so + fo };
+  }, [selectedTicket, serviceRows]);
 
   // Expense mutations
   const createExpenseMutation = useMutation({
@@ -2981,50 +3005,49 @@ export default function ServiceTickets() {
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-primary)', fontWeight: '600' }}>
                     {(() => {
-                      // When this ticket is selected with unsaved changes, show live total from service rows
-                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
-                        const liveTotal = serviceRows.reduce((sum, r) => sum + (r.st || 0) + (r.tt || 0) + (r.ft || 0) + (r.so || 0) + (r.fo || 0), 0);
-                        return liveTotal.toFixed(2);
+                      // When this ticket is selected, show live total from service rows
+                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                        return liveHoursForSelectedTicket.total.toFixed(2);
                       }
                       return ticket.totalHours.toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
-                        return serviceRows.reduce((sum, r) => sum + (r.st || 0), 0).toFixed(2);
+                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                        return liveHoursForSelectedTicket.st.toFixed(2);
                       }
                       return ticket.hoursByRateType['Shop Time'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
-                        return serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0).toFixed(2);
+                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                        return liveHoursForSelectedTicket.tt.toFixed(2);
                       }
                       return ticket.hoursByRateType['Travel Time'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
-                        return serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0).toFixed(2);
+                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                        return liveHoursForSelectedTicket.ft.toFixed(2);
                       }
                       return ticket.hoursByRateType['Field Time'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
-                        return serviceRows.reduce((sum, r) => sum + (r.so || 0), 0).toFixed(2);
+                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                        return liveHoursForSelectedTicket.so.toFixed(2);
                       }
                       return ticket.hoursByRateType['Shop Overtime'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
-                        return serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0).toFixed(2);
+                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                        return liveHoursForSelectedTicket.fo.toFixed(2);
                       }
                       return ticket.hoursByRateType['Field Overtime'].toFixed(2);
                     })()}
