@@ -2469,7 +2469,6 @@ export default function ServiceTickets() {
                       }
                       const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
                       if (fromProject) {
-                        // Use only separate project fields - never customerInfo.approver_name (combined string)
                         return {
                           approver: ticket.projectApprover || '',
                           poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
@@ -2488,8 +2487,47 @@ export default function ServiceTickets() {
                     projectNumber: ticket.projectNumber || '',
                     date: ticket.date || '',
                   };
-                  setEditableTicket(initialEditable);
-                  initialEditableTicketRef.current = { ...initialEditable };
+                  // Apply header_overrides from existingRecord immediately to avoid flash of default before override
+                  const ov = (existingRecord?.header_overrides as Record<string, string | number> | null) ?? {};
+                  const useOverride = (ovVal: string | number | undefined, fallback: string) =>
+                    (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
+                  const isPlaceholder = (v: string) => !v || v === '_';
+                  const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
+                  const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
+                  const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
+                  const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
+                  const [finalApprover, finalPoAfe, finalCc, finalOther] = (isFrozen || Object.keys(ov).length > 0)
+                    ? [
+                        isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover,
+                        isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe,
+                        isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc,
+                        isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther,
+                      ]
+                    : [initialEditable.approver, initialEditable.poAfe, initialEditable.cc, initialEditable.other];
+                  const initialToShow = (isFrozen || Object.keys(ov).length > 0)
+                    ? {
+                        ...initialEditable,
+                        customerName: useOverride(ov.customer_name, initialEditable.customerName),
+                        address: useOverride(ov.address, initialEditable.address),
+                        cityState: useOverride(ov.city_state, initialEditable.cityState),
+                        zipCode: useOverride(ov.zip_code, initialEditable.zipCode),
+                        phone: useOverride(ov.phone, initialEditable.phone),
+                        email: useOverride(ov.email, initialEditable.email),
+                        contactName: useOverride(ov.contact_name, initialEditable.contactName),
+                        serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
+                        locationCode: useOverride(ov.location_code, initialEditable.locationCode),
+                        poNumber: useOverride(ov.po_number, initialEditable.poNumber),
+                        approver: finalApprover,
+                        poAfe: finalPoAfe,
+                        cc: finalCc,
+                        other: finalOther,
+                        techName: useOverride(ov.tech_name, initialEditable.techName),
+                        projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
+                        date: useOverride(ov.date, initialEditable.date),
+                      }
+                    : initialEditable;
+                  setEditableTicket(initialToShow);
+                  initialEditableTicketRef.current = { ...initialToShow };
                   
                   // Set display ticket number (will be XXX until exported)
                   setDisplayTicketNumber(ticket.displayTicketNumber);
