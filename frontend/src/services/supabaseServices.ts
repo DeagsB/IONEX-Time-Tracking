@@ -1565,7 +1565,7 @@ export const serviceTicketsService = {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     const { data, error } = await supabase
       .from(tableName)
-      .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, header_overrides')
+      .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, header_overrides')
       .eq('workflow_status', 'approved')
       .eq('is_discarded', false)
       .not('ticket_number', 'is', null)

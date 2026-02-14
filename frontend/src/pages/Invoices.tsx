@@ -36,6 +36,7 @@ type ApprovedRecord = {
   location: string | null;
   is_edited?: boolean;
   edited_hours?: unknown;
+  total_hours?: number | string | null;
   header_overrides?: { approver_po_afe?: string; service_location?: string } | null;
 };
 
@@ -318,7 +319,7 @@ export default function Invoices() {
         const ticketWithOverrides = applyHeaderOverridesToTicket(rawTicket, rec.header_overrides ?? undefined);
         ticketList.push({ ...ticketWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawTicket.recordProjectId });
       } else {
-        // Standalone ticket
+        // Standalone ticket (no matching billable entries)
         const editedHours = (rec.edited_hours as Record<string, number | number[]>) || {};
         const hoursByRateType: ServiceTicket['hoursByRateType'] = {
           'Shop Time': 0,
@@ -335,7 +336,15 @@ export default function Invoices() {
               : (hours as number) || 0;
           }
         });
-        const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+        let totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+        // When edited_hours is empty, use total_hours from the service_ticket record
+        if (totalHours === 0 && rec.total_hours != null) {
+          const th = typeof rec.total_hours === 'string' ? parseFloat(rec.total_hours) : rec.total_hours;
+          if (!isNaN(th) && th > 0) {
+            totalHours = th;
+            hoursByRateType['Shop Time'] = th;
+          }
+        }
         const customer = customers?.find((c: { id: string }) => c.id === rec.customer_id);
         const customerName = customer?.name || 'Unknown Customer';
         const emp = employees?.find((e: { user_id: string }) => e.user_id === rec.user_id) as { rt_rate?: number; tt_rate?: number; ft_rate?: number; shop_ot_rate?: number; field_ot_rate?: number; user?: { first_name?: string; last_name?: string } } | undefined;
