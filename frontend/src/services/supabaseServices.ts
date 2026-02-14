@@ -1472,14 +1472,18 @@ export const serviceTicketsService = {
     } else {
       updatePayload.rejection_notes = null;
     }
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from(tableName)
       .update(updatePayload)
-      .eq('id', ticketId);
+      .eq('id', ticketId)
+      .select('id, workflow_status');
 
     if (error) {
       console.error('Error updating workflow status:', error);
       throw error;
+    }
+    if (!data || data.length === 0) {
+      throw new Error(`Workflow update failed: no rows updated for ticket ${ticketId}. This may be a permissions issue.`);
     }
   },
 

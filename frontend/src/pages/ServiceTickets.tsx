@@ -4776,7 +4776,10 @@ export default function ServiceTickets() {
                           setIsApproving(true);
                           try {
                             // Use currentTicketRecordId if available (already resolved when ticket was opened)
-                            let recordId = currentTicketRecordId;
+                            // Also try _matchedRecordId from the ticket object (set during ticket assembly for locked tickets)
+                            let recordId = currentTicketRecordId
+                              || (selectedTicket as { _matchedRecordId?: string })?._matchedRecordId
+                              || findMatchingTicketRecord(selectedTicket)?.id;
                             if (!recordId) {
                               // Fallback: try to find/create the record
                               const billingKey = selectedTicket.id ? getTicketBillingKeyLocal(selectedTicket.id) : '_::_::_';
@@ -4791,12 +4794,12 @@ export default function ServiceTickets() {
                               recordId = record.id;
                             }
                             await serviceTicketsService.updateWorkflowStatus(recordId, 'rejected', isDemoMode, rejectNote.trim() || null);
+                            setShowRejectNoteModal(false);
+                            closePanel();
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                             await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
                             queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                             queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
-                            setShowRejectNoteModal(false);
-                            closePanel();
                           } catch (e) {
                             console.error('Rejection failed:', e);
                             alert(`Failed to reject ticket: ${e instanceof Error ? e.message : String(e)}`);
