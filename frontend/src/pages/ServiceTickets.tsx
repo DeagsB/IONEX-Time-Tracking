@@ -1773,9 +1773,6 @@ export default function ServiceTickets() {
         if (activeTab === 'draft') {
           // Hide zero-hour tickets from drafts
           if ((t.totalHours ?? 0) <= 0) return false;
-          // For admin: hide "new" tickets (no record yet) for other employees
-          const isNewForOther = !existing && t.userId !== user?.id;
-          if (isAdmin && isNewForOther) return false;
           // Drafts: Not submitted (workflow not approved) and no ticket number
           return !hasTicketNumber && (workflowStatus === 'draft' || workflowStatus === 'rejected');
         } else if (activeTab === 'submitted') {
