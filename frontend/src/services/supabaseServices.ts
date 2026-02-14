@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { buildApproverPoAfe, extractApproverCode, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
+import { buildApproverPoAfe, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
 
 // Service functions for interacting with Supabase tables
 

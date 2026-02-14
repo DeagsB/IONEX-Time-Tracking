@@ -8,7 +8,7 @@ import { timeEntriesService, projectsService, employeesService, customersService
 import SearchableSelect, { SearchableSelectRef } from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
 import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
-import { getProjectApproverPoAfe, getProjectHeaderFields, parseOtherFieldForPrefixes } from '../utils/serviceTickets';
+import { getProjectApproverPoAfe, getProjectHeaderFields } from '../utils/serviceTickets';
 
 interface TimeEntry {
   id: string;
@@ -718,8 +718,7 @@ export default function WeekView() {
         return timeStr.slice(0, 5);
       };
       const entryProject = projects?.find((p: any) => p.id === entry.project_id);
-      const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
-      // Use entry's approver, po_afe, cc, other - no fallback from project.other
+      // Use entry values directly - no parsing (parsing is only for invoicing groups)
       setViewOnlyDisplay({
         description: entry.description || '',
         customer_name: entryProject?.customer?.name || customers?.find((c: any) => c.id === entryProject?.customer_id)?.name || '',
@@ -733,7 +732,7 @@ export default function WeekView() {
         approver: entry.approver ?? '',
         poAfe: entry.po_afe ?? '',
         cc: entry.cc ?? '',
-        other: entry.other ?? oth.otherRemainder ?? '',
+        other: entry.other ?? entryProject?.other ?? '',
         project_color: entryProject?.color || '#666',
       });
       setViewOnlyEntry(entry);
@@ -752,8 +751,7 @@ export default function WeekView() {
     
     // Look up the customer_id and project from the project
     const entryProject = projects?.find((p: any) => p.id === entry.project_id);
-    const oth = parseOtherFieldForPrefixes(entryProject?.other || '');
-    // Use entry's approver, po_afe, cc, other - no fallback from project.other to avoid cross-field contamination
+    // Use entry values directly - no parsing (parsing is only for invoicing groups)
     setEditedEntry({
       description: entry.description || '',
       customer_id: entryProject?.customer_id || '',
@@ -767,7 +765,7 @@ export default function WeekView() {
       approver: entry.approver ?? '',
       poAfe: entry.po_afe ?? '',
       cc: entry.cc ?? '',
-      other: entry.other ?? oth.otherRemainder ?? '',
+      other: entry.other ?? entryProject?.other ?? '',
     });
     setEditDurationInputRaw(null);
     setShowEditModal(true);

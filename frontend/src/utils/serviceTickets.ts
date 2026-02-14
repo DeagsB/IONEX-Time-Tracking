@@ -408,106 +408,20 @@ export function getRateTypeSortOrder(rateType: string): number {
   return order[rateType] || 99;
 }
 
-/**
- * MIGRATION PARSING - REMOVE AFTER MIGRATION COMPLETE
- * This block handles legacy data: CC:, AC:, PO:, AFE: prefixes and extraction from "other" field.
- * Once employees input data directly into Approver, PO/AFE, CC fields, this can be removed.
- * Used in: ServiceTickets.tsx, Projects.tsx, pdfFromHtml.ts, Invoices.tsx
- * Remove: extractACValue, extractApproverCode (AC part), extractCcValue, extractPoValue,
- *         extractAFEValue, PLAIN_NUMBER_CC, parseApproverPoAfe, parseOtherFieldForPrefixes.
- * Simplify: buildApproverPoAfe to just join values (no prefix stripping).
- * Replace parseApproverPoAfe usage with direct field mapping; remove parseOtherFieldForPrefixes calls.
- */
-/** Extract AC: value (approver) from approver_po_afe string */
+/** Extract AC: value (approver) from combined string - used only for invoicing group keys (legacy approver_po_afe). */
 function extractACValue(approverPoAfe: string | undefined): string {
   if (!approverPoAfe) return '';
   const m = approverPoAfe.match(/AC\s*[:\-]?\s*([^\s,;]+)/i);
   return m ? m[1].trim() : '';
 }
 
-/** Extract approver code (G###) or AC: value from approver_po_afe string */
+/** Extract approver code (G### or AC: value) from combined string. Used ONLY for invoicing group keys when legacy approver_po_afe is present. */
 export function extractApproverCode(approverPoAfe: string | undefined): string {
   if (!approverPoAfe) return '';
   const acVal = extractACValue(approverPoAfe);
   if (acVal) return acVal;
   const m = approverPoAfe.match(/G\d{3,}/i);
   return m ? m[0].toUpperCase() : (approverPoAfe.trim() || '');
-}
-
-/** Extract CC value from approver_po_afe string (e.g. "CC: 123" or "CC 123") - returns value only, no prefix */
-export function extractCcValue(approverPoAfe: string | undefined): string {
-  if (!approverPoAfe) return '';
-  const m = approverPoAfe.match(/CC\s*[:\-]?\s*([^\s,;]+)/i);
-  return m ? m[1].trim() : '';
-}
-
-/** Extract PO value from approver_po_afe string (e.g. "PO: FC250374-9084") - returns value only, no prefix */
-export function extractPoValue(approverPoAfe: string | undefined): string {
-  if (!approverPoAfe) return '';
-  const poMatch = approverPoAfe.match(/PO\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
-  if (poMatch) return poMatch[1].trim();
-  // Fallback: look for pattern like FC250374-9084 (letters + digits + hyphen)
-  const inlineMatch = approverPoAfe.match(/([A-Z]{2,}\d{4,}-\d{4,})/i);
-  return inlineMatch ? inlineMatch[1].trim() : '';
-}
-
-/** Plain numeric strings (e.g. 80046479) are typically CC, not PO/AFE */
-const PLAIN_NUMBER_CC = /^\d{6,10}$/;
-
-/** Parse combined approver_po_afe into approver, poAfe, cc. AC:→approver, PO:/AFE:→poAfe, CC:→cc. Prefixes stripped. */
-export function parseApproverPoAfe(combined: string | undefined): { approver: string; poAfe: string; cc: string } {
-  const s = (combined || '').trim();
-  const explicitAc = extractACValue(s);
-  const explicitCc = extractCcValue(s);
-  const explicitPo = extractPoValue(s);
-  const explicitAfe = extractAFEValue(s);
-  const gMatch = s.match(/G\d{3,}/i);
-  const approver = explicitAc || (gMatch ? gMatch[0].toUpperCase() : '');
-  const remainder = s
-    .replace(/AC\s*[:\-]?\s*[^\s,;]+/gi, '')
-    .replace(/G\d{3,}\s*/i, '')
-    .replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '')
-    .replace(/([A-Z]{2,}\d{4,}-\d{4,})/gi, '')  // PO-style FC250374-9084
-    .replace(/PO\s*[:\-]?\s*[A-Za-z0-9\-]+/gi, '')
-    .replace(/AFE\s*[:\-]?\s*[^\s,;]+/gi, '')
-    .trim();
-  const isPlainNumber = PLAIN_NUMBER_CC.test(remainder);
-  return {
-    approver: approver || '',
-    poAfe: explicitPo || explicitAfe || (isPlainNumber ? '' : remainder),
-    cc: explicitCc || (isPlainNumber ? remainder : ''),
-  };
-}
-
-/** Extract AFE: value from string (goes to PO/AFE field) */
-function extractAFEValue(s: string): string {
-  const m = s.match(/AFE\s*[:\-]?\s*([^\s,;]+)/i);
-  return m ? m[1].trim() : '';
-}
-
-/**
- * Parse "other" field for CC:, AC:, PO:, AFE: prefixes (legacy data).
- * Returns extracted values and remainder for other.
- */
-export function parseOtherFieldForPrefixes(other: string | undefined): { cc: string; approver: string; poAfe: string; otherRemainder: string } {
-  const s = (other || '').trim();
-  if (!s) return { cc: '', approver: '', poAfe: '', otherRemainder: '' };
-  const ccVal = extractCcValue(s);
-  const acVal = extractACValue(s);
-  const poVal = extractPoValue(s);
-  const afeVal = extractAFEValue(s);
-  // Also match PO: with underscores (e.g. in other field)
-  const poInOther = s.match(/PO\s*[:\-]?\s*([^\s,;]+)/i);
-  const poValFromOther = poInOther ? poInOther[1].trim() : '';
-  const poFinal = poVal || poValFromOther || afeVal;
-  let remainder = s
-    .replace(/CC\s*[:\-]?\s*[^\s,;]+/gi, '')
-    .replace(/AC\s*[:\-]?\s*[^\s,;]+/gi, '')
-    .replace(/PO\s*[:\-]?\s*[^\s,;]+/gi, '')
-    .replace(/AFE\s*[:\-]?\s*[^\s,;]+/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return { cc: ccVal, approver: acVal, poAfe: poFinal, otherRemainder: remainder };
 }
 
 /** Build combined approver/PO/AFE/CC string from separate fields. */
@@ -754,7 +668,8 @@ export function getApproverPoAfeFromTicket(
   return buildApproverPoAfe(approver, poAfe, cc);
 }
 
-/** Get grouping key for a ticket (for merged PDF export). NO PARSING - uses direct approver/po_afe/cc. */
+/** Get grouping key for a ticket (for invoicing). Uses direct approver/po_afe/cc for header.
+ * approverCode uses extractApproverCode only when needed for legacy approver_po_afe - parsing is confined to invoicing groups. */
 export function getInvoiceGroupKey(
   ticket: { projectId?: string; projectName?: string; projectNumber?: string; location?: string; projectApprover?: string; projectPoAfe?: string; projectCc?: string; projectApproverPoAfe?: string; projectLocation?: string; projectOther?: string; customerInfo?: { service_location?: string }; entryApprover?: string; entryPoAfe?: string; entryCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> },
   headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | null
@@ -762,11 +677,15 @@ export function getInvoiceGroupKey(
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket as any, headerOverrides);
   const location = (headerOverrides?.service_location ?? ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
   const other = (headerOverrides?.other ?? ticket.projectOther ?? '').trim();
+  // Parsing only for invoicing: extract approver code from legacy combined approver_po_afe for grouping
+  const approverCode = (headerOverrides?.approver_po_afe && !headerOverrides?.approver && !headerOverrides?.po_afe && !headerOverrides?.cc)
+    ? (extractApproverCode(approver) || approver || '_')
+    : (approver || '_');
   return {
     projectId: ticket.projectId ?? '',
     projectName: ticket.projectName,
     projectNumber: ticket.projectNumber,
-    approverCode: approver || '_',
+    approverCode,
     approver,
     poAfe,
     location,
