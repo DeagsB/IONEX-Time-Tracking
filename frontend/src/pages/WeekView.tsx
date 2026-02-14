@@ -233,6 +233,7 @@ export default function WeekView() {
       setMarqueeStart(null);
       setMarqueeCurrent(null);
       didMarqueeRef.current = false;
+      window.getSelection()?.removeAllRanges();
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp as EventListener);
@@ -1961,7 +1962,7 @@ export default function WeekView() {
 
       {/* Calendar Grid */}
       {viewMode !== 'list' && (
-      <div ref={calendarScrollRef} style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)' }}>
+      <div ref={calendarScrollRef} style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)', userSelect: 'none' }}>
         <div style={{ display: 'flex', minWidth: 'min-content' }}>
           {/* Time column */}
       <div style={{
