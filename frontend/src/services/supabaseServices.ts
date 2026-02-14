@@ -1560,16 +1560,29 @@ export const serviceTicketsService = {
   /**
    * Get approved service tickets ready for PDF export (invoicing).
    * Criteria: workflow_status='approved', ticket_number not null, is_discarded=false.
+   * Optional date range filters to match Service Tickets Approved tab.
    */
-  async getTicketsReadyForExport(isDemo: boolean = false) {
+  async getTicketsReadyForExport(
+    isDemo: boolean = false,
+    filters?: { startDate?: string; endDate?: string }
+  ) {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-    const { data, error } = await supabase
+    let query = supabase
       .from(tableName)
       .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, header_overrides')
       .eq('workflow_status', 'approved')
       .eq('is_discarded', false)
       .not('ticket_number', 'is', null)
       .order('date', { ascending: false });
+
+    if (filters?.startDate) {
+      query = query.gte('date', filters.startDate);
+    }
+    if (filters?.endDate) {
+      query = query.lte('date', filters.endDate);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error getting tickets ready for export:', error);

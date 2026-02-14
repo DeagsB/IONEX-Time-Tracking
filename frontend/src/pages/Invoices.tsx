@@ -170,44 +170,30 @@ export default function Invoices() {
   const [qboError, setQboError] = useState<string | null>(null);
   const [qboCreatedIds, setQboCreatedIds] = useState<string[]>([]);
 
+  // Date range filter - matches Service Tickets Approved tab (only show tickets in this range)
+  const [startDate, setStartDate] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+
   const { data: qboConnected } = useQuery({
     queryKey: ['qboStatus'],
     queryFn: () => quickbooksClientService.checkStatus(),
     enabled: isAdmin,
   });
 
-  // Fetch approved tickets ready for export
+  // Fetch approved tickets ready for export (filtered by date range to match Service Tickets Approved tab)
   const { data: approvedRecords, isLoading: loadingApproved } = useQuery({
-    queryKey: ['ticketsReadyForExport', isDemoMode],
-    queryFn: () => serviceTicketsService.getTicketsReadyForExport(isDemoMode),
-    enabled: isAdmin,
+    queryKey: ['ticketsReadyForExport', isDemoMode, startDate, endDate],
+    queryFn: () =>
+      serviceTicketsService.getTicketsReadyForExport(isDemoMode, {
+        startDate,
+        endDate,
+      }),
+    enabled: isAdmin && !!startDate && !!endDate,
   });
-
-  // Date range from approved tickets (with buffer for billable entries)
-  const dateRange = useMemo(() => {
-    if (!approvedRecords || approvedRecords.length === 0) {
-      const today = new Date();
-      const start = new Date(today);
-      start.setDate(start.getDate() - 90);
-      return {
-        startDate: start.toISOString().split('T')[0],
-        endDate: today.toISOString().split('T')[0],
-      };
-    }
-    const dates = approvedRecords.map((r: ApprovedRecord) => r.date);
-    const min = dates.reduce((a, b) => (a < b ? a : b), dates[0]);
-    const max = dates.reduce((a, b) => (a > b ? a : b), dates[0]);
-    const start = new Date(min);
-    start.setDate(start.getDate() - 7);
-    const end = new Date(max);
-    end.setDate(end.getDate() + 7);
-    return {
-      startDate: start.toISOString().split('T')[0],
-      endDate: end.toISOString().split('T')[0],
-    };
-  }, [approvedRecords]);
-
-  const { startDate, endDate } = dateRange;
 
   // Fetch billable entries
   const { data: billableEntries } = useQuery({
@@ -237,6 +223,7 @@ export default function Invoices() {
   });
 
   // Build full tickets from billable entries + approved records (same logic as ServiceTickets)
+  // approvedRecords is already filtered by date range to match Service Tickets Approved tab
   const tickets = useMemo(() => {
     const baseTickets = billableEntries ? groupEntriesIntoTickets(billableEntries, employees) : [];
     const approved = (approvedRecords || []) as ApprovedRecord[];
@@ -784,9 +771,46 @@ export default function Invoices() {
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <h1 style={{ marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '14px' }}>
+      <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
         Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.
       </p>
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Start Date</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+            }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>End Date</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+            }}
+          />
+        </div>
+        <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
+          Only tickets in this date range (matching Service Tickets Approved tab) are shown.
+        </span>
+      </div>
 
       {exportProgress && (
         <div
