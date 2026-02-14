@@ -59,12 +59,19 @@ export default function ServiceTickets() {
     isAdmin ? 'submitted' : 'draft'
   );
   const hasSetAdminDefaultTab = useRef(false);
+  const prevIsAdminRef = useRef(isAdmin);
   useEffect(() => {
     if (isAdmin && !hasSetAdminDefaultTab.current) {
       hasSetAdminDefaultTab.current = true;
       setActiveTab('submitted');
     }
-  }, [isAdmin]);
+    // When admin toggle changes (developer switching roles), invalidate queries to refetch with correct permissions
+    if (prevIsAdminRef.current !== isAdmin) {
+      prevIsAdminRef.current = isAdmin;
+      queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+    }
+  }, [isAdmin, queryClient]);
   const [showDiscarded, setShowDiscarded] = useState(false);
 
   // Clear bulk selection when switching tabs or trash view (selection is per tab)
