@@ -2869,50 +2869,91 @@ export default function ServiceTickets() {
                       const legacy = serviceRowsToLegacyFormat(mergedRows);
                       setEditedDescriptions(legacy.descriptions);
                       setEditedHours(legacy.hours);
-                    } else if (ticketRecord && ticketRecord.is_edited && !hasPerEntryOverrides) {
-                      // Legacy fallback: old-style full replacement (for tickets edited before per-entry tracking)
-                      const loadedDescriptions = (ticketRecord.edited_descriptions as Record<string, string[]>) || {};
-                      const loadedHours = (ticketRecord.edited_hours as Record<string, number | number[]>) || {};
-                      const rowMap = new Map<string, ServiceRow>();
-                      let rowIndex = 0;
-                      Object.keys(loadedDescriptions).forEach(rateType => {
-                        const descs = loadedDescriptions[rateType] || [];
-                        const hrs = loadedHours[rateType];
-                        const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
-                        descs.forEach((desc, i) => {
-                          const hours = hoursArray[i] || 0;
-                          const key = `${desc}-${rowIndex++}`;
-                          const row: ServiceRow = {
-                            id: key, description: desc,
-                            st: rateType === 'Shop Time' ? hours : 0,
-                            tt: rateType === 'Travel Time' ? hours : 0,
-                            ft: rateType === 'Field Time' ? hours : 0,
-                            so: rateType === 'Shop Overtime' ? hours : 0,
-                            fo: rateType === 'Field Overtime' ? hours : 0,
-                          };
-                          rowMap.set(key, row);
-                        });
-                      });
-                      const loadedRows = Array.from(rowMap.values());
-                      setServiceRows(loadedRows);
-                      initialServiceRowsRef.current = loadedRows.map(r => ({ ...r }));
-                      setIsTicketEdited(true);
-                      setEditedDescriptions(loadedDescriptions);
-                      setEditedHours(
-                        Object.keys(loadedHours).reduce((acc, rateType) => {
-                          const hrs = loadedHours[rateType];
-                          acc[rateType] = Array.isArray(hrs) ? hrs : [hrs as number];
-                          return acc;
-                        }, {} as Record<string, number[]>)
-                      );
                     } else {
-                      setIsTicketEdited(false);
-                      const initialRows = entriesToServiceRows(ticket.entries);
-                      setServiceRows(initialRows);
-                      initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
-                      setEditedDescriptions({});
-                      setEditedHours({});
-                      setEditedEntryOverrides({});
+                      // Load rows from edited_descriptions/edited_hours if available
+                      // This covers: (a) is_edited=true legacy tickets, (b) locked tickets with snapshot data
+                      // (e.g. approved tickets from before per-entry tracking that have edited_hours but is_edited=false)
+                      const loadedDescriptions = (ticketRecord?.edited_descriptions as Record<string, string[]>) || {};
+                      const loadedHours = (ticketRecord?.edited_hours as Record<string, number | number[]>) || {};
+                      const hasLegacyData = Object.keys(loadedDescriptions).length > 0 || Object.keys(loadedHours).length > 0;
+                      
+                      if (hasLegacyData) {
+                        const rowMap = new Map<string, ServiceRow>();
+                        let rowIndex = 0;
+                        // Build rows from descriptions if available
+                        if (Object.keys(loadedDescriptions).length > 0) {
+                          Object.keys(loadedDescriptions).forEach(rateType => {
+                            const descs = loadedDescriptions[rateType] || [];
+                            const hrs = loadedHours[rateType];
+                            const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
+                            descs.forEach((desc, i) => {
+                              const hours = hoursArray[i] || 0;
+                              const key = `${desc}-${rowIndex++}`;
+                              const row: ServiceRow = {
+                                id: key, description: desc,
+                                st: rateType === 'Shop Time' ? hours : 0,
+                                tt: rateType === 'Travel Time' ? hours : 0,
+                                ft: rateType === 'Field Time' ? hours : 0,
+                                so: rateType === 'Shop Overtime' ? hours : 0,
+                                fo: rateType === 'Field Overtime' ? hours : 0,
+                              };
+                              rowMap.set(key, row);
+                            });
+                          });
+                        } else {
+                          // No descriptions but has hours - build rows from hours only
+                          Object.keys(loadedHours).forEach(rateType => {
+                            const hrs = loadedHours[rateType];
+                            const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
+                            hoursArray.forEach((hours, i) => {
+                              if (hours > 0) {
+                                const key = `${rateType}-${rowIndex++}`;
+                                const row: ServiceRow = {
+                                  id: key, description: '',
+                                  st: rateType === 'Shop Time' ? hours : 0,
+                                  tt: rateType === 'Travel Time' ? hours : 0,
+                                  ft: rateType === 'Field Time' ? hours : 0,
+                                  so: rateType === 'Shop Overtime' ? hours : 0,
+                                  fo: rateType === 'Field Overtime' ? hours : 0,
+                                };
+                                rowMap.set(key, row);
+                              }
+                            });
+                          });
+                        }
+                        const loadedRows = Array.from(rowMap.values());
+                        if (loadedRows.length > 0) {
+                          setServiceRows(loadedRows);
+                          initialServiceRowsRef.current = loadedRows.map(r => ({ ...r }));
+                          setIsTicketEdited(!!ticketRecord?.is_edited);
+                          setEditedDescriptions(loadedDescriptions);
+                          setEditedHours(
+                            Object.keys(loadedHours).reduce((acc, rateType) => {
+                              const hrs = loadedHours[rateType];
+                              acc[rateType] = Array.isArray(hrs) ? hrs : [hrs as number];
+                              return acc;
+                            }, {} as Record<string, number[]>)
+                          );
+                        } else {
+                          // Legacy data exists but produced no rows - use entries
+                          setIsTicketEdited(false);
+                          const initialRows = entriesToServiceRows(ticket.entries);
+                          setServiceRows(initialRows);
+                          initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
+                          setEditedDescriptions({});
+                          setEditedHours({});
+                          setEditedEntryOverrides({});
+                        }
+                      } else {
+                        // No saved data at all - use live time entries
+                        setIsTicketEdited(false);
+                        const initialRows = entriesToServiceRows(ticket.entries);
+                        setServiceRows(initialRows);
+                        initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
+                        setEditedDescriptions({});
+                        setEditedHours({});
+                        setEditedEntryOverrides({});
+                      }
                     }
                   } catch (error) {
                     console.error('Error loading ticket data:', error);
