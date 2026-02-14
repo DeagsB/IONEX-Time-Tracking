@@ -1896,8 +1896,11 @@ export default function ServiceTickets() {
           // Submitted: Submitted by user (workflow approved) but no ticket number assigned by admin yet
           return !hasTicketNumber && workflowStatus !== 'draft' && workflowStatus !== 'rejected';
         } else if (activeTab === 'approved') {
-          // Approved: Ticket number has been assigned (Finalized)
-          return hasTicketNumber;
+          // Approved: Ticket number assigned, OR admin-approved (workflow beyond draft/submitted stages) even if ID temporarily unassigned
+          if (hasTicketNumber) return true;
+          // Keep tickets visible on approved tab when ID is unassigned but workflow is still in an approved state
+          const approvedStatuses = ['approved', 'pdf_exported', 'qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'];
+          return !!existing?.approved_by_admin_id && approvedStatuses.includes(workflowStatus);
         }
         return true;
       });
@@ -3623,7 +3626,7 @@ export default function ServiceTickets() {
                         <button
                           title="Unassign ticket ID"
                           onClick={() => {
-                            if (confirm('Unassign this ticket ID? The ticket will move back to drafts.')) {
+                            if (confirm('Unassign this ticket ID? The ticket stays approved and you can reassign an ID later.')) {
                               handleUnassignTicketNumber(selectedTicket);
                             }
                           }}

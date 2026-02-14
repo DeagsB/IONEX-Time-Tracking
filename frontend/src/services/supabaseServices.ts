@@ -1077,11 +1077,11 @@ export const serviceTicketsService = {
     const updateData: any = {};
 
     if (ticketNumber === null) {
-      // Unassign ticket number - keep employee_initials for tracking
+      // Unassign ticket number only - keep workflow_status and approved_by_admin_id intact
+      // The ticket stays approved, just without an assigned ID until one is reassigned
       updateData.ticket_number = null;
       updateData.sequence_number = null;
       updateData.year = null;
-      updateData.approved_by_admin_id = null;
     } else {
       // Assign ticket number - extract employee_initials from ticket number (format: XX_YYNNN)
       updateData.ticket_number = ticketNumber;
