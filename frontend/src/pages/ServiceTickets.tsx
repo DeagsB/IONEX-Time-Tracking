@@ -5286,6 +5286,12 @@ export default function ServiceTickets() {
                           className={isTicketApproved ? 'button button-secondary' : 'button button-primary'}
                           onClick={async () => {
                             setSubmitError(null);
+                            // When submitting with pending changes, confirm save and submit
+                            if (!isTicketApproved && hasPendingChanges) {
+                              if (!confirm('You have unsaved changes. Save and submit for approval?')) {
+                                return;
+                              }
+                            }
                             setIsApproving(true);
                             try {
                               // When submitting (not withdrawing), save first
@@ -5308,12 +5314,12 @@ export default function ServiceTickets() {
                               await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                               await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                               await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
-                              // Unlock panel when withdrawing submission
+                              // Unlock panel when withdrawing submission, close panel when submitting
                               if (isTicketApproved) {
                                 setIsLockedForEditing(false);
                               } else {
-                                // Lock panel after submitting
-                                setIsLockedForEditing(true);
+                                // Close panel after successfully submitting for approval
+                                closePanel();
                               }
                             } catch (error) {
                               const msg = error instanceof Error ? error.message : 'Failed to submit for approval.';
