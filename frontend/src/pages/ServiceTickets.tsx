@@ -3010,14 +3010,20 @@ export default function ServiceTickets() {
                       }
                     })()}
                   </td>
-                  {/* Workflow status cell - only visible to admins in Approved tab, hidden in trash view */}
+                  {/* Workflow status cell - only visible to admins in Approved tab, hidden in trash view. Only show "Approved" when ticket has an assigned ID. */}
                   {isAdmin && !showDiscarded && activeTab === 'approved' && (
                     <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                       {(() => {
                         const existing = findMatchingTicketRecord(ticket);
+                        const hasTicketNumber = !!existing?.ticket_number;
                         const workflowStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
                         const statusInfo = WORKFLOW_STATUSES[workflowStatus] || WORKFLOW_STATUSES.draft;
-                        
+                        const effectiveLabel = (workflowStatus === 'approved' && !hasTicketNumber)
+                          ? 'Pending'
+                          : statusInfo.label;
+                        const effectiveColor = (workflowStatus === 'approved' && !hasTicketNumber)
+                          ? '#6b7280'
+                          : statusInfo.color;
                         return (
                           <span
                             style={{
@@ -3028,13 +3034,13 @@ export default function ServiceTickets() {
                               borderRadius: '12px',
                               fontSize: '11px',
                               fontWeight: '500',
-                              backgroundColor: `${statusInfo.color}20`,
-                              color: statusInfo.color,
+                              backgroundColor: `${effectiveColor}20`,
+                              color: effectiveColor,
                               whiteSpace: 'nowrap',
                             }}
-                            title={`Status: ${statusInfo.label}`}
+                            title={hasTicketNumber ? `Status: ${statusInfo.label}` : 'No ticket ID assigned yet'}
                           >
-                            {statusInfo.icon} {statusInfo.label}
+                            {effectiveLabel === 'Pending' ? '⏳' : statusInfo.icon} {effectiveLabel}
                           </span>
                         );
                       })()}
