@@ -97,8 +97,7 @@ export default function ServiceTickets() {
     };
   }, [activeTab]);
 
-  // Sorting state - persisted per user in localStorage
-  // Approved tab defaults to ticketNumber asc (sequential order matching DB)
+  // Sorting state - persisted per user in localStorage (all tabs including approved use this)
   const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>(() => {
     const saved = localStorage.getItem(`serviceTickets_sortField_${user?.id}`);
     return (saved as any) || 'date';
@@ -107,9 +106,9 @@ export default function ServiceTickets() {
     const saved = localStorage.getItem(`serviceTickets_sortDirection_${user?.id}`);
     return (saved as 'asc' | 'desc') || 'desc';
   });
-  // Approved tab: always sort by ticket number ascending (sequential order matching DB)
-  const effectiveSortField = activeTab === 'approved' ? 'ticketNumber' as const : sortField;
-  const effectiveSortDirection = activeTab === 'approved' ? 'asc' as const : sortDirection;
+  // Use saved sort for all tabs including approved (user can sort by any column asc/desc)
+  const effectiveSortField = sortField;
+  const effectiveSortDirection = sortDirection;
   
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
