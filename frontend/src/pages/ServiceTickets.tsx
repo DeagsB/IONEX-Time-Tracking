@@ -1177,13 +1177,7 @@ export default function ServiceTickets() {
     const existing = existingTickets ?? [];
 
     // --- Helpers ---
-    // Core match: date + user + customer + project
-    const baseTicketMatchesRecord = (bt: ServiceTicket, rec: (typeof existing)[number]) =>
-      bt.date === rec.date &&
-      bt.userId === rec.user_id &&
-      (rec.customer_id === bt.customerId || (!rec.customer_id && bt.customerId === 'unassigned')) &&
-      ((rec.project_id || '') === (bt.projectId || '') || !rec.project_id);
-
+    // Core match: date + user + customer + project + location (matches grouping hierarchy)
     const getRecordLocation = (rec: (typeof existing)[number]): string =>
       ((rec as any).location ?? '').trim().toLowerCase();
 
@@ -1198,12 +1192,17 @@ export default function ServiceTickets() {
     const getBaseTicketPoAfe = (bt: ServiceTicket): string =>
       (bt.entryPoAfe ?? bt.projectPoAfe ?? '').trim();
 
+    const baseTicketMatchesRecord = (bt: ServiceTicket, rec: (typeof existing)[number]) =>
+      bt.date === rec.date &&
+      bt.userId === rec.user_id &&
+      (rec.customer_id === bt.customerId || (!rec.customer_id && bt.customerId === 'unassigned')) &&
+      ((rec.project_id || '') === (bt.projectId || '') || !rec.project_id) &&
+      // Location: if both have a value, they must match
+      ((!getRecordLocation(rec) || !getBaseTicketLocation(bt)) || getRecordLocation(rec) === getBaseTicketLocation(bt));
+
     // Full match: project + location + PO/AFE (hierarchical)
     const baseTicketFullMatchesRecord = (bt: ServiceTicket, rec: (typeof existing)[number]) => {
       if (!baseTicketMatchesRecord(bt, rec)) return false;
-      const recLoc = getRecordLocation(rec);
-      const btLoc = getBaseTicketLocation(bt);
-      if (recLoc && btLoc && recLoc !== btLoc) return false;
       const recPo = getRecordPoAfe(rec);
       const btPo = getBaseTicketPoAfe(bt);
       if (recPo && btPo && recPo !== btPo) return false;

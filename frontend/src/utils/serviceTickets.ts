@@ -228,13 +228,14 @@ export function groupEntriesIntoTickets(
     // Use entry location, or fall back to project location, or empty string
     const entryLocation = entry.location || entry.project?.location || '';
 
-    // Only PO/AFE/CC (Cost Center) creates new tickets - different approver, Coding, or Location do NOT
+    // Grouping hierarchy: Customer > Project > Location > PO/AFE
+    // Different project = new ticket. Same project, different location = new ticket. Same location, different PO = new ticket.
     const poAfe = entry.po_afe ?? entry.project?.po_afe ?? '';
     const groupingKey = buildGroupingKey(poAfe);
-
-    // Create composite key - hierarchy: Project > PO/AFE/CC (Cost Center). Location is editable, not a grouping dimension.
     const projectId = entry.project?.id ?? '';
-    const ticketKey = `${date}-${customerId}-${userId}-${projectId}-${groupingKey}`;
+    // Normalize location for grouping (lowercase, trimmed)
+    const locationKey = (entryLocation || '').trim().toLowerCase().replace(/\s+/g, ' ') || '_no_location_';
+    const ticketKey = `${date}-${customerId}-${userId}-${projectId}-${locationKey}-${groupingKey}`;
 
     // Get or create ticket
     let ticket = ticketMap.get(ticketKey);
@@ -441,14 +442,14 @@ export function buildBillingKey(approver: string, poAfe: string, cc: string): st
   return `${a}${BILLING_KEY_SEP}${p}${BILLING_KEY_SEP}${c}`;
 }
 
-/** Grouping key for tickets - only PO/AFE/CC (Cost Center) creates new tickets. Approver and Coding do not. Hierarchy: Project > Location > Cost Center (po_afe). */
+/** Grouping key for tickets - PO/AFE portion. Full hierarchy: Customer > Project > Location > PO/AFE. */
 export function buildGroupingKey(poAfe: string): string {
   const p = (poAfe ?? '').trim() || '_';
   return `_${BILLING_KEY_SEP}${p}${BILLING_KEY_SEP}_`;
 }
 
 /** Extract billing key (grouping key) from ticket.id.
- * Ticket format: date-customerId-userId-projectId-_::poAfe::_
+ * Ticket format: date-customerId-userId-projectId-location-_::poAfe::_
  * The grouping key contains hyphens (e.g. FC250375-9086), so we cannot use lastIndexOf('-'). 
  * Instead, find the unique _:: prefix that starts the grouping key. */
 export function getTicketBillingKey(ticketId: string): string {
