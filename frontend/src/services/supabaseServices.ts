@@ -858,14 +858,13 @@ export const serviceTicketsService = {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     
     // Get all used sequence numbers for this employee this year
-    // Exclude: null sequence (unassigned), trashed tickets (their numbers are freed for reuse)
+    // Include discarded tickets since their sequence numbers are still reserved by unique constraints
     const { data, error } = await supabase
       .from(tableName)
       .select('sequence_number')
       .eq('employee_initials', userInitials.toUpperCase())
       .eq('year', year)
       .not('sequence_number', 'is', null)
-      .or('is_discarded.eq.false,is_discarded.is.null')
       .order('sequence_number', { ascending: true });
 
     if (error) {
@@ -968,7 +967,7 @@ export const serviceTicketsService = {
         // If we get a duplicate key error (race condition), find next available number
         if (error && error.code === '23505') {
           attempts++;
-          // Get all used sequence numbers and find first gap
+          // Get all used sequence numbers and find first gap (include discarded - unique constraints still apply)
           const year = new Date().getFullYear() % 100;
           const retryTableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
           const { data: seqData } = await supabase
@@ -977,7 +976,6 @@ export const serviceTicketsService = {
             .eq('employee_initials', ticket.employeeInitials.toUpperCase())
             .eq('year', year)
             .not('sequence_number', 'is', null)
-            .or('is_discarded.eq.false,is_discarded.is.null')
             .order('sequence_number', { ascending: true });
           
           // Find first available gap
@@ -1003,7 +1001,7 @@ export const serviceTicketsService = {
       } else if (existing) {
         // Ticket number exists, find the next available one
         attempts++;
-        // Get all used sequence numbers and find first gap
+        // Get all used sequence numbers and find first gap (include discarded - unique constraints still apply)
         const year = new Date().getFullYear() % 100;
         const retryTableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
         const { data: seqData } = await supabase
@@ -1012,7 +1010,6 @@ export const serviceTicketsService = {
           .eq('employee_initials', ticket.employeeInitials.toUpperCase())
           .eq('year', year)
           .not('sequence_number', 'is', null)
-          .or('is_discarded.eq.false,is_discarded.is.null')
           .order('sequence_number', { ascending: true });
         
         // Find first available gap
