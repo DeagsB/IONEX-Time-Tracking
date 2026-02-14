@@ -198,13 +198,13 @@ export function aggregateEmployeeMetrics(
                   rateTypeBreakdown.shopOvertime.hours + 
                   rateTypeBreakdown.fieldOvertime.hours;
 
-  // Revenue is the sum of all billable rate type revenues (hours × rate)
+  // Revenue is the sum of billable rate type revenues only (hours × rate)
+  // Internal time is NOT revenue - it's a cost we cannot bill for
   totalRevenue = rateTypeBreakdown.shopTime.revenue + 
                  rateTypeBreakdown.fieldTime.revenue + 
                  rateTypeBreakdown.travelTime.revenue + 
                  rateTypeBreakdown.shopOvertime.revenue + 
-                 rateTypeBreakdown.fieldOvertime.revenue +
-                 rateTypeBreakdown.internalTime.revenue;
+                 rateTypeBreakdown.fieldOvertime.revenue;
 
   // Helper function to round up to nearest 0.10 (for payroll hours calculation)
   const roundToQuarterHourForPayroll = (hours: number): number => {
@@ -613,21 +613,18 @@ export function calculateRateTypeBreakdown(
   };
 
   // STEP 1: Calculate Internal Time from time entries (payroll hours)
-  // Internal time uses payroll hours for both hours and cost
+  // Internal time has NO revenue - it's a cost we cannot bill for
   entries.forEach(entry => {
     if (!entry.billable) {
       const hours = Number(entry.hours) || 0;
-      const internalRate = Number(employee?.internal_rate) || 0;
-      const revenue = hours * internalRate;
       const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
       const payRate = getPayRate(rateType);
       const cost = hours * payRate;
-      const profit = revenue - cost;
 
       breakdown.internalTime.hours += hours;
-      breakdown.internalTime.revenue += revenue;
+      breakdown.internalTime.revenue += 0; // Internal time is not billable
       breakdown.internalTime.cost += cost;
-      breakdown.internalTime.profit += profit;
+      breakdown.internalTime.profit += -cost; // Cost with no offsetting revenue
     }
   });
 
