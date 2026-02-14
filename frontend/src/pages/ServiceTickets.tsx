@@ -1323,9 +1323,12 @@ export default function ServiceTickets() {
     };
 
     // --- Build locked ticket from DB record ---
-    // Both submitted and approved are built entirely from DB (entries=[], hours from edited_hours/total_hours).
-    // Time entries do not affect locked tickets.
+    // Both submitted and approved are built entirely from DB (entries from matched base ticket for display, hours from edited_hours/total_hours).
+    // Time entries do not affect locked ticket hours, but entries are attached for modal display when no saved data exists.
     const buildLockedTicketFromRecord = (st: (typeof existing)[number]) => {
+      // Attach matched time entries for display in modal (especially for legacy tickets with no saved row data)
+      const matchedBaseTicket = claimedBaseTicketByRecordId.get(st.id);
+      const matchedEntries = matchedBaseTicket?.entries ?? [];
       const editedHours = (st.edited_hours as Record<string, number | number[]>) || {};
       const hoursByRateType: ServiceTicket['hoursByRateType'] = {
         'Shop Time': 0, 'Shop Overtime': 0, 'Travel Time': 0, 'Field Time': 0, 'Field Overtime': 0,
@@ -1384,10 +1387,24 @@ export default function ServiceTickets() {
         projectName,
         ticketNumber: st.ticket_number || undefined,
         totalHours,
-        entries: [],
+        entries: matchedEntries,
         hoursByRateType,
-        rates: { rt: 0, tt: 0, ft: 0, shop_ot: 0, field_ot: 0 },
+        rates: matchedBaseTicket?.rates ?? { rt: 0, tt: 0, ft: 0, shop_ot: 0, field_ot: 0 },
         _matchedRecordId: st.id,
+        // Copy project/entry-level fields from matched base ticket for header display
+        ...(matchedBaseTicket ? {
+          projectLocation: matchedBaseTicket.projectLocation,
+          projectApprover: matchedBaseTicket.projectApprover,
+          projectPoAfe: matchedBaseTicket.projectPoAfe,
+          projectCc: matchedBaseTicket.projectCc,
+          projectOther: matchedBaseTicket.projectOther,
+          projectApproverPoAfe: matchedBaseTicket.projectApproverPoAfe,
+          entryLocation: matchedBaseTicket.entryLocation,
+          entryApprover: matchedBaseTicket.entryApprover,
+          entryPoAfe: matchedBaseTicket.entryPoAfe,
+          entryCc: matchedBaseTicket.entryCc,
+          entryOther: matchedBaseTicket.entryOther,
+        } : {}),
       };
       const ov = (st as { header_overrides?: Record<string, string | number> })?.header_overrides;
       return ov ? applyHeaderOverridesToTicket(out, ov) : out;
