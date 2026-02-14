@@ -533,10 +533,13 @@ export function buildGroupingKey(poAfe: string): string {
   return `_${BILLING_KEY_SEP}${p}${BILLING_KEY_SEP}_`;
 }
 
-/** Extract billing key from ticket.id (last segment after final "-"). */
+/** Extract billing key (grouping key) from ticket.id.
+ * Ticket format: date-customerId-userId-projectId-_::poAfe::_
+ * The grouping key contains hyphens (e.g. FC250375-9086), so we cannot use lastIndexOf('-'). 
+ * Instead, find the unique _:: prefix that starts the grouping key. */
 export function getTicketBillingKey(ticketId: string): string {
-  const lastDash = ticketId.lastIndexOf('-');
-  return lastDash >= 0 ? ticketId.slice(lastDash + 1) : '_::_::_';
+  const idx = ticketId.indexOf('_::');
+  return idx >= 0 ? ticketId.slice(idx) : '_::_::_';
 }
 
 /** Get combined approver/PO/AFE/CC from project. Uses approver, po_afe, cc columns only. */
