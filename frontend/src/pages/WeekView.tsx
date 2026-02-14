@@ -1309,7 +1309,7 @@ export default function WeekView() {
     );
 
     if (overlappingEntries.length === 0) {
-      return { left: '4px', right: '4px', topOffset: 0, zIndex: 10 };
+      return { left: '4px', right: '4px', topOffset: 0, zIndex: 5 };
     }
 
     const allOverlapping = [entry, ...overlappingEntries];
@@ -1331,7 +1331,7 @@ export default function WeekView() {
         left: '4px', 
         right: 'calc(50% + 4px)', // 8px gap between lanes
         topOffset: 0, // Don't use negative offset - avoids overlapping day header for 12:00 AM entries
-        zIndex: 10 + positionInGroup 
+        zIndex: 5 + positionInGroup 
       };
     } else {
       // Right lane
@@ -1339,7 +1339,7 @@ export default function WeekView() {
         left: 'calc(50% - 4px)', // 8px gap between lanes
         right: '4px', 
         topOffset: 0,
-        zIndex: 10 + positionInGroup 
+        zIndex: 5 + positionInGroup 
       };
     }
   };
@@ -1907,7 +1907,7 @@ export default function WeekView() {
             position: 'sticky',
             left: 0,
         backgroundColor: 'var(--bg-primary)',
-            zIndex: 2
+            zIndex: 20
       }}>
             {/* Zoom controls in header */}
         <div style={{
