@@ -1982,7 +1982,8 @@ export default function WeekView() {
                 </div>
         </div>
 
-        {/* Time slots */}
+        {/* Time slots - extend behind zoom header */}
+            <div style={{ marginTop: -50 }}>
             {timeSlots.map((time, index) => (
               <div
                 key={index}
@@ -2000,6 +2001,7 @@ export default function WeekView() {
                 {time}
               </div>
             ))}
+            </div>
           </div>
 
           {/* Days columns */}
@@ -2037,7 +2039,7 @@ export default function WeekView() {
                   gap: '2px',
                   position: 'sticky',
                   top: 0,
-                  zIndex: 10,
+                  zIndex: 30,
                   transform: headerVisible ? 'translateY(0)' : 'translateY(-50px)',
                   transition: 'transform 0.2s ease-in-out',
                 }}>
@@ -2069,8 +2071,8 @@ export default function WeekView() {
                   </div>
                 </div>
 
-                {/* Time grid with clickable divisions */}
-                <div key={`grid-${divisionsPerHour}`} style={{ position: 'relative', overflow: 'visible' }}>
+                {/* Time grid with clickable divisions - extends behind date header so entries scroll under it */}
+                <div key={`grid-${divisionsPerHour}`} style={{ position: 'relative', overflow: 'visible', marginTop: -50 }}>
                   {timeSlots.map((_, hourIndex) => (
                     <div
                       key={`hour-${hourIndex}-${divisionsPerHour}`}
