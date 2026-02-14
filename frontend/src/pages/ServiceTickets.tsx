@@ -399,35 +399,7 @@ export default function ServiceTickets() {
         return false;
       }
 
-      if (editableTicket) {
-        // Push service_location, approver, po_afe, cc, other to time entries ONLY when ticket is draft/rejected.
-        // Approved tickets: admin edits save to header_overrides only; time entries are never updated.
-        const ticketRecord = findMatchingTicketRecord(selectedTicket);
-        const ws = (ticketRecord as { workflow_status?: string })?.workflow_status;
-        const isDraftOrRejected = ws === 'draft' || ws === 'rejected';
-        if (isDraftOrRejected && selectedTicket?.entries?.length && editableTicket) {
-          const headerUpdates = {
-            location: editableTicket.serviceLocation?.trim() || null,
-            approver: editableTicket.approver?.trim() || null,
-            po_afe: editableTicket.poAfe?.trim() || null,
-            cc: editableTicket.cc?.trim() || null,
-            other: editableTicket.other?.trim() || null,
-          };
-          for (const entry of selectedTicket.entries) {
-            if (entry.id) {
-              try {
-                await timeEntriesService.update(entry.id, headerUpdates);
-              } catch (e) {
-                console.warn('Failed to update time entry', entry.id, e);
-              }
-            }
-          }
-          queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
-          // Skip billableEntries invalidation on save to prevent ticket list refetch from clearing
-          // panel (grouping can change when location/approver pushed to entries). List refreshes
-          // on next date/filter change or navigation.
-        }
-      }
+      // Header edits are saved to header_overrides only. Time entries are NOT updated.
       // Apply pending expense deletes (expenses marked for removal)
       const hadPendingExpenseChanges = pendingDeleteExpenseIds.size > 0 || pendingAddExpenses.length > 0;
       for (const expenseId of pendingDeleteExpenseIds) {
