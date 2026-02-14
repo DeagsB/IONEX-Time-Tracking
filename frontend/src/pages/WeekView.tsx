@@ -2004,7 +2004,8 @@ export default function WeekView() {
             </div>
           </div>
 
-          {/* Days columns */}
+          {/* Days columns - shifted left so Monday is covered by the time column */}
+          <div style={{ display: 'flex', flex: 1, minWidth: 0, marginLeft: -80 }}>
           {weekDays.map((day, dayIndex) => {
             // Format date in local timezone (YYYY-MM-DD)
             const year = day.date.getFullYear();
@@ -2465,6 +2466,7 @@ export default function WeekView() {
               </div>
             );
           })}
+          </div>
         </div>
       </div>
       )}
