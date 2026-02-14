@@ -1197,7 +1197,7 @@ export default function ServiceTickets() {
       let query = supabase
         .from(tableName)
         .select(`
-          id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
+          id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `)
         .gte('date', startDate)
@@ -1210,7 +1210,7 @@ export default function ServiceTickets() {
         // If the join fails (column doesn't exist yet), try without the join
         let fallbackQuery = supabase
           .from(tableName)
-          .select('id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
+          .select('id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
           .gte('date', startDate)
           .lte('date', endDate);
         if (!isAdmin && user?.id) {
