@@ -354,7 +354,6 @@ export default function ServiceTickets() {
         totalAmount += row.so * (selectedTicket.rates.shop_ot || 0);
         totalAmount += row.fo * (selectedTicket.rates.field_ot || 0);
       });
-      totalEditedHours = Math.ceil(totalEditedHours * 2) / 2;
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
 
       // Persist header_overrides and location FIRST so header edits always save (critical for draft tickets)
@@ -2981,22 +2980,54 @@ export default function ServiceTickets() {
                     {ticket.userName}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-primary)', fontWeight: '600' }}>
-                    {ticket.totalHours.toFixed(2)}
+                    {(() => {
+                      // When this ticket is selected with unsaved changes, show live total from service rows
+                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
+                        const liveTotal = serviceRows.reduce((sum, r) => sum + (r.st || 0) + (r.tt || 0) + (r.ft || 0) + (r.so || 0) + (r.fo || 0), 0);
+                        return liveTotal.toFixed(2);
+                      }
+                      return ticket.totalHours.toFixed(2);
+                    })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    {ticket.hoursByRateType['Shop Time'].toFixed(1)}
+                    {(() => {
+                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
+                        return serviceRows.reduce((sum, r) => sum + (r.st || 0), 0).toFixed(2);
+                      }
+                      return ticket.hoursByRateType['Shop Time'].toFixed(1);
+                    })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    {ticket.hoursByRateType['Travel Time'].toFixed(1)}
+                    {(() => {
+                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
+                        return serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0).toFixed(2);
+                      }
+                      return ticket.hoursByRateType['Travel Time'].toFixed(1);
+                    })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    {ticket.hoursByRateType['Field Time'].toFixed(1)}
+                    {(() => {
+                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
+                        return serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0).toFixed(2);
+                      }
+                      return ticket.hoursByRateType['Field Time'].toFixed(1);
+                    })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    {ticket.hoursByRateType['Shop Overtime'].toFixed(1)}
+                    {(() => {
+                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
+                        return serviceRows.reduce((sum, r) => sum + (r.so || 0), 0).toFixed(2);
+                      }
+                      return ticket.hoursByRateType['Shop Overtime'].toFixed(1);
+                    })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    {ticket.hoursByRateType['Field Overtime'].toFixed(1)}
+                    {(() => {
+                      if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
+                        return serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0).toFixed(2);
+                      }
+                      return ticket.hoursByRateType['Field Overtime'].toFixed(1);
+                    })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                     {showDiscarded ? (
@@ -3935,23 +3966,23 @@ export default function ServiceTickets() {
                         >
                           <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>TOTAL HOURS:</span>
                           <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'center' }}>
-                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.st || 0), 0)).toFixed(1)}
+                            {serviceRows.reduce((sum, r) => sum + (r.st || 0), 0).toFixed(2)}
                           </span>
                           <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'center' }}>
-                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0)).toFixed(1)}
+                            {serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0).toFixed(2)}
                           </span>
                           <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', textAlign: 'center' }}>
-                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0)).toFixed(1)}
+                            {serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0).toFixed(2)}
                           </span>
                           <span style={{ fontSize: '13px', fontWeight: '700', color: '#ff9800', textAlign: 'center' }}>
-                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.so || 0), 0)).toFixed(1)}
+                            {serviceRows.reduce((sum, r) => sum + (r.so || 0), 0).toFixed(2)}
                           </span>
                           <span style={{ fontSize: '13px', fontWeight: '700', color: '#ff9800', textAlign: 'center' }}>
-                            {roundToHalfHour(serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0)).toFixed(1)}
+                            {serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0).toFixed(2)}
                           </span>
                           <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', textAlign: 'center' }}>
-                            {roundToHalfHour(serviceRows.reduce((sum, r) => 
-                              sum + (r.st || 0) + (r.tt || 0) + (r.ft || 0) + (r.so || 0) + (r.fo || 0), 0)).toFixed(1)}
+                            {serviceRows.reduce((sum, r) => 
+                              sum + (r.st || 0) + (r.tt || 0) + (r.ft || 0) + (r.so || 0) + (r.fo || 0), 0).toFixed(2)}
                           </span>
                         </div>
                         
