@@ -2627,9 +2627,8 @@ export default function ServiceTickets() {
                       opacity: isBulkExporting ? 0.6 : 1,
                     }}
                   >
-                    ✗ Unapprove Selected
+                    ✗ Unassign ID
                   </button>
-                  {activeTab !== 'approved' && (
                   <button
                     onClick={handleBulkAssignTicketNumbers}
                     disabled={isBulkExporting}
@@ -2645,9 +2644,8 @@ export default function ServiceTickets() {
                       opacity: isBulkExporting ? 0.6 : 1,
                     }}
                   >
-                    ✓ Approve Selected
+                    ✓ Assign ID
                   </button>
-                  )}
                   <button
                     onClick={handleBulkMoveToTrash}
                     disabled={isBulkExporting}
