@@ -1608,12 +1608,18 @@ export default function ServiceTickets() {
     };
     const matches = existingTickets?.filter(et => baseFilter(et)) || [];
     // Fallback: if no location-filtered match, try without location (for legacy records)
+    // BUT only match draft/rejected records - don't let a ticket with different location match an approved record
     const found = matches.find(et => !(et as any).is_discarded) || matches[0] || (() => {
-      const fallbackFilter = (et: NonNullable<typeof existingTickets>[number]) =>
-        et.date === ticket.date &&
-        et.user_id === ticket.userId &&
-        (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-        ((et.project_id || '') === (ticket.projectId || '') || !et.project_id);
+      const fallbackFilter = (et: NonNullable<typeof existingTickets>[number]) => {
+        // Only fallback to draft/rejected records - approved records with different locations should not match
+        const ws = (et.workflow_status || 'draft') as string;
+        const isLocked = !!et.ticket_number || (ws !== 'draft' && ws !== 'rejected');
+        if (isLocked) return false;
+        return et.date === ticket.date &&
+          et.user_id === ticket.userId &&
+          (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+          ((et.project_id || '') === (ticket.projectId || '') || !et.project_id);
+      };
       const fallbackMatches = existingTickets?.filter(et => fallbackFilter(et)) || [];
       return fallbackMatches.find(et => !(et as any).is_discarded) || fallbackMatches[0];
     })();
