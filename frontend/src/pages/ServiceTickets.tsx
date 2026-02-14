@@ -1177,11 +1177,18 @@ export default function ServiceTickets() {
     const existing = existingTickets ?? [];
 
     // --- Helpers ---
+    // Core match: date + user + customer + project
     const baseTicketMatchesRecord = (bt: ServiceTicket, rec: (typeof existing)[number]) =>
       bt.date === rec.date &&
       bt.userId === rec.user_id &&
       (rec.customer_id === bt.customerId || (!rec.customer_id && bt.customerId === 'unassigned')) &&
       ((rec.project_id || '') === (bt.projectId || '') || !rec.project_id);
+
+    const getRecordLocation = (rec: (typeof existing)[number]): string =>
+      ((rec as any).location ?? '').trim().toLowerCase();
+
+    const getBaseTicketLocation = (bt: ServiceTicket): string =>
+      (bt.location ?? bt.entryLocation ?? '').trim().toLowerCase();
 
     const getRecordPoAfe = (rec: (typeof existing)[number]): string => {
       const ov = (rec.header_overrides as Record<string, string> | null) ?? {};
@@ -1190,6 +1197,18 @@ export default function ServiceTickets() {
 
     const getBaseTicketPoAfe = (bt: ServiceTicket): string =>
       (bt.entryPoAfe ?? bt.projectPoAfe ?? '').trim();
+
+    // Full match: project + location + PO/AFE (hierarchical)
+    const baseTicketFullMatchesRecord = (bt: ServiceTicket, rec: (typeof existing)[number]) => {
+      if (!baseTicketMatchesRecord(bt, rec)) return false;
+      const recLoc = getRecordLocation(rec);
+      const btLoc = getBaseTicketLocation(bt);
+      if (recLoc && btLoc && recLoc !== btLoc) return false;
+      const recPo = getRecordPoAfe(rec);
+      const btPo = getBaseTicketPoAfe(bt);
+      if (recPo && btPo && recPo !== btPo) return false;
+      return true;
+    };
 
     // --- Classify DB records ---
     const isLockedRecord = (rec: (typeof existing)[number]) => {
@@ -1207,13 +1226,12 @@ export default function ServiceTickets() {
     );
 
     // --- Claim base tickets for locked records (so they don't appear as drafts) ---
+    // Hierarchy: project > location > PO/AFE. Prefer full match, fall back to core match.
     const claimedBaseTicketIds = new Set<string>();
     const claimedBaseTicketByRecordId = new Map<string, ServiceTicket>();
     for (const rec of lockedRecords) {
-      const recPoAfe = getRecordPoAfe(rec);
       const bt = baseTickets.find(
-        b => !claimedBaseTicketIds.has(b.id) && baseTicketMatchesRecord(b, rec) &&
-          (recPoAfe ? getBaseTicketPoAfe(b) === recPoAfe : true)
+        b => !claimedBaseTicketIds.has(b.id) && baseTicketFullMatchesRecord(b, rec)
       ) ?? baseTickets.find(
         b => !claimedBaseTicketIds.has(b.id) && baseTicketMatchesRecord(b, rec)
       );
@@ -1224,13 +1242,11 @@ export default function ServiceTickets() {
     }
 
     // --- Link draft records to base tickets (1:1, tracked) ---
+    // Hierarchy: project > location > PO/AFE. Prefer full match, fall back to core match.
     const usedDraftRecordIds = new Set<string>();
     const findDraftRecordForBaseTicket = (bt: ServiceTicket) => {
-      const btPoAfe = getBaseTicketPoAfe(bt);
-      // Prefer exact po_afe match, then any match
       const found = draftRecords.find(
-        rec => !usedDraftRecordIds.has(rec.id) && baseTicketMatchesRecord(bt, rec) &&
-          (getRecordPoAfe(rec) === btPoAfe || !getRecordPoAfe(rec))
+        rec => !usedDraftRecordIds.has(rec.id) && baseTicketFullMatchesRecord(bt, rec)
       ) ?? draftRecords.find(
         rec => !usedDraftRecordIds.has(rec.id) && baseTicketMatchesRecord(bt, rec)
       );
@@ -1239,25 +1255,9 @@ export default function ServiceTickets() {
     };
 
     // --- Build locked ticket from DB record ---
-    // Submitted (no ticket_number): use base ticket entries/hours/rates so the panel shows time entry data.
-    // Approved (has ticket_number): fully locked, entries=[], hours from DB only.
+    // Both submitted and approved are built entirely from DB (entries=[], hours from edited_hours/total_hours).
+    // Time entries do not affect locked tickets.
     const buildLockedTicketFromRecord = (st: (typeof existing)[number]) => {
-      const isApproved = !!st.ticket_number;
-      const matchedBaseTicket = claimedBaseTicketByRecordId.get(st.id);
-
-      // For submitted tickets with a matching base ticket: use the base ticket's data
-      if (!isApproved && matchedBaseTicket) {
-        const ov = (st as { header_overrides?: Record<string, string | number> })?.header_overrides;
-        const ticket: ServiceTicket & { _matchedRecordId: string } = {
-          ...matchedBaseTicket,
-          id: st.id,
-          ticketNumber: st.ticket_number || undefined,
-          _matchedRecordId: st.id,
-        };
-        return ov ? applyHeaderOverridesToTicket(ticket, ov) : ticket;
-      }
-
-      // Approved or no matching base ticket: build from DB
       const editedHours = (st.edited_hours as Record<string, number | number[]>) || {};
       const hoursByRateType: ServiceTicket['hoursByRateType'] = {
         'Shop Time': 0, 'Shop Overtime': 0, 'Travel Time': 0, 'Field Time': 0, 'Field Overtime': 0,
@@ -2442,8 +2442,9 @@ export default function ServiceTickets() {
                   const ws = (existingRecord as { workflow_status?: string })?.workflow_status;
                   const isFrozen = isAdminApproved || (ws && !['draft', 'rejected'].includes(ws));
                   const isDiscarded = !!(existingRecord as any)?.is_discarded;
-                  // Only admins can edit approved tickets; non-admins are locked
-                  setIsLockedForEditing(isDiscarded || (isAdminApproved && !isAdmin));
+                  // Non-admins: lock when discarded, admin-approved, or user-submitted (workflow='approved' without ticket_number)
+                  const isUserSubmitted = !isAdminApproved && ws === 'approved';
+                  setIsLockedForEditing(isDiscarded || (isAdminApproved && !isAdmin) || (isUserSubmitted && !isAdmin));
                   
                   setSelectedTicket(ticket);
                   setPendingDeleteExpenseIds(new Set());
@@ -3048,6 +3049,22 @@ export default function ServiceTickets() {
                                   billingKey,
                                 }, isDemoMode);
                                 const newStatus = isApproved ? 'draft' : 'approved';
+                                // When submitting (not withdrawing), snapshot hours/descriptions/header to DB
+                                if (newStatus !== 'draft' && ticket.entries?.length > 0) {
+                                  const rows = entriesToServiceRows(ticket.entries);
+                                  const legacy = serviceRowsToLegacyFormat(rows);
+                                  let totalEditedHours = 0;
+                                  rows.forEach(row => { totalEditedHours += row.st + row.tt + row.ft + row.so + row.fo; });
+                                  const headerOverrides = buildApprovalHeaderOverrides(ticket);
+                                  const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                                  await supabase.from(tableName).update({
+                                    is_edited: true,
+                                    edited_descriptions: legacy.descriptions,
+                                    edited_hours: legacy.hours,
+                                    total_hours: totalEditedHours,
+                                    header_overrides: headerOverrides,
+                                  }).eq('id', ticketRecord.id);
+                                }
                                 await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
                                 queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                               } catch (error) {
@@ -3064,7 +3081,7 @@ export default function ServiceTickets() {
                             }}
                             title={isApproved ? "Click to withdraw submission" : "Click to submit for approval"}
                           >
-                            {isApproved ? '✓ Submitted' : 'Submit'}
+                            {isApproved ? 'Withdraw' : 'Submit'}
                           </button>
                         );
                       }
@@ -3272,11 +3289,15 @@ export default function ServiceTickets() {
               })()}
               {/* Locked banner - when ticket is admin-approved or trashed (non-admin) */}
               {isLockedForEditing && selectedTicket && (() => {
-                const isTrashed = !!(findMatchingTicketRecord(selectedTicket) as any)?.is_discarded;
+                const lockRec = findMatchingTicketRecord(selectedTicket);
+                const isTrashed = !!(lockRec as any)?.is_discarded;
+                const isSubmittedLock = !isTrashed && lockRec?.workflow_status === 'approved' && !lockRec?.ticket_number;
+                const lockColor = isTrashed ? '#ef5350' : isSubmittedLock ? '#3b82f6' : '#10b981';
+                const lockBg = isTrashed ? 'rgba(239, 83, 80, 0.08)' : isSubmittedLock ? 'rgba(59, 130, 246, 0.1)' : 'rgba(16, 185, 129, 0.1)';
                 return (
                   <div style={{
-                    backgroundColor: isTrashed ? 'rgba(239, 83, 80, 0.08)' : 'rgba(16, 185, 129, 0.1)',
-                    border: `1px solid ${isTrashed ? '#ef5350' : '#10b981'}`,
+                    backgroundColor: lockBg,
+                    border: `1px solid ${lockColor}`,
                     borderRadius: '8px',
                     padding: '12px 16px',
                     marginBottom: '16px',
@@ -3286,13 +3307,15 @@ export default function ServiceTickets() {
                   }}>
                     <span style={{ fontSize: '18px' }}>🔒</span>
                     <div>
-                      <div style={{ fontWeight: '600', color: isTrashed ? '#ef5350' : '#10b981' }}>
-                        {isTrashed ? 'Ticket in Trash' : 'Ticket Approved'}
+                      <div style={{ fontWeight: '600', color: lockColor }}>
+                        {isTrashed ? 'Ticket in Trash' : isSubmittedLock ? 'Ticket Submitted' : 'Ticket Approved'}
                       </div>
                       <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                         {isTrashed
                           ? 'This ticket is in trash and view-only. Click Restore Ticket to make changes.'
-                          : 'This ticket has been approved by an admin and can no longer be edited.'}
+                          : isSubmittedLock
+                            ? 'This ticket has been submitted for approval. Withdraw the submission to make changes.'
+                            : 'This ticket has been approved by an admin and can no longer be edited.'}
                       </div>
                     </div>
                   </div>
@@ -3332,9 +3355,14 @@ export default function ServiceTickets() {
                       Cannot edit this ticket
                     </div>
                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                      {selectedTicket && (findMatchingTicketRecord(selectedTicket) as any)?.is_discarded
-                        ? 'This ticket is in trash. Click Restore Ticket to make changes.'
-                        : 'This ticket has been approved by an admin and is locked. Contact an administrator if you need to make changes.'}
+                      {(() => {
+                        const notifRec = selectedTicket ? findMatchingTicketRecord(selectedTicket) : null;
+                        const isTrashedNotif = !!(notifRec as any)?.is_discarded;
+                        const isSubmittedNotif = !isTrashedNotif && notifRec?.workflow_status === 'approved' && !notifRec?.ticket_number;
+                        if (isTrashedNotif) return 'This ticket is in trash. Click Restore Ticket to make changes.';
+                        if (isSubmittedNotif) return 'This ticket has been submitted for approval and is locked. Withdraw the submission to make changes.';
+                        return 'This ticket has been approved by an admin and is locked. Contact an administrator if you need to make changes.';
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -4724,8 +4752,11 @@ export default function ServiceTickets() {
                             setSubmitError(null);
                             setIsApproving(true);
                             try {
-                              const ok = await performSave();
-                              if (!ok) { setIsApproving(false); return; }
+                              // When submitting (not withdrawing), save first
+                              if (!isTicketApproved) {
+                                const ok = await performSave();
+                                if (!ok) { setIsApproving(false); return; }
+                              }
                               const billingKey = selectedTicket.id ? getTicketBillingKeyLocal(selectedTicket.id) : '_::_::_';
                               const ticketRecord = await serviceTicketsService.getOrCreateTicket({
                                 date: selectedTicket.date,
@@ -4741,6 +4772,13 @@ export default function ServiceTickets() {
                               await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                               await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                               await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+                              // Unlock panel when withdrawing submission
+                              if (isTicketApproved) {
+                                setIsLockedForEditing(false);
+                              } else {
+                                // Lock panel after submitting
+                                setIsLockedForEditing(true);
+                              }
                             } catch (error) {
                               const msg = error instanceof Error ? error.message : 'Failed to submit for approval.';
                               setSubmitError(msg);
@@ -4751,7 +4789,7 @@ export default function ServiceTickets() {
                           style={{ padding: '10px 24px', backgroundColor: isTicketApproved ? '#3b82f6' : undefined, borderColor: isTicketApproved ? '#3b82f6' : undefined }}
                           disabled={isApproving}
                         >
-                          {isApproving ? 'Submitting...' : (isTicketApproved ? '✓ Submitted' : 'Submit for Approval')}
+                          {isApproving ? 'Submitting...' : (isTicketApproved ? 'Withdraw Submission' : 'Submit for Approval')}
                         </button>
                       </div>
                     );
