@@ -1156,62 +1156,87 @@ export default function ServiceTickets() {
   });
 
   /**
-   * Drafts = built from time entries only (live, editable).
-   * Approved = from DB only (locked in; no link to time entries).
+   * Service tickets come from two sources:
    *
-   * - Draft/Submitted tabs: base tickets from time entries. Base tickets whose work was approved
-   *   (matching approved record by date+user+customer+project+po_afe) are excluded here and only
-   *   appear under Approved.
-   * - Approved tab: each approved record (ticket_number set) is one ticket built from the record
-   *   (hours/header from DB; entries = []). No merge with time entries.
+   * DRAFTS (from time entries):
+   *   Built live from billable time entries. Editable. Grouped by date+user+customer+project+po_afe.
+   *   If a draft DB record exists (workflow_status = 'draft' or 'rejected'), it's linked via _matchedRecordId.
+   *
+   * LOCKED (from DB - submitted or approved):
+   *   Once submitted or approved, the ticket is built entirely from the DB record.
+   *   Time entries no longer affect it. Hours from edited_hours/total_hours, header from header_overrides.
+   *
+   * A "locked" record is any DB record where:
+   *   - ticket_number is set (approved), OR
+   *   - workflow_status is not 'draft' and not 'rejected' (submitted)
+   *
+   * Locked records claim their matching base ticket so it doesn't also appear as a draft.
    */
   const tickets = useMemo(() => {
     const baseTickets = billableEntries ? groupEntriesIntoTickets(billableEntries, employees) : [];
     const existing = existingTickets ?? [];
 
+    // --- Helpers ---
     const baseTicketMatchesRecord = (bt: ServiceTicket, rec: (typeof existing)[number]) =>
       bt.date === rec.date &&
       bt.userId === rec.user_id &&
       (rec.customer_id === bt.customerId || (!rec.customer_id && bt.customerId === 'unassigned')) &&
       ((rec.project_id || '') === (bt.projectId || '') || !rec.project_id);
 
-    const getRecordGroupingKey = (rec: (typeof existing)[number]): string | null => {
+    const getRecordPoAfe = (rec: (typeof existing)[number]): string => {
       const ov = (rec.header_overrides as Record<string, string> | null) ?? {};
-      const fromOv = (ov._grouping_key as string) ?? (ov.po_afe != null && String(ov.po_afe).trim() !== '' ? buildGroupingKey(ov.po_afe) : null);
-      return fromOv ?? null;
+      return (ov.po_afe ?? '').trim();
     };
 
-    const getBaseTicketGroupingKey = (bt: ServiceTicket): string =>
-      bt.id ? getTicketBillingKey(bt.id) : '_::_::_';
+    const getBaseTicketPoAfe = (bt: ServiceTicket): string =>
+      (bt.entryPoAfe ?? bt.projectPoAfe ?? '').trim();
 
-    const approvedRecords = existing.filter(
-      rec => rec.customer_id && rec.ticket_number && !(rec as any).is_discarded
+    // --- Classify DB records ---
+    const isLockedRecord = (rec: (typeof existing)[number]) => {
+      if ((rec as any).is_discarded) return false;
+      if (!rec.customer_id) return false;
+      if (rec.ticket_number) return true; // approved
+      const ws = (rec.workflow_status || 'draft') as string;
+      return ws !== 'draft' && ws !== 'rejected'; // submitted
+    };
+
+    const lockedRecords = existing.filter(isLockedRecord);
+    const draftRecords = existing.filter(rec =>
+      rec.customer_id && !rec.ticket_number && !(rec as any).is_discarded &&
+      ((rec.workflow_status || 'draft') === 'draft' || rec.workflow_status === 'rejected')
     );
 
+    // --- Claim base tickets for locked records (so they don't appear as drafts) ---
     const claimedBaseTicketIds = new Set<string>();
-    for (const rec of approvedRecords) {
-      const recKey = getRecordGroupingKey(rec);
+    for (const rec of lockedRecords) {
+      const recPoAfe = getRecordPoAfe(rec);
+      // Prefer exact po_afe match, then any match
       const bt = baseTickets.find(
-        b =>
-          !claimedBaseTicketIds.has(b.id) &&
-          baseTicketMatchesRecord(b, rec) &&
-          (recKey ? getBaseTicketGroupingKey(b) === recKey : true)
+        b => !claimedBaseTicketIds.has(b.id) && baseTicketMatchesRecord(b, rec) &&
+          (recPoAfe ? getBaseTicketPoAfe(b) === recPoAfe : true)
+      ) ?? baseTickets.find(
+        b => !claimedBaseTicketIds.has(b.id) && baseTicketMatchesRecord(b, rec)
       );
       if (bt) claimedBaseTicketIds.add(bt.id);
     }
 
-    const draftRecords = existing.filter(rec => !rec.ticket_number && !(rec as any).is_discarded);
-
+    // --- Link draft records to base tickets (1:1, tracked) ---
+    const usedDraftRecordIds = new Set<string>();
     const findDraftRecordForBaseTicket = (bt: ServiceTicket) => {
-      const recKey = getBaseTicketGroupingKey(bt);
-      return draftRecords.find(
-        rec =>
-          baseTicketMatchesRecord(bt, rec) &&
-          (getRecordGroupingKey(rec) === recKey || !getRecordGroupingKey(rec))
+      const btPoAfe = getBaseTicketPoAfe(bt);
+      // Prefer exact po_afe match, then any match
+      const found = draftRecords.find(
+        rec => !usedDraftRecordIds.has(rec.id) && baseTicketMatchesRecord(bt, rec) &&
+          (getRecordPoAfe(rec) === btPoAfe || !getRecordPoAfe(rec))
+      ) ?? draftRecords.find(
+        rec => !usedDraftRecordIds.has(rec.id) && baseTicketMatchesRecord(bt, rec)
       );
+      if (found) usedDraftRecordIds.add(found.id);
+      return found;
     };
 
-    const buildApprovedTicketFromRecord = (st: (typeof existing)[number]) => {
+    // --- Build locked ticket from DB record ---
+    const buildLockedTicketFromRecord = (st: (typeof existing)[number]) => {
       const editedHours = (st.edited_hours as Record<string, number | number[]>) || {};
       const hoursByRateType: ServiceTicket['hoursByRateType'] = {
         'Shop Time': 0, 'Shop Overtime': 0, 'Travel Time': 0, 'Field Time': 0, 'Field Overtime': 0,
@@ -1219,7 +1244,8 @@ export default function ServiceTickets() {
       Object.keys(editedHours).forEach(rateType => {
         const hours = editedHours[rateType];
         if (rateType in hoursByRateType) {
-          (hoursByRateType as any)[rateType] = Array.isArray(hours) ? hours.reduce((s: number, h: number) => s + (h || 0), 0) : (hours as number) || 0;
+          (hoursByRateType as any)[rateType] = Array.isArray(hours)
+            ? hours.reduce((s: number, h: number) => s + (h || 0), 0) : (hours as number) || 0;
         }
       });
       let totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
@@ -1241,7 +1267,7 @@ export default function ServiceTickets() {
       const ovForProject = (st as { header_overrides?: Record<string, string> })?.header_overrides;
       const projectNumber = ovForProject?.project_number ?? project?.project_number ?? '';
       const projectName = project?.name ?? '';
-      const out: ServiceTicket & { _matchedRecordId?: string } = {
+      const out: ServiceTicket & { _matchedRecordId: string } = {
         id: st.id,
         date: st.date,
         customerId: st.customer_id,
@@ -1278,6 +1304,8 @@ export default function ServiceTickets() {
       return ov ? applyHeaderOverridesToTicket(out, ov) : out;
     };
 
+    // --- Assemble ---
+    // Draft tickets: from time entries, not claimed by locked records
     const draftTickets: (ServiceTicket & { _matchedRecordId?: string | null })[] = [];
     for (const bt of baseTickets) {
       if (claimedBaseTicketIds.has(bt.id)) continue;
@@ -1285,9 +1313,10 @@ export default function ServiceTickets() {
       draftTickets.push({ ...bt, _matchedRecordId: draftRec?.id ?? null });
     }
 
-    const approvedTickets = approvedRecords.map(buildApprovedTicketFromRecord);
+    // Locked tickets: from DB records (submitted + approved)
+    const lockedTickets = lockedRecords.map(buildLockedTicketFromRecord);
 
-    return [...draftTickets, ...approvedTickets];
+    return [...draftTickets, ...lockedTickets];
   }, [billableEntries, employees, existingTickets, customers, allProjects]);
 
   // Expense mutations
