@@ -2994,7 +2994,7 @@ export default function ServiceTickets() {
                       if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
                         return serviceRows.reduce((sum, r) => sum + (r.st || 0), 0).toFixed(2);
                       }
-                      return ticket.hoursByRateType['Shop Time'].toFixed(1);
+                      return ticket.hoursByRateType['Shop Time'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
@@ -3002,7 +3002,7 @@ export default function ServiceTickets() {
                       if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
                         return serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0).toFixed(2);
                       }
-                      return ticket.hoursByRateType['Travel Time'].toFixed(1);
+                      return ticket.hoursByRateType['Travel Time'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
@@ -3010,7 +3010,7 @@ export default function ServiceTickets() {
                       if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
                         return serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0).toFixed(2);
                       }
-                      return ticket.hoursByRateType['Field Time'].toFixed(1);
+                      return ticket.hoursByRateType['Field Time'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
@@ -3018,7 +3018,7 @@ export default function ServiceTickets() {
                       if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
                         return serviceRows.reduce((sum, r) => sum + (r.so || 0), 0).toFixed(2);
                       }
-                      return ticket.hoursByRateType['Shop Overtime'].toFixed(1);
+                      return ticket.hoursByRateType['Shop Overtime'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
@@ -3026,7 +3026,7 @@ export default function ServiceTickets() {
                       if (selectedTicket?.id === ticket.id && serviceRows.length > 0) {
                         return serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0).toFixed(2);
                       }
-                      return ticket.hoursByRateType['Field Overtime'].toFixed(1);
+                      return ticket.hoursByRateType['Field Overtime'].toFixed(2);
                     })()}
                   </td>
                   <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
