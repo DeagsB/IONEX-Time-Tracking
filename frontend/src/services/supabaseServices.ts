@@ -1180,6 +1180,7 @@ export const serviceTicketsService = {
     }
     
     // Use provided headerOverrides (from time entries) when creating; otherwise parse from billingKey (grouping key only has po_afe)
+    // Always set _grouping_key and _billing_key so record stays matched to ticket when user edits PO/AFE/CC
     const ho = params.headerOverrides;
     let headerOverridesToInsert: Record<string, string> | undefined;
     if (ho && (ho.approver != null || ho.po_afe != null || ho.cc != null || ho.other != null || ho.service_location != null)) {
@@ -1189,6 +1190,8 @@ export const serviceTicketsService = {
         cc: (ho.cc ?? '').trim() || '_',
         ...(ho.other != null ? { other: String(ho.other ?? '').trim() } : {}),
         ...(ho.service_location != null ? { service_location: String(ho.service_location ?? '').trim() } : {}),
+        _grouping_key: targetBillingKey,
+        _billing_key: buildBillingKey(ho.approver ?? '', ho.po_afe ?? '', ho.cc ?? ''),
       };
     } else if (targetBillingKey !== '_::_::_') {
       const [approver, poAfe, cc] = targetBillingKey.split('::');
@@ -1196,6 +1199,8 @@ export const serviceTicketsService = {
         approver: approver || '_',
         po_afe: poAfe || '_',
         cc: cc || '_',
+        _grouping_key: targetBillingKey,
+        _billing_key: targetBillingKey,
       };
     }
     const insertData: Record<string, unknown> = {

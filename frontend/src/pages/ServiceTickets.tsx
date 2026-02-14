@@ -348,8 +348,15 @@ export default function ServiceTickets() {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
 
       // Persist header_overrides and location FIRST so header edits always save (critical for draft tickets)
-      if (editableTicket) {
+      // Preserve _grouping_key and _billing_key so record stays matched to ticket when user edits PO/AFE/CC
+      if (editableTicket && selectedTicket) {
         const newLocation = editableTicket.serviceLocation?.trim() || '';
+        const ticketGroupingKey = selectedTicket.id ? getTicketBillingKeyLocal(selectedTicket.id) : '_::_::_';
+        const ticketBillingKey = buildBillingKey(
+          selectedTicket.entryApprover ?? '',
+          selectedTicket.entryPoAfe ?? '',
+          selectedTicket.entryCc ?? ''
+        );
         const { error: overrideError } = await supabase
           .from(tableName)
           .update({
@@ -372,6 +379,8 @@ export default function ServiceTickets() {
               tech_name: editableTicket.techName ?? '',
               project_number: editableTicket.projectNumber ?? '',
               date: editableTicket.date ?? '',
+              _grouping_key: ticketGroupingKey,
+              _billing_key: ticketBillingKey,
             },
           })
           .eq('id', recordId);
@@ -1125,11 +1134,11 @@ export default function ServiceTickets() {
     getTicketBillingKey(ticketId);
   const getRecordGroupingKeyForMerge = (et: { header_overrides?: unknown }): string => {
     const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-    return buildGroupingKey(ov.po_afe ?? '');
+    return (ov._grouping_key as string) ?? buildGroupingKey(ov.po_afe ?? '');
   };
   const getRecordBillingKeyForMerge = (et: { header_overrides?: unknown }): string => {
     const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-    return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+    return (ov._billing_key as string) ?? buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
   };
   /** Full billing key from ticket entries - for precise matching of approved records */
   const getTicketFullBillingKey = (ticket: { entryApprover?: string; entryPoAfe?: string; entryCc?: string; projectApprover?: string; projectPoAfe?: string; projectCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> }): string => {
@@ -1368,10 +1377,10 @@ export default function ServiceTickets() {
   /** Extract billing key from ticket.id (approver::poAfe::cc) */
   const getTicketBillingKeyLocal = (ticketId: string): string => getTicketBillingKey(ticketId);
 
-  /** Get billing key from existing record's header_overrides */
+  /** Get billing key from existing record's header_overrides. Use _grouping_key for matching so user edits to PO/AFE/CC don't break association. */
   const getRecordGroupingKey = (et: { header_overrides?: unknown }): string => {
     const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-    return buildGroupingKey(ov.po_afe ?? '');
+    return (ov._grouping_key as string) ?? buildGroupingKey(ov.po_afe ?? '');
   };
 
   /**
@@ -1396,7 +1405,7 @@ export default function ServiceTickets() {
       : ticketBillingKey;
     const getRecordBillingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-      return buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
+      return (ov._billing_key as string) ?? buildBillingKey(ov.approver ?? '', ov.po_afe ?? '', ov.cc ?? '');
     };
     // Prefer full billing key match for approved records so AR and other approved tickets are found
     let matches = existingTickets?.filter(
