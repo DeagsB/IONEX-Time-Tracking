@@ -1269,6 +1269,8 @@ export const serviceTicketsService = {
     const existing = (ticket.header_overrides as Record<string, unknown>) ?? {};
     const merged = {
       ...existing,
+      _grouping_key: (existing._grouping_key as string) ?? targetGroupingKey,
+      _billing_key: (existing._billing_key as string) ?? buildBillingKey(params.approver ?? '', params.po_afe ?? '', params.cc ?? ''),
       service_location: params.location ?? '',
       approver: params.approver ?? '',
       po_afe: params.po_afe ?? '',
