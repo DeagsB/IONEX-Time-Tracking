@@ -1157,7 +1157,7 @@ export const serviceTicketsService = {
     
     const getRecordGroupingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-      return buildGroupingKey(ov.po_afe ?? '');
+      return (ov._grouping_key as string) ?? buildGroupingKey(ov.po_afe ?? '');
     };
     const existing = candidates?.find(et => getRecordGroupingKey(et) === targetBillingKey);
     if (existing) {
@@ -1262,7 +1262,7 @@ export const serviceTicketsService = {
     if (findError || !candidates?.length) return;
     const getRecordGroupingKey = (et: { header_overrides?: unknown }): string => {
       const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-      return buildGroupingKey(ov.po_afe ?? '');
+      return (ov._grouping_key as string) ?? buildGroupingKey(ov.po_afe ?? '');
     };
     const ticket = candidates.find(et => getRecordGroupingKey(et) === targetGroupingKey);
     if (!ticket || ticket.workflow_status !== 'draft' && ticket.workflow_status !== 'rejected') return;
@@ -1324,7 +1324,7 @@ export const serviceTicketsService = {
     const targetGroupingKey = buildGroupingKey(po_afe ?? '');
     const getRecordGroupingKey = (t: { header_overrides?: unknown }) => {
       const ov = (t.header_overrides as Record<string, string> | null) ?? {};
-      return buildGroupingKey(ov.po_afe ?? '');
+      return (ov._grouping_key as string) ?? buildGroupingKey(ov.po_afe ?? '');
     };
     const matching = tickets.filter(t => getRecordGroupingKey(t) === targetGroupingKey);
     const legacyKey = '_::_::_';

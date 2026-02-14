@@ -450,6 +450,30 @@ export default function ServiceTickets() {
     const cityState = ticket.customerInfo.city && ticket.customerInfo.state
       ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
       : ticket.customerInfo.city || ticket.customerInfo.state || '';
+    const approverPoAfeCc = ((): { approver: string; po_afe: string; cc: string } => {
+      const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
+      if (fromEntry) {
+        return {
+          approver: ticket.entryApprover ?? '',
+          po_afe: ticket.entryPoAfe ?? ticket.customerInfo.po_number ?? '',
+          cc: ticket.entryCc ?? '',
+        };
+      }
+      const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
+      if (fromProject) {
+        return {
+          approver: ticket.projectApprover ?? ticket.customerInfo.approver_name ?? '',
+          po_afe: ticket.projectPoAfe ?? ticket.customerInfo.po_number ?? '',
+          cc: ticket.projectCc ?? '',
+        };
+      }
+      return {
+        approver: ticket.customerInfo.approver_name ?? '',
+        po_afe: ticket.customerInfo.po_number ?? '',
+        cc: '',
+      };
+    })();
+    const groupingKey = ticket.id ? getTicketBillingKey(ticket.id) : '_::_::_';
     return {
       customer_name: ticket.customerInfo.name ?? '',
       address: ticket.customerInfo.address ?? '',
@@ -461,30 +485,7 @@ export default function ServiceTickets() {
       service_location: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
       location_code: ticket.customerInfo.location_code ?? '',
       po_number: ticket.customerInfo.po_number ?? '',
-      ...((): { approver: string; po_afe: string; cc: string } => {
-        // Prioritize time entry over project - NO PARSING, each field stays in its own field
-        const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc;
-        if (fromEntry) {
-          return {
-            approver: ticket.entryApprover ?? '',
-            po_afe: ticket.entryPoAfe ?? ticket.customerInfo.po_number ?? '',
-            cc: ticket.entryCc ?? '',
-          };
-        }
-        const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
-        if (fromProject) {
-          return {
-            approver: ticket.projectApprover ?? ticket.customerInfo.approver_name ?? '',
-            po_afe: ticket.projectPoAfe ?? ticket.customerInfo.po_number ?? '',
-            cc: ticket.projectCc ?? '',
-          };
-        }
-        return {
-          approver: ticket.customerInfo.approver_name ?? '',
-          po_afe: ticket.customerInfo.po_number ?? '',
-          cc: '',
-        };
-      })(),
+      ...approverPoAfeCc,
       other: ticket.projectOther ?? '',
       tech_name: ticket.userName ?? '',
       project_number: ticket.projectNumber ?? '',
@@ -494,6 +495,8 @@ export default function ServiceTickets() {
       rate_ft: ticket.rates.ft,
       rate_shop_ot: ticket.rates.shop_ot,
       rate_field_ot: ticket.rates.field_ot,
+      _grouping_key: groupingKey,
+      _billing_key: buildBillingKey(approverPoAfeCc.approver, approverPoAfeCc.po_afe, approverPoAfeCc.cc),
     };
   };
 
