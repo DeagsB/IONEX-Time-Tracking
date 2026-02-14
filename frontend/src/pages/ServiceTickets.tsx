@@ -1176,6 +1176,9 @@ export default function ServiceTickets() {
     // Merge edited hours from database into tickets
     let mergedTickets = baseTickets;
     if (existingTickets && existingTickets.length > 0) {
+      // Each existing record can only be matched to one base ticket. Prevents duplicate ticket numbers
+      // when multiple base tickets (different PO/AFE) match the same legacy record (project_id=null).
+      const usedRecordIds = new Set<string>();
       mergedTickets = baseTickets.map(ticket => {
         // Find matching ticket record by date+user+customer+project+billing (location is editable, not a grouping dimension)
         const ticketBillingKey = ticket.id ? getTicketBillingKeyForMerge(ticket.id) : '_::_::_';
@@ -1189,27 +1192,29 @@ export default function ServiceTickets() {
           (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
           ((et.project_id || '') === (ticket.projectId || '') || !et.project_id);
         const ticketFullKey = getTicketFullBillingKey(ticket);
+        const excludeUsed = (ets: typeof existingTickets) => ets.filter(et => !usedRecordIds.has(et.id));
         // Prefer full billing key match for approved records (approver::po_afe::cc) so AR and other approved tickets are found
-        let matchingRecords = existingTickets.filter(
+        let matchingRecords = excludeUsed(existingTickets.filter(
           et => baseFilterMerge(et) && getRecordBillingKeyForMerge(et) === ticketFullKey
-        );
+        ));
         let ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         // Fallback to grouping key match (po_afe only) for draft tickets
         if (!ticketRecord) {
-          matchingRecords = existingTickets.filter(
+          matchingRecords = excludeUsed(existingTickets.filter(
             et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === ticketBillingKey
-          );
+          ));
           ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         }
         if (!ticketRecord && ticketBillingKey === legacyBillingKey) {
-          matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === legacyBillingKey);
+          matchingRecords = excludeUsed(existingTickets.filter(et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === legacyBillingKey));
           ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         }
         // Legacy: record has empty header_overrides - match to base ticket by date+user+customer+project (approved tickets without billing fields)
         if (!ticketRecord) {
-          matchingRecords = existingTickets.filter(et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === legacyBillingKey);
+          matchingRecords = excludeUsed(existingTickets.filter(et => baseFilterMerge(et) && getRecordGroupingKeyForMerge(et) === legacyBillingKey));
           ticketRecord = matchingRecords.find(et => !(et as any).is_discarded) || matchingRecords[0];
         }
+        if (ticketRecord) usedRecordIds.add(ticketRecord.id);
         
         // If ticket has been edited, use edited hours instead of original
         if (ticketRecord?.is_edited && ticketRecord.edited_hours) {
@@ -1233,6 +1238,7 @@ export default function ServiceTickets() {
             ...ticket,
             hoursByRateType: updatedHoursByRateType,
             totalHours,
+            _matchedRecordId: ticketRecord?.id,
           };
         }
 
@@ -1240,10 +1246,10 @@ export default function ServiceTickets() {
         const dbTotal = Number((ticketRecord as { total_hours?: number })?.total_hours) || 0;
         if (ticketRecord && ticket.totalHours === 0 && dbTotal > 0) {
           const fallbackHoursByRateType = { ...ticket.hoursByRateType, 'Shop Time': dbTotal };
-          return { ...ticket, hoursByRateType: fallbackHoursByRateType, totalHours: dbTotal };
+          return { ...ticket, hoursByRateType: fallbackHoursByRateType, totalHours: dbTotal, _matchedRecordId: ticketRecord.id };
         }
         
-        return ticket;
+        return { ...ticket, _matchedRecordId: ticketRecord?.id ?? null };
       });
 
       // Append standalone tickets (manually created with no matching time entries)
@@ -1414,7 +1420,11 @@ export default function ServiceTickets() {
    * Standalone tickets use DB UUID as id - match by et.id === ticket.id first.
    * Base tickets use composite key - match by date+user+customer+project+billingKey (location is editable).
    */
-  const findMatchingTicketRecord = (ticket: { id?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string; entryApprover?: string; entryPoAfe?: string; entryCc?: string; projectApprover?: string; projectPoAfe?: string; projectCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> }) => {
+  const findMatchingTicketRecord = (ticket: { id?: string; _matchedRecordId?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string; entryApprover?: string; entryPoAfe?: string; entryCc?: string; projectApprover?: string; projectPoAfe?: string; projectCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> }) => {
+    if ((ticket as { _matchedRecordId?: string })._matchedRecordId && existingTickets) {
+      const byMatched = existingTickets.find(et => et.id === (ticket as { _matchedRecordId?: string })._matchedRecordId);
+      if (byMatched && !(byMatched as any).is_discarded) return byMatched;
+    }
     if (ticket.id && existingTickets) {
       const byId = existingTickets.find(et => et.id === ticket.id);
       if (byId) return (existingTickets.find(et => et.id === ticket.id && !(et as any).is_discarded) || byId) as typeof byId;
@@ -1537,8 +1547,13 @@ export default function ServiceTickets() {
       // Check if this is a demo ticket (all entries are demo; empty = not demo)
       const isDemoTicket = ticket.entries.length > 0 && ticket.entries.every(entry => entry.is_demo === true);
       
-      // Try to find an existing ticket number for this ticket
-      const existing = findMatchingTicketRecord(ticket);
+      // Use pre-matched record from merge (avoids duplicate ticket numbers when one record matched multiple base tickets)
+      const matchedId = (ticket as { _matchedRecordId?: string | null })._matchedRecordId;
+      const existing = (matchedId && existingTickets
+        ? existingTickets.find(et => et.id === matchedId)
+        : matchedId === null
+          ? null
+          : findMatchingTicketRecord(ticket)) ?? undefined;
       const isDiscarded = !!(existing as any)?.is_discarded;
       const ov = (existing as { header_overrides?: Record<string, string | number> })?.header_overrides;
       // Apply header_overrides when present (user or admin saved overrides).
