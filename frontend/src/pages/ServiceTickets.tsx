@@ -254,6 +254,9 @@ export default function ServiceTickets() {
   const [showRejectNoteModal, setShowRejectNoteModal] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [rejectNote, setRejectNote] = useState('');
+  const [showCustomTicketIdModal, setShowCustomTicketIdModal] = useState(false);
+  const [customTicketId, setCustomTicketId] = useState('');
+  const [customTicketIdError, setCustomTicketIdError] = useState('');
   const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
 
   const OPENED_NEW_IDS_KEY = 'ionex_serviceTickets_openedNewIds';
@@ -988,6 +991,107 @@ export default function ServiceTickets() {
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
     } catch (error) {
       console.error('Error unassigning ticket number:', error);
+    }
+  };
+
+  // Reassign ticket number (unassign then assign a new auto-generated number)
+  const handleReassignTicketNumber = async (ticket: ServiceTicket) => {
+    try {
+      const existing = findMatchingTicketRecord(ticket);
+      if (!existing) return;
+
+      // Unassign first
+      await serviceTicketsService.updateTicketNumber(existing.id, null, isDemoMode);
+      // Now assign a fresh number
+      await handleAssignTicketNumber(ticket);
+    } catch (error) {
+      console.error('Error reassigning ticket number:', error);
+      alert(`Failed to reassign ticket number: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  // Assign a custom ticket ID (admin enters it manually)
+  const handleCustomTicketIdAssign = async (ticket: ServiceTicket) => {
+    const trimmed = customTicketId.trim().toUpperCase();
+    if (!trimmed) {
+      setCustomTicketIdError('Please enter a ticket ID.');
+      return;
+    }
+    // Validate format: XX_YYNNN (letters_digitsdigitsdigits)
+    if (!/^[A-Z]+_\d{5,}$/.test(trimmed)) {
+      setCustomTicketIdError('Format must be like HV_26007 (initials_yearSequence).');
+      return;
+    }
+    setCustomTicketIdError('');
+    try {
+      // Check if ticket ID is already in use
+      const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+      const { data: existingWithNumber } = await supabase
+        .from(tableName)
+        .select('id')
+        .eq('ticket_number', trimmed)
+        .maybeSingle();
+      if (existingWithNumber) {
+        setCustomTicketIdError(`Ticket ID "${trimmed}" is already in use.`);
+        return;
+      }
+
+      const existing = findMatchingTicketRecord(ticket);
+      if (!existing) {
+        setCustomTicketIdError('Could not find the ticket record.');
+        return;
+      }
+
+      // Extract initials, year, sequence from the custom ID
+      const initialsMatch = trimmed.match(/^([A-Z]+)_/);
+      const employeeInitials = initialsMatch ? initialsMatch[1] : ticket.userInitials;
+      const numPart = trimmed.replace(/^[A-Z]+_/, '');
+      const year = numPart.length >= 2 ? parseInt(numPart.slice(0, 2), 10) : new Date().getFullYear() % 100;
+      const sequenceNumber = numPart.length > 2 ? parseInt(numPart.slice(2), 10) : parseInt(numPart, 10);
+
+      // Check unique constraint: (employee_initials, year, sequence_number)
+      const { data: existingSeq } = await supabase
+        .from(tableName)
+        .select('id')
+        .eq('employee_initials', employeeInitials)
+        .eq('year', year)
+        .eq('sequence_number', sequenceNumber)
+        .neq('id', existing.id)
+        .maybeSingle();
+      if (existingSeq) {
+        setCustomTicketIdError(`Sequence ${sequenceNumber} for ${employeeInitials} in year ${year} is already taken.`);
+        return;
+      }
+
+      // Build header overrides for approval snapshot
+      const headerOverrides = buildApprovalHeaderOverrides(ticket);
+      // Persist hours
+      const serviceRowsForApproval = entriesToServiceRows(ticket.entries);
+      const legacy = serviceRowsToLegacyFormat(serviceRowsForApproval);
+      const rtRate = ticket.rates.rt ?? 0, ttRate = ticket.rates.tt ?? 0, ftRate = ticket.rates.ft ?? 0;
+      const shopOtRate = ticket.rates.shop_ot ?? 0, fieldOtRate = ticket.rates.field_ot ?? 0;
+      const totalAmount = (ticket.hoursByRateType['Shop Time'] ?? 0) * rtRate
+        + (ticket.hoursByRateType['Travel Time'] ?? 0) * ttRate
+        + (ticket.hoursByRateType['Field Time'] ?? 0) * ftRate
+        + (ticket.hoursByRateType['Shop Overtime'] ?? 0) * shopOtRate
+        + (ticket.hoursByRateType['Field Overtime'] ?? 0) * fieldOtRate;
+      const approvalHours = ticket.totalHours > 0 ? {
+        totalHours: ticket.totalHours,
+        totalAmount,
+        editedHours: legacy.hours,
+        editedDescriptions: legacy.descriptions,
+      } : undefined;
+
+      await serviceTicketsService.updateTicketNumber(existing.id, trimmed, isDemoMode, user?.id, headerOverrides, approvalHours);
+
+      setShowCustomTicketIdModal(false);
+      setCustomTicketId('');
+      setDisplayTicketNumber(trimmed);
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+    } catch (error) {
+      console.error('Error assigning custom ticket ID:', error);
+      setCustomTicketIdError(`Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -3508,9 +3612,47 @@ export default function ServiceTickets() {
                 <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 8px 0' }}>
                   SERVICE TICKET
                 </h2>
-                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
-                  Ticket: {displayTicketNumber || 'Loading...'}
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
+                    Ticket: {displayTicketNumber || 'Loading...'}
+                  </p>
+                  {isAdmin && selectedTicket && (() => {
+                    const rec = findMatchingTicketRecord(selectedTicket);
+                    const hasNumber = !!rec?.ticket_number;
+                    if (!hasNumber) return null;
+                    return (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button
+                          title="Unassign ticket ID"
+                          onClick={() => {
+                            if (confirm('Unassign this ticket ID? The ticket will move back to drafts.')) {
+                              handleUnassignTicketNumber(selectedTicket);
+                            }
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', fontSize: '13px', color: '#ef5350' }}
+                        >✕</button>
+                        <button
+                          title="Reassign a new auto-generated ticket ID"
+                          onClick={() => {
+                            if (confirm('Reassign a new ticket ID? The current ID will be freed.')) {
+                              handleReassignTicketNumber(selectedTicket);
+                            }
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', fontSize: '13px', color: '#3b82f6' }}
+                        >⟳</button>
+                        <button
+                          title="Set a custom ticket ID"
+                          onClick={() => {
+                            setCustomTicketId(rec?.ticket_number || '');
+                            setCustomTicketIdError('');
+                            setShowCustomTicketIdModal(true);
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', fontSize: '13px', color: '#f59e0b' }}
+                        >✎</button>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
               <button
                 onClick={() => { 
@@ -4810,6 +4952,79 @@ export default function ServiceTickets() {
                         style={{ padding: '8px 16px', backgroundColor: '#ef5350', color: 'white', border: 'none' }}
                       >
                         {isApproving ? 'Rejecting...' : 'Reject'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Custom ticket ID modal (admin) */}
+              {showCustomTicketIdModal && selectedTicket && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 10001,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onClick={() => setShowCustomTicketIdModal(false)}
+                >
+                  <div
+                    style={{
+                      backgroundColor: 'var(--bg-primary)',
+                      borderRadius: '8px',
+                      padding: '24px',
+                      maxWidth: '420px',
+                      width: '100%',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <p style={{ margin: '0 0 12px', color: 'var(--text-primary)', fontSize: '15px', fontWeight: '600' }}>
+                      Set Custom Ticket ID
+                    </p>
+                    <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                      Enter a ticket ID in the format: <strong>XX_YYNNN</strong> (e.g. HV_26007). It must not already be in use.
+                    </p>
+                    <input
+                      value={customTicketId}
+                      onChange={(e) => { setCustomTicketId(e.target.value.toUpperCase()); setCustomTicketIdError(''); }}
+                      placeholder="e.g. HV_26007"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        border: `1px solid ${customTicketIdError ? '#ef5350' : 'var(--border-color)'}`,
+                        backgroundColor: 'var(--bg-secondary)',
+                        color: 'var(--text-primary)',
+                        fontSize: '14px',
+                        fontFamily: 'monospace',
+                        marginBottom: customTicketIdError ? '4px' : '16px',
+                        boxSizing: 'border-box',
+                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleCustomTicketIdAssign(selectedTicket); }}
+                      autoFocus
+                    />
+                    {customTicketIdError && (
+                      <p style={{ margin: '0 0 12px', color: '#ef5350', fontSize: '12px' }}>{customTicketIdError}</p>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                      <button
+                        className="button button-secondary"
+                        onClick={() => setShowCustomTicketIdModal(false)}
+                        style={{ padding: '8px 16px' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="button"
+                        onClick={() => handleCustomTicketIdAssign(selectedTicket)}
+                        style={{ padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none' }}
+                      >
+                        Assign
                       </button>
                     </div>
                   </div>
