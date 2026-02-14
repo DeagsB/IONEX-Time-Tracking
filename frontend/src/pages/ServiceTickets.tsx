@@ -1256,32 +1256,14 @@ export default function ServiceTickets() {
         return { ...ticket, _matchedRecordId: ticketRecord?.id ?? null };
       });
 
-      // Append standalone tickets (manually created with no matching time entries)
-      // Use same legacy-aware matching as findMatchingTicketRecord so we don't double-match
+      // Append standalone tickets: records that were NOT used in the merge.
+      // This includes: (1) records with no matching base ticket, (2) records that matched a base ticket
+      // but another record was chosen (usedRecordIds) - those would otherwise disappear.
       const standaloneTickets = existingTickets.filter(et => {
-        // Skip records without a customer_id — these can't be standalone
         if (!et.customer_id) return false;
-        // Skip discarded records — they should not appear in the main list
         if ((et as any).is_discarded) return false;
-        // Check if any base ticket already matches this record (date+user+customer+project+billingKey; location not used)
-        // When et.project_id is null, allow match so approved records can be matched to base tickets
-        const baseFilterSt = (bt: typeof baseTickets[0]) =>
-          bt.date === et.date && bt.userId === et.user_id &&
-          (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
-          ((bt.projectId || '') === (et.project_id || '') || !et.project_id);
-        const etGroupingKey = getRecordGroupingKeyForMerge(et);
-        const legacyKey = '_::_::_';
-        const etBillingKey = getRecordBillingKeyForMerge(et);
-        return !baseTickets.some(bt => {
-          const btFullKey = getTicketFullBillingKey(bt);
-          const btGroupingKey = bt.id ? getTicketBillingKeyForMerge(bt.id) : legacyKey;
-          if (!baseFilterSt(bt)) return false;
-          if (etBillingKey === btFullKey) return true; // full billing key match (approved records)
-          if (etGroupingKey === btGroupingKey) return true;
-          if (btGroupingKey === legacyKey) return true; // legacy fallback 2
-          if (etGroupingKey === legacyKey) return true; // record has empty header_overrides - match to any base ticket
-          return false;
-        });
+        // Include if not used in merge - ensures ALL approved tickets appear
+        return !usedRecordIds.has(et.id);
       });
 
       for (const st of standaloneTickets) {
