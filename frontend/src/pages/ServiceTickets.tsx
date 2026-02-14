@@ -1894,6 +1894,8 @@ export default function ServiceTickets() {
           return !hasTicketNumber && (workflowStatus === 'draft' || workflowStatus === 'rejected');
         } else if (activeTab === 'submitted') {
           // Submitted: Submitted by user (workflow approved) but no ticket number assigned by admin yet
+          // Exclude admin-approved tickets with unassigned IDs (those stay on the Approved tab)
+          if (existing?.approved_by_admin_id) return false;
           return !hasTicketNumber && workflowStatus !== 'draft' && workflowStatus !== 'rejected';
         } else if (activeTab === 'approved') {
           // Approved: Ticket number assigned, OR admin-approved (workflow beyond draft/submitted stages) even if ID temporarily unassigned
@@ -3356,7 +3358,9 @@ export default function ServiceTickets() {
                       
                       if (isAdmin) {
                         // Admin flow: assign/unassign ticket numbers
-                        // Show different states: fully approved (has ticket#) vs user-approved (workflow only)
+                        // States: has ticket# (fully approved), admin-approved but ID unassigned, user-submitted, draft
+                        const isAdminApprovedNoId = !hasTicketNumber && isWorkflowApproved && !!existing?.approved_by_admin_id;
+                        const isUserSubmitted = !hasTicketNumber && isWorkflowApproved && !existing?.approved_by_admin_id;
                         if (hasTicketNumber) {
                           return (
                             <button
@@ -3373,13 +3377,36 @@ export default function ServiceTickets() {
                                 border: 'none',
                                 cursor: 'pointer',
                               }}
-                              title="Click to unapprove"
+                              title="Click to unassign ticket ID"
                             >
                               ✓ Approved
                             </button>
                           );
-                        } else if (isWorkflowApproved) {
-                          // User has approved but no ticket number assigned yet
+                        } else if (isAdminApprovedNoId) {
+                          // Admin approved but ticket ID was unassigned - click to assign a new ID
+                          return (
+                            <button
+                              className="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAssignTicketNumber(ticket);
+                              }}
+                              style={{
+                                padding: '6px 16px',
+                                fontSize: '13px',
+                                backgroundColor: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                cursor: 'pointer',
+                                opacity: 0.85,
+                              }}
+                              title="Admin approved - click to assign ticket ID"
+                            >
+                              ✓ Admin Approved
+                            </button>
+                          );
+                        } else if (isUserSubmitted) {
+                          // User has submitted but no admin approval yet
                           return (
                             <button
                               className="button"
@@ -3395,7 +3422,7 @@ export default function ServiceTickets() {
                                 border: 'none',
                                 cursor: 'pointer',
                               }}
-                              title="User approved - click to assign ticket number"
+                              title="User submitted - click to assign ticket ID"
                             >
                               ✓ User Approved
                             </button>
