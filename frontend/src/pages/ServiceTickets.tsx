@@ -98,6 +98,7 @@ export default function ServiceTickets() {
   }, [activeTab]);
 
   // Sorting state - persisted per user in localStorage
+  // Approved tab defaults to ticketNumber asc (sequential order matching DB)
   const [sortField, setSortField] = useState<'ticketNumber' | 'date' | 'customerName' | 'userName' | 'totalHours'>(() => {
     const saved = localStorage.getItem(`serviceTickets_sortField_${user?.id}`);
     return (saved as any) || 'date';
@@ -106,6 +107,9 @@ export default function ServiceTickets() {
     const saved = localStorage.getItem(`serviceTickets_sortDirection_${user?.id}`);
     return (saved as 'asc' | 'desc') || 'desc';
   });
+  // Approved tab: always sort by ticket number ascending (sequential order matching DB)
+  const effectiveSortField = activeTab === 'approved' ? 'ticketNumber' as const : sortField;
+  const effectiveSortDirection = activeTab === 'approved' ? 'asc' as const : sortDirection;
   
   // Ticket preview state
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
@@ -1124,7 +1128,7 @@ export default function ServiceTickets() {
       let query = supabase
         .from(tableName)
         .select(`
-          id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
+          id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `)
         .gte('date', startDate)
@@ -1137,7 +1141,7 @@ export default function ServiceTickets() {
         // If the join fails (column doesn't exist yet), try without the join
         let fallbackQuery = supabase
           .from(tableName)
-          .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
+          .select('id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
           .gte('date', startDate)
           .lte('date', endDate);
         if (!isAdmin && user?.id) {
@@ -1672,11 +1676,25 @@ export default function ServiceTickets() {
       let aVal: string | number;
       let bVal: string | number;
       
-      switch (sortField) {
-        case 'ticketNumber':
-          aVal = a.displayTicketNumber || a.ticketNumber || '';
-          bVal = b.displayTicketNumber || b.ticketNumber || '';
+      switch (effectiveSortField) {
+        case 'ticketNumber': {
+          // Use sequence_number from DB for correct sequential order (DB_26002, 26003, 26004...)
+          const aSeq = (aRec as { sequence_number?: number })?.sequence_number;
+          const bSeq = (bRec as { sequence_number?: number })?.sequence_number;
+          if (aSeq != null && bSeq != null) {
+            aVal = aSeq;
+            bVal = bSeq;
+          } else {
+            // Fallback: parse ticket number (e.g. DB_26002 -> 26002) for numeric sort
+            const parseNum = (s: string) => {
+              const m = (s || '').match(/(\d+)$/);
+              return m ? parseInt(m[1], 10) : 0;
+            };
+            aVal = parseNum(a.displayTicketNumber || a.ticketNumber || '');
+            bVal = parseNum(b.displayTicketNumber || b.ticketNumber || '');
+          }
           break;
+        }
         case 'date':
           aVal = a.date;
           bVal = b.date;
@@ -1697,8 +1715,8 @@ export default function ServiceTickets() {
           return 0;
       }
       
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      if (aVal < bVal) return effectiveSortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return effectiveSortDirection === 'asc' ? 1 : -1;
       return 0;
     });
     
@@ -2411,31 +2429,31 @@ export default function ServiceTickets() {
                   onClick={() => handleSort('ticketNumber')}
                   style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
                 >
-                  Ticket ID {sortField === 'ticketNumber' && (sortDirection === 'asc' ? '▲' : '▼')}
+                  Ticket ID {effectiveSortField === 'ticketNumber' && (effectiveSortDirection === 'asc' ? '▲' : '▼')}
                 </th>
                 <th 
                   onClick={() => handleSort('date')}
                   style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
                 >
-                  Date {sortField === 'date' && (sortDirection === 'asc' ? '▲' : '▼')}
+                  Date {effectiveSortField === 'date' && (effectiveSortDirection === 'asc' ? '▲' : '▼')}
                 </th>
                 <th 
                   onClick={() => handleSort('customerName')}
                   style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
                 >
-                  Customer {sortField === 'customerName' && (sortDirection === 'asc' ? '▲' : '▼')}
+                  Customer {effectiveSortField === 'customerName' && (effectiveSortDirection === 'asc' ? '▲' : '▼')}
                 </th>
                 <th 
                   onClick={() => handleSort('userName')}
                   style={{ padding: '16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
                 >
-                  Tech {sortField === 'userName' && (sortDirection === 'asc' ? '▲' : '▼')}
+                  Tech {effectiveSortField === 'userName' && (effectiveSortDirection === 'asc' ? '▲' : '▼')}
                 </th>
                 <th 
                   onClick={() => handleSort('totalHours')}
                   style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none' }}
                 >
-                  Total Hours {sortField === 'totalHours' && (sortDirection === 'asc' ? '▲' : '▼')}
+                  Total Hours {effectiveSortField === 'totalHours' && (effectiveSortDirection === 'asc' ? '▲' : '▼')}
                 </th>
                 <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   ST
