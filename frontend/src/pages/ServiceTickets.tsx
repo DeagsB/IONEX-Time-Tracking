@@ -49,14 +49,7 @@ export default function ServiceTickets() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  // Default employee filter to admin's own ID once loaded (so they see their own drafts by default)
-  const hasSetDefaultUserId = useRef(false);
-  useEffect(() => {
-    if (!hasSetDefaultUserId.current && isAdmin && user?.id) {
-      setSelectedUserId(user.id);
-      hasSetDefaultUserId.current = true;
-    }
-  }, [isAdmin, user?.id]);
+  // Admin can filter by employee; defaults to '' (All Employees) so they can see everyone's drafts
   // Filter tabs: 'draft' (Not Submitted), 'submitted' (Pending Approval), 'approved' (Finalized), 'all'
   // Admin defaults to Submitted tab on first open; non-admin to Drafts
   const tabsContainerRef = useRef<HTMLDivElement>(null);
