@@ -138,14 +138,21 @@ export default function WeekView() {
   const [hoveredLegendId, setHoveredLegendId] = useState<string | null>(null);
 
   // Right-click context menu for time entries
-  const [contextMenuEntry, setContextMenuEntry] = useState<{ x: number; y: number; entry: any } | null>(null);
+  const [contextMenuEntry, setContextMenuEntry] = useState<{ x: number; y: number; entry: any; entriesToDelete?: any[] } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // Marquee selection for bulk delete
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
+  const [marqueeStart, setMarqueeStart] = useState<{ x: number; y: number } | null>(null);
+  const [marqueeCurrent, setMarqueeCurrent] = useState<{ x: number; y: number } | null>(null);
+  const didMarqueeRef = useRef(false);
 
   // In-app delete confirmation for time entry (replaces browser confirm)
   const [deleteConfirmEntry, setDeleteConfirmEntry] = useState<{
     id: string; date: string; userId: string; customerId: string | null;
     projectId?: string | null; location?: string | null; approver?: string | null; po_afe?: string | null; cc?: string | null;
   } | null>(null);
+  const [deleteConfirmEntries, setDeleteConfirmEntries] = useState<any[] | null>(null);
 
   // Header visibility state (hide on scroll down, show on scroll up)
   const [headerVisible, setHeaderVisible] = useState(true);
@@ -195,6 +202,45 @@ export default function WeekView() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [contextMenuEntry]);
+
+  // Marquee selection: mousemove and mouseup
+  useEffect(() => {
+    if (!marqueeStart) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      setMarqueeCurrent({ x: e.clientX, y: e.clientY });
+      didMarqueeRef.current = true;
+    };
+    const handleMouseUp = (e: MouseEvent) => {
+      const current = marqueeCurrent || { x: e.clientX, y: e.clientY };
+      if (didMarqueeRef.current) {
+        const left = Math.min(marqueeStart.x, current.x);
+        const right = Math.max(marqueeStart.x, current.x);
+        const top = Math.min(marqueeStart.y, current.y);
+        const bottom = Math.max(marqueeStart.y, current.y);
+        const selRect = { left, right, top, bottom };
+        const entries = document.querySelectorAll('[data-time-entry-block]');
+        const ids = new Set<string>();
+        entries.forEach((el) => {
+          const rect = el.getBoundingClientRect();
+          const intersects = !(rect.right < selRect.left || rect.left > selRect.right || rect.bottom < selRect.top || rect.top > selRect.bottom);
+          if (intersects) {
+            const id = el.getAttribute('data-entry-id');
+            if (id) ids.add(id);
+          }
+        });
+        setSelectedEntryIds(ids);
+      }
+      setMarqueeStart(null);
+      setMarqueeCurrent(null);
+      didMarqueeRef.current = false;
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp as EventListener);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp as EventListener);
+    };
+  }, [marqueeStart, marqueeCurrent]);
 
   // Prevent browser context menu on time entries (Chrome ignores React's preventDefault)
   useEffect(() => {
@@ -708,6 +754,7 @@ export default function WeekView() {
   // Handle clicking on an existing time entry to edit it (or view-only when admin viewing another user)
   const handleEntryClick = (entry: any, event: React.MouseEvent) => {
     event.stopPropagation();
+    setSelectedEntryIds(new Set());
     // When admin viewing another employee's calendar: open view-only modal
     if (viewUserId && isAdmin) {
       const parseTime = (timeStr: string) => {
@@ -1895,6 +1942,23 @@ export default function WeekView() {
         </div>
       )}
 
+      {/* Marquee selection overlay */}
+      {marqueeStart && marqueeCurrent && (
+        <div
+          style={{
+            position: 'fixed',
+            left: Math.min(marqueeStart.x, marqueeCurrent.x),
+            top: Math.min(marqueeStart.y, marqueeCurrent.y),
+            width: Math.abs(marqueeCurrent.x - marqueeStart.x),
+            height: Math.abs(marqueeCurrent.y - marqueeStart.y),
+            border: '2px solid rgba(59, 130, 246, 0.8)',
+            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+            pointerEvents: 'none',
+            zIndex: 1000,
+          }}
+        />
+      )}
+
       {/* Calendar Grid */}
       {viewMode !== 'list' && (
       <div ref={calendarScrollRef} style={{ flex: 1, overflow: 'auto', backgroundColor: 'var(--bg-primary)' }}>
@@ -2090,7 +2154,20 @@ export default function WeekView() {
                       {Array.from({ length: divisionsPerHour }).map((_, divisionIndex) => (
                         <div
                           key={`div-${hourIndex}-${divisionIndex}-${divisionsPerHour}`}
-                          onClick={() => handleSlotClick(day.date, hourIndex, divisionIndex)}
+                          onMouseDown={(e) => {
+                            if (e.button === 0) {
+                              setMarqueeStart({ x: e.clientX, y: e.clientY });
+                              setMarqueeCurrent(null);
+                            }
+                          }}
+                          onClick={() => {
+                            if (didMarqueeRef.current) {
+                              didMarqueeRef.current = false;
+                              return;
+                            }
+                            setSelectedEntryIds(new Set());
+                            handleSlotClick(day.date, hourIndex, divisionIndex);
+                          }}
                           style={{
                             flex: 1,
                             borderBottom: divisionIndex < divisionsPerHour - 1 ? '1px dashed rgba(128, 128, 128, 0.1)' : 'none',
@@ -2136,11 +2213,13 @@ export default function WeekView() {
                     const adjustedHeight = Math.max(displayHeight - 2, 28);
 
                     const isHovered = hoveredEntryId === entry.id;
+                    const isSelected = selectedEntryIds.has(entry.id);
                   
                   return (
                     <div
                       key={entry.id}
                       data-time-entry-block
+                      data-entry-id={entry.id}
                       style={{
                         position: 'absolute',
                           top: `${topPosition}px`,
@@ -2156,7 +2235,7 @@ export default function WeekView() {
                         cursor: 'grab',
                         display: 'flex',
                         flexDirection: 'column',
-                        boxShadow: isHovered ? `0 2px 4px rgba(0,0,0,0.1), 0 0 12px ${color}99` : '0 2px 4px rgba(0,0,0,0.1)',
+                        boxShadow: isSelected ? `0 0 0 3px rgba(59, 130, 246, 0.8), 0 2px 4px rgba(0,0,0,0.1)` : isHovered ? `0 2px 4px rgba(0,0,0,0.1), 0 0 12px ${color}99` : '0 2px 4px rgba(0,0,0,0.1)',
                         transition: 'box-shadow 0.2s ease',
                           zIndex: isDragging ? 20 : overlapPos.zIndex,
                           pointerEvents: 'auto',
@@ -2192,7 +2271,10 @@ export default function WeekView() {
                           if ((e.target as HTMLElement).closest('.drag-handle')) return;
                           if (viewUserId && isAdmin) return;
                           if (showTimeEntryModal || showEditModal) return;
-                          setContextMenuEntry({ x: e.clientX, y: e.clientY, entry });
+                          const entriesToDelete = selectedEntryIds.has(entry.id) && selectedEntryIds.size > 0
+                            ? (timeEntries?.filter((en: any) => selectedEntryIds.has(en.id)) ?? [])
+                            : undefined;
+                          setContextMenuEntry({ x: e.clientX, y: e.clientY, entry, entriesToDelete });
                         }}
                       >
                         {/* Project number and name (bold) */}
@@ -2491,26 +2573,31 @@ export default function WeekView() {
               e.preventDefault();
               e.stopPropagation();
               const entry = contextMenuEntry.entry;
-              if (!entry?.id) return;
-              const dateStr = typeof entry.date === 'string' ? entry.date : new Date(entry.date).toISOString().split('T')[0];
-              let customerId = entry.customer_id;
-              if (!customerId && entry.project?.customer?.id) customerId = entry.project.customer.id;
-              if (!customerId && entry.project_id && projects) {
-                const proj = projects.find((p: any) => p.id === entry.project_id);
-                if (proj) customerId = proj.customer_id;
-              }
+              const entriesToDelete = contextMenuEntry.entriesToDelete;
               setContextMenuEntry(null);
-              setDeleteConfirmEntry({
-                id: entry.id,
-                date: dateStr,
-                userId: entry.user_id,
-                customerId: customerId ?? null,
-                projectId: entry.project_id,
-                location: entry.location,
-                approver: entry.approver,
-                po_afe: entry.po_afe,
-                cc: (entry as any).cc,
-              });
+              if (entriesToDelete && entriesToDelete.length > 1) {
+                setDeleteConfirmEntries(entriesToDelete);
+                setSelectedEntryIds(new Set());
+              } else if (entry?.id) {
+                const dateStr = typeof entry.date === 'string' ? entry.date : new Date(entry.date).toISOString().split('T')[0];
+                let customerId = entry.customer_id;
+                if (!customerId && entry.project?.customer?.id) customerId = entry.project.customer.id;
+                if (!customerId && entry.project_id && projects) {
+                  const proj = projects.find((p: any) => p.id === entry.project_id);
+                  if (proj) customerId = proj.customer_id;
+                }
+                setDeleteConfirmEntry({
+                  id: entry.id,
+                  date: dateStr,
+                  userId: entry.user_id,
+                  customerId: customerId ?? null,
+                  projectId: entry.project_id,
+                  location: entry.location,
+                  approver: entry.approver,
+                  po_afe: entry.po_afe,
+                  cc: (entry as any).cc,
+                });
+              }
             }}
             style={{
               display: 'flex',
@@ -2533,8 +2620,88 @@ export default function WeekView() {
             }}
           >
             <span style={{ opacity: 0.8 }}>🗑</span>
-            Delete
+            {contextMenuEntry.entriesToDelete && contextMenuEntry.entriesToDelete.length > 1
+              ? `Delete ${contextMenuEntry.entriesToDelete.length} entries`
+              : 'Delete'}
           </button>
+        </div>
+      )}
+
+      {/* Bulk delete time entries confirmation modal */}
+      {deleteConfirmEntries && deleteConfirmEntries.length > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1101,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => setDeleteConfirmEntries(null)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '8px',
+              padding: '24px',
+              maxWidth: '380px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p style={{ margin: '0 0 20px', color: 'var(--text-primary)', fontSize: '15px' }}>
+              Are you sure you want to delete these {deleteConfirmEntries.length} time entries?
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                className="button button-secondary"
+                onClick={() => setDeleteConfirmEntries(null)}
+                style={{ padding: '8px 16px' }}
+              >
+                Cancel
+              </button>
+              <button
+                className="button"
+                onClick={async () => {
+                  for (const entry of deleteConfirmEntries) {
+                    const dateStr = typeof entry.date === 'string' ? entry.date : new Date(entry.date).toISOString().split('T')[0];
+                    let customerId = entry.customer_id;
+                    if (!customerId && entry.project?.customer?.id) customerId = entry.project.customer.id;
+                    if (!customerId && entry.project_id && projects) {
+                      const proj = projects.find((p: any) => p.id === entry.project_id);
+                      if (proj) customerId = proj.customer_id;
+                    }
+                    await deleteTimeEntryMutation.mutateAsync({
+                      id: entry.id,
+                      date: dateStr,
+                      userId: entry.user_id,
+                      customerId: customerId ?? null,
+                      projectId: entry.project_id,
+                      location: entry.location,
+                      approver: entry.approver,
+                      po_afe: entry.po_afe,
+                      cc: (entry as any).cc,
+                    });
+                  }
+                  setDeleteConfirmEntries(null);
+                }}
+                disabled={deleteTimeEntryMutation.isPending}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#ef5350',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  cursor: deleteTimeEntryMutation.isPending ? 'wait' : 'pointer',
+                }}
+              >
+                {deleteTimeEntryMutation.isPending ? 'Deleting...' : `Delete ${deleteConfirmEntries.length} entries`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
