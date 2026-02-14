@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService } from '../services/supabaseServices';
-import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, getTicketBillingKey, buildBillingKey } from '../utils/serviceTickets';
+import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, getTicketBillingKey, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
@@ -1156,60 +1156,62 @@ export default function ServiceTickets() {
   });
 
   /**
-   * Build unified ticket list from two sources:
-   * 1. Base tickets (from time entries) - draft work that may or may not have a DB record
-   * 2. Existing records (from service_tickets table) - saved tickets with ticket_number, edited_hours, etc.
+   * Drafts = built from time entries only (live, editable).
+   * Approved = from DB only (locked in; no link to time entries).
    *
-   * Matching is by date + user + customer + project only (no billing key). Approved list is 1:1 with DB.
-   * For each existing record: merge with first matching base ticket if any, else show as standalone.
-   * Base tickets with no matching record remain as drafts.
+   * - Draft/Submitted tabs: base tickets from time entries. Base tickets whose work was approved
+   *   (matching approved record by date+user+customer+project+po_afe) are excluded here and only
+   *   appear under Approved.
+   * - Approved tab: each approved record (ticket_number set) is one ticket built from the record
+   *   (hours/header from DB; entries = []). No merge with time entries.
    */
   const tickets = useMemo(() => {
     const baseTickets = billableEntries ? groupEntriesIntoTickets(billableEntries, employees) : [];
-    if (!existingTickets || existingTickets.length === 0) return baseTickets;
+    const existing = existingTickets ?? [];
 
-    const mergedTickets: (ServiceTicket & { _matchedRecordId?: string | null })[] = [];
-    const usedBaseTicketIds = new Set<string>();
-
-    const baseTicketMatchesRecord = (bt: ServiceTicket, rec: (typeof existingTickets)[number]) =>
+    const baseTicketMatchesRecord = (bt: ServiceTicket, rec: (typeof existing)[number]) =>
       bt.date === rec.date &&
       bt.userId === rec.user_id &&
       (rec.customer_id === bt.customerId || (!rec.customer_id && bt.customerId === 'unassigned')) &&
       ((rec.project_id || '') === (bt.projectId || '') || !rec.project_id);
 
-    const findMatchingBaseTicket = (rec: (typeof existingTickets)[number]) => {
-      const candidates = baseTickets.filter(
-        bt => !usedBaseTicketIds.has(bt.id) && baseTicketMatchesRecord(bt, rec)
+    const getRecordGroupingKey = (rec: (typeof existing)[number]): string | null => {
+      const ov = (rec.header_overrides as Record<string, string> | null) ?? {};
+      const fromOv = (ov._grouping_key as string) ?? (ov.po_afe != null && String(ov.po_afe).trim() !== '' ? buildGroupingKey(ov.po_afe) : null);
+      return fromOv ?? null;
+    };
+
+    const getBaseTicketGroupingKey = (bt: ServiceTicket): string =>
+      bt.id ? getTicketBillingKey(bt.id) : '_::_::_';
+
+    const approvedRecords = existing.filter(
+      rec => rec.customer_id && rec.ticket_number && !(rec as any).is_discarded
+    );
+
+    const claimedBaseTicketIds = new Set<string>();
+    for (const rec of approvedRecords) {
+      const recKey = getRecordGroupingKey(rec);
+      const bt = baseTickets.find(
+        b =>
+          !claimedBaseTicketIds.has(b.id) &&
+          baseTicketMatchesRecord(b, rec) &&
+          (recKey ? getBaseTicketGroupingKey(b) === recKey : true)
       );
-      return candidates[0];
+      if (bt) claimedBaseTicketIds.add(bt.id);
+    }
+
+    const draftRecords = existing.filter(rec => !rec.ticket_number && !(rec as any).is_discarded);
+
+    const findDraftRecordForBaseTicket = (bt: ServiceTicket) => {
+      const recKey = getBaseTicketGroupingKey(bt);
+      return draftRecords.find(
+        rec =>
+          baseTicketMatchesRecord(bt, rec) &&
+          (getRecordGroupingKey(rec) === recKey || !getRecordGroupingKey(rec))
+      );
     };
 
-    const mergeRecordIntoBaseTicket = (bt: ServiceTicket, rec: (typeof existingTickets)[number]) => {
-      let ticket: ServiceTicket & { _matchedRecordId?: string | null } = { ...bt, _matchedRecordId: rec.id };
-      if (rec.is_edited && rec.edited_hours) {
-        const editedHours = rec.edited_hours as Record<string, number | number[]>;
-        const updatedHoursByRateType = { ...bt.hoursByRateType };
-        Object.keys(editedHours).forEach(rateType => {
-          const hours = editedHours[rateType];
-          if (rateType in updatedHoursByRateType) {
-            (updatedHoursByRateType as any)[rateType] = Array.isArray(hours)
-              ? hours.reduce((sum: number, h: number) => sum + (h || 0), 0)
-              : (hours as number) || 0;
-          }
-        });
-        const totalHours = Object.values(updatedHoursByRateType).reduce((s, h) => s + h, 0);
-        ticket = { ...ticket, hoursByRateType: updatedHoursByRateType, totalHours };
-      } else if (bt.totalHours === 0) {
-        const dbTotal = Number((rec as { total_hours?: number }).total_hours) || 0;
-        if (dbTotal > 0) {
-          const fallbackHoursByRateType = { ...bt.hoursByRateType, 'Shop Time': dbTotal };
-          ticket = { ...ticket, hoursByRateType: fallbackHoursByRateType, totalHours: dbTotal };
-        }
-      }
-      return ticket;
-    };
-
-    const buildStandaloneFromRecord = (st: (typeof existingTickets)[number]) => {
+    const buildApprovedTicketFromRecord = (st: (typeof existing)[number]) => {
       const editedHours = (st.edited_hours as Record<string, number | number[]>) || {};
       const hoursByRateType: ServiceTicket['hoursByRateType'] = {
         'Shop Time': 0, 'Shop Overtime': 0, 'Travel Time': 0, 'Field Time': 0, 'Field Overtime': 0,
@@ -1239,7 +1241,7 @@ export default function ServiceTickets() {
       const ovForProject = (st as { header_overrides?: Record<string, string> })?.header_overrides;
       const projectNumber = ovForProject?.project_number ?? project?.project_number ?? '';
       const projectName = project?.name ?? '';
-      const baseStandalone: ServiceTicket & { _matchedRecordId?: string } = {
+      const out: ServiceTicket & { _matchedRecordId?: string } = {
         id: st.id,
         date: st.date,
         customerId: st.customer_id,
@@ -1273,29 +1275,19 @@ export default function ServiceTickets() {
         _matchedRecordId: st.id,
       };
       const ov = (st as { header_overrides?: Record<string, string | number> })?.header_overrides;
-      return ov ? applyHeaderOverridesToTicket(baseStandalone, ov) : baseStandalone;
+      return ov ? applyHeaderOverridesToTicket(out, ov) : out;
     };
 
-    // 1. For each existing record: merge with base ticket if found, else add as standalone
-    for (const rec of existingTickets) {
-      if (!rec.customer_id) continue;
-      const bt = findMatchingBaseTicket(rec);
-      if (bt) {
-        usedBaseTicketIds.add(bt.id);
-        mergedTickets.push(mergeRecordIntoBaseTicket(bt, rec));
-      } else if (!(rec as any).is_discarded) {
-        mergedTickets.push(buildStandaloneFromRecord(rec));
-      }
-    }
-
-    // 2. Add base tickets with no matching record (drafts)
+    const draftTickets: (ServiceTicket & { _matchedRecordId?: string | null })[] = [];
     for (const bt of baseTickets) {
-      if (!usedBaseTicketIds.has(bt.id)) {
-        mergedTickets.push({ ...bt, _matchedRecordId: null });
-      }
+      if (claimedBaseTicketIds.has(bt.id)) continue;
+      const draftRec = findDraftRecordForBaseTicket(bt);
+      draftTickets.push({ ...bt, _matchedRecordId: draftRec?.id ?? null });
     }
 
-    return mergedTickets;
+    const approvedTickets = approvedRecords.map(buildApprovedTicketFromRecord);
+
+    return [...draftTickets, ...approvedTickets];
   }, [billableEntries, employees, existingTickets, customers, allProjects]);
 
   // Expense mutations

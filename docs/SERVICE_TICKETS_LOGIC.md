@@ -1,60 +1,22 @@
-# Service Tickets: Base Ticket and Standalone Logic
+# Service Tickets: Drafts vs Approved
 
-## Overview
+## Model
 
-The Service Tickets page displays tickets from **two data sources** that must be unified:
+- **Drafts (and Submitted)** = built **only from time entries**. Live, editable. Grouped by date, user, customer, project, and PO/AFE. If the user has saved a draft, we link that base ticket to the draft record (`_matchedRecordId`) for save/submit and workflow status; the ticket content (entries, hours) always comes from time entries.
+- **Approved** = **only from the database**. Once a ticket is approved (ticket number assigned), it is locked in and no longer linked to time entries. Display is built from the `service_tickets` row: hours from `edited_hours` / `total_hours`, header from `header_overrides`, `entries = []`.
 
-1. **Base tickets** – inferred from time entries via `groupEntriesIntoTickets()`
-2. **Existing records** – rows in the `service_tickets` table (saved drafts and approved tickets)
+So: drafts = time entries → tickets; approved = DB rows → tickets. No merge of approved records with time entries.
 
-## Why Both Are Needed
+## Why
 
-- **Base tickets** come from billable time entries. They have `entries[]`, calculated hours, and customer/project info. They represent work that may or may not be saved yet.
-- **Existing records** come from the database. They have `ticket_number`, `edited_hours`, `header_overrides`, and workflow status. They represent saved or approved tickets.
+- Drafts stay in sync with the calendar: change time entries, the draft ticket updates.
+- Approved tickets are fixed at approval time: deleting or changing time entries does not change an approved ticket.
 
-Neither source alone is enough:
+## Implementation
 
-- Base tickets alone: approved tickets whose time entries were deleted would disappear.
-- Existing records alone: we would lose the `entries[]` array and live rates from time entries for tickets that still have entries.
-
-## What the Logic Does
-
-### 1. Merge (DB record + base ticket)
-
-When a base ticket matches an existing record (same date, user, customer, project, billing key):
-
-- Merge: base ticket structure + record data (ticket_number, edited_hours, header_overrides).
-- Use the base ticket’s `entries[]` for display.
-- Use the record’s `edited_hours` if `is_edited` is true.
-- Use `total_hours` from the record if the base ticket has 0 hours (e.g. entries deleted, or orphaned record).
-
-### 2. Standalone (DB record only)
-
-When an existing record has no matching base ticket:
-
-- Build a synthetic ticket from the record (customer, user, hours from `edited_hours` or `total_hours`).
-- `entries` is empty.
-- Used for approved tickets whose time entries were deleted, or records with different `project_id` (legacy), or records created outside the current view.
-
-### 3. Draft (base ticket only)
-
-When a base ticket has no matching existing record:
-
-- Show as-is (no ticket number, draft workflow).
-- Used for new work that hasn’t been saved yet.
-
-## Matching Rules (no billing key)
-
-Matching between base tickets and existing records uses **date + user + customer + project only**. Billing key (approver/PO/AFE/CC) is not used for matching, so the approved list is 1:1 with the database: every approved record appears exactly once (merged or standalone).
-
-- **Base tickets**: each base ticket can only be merged with one record (`usedBaseTicketIds`).
-- **Records**: each record is merged with at most one base ticket (first match) or shown as standalone.
-
-## Refactor (2025)
-
-The logic was refactored from a **base-first** to an **existing-first** approach:
-
-- **Before**: iterate base tickets → find matching record → merge → append standalone (records not used).
-- **After**: iterate existing records → find matching base ticket → merge or standalone → append drafts (base tickets not used).
-
-This matches the behavior of the Invoices page and makes the flow clearer: "for each saved record, show it (merged or standalone); then add orphan base tickets as drafts."
+1. **Base tickets** = `groupEntriesIntoTickets(billableEntries)` (from time entries).
+2. **Approved records** = `service_tickets` rows with `ticket_number` set and not discarded.
+3. **Claimed base tickets**: each approved record can "claim" one base ticket (same date, user, customer, project, and PO/AFE when present). That base ticket is excluded from the draft list so the same work does not appear as both draft and approved.
+4. **Draft list** = base tickets that are not claimed, each with `_matchedRecordId` = matching draft/submitted record id (if any).
+5. **Approved list** = each approved record turned into one ticket via `buildApprovedTicketFromRecord` (DB-only; no entries).
+6. **Final `tickets`** = draft list + approved list.
