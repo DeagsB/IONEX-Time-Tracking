@@ -181,6 +181,12 @@ export default function ServiceTickets() {
   }
   const [serviceRows, setServiceRows] = useState<ServiceRow[]>([]);
   const [isTicketEdited, setIsTicketEdited] = useState(false);
+  // Per-entry edit overrides: { entryId: { description, st, tt, ft, so, fo } }
+  // Only entries that differ from their time entry are stored.
+  type EntryOverride = { description: string; st: number; tt: number; ft: number; so: number; fo: number };
+  const [editedEntryOverrides, setEditedEntryOverrides] = useState<Record<string, EntryOverride>>({});
+  // Snapshot of rows as derived from live time entries (before any edits) for comparison
+  const originalTimeEntryRowsRef = useRef<ServiceRow[]>([]);
   // Refs to track initial values when ticket opened (for highlighting pending changes)
   type EditableTicketSnapshot = NonNullable<typeof editableTicket>;
   const initialEditableTicketRef = useRef<EditableTicketSnapshot | null>(null);
@@ -395,13 +401,18 @@ export default function ServiceTickets() {
         }
       }
 
+      // Per-entry overrides: only store rows that differ from live time entries
+      const entryOverrides = computeEntryOverrides(serviceRows, originalTimeEntryRowsRef.current);
+      const hasOverrides = Object.keys(entryOverrides).length > 0;
+
       // Core fields (service rows, hours, amounts)
       const { error } = await supabase
         .from(tableName)
         .update({
-          is_edited: true,
+          is_edited: hasOverrides,
           edited_descriptions: legacy.descriptions,
           edited_hours: legacy.hours,
+          edited_entry_overrides: hasOverrides ? entryOverrides : null,
           total_hours: totalEditedHours,
           total_amount: totalAmount,
         })
@@ -411,6 +422,8 @@ export default function ServiceTickets() {
         alert('Failed to save service rows/hours.');
         return false;
       }
+      setEditedEntryOverrides(entryOverrides);
+      setIsTicketEdited(hasOverrides);
 
       // Header edits are saved to header_overrides only. Time entries are NOT updated.
       // Apply pending expense deletes (expenses marked for removal)
@@ -512,12 +525,14 @@ export default function ServiceTickets() {
     setServiceRows([]);
     setEditedDescriptions({});
     setEditedHours({});
+    setEditedEntryOverrides({});
     setIsTicketEdited(false);
     setPendingDeleteExpenseIds(new Set());
     setPendingAddExpenses([]);
     setPendingChangesVersion(v => v + 1); // force hasPendingChanges to re-evaluate on next open
     initialEditableTicketRef.current = null;
     initialServiceRowsRef.current = [];
+    originalTimeEntryRowsRef.current = [];
   };
 
   const hasPendingChanges = useMemo(() => {
@@ -566,6 +581,60 @@ export default function ServiceTickets() {
         fo: rateType === 'Field Overtime' ? hours : 0,
       };
     });
+  };
+
+  // Build service rows by merging live time entries with per-entry overrides.
+  // Entries without overrides use live data. Entries with overrides use saved edits.
+  // Manually added rows (id starts with "new-") are appended from overrides.
+  const buildRowsWithOverrides = (entries: ServiceTicket['entries'], overrides: Record<string, EntryOverride>): ServiceRow[] => {
+    const baseRows = entriesToServiceRows(entries);
+    const mergedRows = baseRows.map(row => {
+      const ov = overrides[row.id];
+      if (ov) {
+        return { ...row, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo };
+      }
+      return row;
+    });
+    // Append manually added rows (new-xxx) from overrides
+    const existingIds = new Set(baseRows.map(r => r.id));
+    Object.entries(overrides).forEach(([id, ov]) => {
+      if (!existingIds.has(id)) {
+        mergedRows.push({ id, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo });
+      }
+    });
+    return mergedRows;
+  };
+
+  // Compare a service row to its original time entry row - returns true if they differ
+  const rowDiffersFromOriginal = (row: ServiceRow, originalRow: ServiceRow | undefined): boolean => {
+    if (!originalRow) return true; // manually added row
+    return row.description !== originalRow.description ||
+      row.st !== originalRow.st || row.tt !== originalRow.tt || row.ft !== originalRow.ft ||
+      row.so !== originalRow.so || row.fo !== originalRow.fo;
+  };
+
+  // Compute per-entry overrides from current service rows vs. original time entry rows
+  const computeEntryOverrides = (currentRows: ServiceRow[], originalRows: ServiceRow[]): Record<string, EntryOverride> => {
+    const originalMap = new Map(originalRows.map(r => [r.id, r]));
+    const overrides: Record<string, EntryOverride> = {};
+    for (const row of currentRows) {
+      const orig = originalMap.get(row.id);
+      if (rowDiffersFromOriginal(row, orig)) {
+        overrides[row.id] = { description: row.description, st: row.st, tt: row.tt, ft: row.ft, so: row.so, fo: row.fo };
+      }
+    }
+    return overrides;
+  };
+
+  // Update service rows and recompute per-entry edit state
+  const updateServiceRows = (newRows: ServiceRow[]) => {
+    setServiceRows(newRows);
+    const overrides = computeEntryOverrides(newRows, originalTimeEntryRowsRef.current);
+    setEditedEntryOverrides(overrides);
+    setIsTicketEdited(Object.keys(overrides).length > 0);
+    const legacy = serviceRowsToLegacyFormat(newRows);
+    setEditedDescriptions(legacy.descriptions);
+    setEditedHours(legacy.hours);
   };
 
   // Convert service rows to legacy format for database storage
@@ -1690,8 +1759,18 @@ export default function ServiceTickets() {
         const wouldClearEntries = freshTicket.entries.length === 0 && selectedTicket.entries.length > 0;
         if (wouldClearEntries) return;
         setSelectedTicket(freshTicket);
-        setServiceRows(entriesToServiceRows(freshTicket.entries));
-        initialServiceRowsRef.current = entriesToServiceRows(freshTicket.entries).map(r => ({ ...r }));
+        // Update original time entry rows and rebuild with any per-entry overrides
+        const freshBaseRows = entriesToServiceRows(freshTicket.entries);
+        originalTimeEntryRowsRef.current = freshBaseRows.map(r => ({ ...r }));
+        const currentOverrides = editedEntryOverrides;
+        if (Object.keys(currentOverrides).length > 0) {
+          const mergedRows = buildRowsWithOverrides(freshTicket.entries, currentOverrides);
+          setServiceRows(mergedRows);
+          initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
+        } else {
+          setServiceRows(freshBaseRows);
+          initialServiceRowsRef.current = freshBaseRows.map(r => ({ ...r }));
+        }
       }
     }
   }, [activeTab, showDiscarded, filteredTickets, selectedTicket, currentTicketRecordId]);
@@ -2551,8 +2630,11 @@ export default function ServiceTickets() {
 
                   // Show initial service rows immediately from entries (refined when edited data loads)
                   const initialRows = entriesToServiceRows(ticket.entries);
+                  // Store the original time entry rows for per-entry edit comparison
+                  originalTimeEntryRowsRef.current = initialRows.map(r => ({ ...r }));
                   setServiceRows(initialRows);
                   initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
+                  setEditedEntryOverrides({});
 
                   // Load expenses and edited data for this ticket
                   try {
@@ -2585,7 +2667,7 @@ export default function ServiceTickets() {
                       (async () => {
                         const { data: dataWithOverrides, error: selectError } = await supabase
                           .from(tableName)
-                          .select('is_edited, edited_descriptions, edited_hours, header_overrides, updated_at')
+                          .select('is_edited, edited_descriptions, edited_hours, edited_entry_overrides, header_overrides, updated_at')
                           .eq('id', ticketRecordId)
                           .single();
                         if (selectError) {
@@ -2594,7 +2676,7 @@ export default function ServiceTickets() {
                             .select('is_edited, edited_descriptions, edited_hours, updated_at')
                             .eq('id', ticketRecordId)
                             .single();
-                          return dataWithout ? { ...dataWithout, header_overrides: null } : null;
+                          return dataWithout ? { ...dataWithout, header_overrides: null, edited_entry_overrides: null } : null;
                         }
                         return dataWithOverrides;
                       })(),
@@ -2673,28 +2755,36 @@ export default function ServiceTickets() {
                       setSelectedTicket(displayTicket);
                     }
                     
-                    if (ticketRecord && ticketRecord.is_edited) {
+                    // Per-entry overrides: merge live time entries with saved edits
+                    const savedOverrides = (ticketRecord?.edited_entry_overrides as Record<string, EntryOverride> | null) ?? {};
+                    const hasPerEntryOverrides = Object.keys(savedOverrides).length > 0;
+                    
+                    if (hasPerEntryOverrides) {
+                      // Build rows from live entries + per-entry overrides
+                      const mergedRows = buildRowsWithOverrides(ticket.entries, savedOverrides);
+                      setServiceRows(mergedRows);
+                      initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
+                      setEditedEntryOverrides(savedOverrides);
                       setIsTicketEdited(true);
+                      // Update legacy format for backward compat
+                      const legacy = serviceRowsToLegacyFormat(mergedRows);
+                      setEditedDescriptions(legacy.descriptions);
+                      setEditedHours(legacy.hours);
+                    } else if (ticketRecord && ticketRecord.is_edited && !hasPerEntryOverrides) {
+                      // Legacy fallback: old-style full replacement (for tickets edited before per-entry tracking)
                       const loadedDescriptions = (ticketRecord.edited_descriptions as Record<string, string[]>) || {};
                       const loadedHours = (ticketRecord.edited_hours as Record<string, number | number[]>) || {};
-                      
-                      // Convert legacy format to service rows
-                      // Collect all unique descriptions and their hours across rate types
                       const rowMap = new Map<string, ServiceRow>();
                       let rowIndex = 0;
-                      
                       Object.keys(loadedDescriptions).forEach(rateType => {
                         const descs = loadedDescriptions[rateType] || [];
                         const hrs = loadedHours[rateType];
                         const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
-                        
                         descs.forEach((desc, i) => {
                           const hours = hoursArray[i] || 0;
-                          // Use description as key for grouping (or create unique row)
                           const key = `${desc}-${rowIndex++}`;
                           const row: ServiceRow = {
-                            id: key,
-                            description: desc,
+                            id: key, description: desc,
                             st: rateType === 'Shop Time' ? hours : 0,
                             tt: rateType === 'Travel Time' ? hours : 0,
                             ft: rateType === 'Field Time' ? hours : 0,
@@ -2704,10 +2794,10 @@ export default function ServiceTickets() {
                           rowMap.set(key, row);
                         });
                       });
-                      
                       const loadedRows = Array.from(rowMap.values());
                       setServiceRows(loadedRows);
                       initialServiceRowsRef.current = loadedRows.map(r => ({ ...r }));
+                      setIsTicketEdited(true);
                       setEditedDescriptions(loadedDescriptions);
                       setEditedHours(
                         Object.keys(loadedHours).reduce((acc, rateType) => {
@@ -2723,6 +2813,7 @@ export default function ServiceTickets() {
                       initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
                       setEditedDescriptions({});
                       setEditedHours({});
+                      setEditedEntryOverrides({});
                     }
                   } catch (error) {
                     console.error('Error loading ticket data:', error);
@@ -2733,6 +2824,7 @@ export default function ServiceTickets() {
                     initialServiceRowsRef.current = fallbackRows.map(r => ({ ...r }));
                     setEditedDescriptions({});
                     setEditedHours({});
+                    setEditedEntryOverrides({});
                   }
                 };
 
@@ -3049,6 +3141,7 @@ export default function ServiceTickets() {
                                 }, isDemoMode);
                                 const newStatus = isApproved ? 'draft' : 'approved';
                                 // When submitting (not withdrawing), snapshot hours/descriptions/header to DB
+                                // Don't set is_edited=true just for submitting - only actual per-entry edits count
                                 if (newStatus !== 'draft' && ticket.entries?.length > 0) {
                                   const rows = entriesToServiceRows(ticket.entries);
                                   const legacy = serviceRowsToLegacyFormat(rows);
@@ -3057,7 +3150,6 @@ export default function ServiceTickets() {
                                   const headerOverrides = buildApprovalHeaderOverrides(ticket);
                                   const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
                                   await supabase.from(tableName).update({
-                                    is_edited: true,
                                     edited_descriptions: legacy.descriptions,
                                     edited_hours: legacy.hours,
                                     total_hours: totalEditedHours,
@@ -3612,8 +3704,7 @@ export default function ServiceTickets() {
                                 fo: 0,
                               };
                               const newRows = [...serviceRows, newRow];
-                              setServiceRows(newRows);
-                              setIsTicketEdited(true);
+                              updateServiceRows(newRows);
                             }}
                             style={{
                               padding: '6px 12px',
@@ -3651,7 +3742,10 @@ export default function ServiceTickets() {
                       
                       {/* Service Rows */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {serviceRows.map((row, index) => (
+                        {serviceRows.map((row, index) => {
+                          const isEntryOverridden = !!editedEntryOverrides[row.id];
+                          const isManualRow = row.id.startsWith('new-');
+                          return (
                           <div 
                             key={row.id} 
                             style={{ 
@@ -3660,9 +3754,10 @@ export default function ServiceTickets() {
                               gap: '8px',
                               alignItems: 'center',
                               padding: '8px',
-                              backgroundColor: isServiceRowDirty(index) ? 'rgba(255, 193, 7, 0.22)' : 'var(--bg-tertiary)',
-                              border: isServiceRowDirty(index) ? '1px solid rgba(255, 152, 0, 0.75)' : '1px solid transparent',
-                              borderRadius: '6px'
+                              backgroundColor: isServiceRowDirty(index) ? 'rgba(255, 193, 7, 0.22)' : isEntryOverridden ? 'rgba(255, 152, 0, 0.06)' : 'var(--bg-tertiary)',
+                              border: isServiceRowDirty(index) ? '1px solid rgba(255, 152, 0, 0.75)' : isEntryOverridden ? '1px solid rgba(255, 152, 0, 0.25)' : '1px solid transparent',
+                              borderRadius: '6px',
+                              position: 'relative',
                             }}
                           >
                             <textarea
@@ -3671,12 +3766,7 @@ export default function ServiceTickets() {
                                 if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, description: e.target.value };
-                                setServiceRows(newRows);
-                                setIsTicketEdited(true);
-                                // Update legacy format
-                                const legacy = serviceRowsToLegacyFormat(newRows);
-                                setEditedDescriptions(legacy.descriptions);
-                                setEditedHours(legacy.hours);
+                                updateServiceRows(newRows);
                               }}
                               readOnly={isLockedForEditing}
                               style={{
@@ -3697,11 +3787,7 @@ export default function ServiceTickets() {
                                 if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, st: parseFloat(e.target.value) || 0 };
-                                setServiceRows(newRows);
-                                setIsTicketEdited(true);
-                                const legacy = serviceRowsToLegacyFormat(newRows);
-                                setEditedDescriptions(legacy.descriptions);
-                                setEditedHours(legacy.hours);
+                                updateServiceRows(newRows);
                               }}
                               readOnly={isLockedForEditing}
                               style={{
@@ -3721,11 +3807,7 @@ export default function ServiceTickets() {
                                 if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, tt: parseFloat(e.target.value) || 0 };
-                                setServiceRows(newRows);
-                                setIsTicketEdited(true);
-                                const legacy = serviceRowsToLegacyFormat(newRows);
-                                setEditedDescriptions(legacy.descriptions);
-                                setEditedHours(legacy.hours);
+                                updateServiceRows(newRows);
                               }}
                               readOnly={isLockedForEditing}
                               style={{
@@ -3745,11 +3827,7 @@ export default function ServiceTickets() {
                                 if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, ft: parseFloat(e.target.value) || 0 };
-                                setServiceRows(newRows);
-                                setIsTicketEdited(true);
-                                const legacy = serviceRowsToLegacyFormat(newRows);
-                                setEditedDescriptions(legacy.descriptions);
-                                setEditedHours(legacy.hours);
+                                updateServiceRows(newRows);
                               }}
                               readOnly={isLockedForEditing}
                               style={{
@@ -3769,11 +3847,7 @@ export default function ServiceTickets() {
                                 if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, so: parseFloat(e.target.value) || 0 };
-                                setServiceRows(newRows);
-                                setIsTicketEdited(true);
-                                const legacy = serviceRowsToLegacyFormat(newRows);
-                                setEditedDescriptions(legacy.descriptions);
-                                setEditedHours(legacy.hours);
+                                updateServiceRows(newRows);
                               }}
                               readOnly={isLockedForEditing}
                               style={{
@@ -3794,11 +3868,7 @@ export default function ServiceTickets() {
                                 if (isLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, fo: parseFloat(e.target.value) || 0 };
-                                setServiceRows(newRows);
-                                setIsTicketEdited(true);
-                                const legacy = serviceRowsToLegacyFormat(newRows);
-                                setEditedDescriptions(legacy.descriptions);
-                                setEditedHours(legacy.hours);
+                                updateServiceRows(newRows);
                               }}
                               readOnly={isLockedForEditing}
                               style={{
@@ -3814,11 +3884,7 @@ export default function ServiceTickets() {
                             <button
                               onClick={() => {
                                 const newRows = serviceRows.filter((_, i) => i !== index);
-                                setServiceRows(newRows);
-                                setIsTicketEdited(true);
-                                const legacy = serviceRowsToLegacyFormat(newRows);
-                                setEditedDescriptions(legacy.descriptions);
-                                setEditedHours(legacy.hours);
+                                updateServiceRows(newRows);
                               }}
                               style={{
                                 padding: '4px 8px',
@@ -3836,7 +3902,8 @@ export default function ServiceTickets() {
                             </button>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                         
                         {/* Totals Row */}
                         <div 
@@ -3890,18 +3957,18 @@ export default function ServiceTickets() {
                           <span style={{ color: '#ff9800' }}>FO = Field Overtime</span>
                         </div>
                         
-                        {/* EDITED notice - below legend */}
-                        {isTicketEdited && (
+                        {/* EDITED notice - below legend. Only show when entries actually differ from time entries */}
+                        {isTicketEdited && Object.keys(editedEntryOverrides).length > 0 && (
                           <div style={{ marginTop: '12px' }}>
                             <span style={{ 
                               fontSize: '11px', 
-                              color: 'var(--primary-color)', 
+                              color: '#ff9800', 
                               padding: '4px 8px', 
-                              backgroundColor: 'var(--primary-light)', 
+                              backgroundColor: 'rgba(255, 152, 0, 0.1)', 
                               borderRadius: '4px',
                               fontWeight: '600'
                             }}>
-                              EDITED - Time entries won't update this ticket
+                              {Object.keys(editedEntryOverrides).length} {Object.keys(editedEntryOverrides).length === 1 ? 'entry' : 'entries'} manually edited — new time entries will still appear
                             </span>
                           </div>
                         )}
