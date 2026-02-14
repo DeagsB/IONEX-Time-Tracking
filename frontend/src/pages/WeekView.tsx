@@ -1909,7 +1909,7 @@ export default function WeekView() {
         backgroundColor: 'var(--bg-primary)',
             zIndex: 20
       }}>
-            {/* Zoom controls in header - top row only */}
+            {/* Zoom controls in header */}
         <div style={{
               height: '50px', 
               borderBottom: '1px solid var(--border-color)',
@@ -1982,11 +1982,8 @@ export default function WeekView() {
                 </div>
         </div>
 
-        {/* Spacer row - aligns with day headers row (days go under zoom) */}
-            <div style={{ height: '50px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)' }} />
-
-        {/* Time slots */}
-            <div>
+        {/* Time slots - extend behind zoom header */}
+            <div style={{ marginTop: -50 }}>
             {timeSlots.map((time, index) => (
               <div
                 key={index}
@@ -2029,13 +2026,7 @@ export default function WeekView() {
                   overflow: 'visible'
                 }}
               >
-                {/* Spacer row - aligns with zoom controls (days go under -+ area) */}
-                <div style={{
-                  height: '50px',
-                  borderBottom: '1px solid var(--border-color)',
-                  backgroundColor: 'var(--bg-primary)',
-                }} />
-                {/* Day header - compact layout */}
+                {/* Day header - compact layout (behind -+ area when overlapping) */}
                 <div style={{
                   height: '50px',
                   borderBottom: '1px solid var(--border-color)',
@@ -2047,9 +2038,9 @@ export default function WeekView() {
                   alignItems: 'center',
                   gap: '2px',
                   position: 'sticky',
-                  top: 50,
+                  top: 0,
                   zIndex: 30,
-                  transform: headerVisible ? 'translateY(0)' : 'translateY(-100px)',
+                  transform: headerVisible ? 'translateY(0)' : 'translateY(-50px)',
                   transition: 'transform 0.2s ease-in-out',
                 }}>
                   <div style={{ 
