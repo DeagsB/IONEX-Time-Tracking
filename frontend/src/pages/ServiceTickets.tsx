@@ -1620,20 +1620,30 @@ export default function ServiceTickets() {
       
       switch (effectiveSortField) {
         case 'ticketNumber': {
-          // Use sequence_number from DB for correct sequential order (DB_26002, 26003, 26004...)
-          const aSeq = (aRec as { sequence_number?: number })?.sequence_number;
-          const bSeq = (bRec as { sequence_number?: number })?.sequence_number;
-          if (aSeq != null && bSeq != null) {
-            aVal = aSeq;
-            bVal = bSeq;
+          // Sort by initials prefix alphabetically, then by sequence number within each prefix
+          // e.g. AR_26001, AR_26002, DB_26001, DB_26003, HV_26001, MW_26001...
+          const aTicket = a.displayTicketNumber || a.ticketNumber || '';
+          const bTicket = b.displayTicketNumber || b.ticketNumber || '';
+          const aPrefix = (aTicket.match(/^([A-Za-z]+)/) || ['', ''])[1].toUpperCase();
+          const bPrefix = (bTicket.match(/^([A-Za-z]+)/) || ['', ''])[1].toUpperCase();
+          if (aPrefix !== bPrefix) {
+            aVal = aPrefix;
+            bVal = bPrefix;
           } else {
-            // Fallback: parse ticket number (e.g. DB_26002 -> 26002) for numeric sort
-            const parseNum = (s: string) => {
-              const m = (s || '').match(/(\d+)$/);
-              return m ? parseInt(m[1], 10) : 0;
-            };
-            aVal = parseNum(a.displayTicketNumber || a.ticketNumber || '');
-            bVal = parseNum(b.displayTicketNumber || b.ticketNumber || '');
+            // Same prefix: sort by sequence_number if available, else parse from ticket number
+            const aSeq = (aRec as { sequence_number?: number })?.sequence_number;
+            const bSeq = (bRec as { sequence_number?: number })?.sequence_number;
+            if (aSeq != null && bSeq != null) {
+              aVal = aSeq;
+              bVal = bSeq;
+            } else {
+              const parseNum = (s: string) => {
+                const m = (s || '').match(/(\d+)$/);
+                return m ? parseInt(m[1], 10) : 0;
+              };
+              aVal = parseNum(aTicket);
+              bVal = parseNum(bTicket);
+            }
           }
           break;
         }
