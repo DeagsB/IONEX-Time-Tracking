@@ -1421,15 +1421,17 @@ export default function ServiceTickets() {
   }, [billableEntries, employees, existingTickets, customers, allProjects]);
 
   // Live hours computed from serviceRows when a ticket is selected
+  const selectedTicketId = selectedTicket?.id;
   const liveHoursForSelectedTicket = useMemo((): { st: number; tt: number; ft: number; so: number; fo: number; total: number } | null => {
-    if (!selectedTicket || serviceRows.length === 0) return null;
+    if (!selectedTicketId) return null;
+    // Return live totals even if serviceRows is empty (shows 0.00)
     const st = serviceRows.reduce((sum, r) => sum + (r.st || 0), 0);
     const tt = serviceRows.reduce((sum, r) => sum + (r.tt || 0), 0);
     const ft = serviceRows.reduce((sum, r) => sum + (r.ft || 0), 0);
     const so = serviceRows.reduce((sum, r) => sum + (r.so || 0), 0);
     const fo = serviceRows.reduce((sum, r) => sum + (r.fo || 0), 0);
     return { st, tt, ft, so, fo, total: st + tt + ft + so + fo };
-  }, [selectedTicket, serviceRows]);
+  }, [selectedTicketId, serviceRows]);
 
   // Expense mutations
   const createExpenseMutation = useMutation({
@@ -3006,7 +3008,7 @@ export default function ServiceTickets() {
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-primary)', fontWeight: '600' }}>
                     {(() => {
                       // When this ticket is selected, show live total from service rows
-                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                      if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.total.toFixed(2);
                       }
                       return ticket.totalHours.toFixed(2);
@@ -3014,7 +3016,7 @@ export default function ServiceTickets() {
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                      if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.st.toFixed(2);
                       }
                       return ticket.hoursByRateType['Shop Time'].toFixed(2);
@@ -3022,7 +3024,7 @@ export default function ServiceTickets() {
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                      if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.tt.toFixed(2);
                       }
                       return ticket.hoursByRateType['Travel Time'].toFixed(2);
@@ -3030,7 +3032,7 @@ export default function ServiceTickets() {
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                      if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.ft.toFixed(2);
                       }
                       return ticket.hoursByRateType['Field Time'].toFixed(2);
@@ -3038,7 +3040,7 @@ export default function ServiceTickets() {
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                      if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.so.toFixed(2);
                       }
                       return ticket.hoursByRateType['Shop Overtime'].toFixed(2);
@@ -3046,7 +3048,7 @@ export default function ServiceTickets() {
                   </td>
                   <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
-                      if (selectedTicket?.id === ticket.id && liveHoursForSelectedTicket) {
+                      if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.fo.toFixed(2);
                       }
                       return ticket.hoursByRateType['Field Overtime'].toFixed(2);
