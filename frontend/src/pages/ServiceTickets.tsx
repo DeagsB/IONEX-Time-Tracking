@@ -1208,16 +1208,19 @@ export default function ServiceTickets() {
 
     // --- Claim base tickets for locked records (so they don't appear as drafts) ---
     const claimedBaseTicketIds = new Set<string>();
+    const claimedBaseTicketByRecordId = new Map<string, ServiceTicket>();
     for (const rec of lockedRecords) {
       const recPoAfe = getRecordPoAfe(rec);
-      // Prefer exact po_afe match, then any match
       const bt = baseTickets.find(
         b => !claimedBaseTicketIds.has(b.id) && baseTicketMatchesRecord(b, rec) &&
           (recPoAfe ? getBaseTicketPoAfe(b) === recPoAfe : true)
       ) ?? baseTickets.find(
         b => !claimedBaseTicketIds.has(b.id) && baseTicketMatchesRecord(b, rec)
       );
-      if (bt) claimedBaseTicketIds.add(bt.id);
+      if (bt) {
+        claimedBaseTicketIds.add(bt.id);
+        claimedBaseTicketByRecordId.set(rec.id, bt);
+      }
     }
 
     // --- Link draft records to base tickets (1:1, tracked) ---
@@ -1236,7 +1239,25 @@ export default function ServiceTickets() {
     };
 
     // --- Build locked ticket from DB record ---
+    // Submitted (no ticket_number): use base ticket entries/hours/rates so the panel shows time entry data.
+    // Approved (has ticket_number): fully locked, entries=[], hours from DB only.
     const buildLockedTicketFromRecord = (st: (typeof existing)[number]) => {
+      const isApproved = !!st.ticket_number;
+      const matchedBaseTicket = claimedBaseTicketByRecordId.get(st.id);
+
+      // For submitted tickets with a matching base ticket: use the base ticket's data
+      if (!isApproved && matchedBaseTicket) {
+        const ov = (st as { header_overrides?: Record<string, string | number> })?.header_overrides;
+        const ticket: ServiceTicket & { _matchedRecordId: string } = {
+          ...matchedBaseTicket,
+          id: st.id,
+          ticketNumber: st.ticket_number || undefined,
+          _matchedRecordId: st.id,
+        };
+        return ov ? applyHeaderOverridesToTicket(ticket, ov) : ticket;
+      }
+
+      // Approved or no matching base ticket: build from DB
       const editedHours = (st.edited_hours as Record<string, number | number[]>) || {};
       const hoursByRateType: ServiceTicket['hoursByRateType'] = {
         'Shop Time': 0, 'Shop Overtime': 0, 'Travel Time': 0, 'Field Time': 0, 'Field Overtime': 0,
