@@ -245,12 +245,16 @@ export default function Invoices() {
       const cc = bt.entryCc ?? (bt.entries?.[0] as any)?.cc ?? bt.projectCc ?? '';
       return buildBillingKey(approver, poAfe, cc);
     };
-    // Add tickets that match approved records (from base or standalone)
+    // Add tickets that match approved records (from base or standalone).
+    // Each baseTicket can only match ONE approved record to avoid double-counting hours
+    // when multiple approved records share the same date+user+customer+project.
+    const usedBaseTicketIds = new Set<string>();
     for (const rec of approved) {
       const recGroupingKey = getRecordGroupingKey(rec);
       const recBillingKey = getRecordBillingKey(rec);
       const match = baseTickets.find(
         (bt) => {
+          if (usedBaseTicketIds.has(bt.id)) return false; // Already matched to another approved record
           if (bt.date !== rec.date || bt.userId !== rec.user_id) return false;
           if (bt.customerId !== rec.customer_id && !(rec.customer_id == null && bt.customerId === 'unassigned')) return false;
           if ((bt.projectId || '') !== (rec.project_id || '')) return false;
@@ -261,6 +265,7 @@ export default function Invoices() {
       );
 
       if (match) {
+        usedBaseTicketIds.add(match.id);
         const proj = projects?.find((p: { id: string }) => p.id === (rec.project_id ?? match.projectId));
         let ticketToUse = match;
         if (rec.is_edited && rec.edited_hours) {
