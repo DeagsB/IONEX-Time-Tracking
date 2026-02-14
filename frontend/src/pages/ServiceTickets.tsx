@@ -1411,8 +1411,16 @@ export default function ServiceTickets() {
       ((rec.workflow_status || 'draft') === 'draft' || rec.workflow_status === 'rejected')
     );
 
+    // Location-agnostic match: date + user + customer + project only (ignores location + PO/AFE)
+    // Used as final fallback when user edited location before submitting
+    const baseTicketLooseMatchesRecord = (bt: ServiceTicket, rec: (typeof existing)[number]) =>
+      bt.date === rec.date &&
+      bt.userId === rec.user_id &&
+      (rec.customer_id === bt.customerId || (!rec.customer_id && bt.customerId === 'unassigned')) &&
+      ((rec.project_id || '') === (bt.projectId || '') || !rec.project_id);
+
     // --- Claim base tickets for locked records (so they don't appear as drafts) ---
-    // Hierarchy: project > location > PO/AFE. Prefer full match, fall back to core match.
+    // Hierarchy: full match (project+location+PO) > core match (project+location) > loose match (project only)
     const claimedBaseTicketIds = new Set<string>();
     const claimedBaseTicketByRecordId = new Map<string, ServiceTicket>();
     for (const rec of lockedRecords) {
@@ -1420,6 +1428,8 @@ export default function ServiceTickets() {
         b => !claimedBaseTicketIds.has(b.id) && baseTicketFullMatchesRecord(b, rec)
       ) ?? baseTickets.find(
         b => !claimedBaseTicketIds.has(b.id) && baseTicketMatchesRecord(b, rec)
+      ) ?? baseTickets.find(
+        b => !claimedBaseTicketIds.has(b.id) && baseTicketLooseMatchesRecord(b, rec)
       );
       if (bt) {
         claimedBaseTicketIds.add(bt.id);
@@ -1428,13 +1438,15 @@ export default function ServiceTickets() {
     }
 
     // --- Link draft records to base tickets (1:1, tracked) ---
-    // Hierarchy: project > location > PO/AFE. Prefer full match, fall back to core match.
+    // Hierarchy: full match > core match > loose match (project only, for edited locations)
     const usedDraftRecordIds = new Set<string>();
     const findDraftRecordForBaseTicket = (bt: ServiceTicket) => {
       const found = draftRecords.find(
         rec => !usedDraftRecordIds.has(rec.id) && baseTicketFullMatchesRecord(bt, rec)
       ) ?? draftRecords.find(
         rec => !usedDraftRecordIds.has(rec.id) && baseTicketMatchesRecord(bt, rec)
+      ) ?? draftRecords.find(
+        rec => !usedDraftRecordIds.has(rec.id) && baseTicketLooseMatchesRecord(bt, rec)
       );
       if (found) usedDraftRecordIds.add(found.id);
       return found;
