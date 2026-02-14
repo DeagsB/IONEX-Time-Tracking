@@ -1471,6 +1471,16 @@ export default function ServiceTickets() {
 
     // For non-admins, create a draft record without a ticket number
     const billingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
+    // Pass entry values so new records get correct approver/po_afe/cc (billingKey only has po_afe for grouping)
+    const headerOverrides = (ticket.entryApprover != null || ticket.entryPoAfe != null || ticket.entryCc != null || ticket.entryOther != null)
+      ? {
+          approver: ticket.entryApprover ?? '',
+          po_afe: ticket.entryPoAfe ?? '',
+          cc: ticket.entryCc ?? '',
+          other: ticket.entryOther ?? '',
+          service_location: ticket.entryLocation ?? ticket.location ?? '',
+        }
+      : undefined;
     const record = await serviceTicketsService.getOrCreateTicket({
       date: ticket.date,
       userId: ticket.userId,
@@ -1478,6 +1488,7 @@ export default function ServiceTickets() {
       projectId: ticket.projectId,
       location: ticket.location || '',
       billingKey,
+      headerOverrides,
     }, isDemoMode);
 
     return record.id;
@@ -2546,9 +2557,16 @@ export default function ServiceTickets() {
                       const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
                       const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
                       const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
+                      // When header_overrides has placeholders (_ or empty) but entries have real values, prefer entries (fixes records created with billingKey-only data)
+                      const isPlaceholder = (v: string) => !v || v === '_';
                       const [finalApprover, finalPoAfe, finalCc, finalOther] = useEntryValues
                         ? [initialEditable.approver, initialEditable.poAfe, initialEditable.cc, initialEditable.other]
-                        : [ovApprover, ovPoAfe, ovCc, ovOther];
+                        : [
+                            isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover,
+                            isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe,
+                            isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc,
+                            isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther,
+                          ];
                       merged = {
                         customerName: useOverride(ov.customer_name, initialEditable.customerName),
                         address: useOverride(ov.address, initialEditable.address),

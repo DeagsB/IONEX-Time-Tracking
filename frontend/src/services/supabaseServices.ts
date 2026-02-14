@@ -1126,6 +1126,8 @@ export const serviceTicketsService = {
     projectId?: string | null;
     location?: string;
     billingKey?: string;
+    /** When creating a new record, use these values for header_overrides instead of parsing from billingKey (which only has po_afe) */
+    headerOverrides?: { approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string };
   }, isDemo: boolean = false): Promise<{ id: string }> {
     // Don't create tickets without a customer - they need a project/customer to be valid
     if (!params.customerId) {
@@ -1177,8 +1179,25 @@ export const serviceTicketsService = {
       employeeInitials = 'XX'; // fallback when user has no first/last name; DB requires NOT NULL
     }
     
-    // Parse billingKey to set header_overrides (approver::poAfe::cc)
-    const [approver, poAfe, cc] = targetBillingKey.split('::');
+    // Use provided headerOverrides (from time entries) when creating; otherwise parse from billingKey (grouping key only has po_afe)
+    const ho = params.headerOverrides;
+    let headerOverridesToInsert: Record<string, string> | undefined;
+    if (ho && (ho.approver != null || ho.po_afe != null || ho.cc != null || ho.other != null || ho.service_location != null)) {
+      headerOverridesToInsert = {
+        approver: (ho.approver ?? '').trim() || '_',
+        po_afe: (ho.po_afe ?? '').trim() || '_',
+        cc: (ho.cc ?? '').trim() || '_',
+        ...(ho.other != null ? { other: String(ho.other ?? '').trim() } : {}),
+        ...(ho.service_location != null ? { service_location: String(ho.service_location ?? '').trim() } : {}),
+      };
+    } else if (targetBillingKey !== '_::_::_') {
+      const [approver, poAfe, cc] = targetBillingKey.split('::');
+      headerOverridesToInsert = {
+        approver: approver || '_',
+        po_afe: poAfe || '_',
+        cc: cc || '_',
+      };
+    }
     const insertData: Record<string, unknown> = {
       date: params.date,
       user_id: params.userId,
@@ -1188,12 +1207,8 @@ export const serviceTicketsService = {
       workflow_status: 'draft',
       employee_initials: employeeInitials,
     };
-    if (targetBillingKey !== '_::_::_') {
-      insertData.header_overrides = {
-        approver: approver || '_',
-        po_afe: poAfe || '_',
-        cc: cc || '_',
-      };
+    if (headerOverridesToInsert) {
+      insertData.header_overrides = headerOverridesToInsert;
     }
     const { data: newTicket, error: createError } = await supabase
       .from(tableName)
