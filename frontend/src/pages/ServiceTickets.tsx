@@ -826,7 +826,26 @@ export default function ServiceTickets() {
         }
         ticketRecordId = existing.id;
         const headerOverrides = buildApprovalHeaderOverrides(ticket);
-        await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket, user?.id, headerOverrides);
+        // Persist hours at approval so ticket retains them even if time entries are later deleted
+        const serviceRows = entriesToServiceRows(ticket.entries);
+        const legacy = serviceRowsToLegacyFormat(serviceRows);
+        const rtRate = ticket.rates.rt ?? 0;
+        const ttRate = ticket.rates.tt ?? 0;
+        const ftRate = ticket.rates.ft ?? 0;
+        const shopOtRate = ticket.rates.shop_ot ?? 0;
+        const fieldOtRate = ticket.rates.field_ot ?? 0;
+        const totalAmount = (ticket.hoursByRateType['Shop Time'] ?? 0) * rtRate
+          + (ticket.hoursByRateType['Travel Time'] ?? 0) * ttRate
+          + (ticket.hoursByRateType['Field Time'] ?? 0) * ftRate
+          + (ticket.hoursByRateType['Shop Overtime'] ?? 0) * shopOtRate
+          + (ticket.hoursByRateType['Field Overtime'] ?? 0) * fieldOtRate;
+        const approvalHours = ticket.totalHours > 0 ? {
+          totalHours: ticket.totalHours,
+          totalAmount,
+          editedHours: legacy.hours,
+          editedDescriptions: legacy.descriptions,
+        } : undefined;
+        await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket, user?.id, headerOverrides, approvalHours);
       } else {
         // Create ticket record with the ticket number already assigned
         const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
@@ -1161,11 +1180,14 @@ export default function ServiceTickets() {
         // Find matching ticket record by date+user+customer+project+billing (location is editable, not a grouping dimension)
         const ticketBillingKey = ticket.id ? getTicketBillingKeyForMerge(ticket.id) : '_::_::_';
         const legacyBillingKey = '_::_::_';
+        // When existing record has project_id=null (legacy/duplicate-removal), allow match so approved tickets
+        // with time entries are found. Otherwise base ticket (from entries) would never match and we'd show
+        // standalone tickets with 0 hours.
         const baseFilterMerge = (et: NonNullable<typeof existingTickets>[number]) =>
           et.date === ticket.date &&
           et.user_id === ticket.userId &&
           (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-          (et.project_id || '') === (ticket.projectId || '');
+          ((et.project_id || '') === (ticket.projectId || '') || !et.project_id);
         const ticketFullKey = getTicketFullBillingKey(ticket);
         // Prefer full billing key match for approved records (approver::po_afe::cc) so AR and other approved tickets are found
         let matchingRecords = existingTickets.filter(
@@ -1232,10 +1254,11 @@ export default function ServiceTickets() {
         // Skip discarded records — they should not appear in the main list
         if ((et as any).is_discarded) return false;
         // Check if any base ticket already matches this record (date+user+customer+project+billingKey; location not used)
+        // When et.project_id is null, allow match so approved records can be matched to base tickets
         const baseFilterSt = (bt: typeof baseTickets[0]) =>
           bt.date === et.date && bt.userId === et.user_id &&
           (bt.customerId === et.customer_id || (!et.customer_id && bt.customerId === 'unassigned')) &&
-          (bt.projectId || '') === (et.project_id || '');
+          ((bt.projectId || '') === (et.project_id || '') || !et.project_id);
         const etGroupingKey = getRecordGroupingKeyForMerge(et);
         const legacyKey = '_::_::_';
         const etBillingKey = getRecordBillingKeyForMerge(et);
@@ -1398,11 +1421,12 @@ export default function ServiceTickets() {
     }
     const ticketBillingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
     const legacyBillingKey = '_::_::_';
+    // When et.project_id is null, allow match so approved records with time entries are found
     const baseFilter = (et: NonNullable<typeof existingTickets>[number]) =>
       et.date === ticket.date &&
       et.user_id === ticket.userId &&
       (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-      (et.project_id || '') === (ticket.projectId || '');
+      ((et.project_id || '') === (ticket.projectId || '') || !et.project_id);
     const ticketFullKey = (ticket.entries ?? ticket.entryApprover ?? ticket.projectApprover) != null
       ? getTicketFullBillingKey(ticket)
       : ticketBillingKey;

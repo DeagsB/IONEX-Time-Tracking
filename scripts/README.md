@@ -30,3 +30,16 @@ Removes duplicate service tickets for **Morgan Wolfe** that were created when lo
    - Delete the duplicate `service_tickets` rows.
 
 Only the **production** table `service_tickets` is modified; `service_tickets_demo` is not changed.
+
+## recover-service-ticket-hours.sql
+
+Recovers hours for approved service tickets that show 0.00 but have matching time entries. Use when:
+- Tickets have `project_id=null` (merge couldn't match to base ticket)
+- `total_hours` and `edited_hours` were never persisted at approval time
+
+**How to run**
+
+1. Open **Supabase Dashboard** → your project → **SQL Editor**.
+2. Run the script. It will update `project_id`, `total_hours`, `edited_hours`, and `edited_descriptions` from time entries.
+
+**Note:** The trigger `protect_approved_ticket_edited_data` blocks non-admin updates. Run while logged in as an admin in the Dashboard, or temporarily disable the trigger for the recovery run.

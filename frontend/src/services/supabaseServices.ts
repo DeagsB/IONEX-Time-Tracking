@@ -1059,13 +1059,21 @@ export const serviceTicketsService = {
    * @param isDemo - If true, updates the demo table; otherwise updates the regular table
    * @param approvedByAdminId - Optional admin user ID who approved the ticket
    * @param headerOverrides - When approving, snapshot to freeze ticket (saved in same update; DB trigger protects afterward)
+   * @param approvalHours - When approving, pass hours so they are persisted. Fixes approved tickets showing 0.00
+   *   when the draft had no saved hours or when time entries are later deleted.
    */
   async updateTicketNumber(
     ticketId: string,
     ticketNumber: string | null,
     isDemo: boolean = false,
     approvedByAdminId?: string,
-    headerOverrides?: Record<string, string | number>
+    headerOverrides?: Record<string, string | number>,
+    approvalHours?: {
+      totalHours: number;
+      totalAmount: number;
+      editedHours: Record<string, number | number[]>;
+      editedDescriptions: Record<string, string[]>;
+    }
   ): Promise<void> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
 
@@ -1099,6 +1107,14 @@ export const serviceTicketsService = {
       }
       if (headerOverrides && Object.keys(headerOverrides).length > 0) {
         updateData.header_overrides = headerOverrides;
+      }
+      // Persist hours at approval time so ticket retains them even if time entries are later deleted
+      if (approvalHours && approvalHours.totalHours > 0) {
+        updateData.total_hours = approvalHours.totalHours;
+        updateData.total_amount = approvalHours.totalAmount;
+        updateData.is_edited = true;
+        updateData.edited_hours = approvalHours.editedHours;
+        updateData.edited_descriptions = approvalHours.editedDescriptions;
       }
     }
 
