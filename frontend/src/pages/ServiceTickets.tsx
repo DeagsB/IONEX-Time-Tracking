@@ -451,7 +451,8 @@ export default function ServiceTickets() {
       setIsTicketEdited(false);
       justSavedRef.current = true;
       setTimeout(() => { justSavedRef.current = false; }, 2000);
-      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
       // Update initial snapshots so pending highlights and Save Changes button clear after save
       if (editableTicket) initialEditableTicketRef.current = { ...editableTicket };
       initialServiceRowsRef.current = serviceRows.map(r => ({ ...r }));
@@ -1398,7 +1399,66 @@ export default function ServiceTickets() {
     for (const bt of baseTickets) {
       if (claimedBaseTicketIds.has(bt.id)) continue;
       const draftRec = findDraftRecordForBaseTicket(bt);
-      draftTickets.push({ ...bt, _matchedRecordId: draftRec?.id ?? null });
+      
+      // If draft record has saved hours (manual edits), use those instead of time entry hours
+      if (draftRec && (draftRec.is_edited || (draftRec as any).edited_entry_overrides)) {
+        const savedOverrides = (draftRec as any).edited_entry_overrides as Record<string, { st: number; tt: number; ft: number; so: number; fo: number }> | null;
+        const editedHours = (draftRec.edited_hours as Record<string, number | number[]>) || {};
+        
+        // Calculate hours from per-entry overrides if available
+        let hoursByRateType = { ...bt.hoursByRateType };
+        let totalHours = bt.totalHours;
+        
+        if (savedOverrides && Object.keys(savedOverrides).length > 0) {
+          // Build hours from base entries + overrides (same logic as buildRowsWithOverrides)
+          const baseEntryHours = { 'Shop Time': 0, 'Travel Time': 0, 'Field Time': 0, 'Shop Overtime': 0, 'Field Overtime': 0 };
+          const overrideHours = { st: 0, tt: 0, ft: 0, so: 0, fo: 0 };
+          const overrideIds = new Set(Object.keys(savedOverrides));
+          
+          // Sum hours from base entries that are NOT overridden
+          bt.entries.forEach(entry => {
+            if (!overrideIds.has(entry.id)) {
+              const rateType = entry.rate_type as keyof typeof baseEntryHours;
+              if (rateType in baseEntryHours) {
+                baseEntryHours[rateType] += entry.hours || 0;
+              }
+            }
+          });
+          
+          // Sum hours from overrides (including manual rows)
+          Object.values(savedOverrides).forEach(ov => {
+            overrideHours.st += ov.st || 0;
+            overrideHours.tt += ov.tt || 0;
+            overrideHours.ft += ov.ft || 0;
+            overrideHours.so += ov.so || 0;
+            overrideHours.fo += ov.fo || 0;
+          });
+          
+          hoursByRateType = {
+            'Shop Time': baseEntryHours['Shop Time'] + overrideHours.st,
+            'Travel Time': baseEntryHours['Travel Time'] + overrideHours.tt,
+            'Field Time': baseEntryHours['Field Time'] + overrideHours.ft,
+            'Shop Overtime': baseEntryHours['Shop Overtime'] + overrideHours.so,
+            'Field Overtime': baseEntryHours['Field Overtime'] + overrideHours.fo,
+          };
+          totalHours = Object.values(hoursByRateType).reduce((sum, h) => sum + h, 0);
+        } else if (Object.keys(editedHours).length > 0) {
+          // Legacy: use edited_hours from DB
+          hoursByRateType = { 'Shop Time': 0, 'Shop Overtime': 0, 'Travel Time': 0, 'Field Time': 0, 'Field Overtime': 0 };
+          Object.keys(editedHours).forEach(rateType => {
+            const hours = editedHours[rateType];
+            if (rateType in hoursByRateType) {
+              (hoursByRateType as any)[rateType] = Array.isArray(hours)
+                ? hours.reduce((s: number, h: number) => s + (h || 0), 0) : (hours as number) || 0;
+            }
+          });
+          totalHours = Object.values(hoursByRateType).reduce((sum, h) => sum + h, 0);
+        }
+        
+        draftTickets.push({ ...bt, hoursByRateType, totalHours, _matchedRecordId: draftRec.id });
+      } else {
+        draftTickets.push({ ...bt, _matchedRecordId: draftRec?.id ?? null });
+      }
     }
     
     // Add orphaned draft records (draft records with manual edits but no matching time entries)
