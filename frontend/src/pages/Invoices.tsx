@@ -16,6 +16,7 @@ import {
   getApproverPoAfeCcFromTicket,
   applyHeaderOverridesToTicket,
   getProjectApproverPoAfe,
+  getProjectHeaderFields,
   InvoiceGroupKey,
   calculateTicketTotalAmount,
   buildBillingKey,
@@ -300,6 +301,7 @@ export default function Invoices() {
             entries: syntheticEntries.length > 0 ? syntheticEntries : match.entries,
           };
         }
+        const pf = getProjectHeaderFields(proj);
         const rawTicket: ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string } = {
           ...ticketToUse,
           ticketNumber: rec.ticket_number,
@@ -307,6 +309,9 @@ export default function Invoices() {
           headerOverrides: rec.header_overrides,
           recordProjectId: rec.project_id ?? match.projectId,
           projectApproverPoAfe: getProjectApproverPoAfe(proj) || match.projectApproverPoAfe,
+          projectApprover: pf.approver || ticketToUse.projectApprover,
+          projectPoAfe: pf.poAfe || ticketToUse.projectPoAfe,
+          projectCc: pf.cc || ticketToUse.projectCc,
         };
         const ticketWithOverrides = applyHeaderOverridesToTicket(rawTicket, rec.header_overrides ?? undefined);
         ticketList.push({ ...ticketWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawTicket.recordProjectId });
@@ -346,6 +351,7 @@ export default function Invoices() {
         const userName = `${firstName} ${lastName}`.trim() || 'Unknown';
         const userInitials = firstName && lastName ? `${firstName[0]}${lastName[0]}`.toUpperCase() : 'XX';
         const proj = projects?.find((p: { id: string }) => p.id === rec.project_id);
+        const projFields = proj ? getProjectHeaderFields(proj) : { approver: '', poAfe: '', cc: '', other: '' };
         const DEFAULT_RATES = { rt: 110, tt: 85, ft: 140, shop_ot: 165, field_ot: 165 };
         const rates = emp
           ? {
@@ -393,6 +399,9 @@ export default function Invoices() {
           projectNumber: proj?.project_number,
           projectLocation: proj?.location,
           projectApproverPoAfe: getProjectApproverPoAfe(proj) || undefined,
+          projectApprover: projFields.approver || undefined,
+          projectPoAfe: projFields.poAfe || undefined,
+          projectCc: projFields.cc || undefined,
           projectOther: proj?.other,
         };
         const standaloneWithOverrides = applyHeaderOverridesToTicket(rawStandalone, rec.header_overrides ?? undefined);
@@ -415,16 +424,23 @@ export default function Invoices() {
           projectName: t.projectName,
           projectNumber: t.projectNumber,
           location: t.location,
+          projectApprover: t.projectApprover,
+          projectPoAfe: t.projectPoAfe,
+          projectCc: t.projectCc,
           projectApproverPoAfe: t.projectApproverPoAfe,
           projectLocation: t.projectLocation,
           projectOther: t.projectOther,
           customerInfo: t.customerInfo,
+          entryApprover: t.entryApprover,
+          entryPoAfe: t.entryPoAfe,
+          entryCc: t.entryCc,
           entries: t.entries,
         },
         t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
       );
-      if (!keyObj.approverCode) continue; // Skip tickets without approver code — not ready for invoicing
-      const groupKey = keyObj.approverCode;
+      // Skip tickets without a real approver code — only show tickets with G### or PO
+      if (!keyObj.approverCode || keyObj.approverCode === '_') continue;
+      const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}`;
       const list = groups.get(groupKey) ?? [];
       list.push(ticket);
       groups.set(groupKey, list);
@@ -446,10 +462,16 @@ export default function Invoices() {
           projectName: first.projectName,
           projectNumber: first.projectNumber,
           location: first.location,
+          projectApprover: first.projectApprover,
+          projectPoAfe: first.projectPoAfe,
+          projectCc: first.projectCc,
           projectApproverPoAfe: first.projectApproverPoAfe,
           projectLocation: first.projectLocation,
           projectOther: first.projectOther,
           customerInfo: first.customerInfo,
+          entryApprover: first.entryApprover,
+          entryPoAfe: first.entryPoAfe,
+          entryCc: first.entryCc,
           entries: first.entries,
         },
         first.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
