@@ -1898,7 +1898,9 @@ export default function ServiceTickets() {
           if (existing?.approved_by_admin_id) return false;
           return !hasTicketNumber && workflowStatus !== 'draft' && workflowStatus !== 'rejected';
         } else if (activeTab === 'approved') {
-          // Approved: Ticket number assigned, OR admin-approved (workflow beyond draft/submitted stages) even if ID temporarily unassigned
+          // Non-admins: only show tickets with a ticket number (fully approved by admin)
+          if (!isAdmin) return hasTicketNumber;
+          // Admins: ticket number assigned, OR admin-approved (workflow beyond draft/submitted stages) even if ID temporarily unassigned
           if (hasTicketNumber) return true;
           // Keep tickets visible on approved tab when ID is unassigned but workflow is still in an approved state
           const approvedStatuses = ['approved', 'pdf_exported', 'qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'];
