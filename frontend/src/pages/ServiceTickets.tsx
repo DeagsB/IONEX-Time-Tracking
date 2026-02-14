@@ -4775,23 +4775,31 @@ export default function ServiceTickets() {
                         onClick={async () => {
                           setIsApproving(true);
                           try {
-                            const billingKey = selectedTicket.id ? getTicketBillingKeyLocal(selectedTicket.id) : '_::_::_';
-                            const record = await serviceTicketsService.getOrCreateTicket({
-                              date: selectedTicket.date,
-                              userId: selectedTicket.userId,
-                              customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
-                              projectId: selectedTicket.projectId,
-                              location: selectedTicket.location || '',
-                              billingKey,
-                            }, isDemoMode);
-                            await serviceTicketsService.updateWorkflowStatus(record.id, 'rejected', isDemoMode, rejectNote.trim() || null);
-                            queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                            // Use currentTicketRecordId if available (already resolved when ticket was opened)
+                            let recordId = currentTicketRecordId;
+                            if (!recordId) {
+                              // Fallback: try to find/create the record
+                              const billingKey = selectedTicket.id ? getTicketBillingKeyLocal(selectedTicket.id) : '_::_::_';
+                              const record = await serviceTicketsService.getOrCreateTicket({
+                                date: selectedTicket.date,
+                                userId: selectedTicket.userId,
+                                customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
+                                projectId: selectedTicket.projectId,
+                                location: selectedTicket.location || '',
+                                billingKey,
+                              }, isDemoMode);
+                              recordId = record.id;
+                            }
+                            await serviceTicketsService.updateWorkflowStatus(recordId, 'rejected', isDemoMode, rejectNote.trim() || null);
+                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
                             queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                             queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                             setShowRejectNoteModal(false);
                             closePanel();
                           } catch (e) {
-                            console.error(e);
+                            console.error('Rejection failed:', e);
+                            alert(`Failed to reject ticket: ${e instanceof Error ? e.message : String(e)}`);
                           } finally {
                             setIsApproving(false);
                           }
