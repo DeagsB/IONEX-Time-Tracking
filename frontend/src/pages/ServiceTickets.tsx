@@ -2489,21 +2489,29 @@ export default function ServiceTickets() {
                   };
                   // Apply header_overrides from existingRecord immediately to avoid flash of default before override
                   const ov = (existingRecord?.header_overrides as Record<string, string | number> | null) ?? {};
-                  const useOverride = (ovVal: string | number | undefined, fallback: string) =>
-                    (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
+                  const useOverride = (ovVal: string | number | undefined, fallback: string) => {
+                    const s = (ovVal != null ? String(ovVal).trim() : '');
+                    return (s !== '' && s !== '_') ? s : fallback;
+                  };
                   const isPlaceholder = (v: string) => !v || v === '_';
                   const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
                   const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
                   const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
                   const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
+                  const emptyIfUnderscore = (v: string) => (v === '_' ? '' : v);
                   const [finalApprover, finalPoAfe, finalCc, finalOther] = (isFrozen || Object.keys(ov).length > 0)
                     ? [
-                        isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover,
-                        isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe,
-                        isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc,
-                        isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther,
+                        emptyIfUnderscore(isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover),
+                        emptyIfUnderscore(isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe),
+                        emptyIfUnderscore(isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc),
+                        emptyIfUnderscore(isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther),
                       ]
-                    : [initialEditable.approver, initialEditable.poAfe, initialEditable.cc, initialEditable.other];
+                    : [
+                        emptyIfUnderscore(initialEditable.approver),
+                        emptyIfUnderscore(initialEditable.poAfe),
+                        emptyIfUnderscore(initialEditable.cc),
+                        emptyIfUnderscore(initialEditable.other),
+                      ];
                   const initialToShow = (isFrozen || Object.keys(ov).length > 0)
                     ? {
                         ...initialEditable,
@@ -2597,8 +2605,10 @@ export default function ServiceTickets() {
                     // Approved: always use header_overrides.
                     const useEntryValues = !hasApprovedTicketNumber && (entryMaxUpdated > ticketUpdated);
                     
-                    const useOverride = (ovVal: string | number | undefined, fallback: string) =>
-                      (ovVal != null && String(ovVal).trim() !== '') ? String(ovVal).trim() : fallback;
+                    const useOverride = (ovVal: string | number | undefined, fallback: string) => {
+                      const s = (ovVal != null ? String(ovVal).trim() : '');
+                      return (s !== '' && s !== '_') ? s : fallback;
+                    };
                     let merged: typeof initialEditable;
                     if (isFrozen || Object.keys(ov).length > 0) {
                       // For approver/po_afe/cc/other: approved tickets always use header_overrides; draft/rejected use last-saved
@@ -2609,13 +2619,19 @@ export default function ServiceTickets() {
                       const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
                       // When header_overrides has placeholders (_ or empty) but entries have real values, prefer entries (fixes records created with billingKey-only data)
                       const isPlaceholder = (v: string) => !v || v === '_';
+                      const emptyIfUnderscore = (v: string) => (v === '_' ? '' : v);
                       const [finalApprover, finalPoAfe, finalCc, finalOther] = useEntryValues
-                        ? [initialEditable.approver, initialEditable.poAfe, initialEditable.cc, initialEditable.other]
+                        ? [
+                            emptyIfUnderscore(initialEditable.approver),
+                            emptyIfUnderscore(initialEditable.poAfe),
+                            emptyIfUnderscore(initialEditable.cc),
+                            emptyIfUnderscore(initialEditable.other),
+                          ]
                         : [
-                            isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover,
-                            isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe,
-                            isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc,
-                            isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther,
+                            emptyIfUnderscore(isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover),
+                            emptyIfUnderscore(isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe),
+                            emptyIfUnderscore(isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc),
+                            emptyIfUnderscore(isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther),
                           ];
                       merged = {
                         customerName: useOverride(ov.customer_name, initialEditable.customerName),

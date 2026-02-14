@@ -1185,9 +1185,9 @@ export const serviceTicketsService = {
     let headerOverridesToInsert: Record<string, string> | undefined;
     if (ho && (ho.approver != null || ho.po_afe != null || ho.cc != null || ho.other != null || ho.service_location != null)) {
       headerOverridesToInsert = {
-        approver: (ho.approver ?? '').trim() || '_',
-        po_afe: (ho.po_afe ?? '').trim() || '_',
-        cc: (ho.cc ?? '').trim() || '_',
+        approver: (ho.approver ?? '').trim(),
+        po_afe: (ho.po_afe ?? '').trim(),
+        cc: (ho.cc ?? '').trim(),
         ...(ho.other != null ? { other: String(ho.other ?? '').trim() } : {}),
         ...(ho.service_location != null ? { service_location: String(ho.service_location ?? '').trim() } : {}),
         _grouping_key: targetBillingKey,
@@ -1196,9 +1196,9 @@ export const serviceTicketsService = {
     } else if (targetBillingKey !== '_::_::_') {
       const [approver, poAfe, cc] = targetBillingKey.split('::');
       headerOverridesToInsert = {
-        approver: approver || '_',
-        po_afe: poAfe || '_',
-        cc: cc || '_',
+        approver: (approver && approver !== '_') ? approver : '',
+        po_afe: (poAfe && poAfe !== '_') ? poAfe : '',
+        cc: (cc && cc !== '_') ? cc : '',
         _grouping_key: targetBillingKey,
         _billing_key: targetBillingKey,
       };

@@ -561,6 +561,9 @@ export interface HeaderOverrides {
   rate_field_ot?: number;
 }
 
+/** Treat '_' as empty - legacy placeholder when project default was empty */
+const emptyIfUnderscore = (v: string | undefined) => (v === '_' ? '' : (v ?? ''));
+
 /** Apply header_overrides to a ticket for PDF export (user edits take precedence).
  * When header_overrides is null, applies fallbacks from ticket.location and entry-level po_afe.
  * For approved tickets, frozen rates are applied when present in header_overrides.
@@ -575,13 +578,13 @@ export function applyHeaderOverridesToTicket(
 
   // Use direct approver/po_afe/cc from overrides - no combining, no parsing
   const approverVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
-    ? (ov.approver ?? '')
+    ? emptyIfUnderscore(ov.approver)
     : undefined;
   const poAfeVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
-    ? (ov.po_afe ?? '')
+    ? emptyIfUnderscore(ov.po_afe)
     : undefined;
   const ccVal = (ov?.approver != null || ov?.po_afe != null || ov?.cc != null)
-    ? (ov.cc ?? '')
+    ? emptyIfUnderscore(ov.cc)
     : undefined;
   // Legacy: approver_po_afe is a single combined string from old tickets
   const legacyApproverName = (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '')
@@ -624,11 +627,11 @@ export function applyHeaderOverridesToTicket(
     projectApprover: approverVal ?? ticket.projectApprover,
     projectPoAfe: poAfeVal ?? ticket.projectPoAfe,
     projectCc: ccVal ?? ticket.projectCc,
-    projectOther: ov?.other ?? ticket.projectOther,
+    projectOther: (ov?.other != null && ov.other !== '_' && String(ov.other).trim() !== '') ? String(ov.other).trim() : ticket.projectOther,
     entryApprover: approverVal ?? ticket.entryApprover,
     entryPoAfe: poAfeVal ?? ticket.entryPoAfe,
     entryCc: ccVal ?? ticket.entryCc,
-    entryOther: ov?.other ?? ticket.entryOther,
+    entryOther: (ov?.other != null && ov.other !== '_' && String(ov.other).trim() !== '') ? String(ov.other).trim() : ticket.entryOther,
     rates,
   };
 }
@@ -640,7 +643,7 @@ export function getApproverPoAfeCcFromTicket(
 ): { approver: string; poAfe: string; cc: string } {
   const ov = headerOverrides;
   if (ov?.approver != null || ov?.po_afe != null || ov?.cc != null) {
-    return { approver: ov.approver ?? '', poAfe: ov.po_afe ?? '', cc: ov.cc ?? '' };
+    return { approver: emptyIfUnderscore(ov.approver), poAfe: emptyIfUnderscore(ov.po_afe), cc: emptyIfUnderscore(ov.cc) };
   }
   if (ov?.approver_po_afe != null && String(ov.approver_po_afe).trim() !== '') {
     return { approver: ov.approver_po_afe, poAfe: '', cc: '' };
