@@ -1712,12 +1712,16 @@ export default function ServiceTickets() {
     };
     const matches = existingTickets?.filter(et => baseFilter(et)) || [];
     // Fallback: if no location-filtered match, try without location (for legacy records)
-    // BUT only match draft/rejected records - don't let a ticket with different location match an approved record
+    // BUT only match draft/rejected/user-submitted records - don't let an admin-approved record match
     const found = matches.find(et => !(et as any).is_discarded) || matches[0] || (() => {
       const fallbackFilter = (et: NonNullable<typeof existingTickets>[number]) => {
-        // Only fallback to draft/rejected records - approved records with different locations should not match
+        // Allow draft, rejected, or user-submitted (approved but no ticket_number and no admin approval)
+        // Don't match admin-approved records with different locations
         const ws = (et.workflow_status || 'draft') as string;
-        const isLocked = !!et.ticket_number || (ws !== 'draft' && ws !== 'rejected');
+        const hasTicketNumber = !!et.ticket_number;
+        const isAdminApproved = !!et.approved_by_admin_id;
+        // Locked = has ticket number OR admin has approved it
+        const isLocked = hasTicketNumber || isAdminApproved;
         if (isLocked) return false;
         return et.date === ticket.date &&
           et.user_id === ticket.userId &&
