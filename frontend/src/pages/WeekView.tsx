@@ -2004,8 +2004,7 @@ export default function WeekView() {
             </div>
           </div>
 
-          {/* Days columns - shifted left so Monday is covered by the time column */}
-          <div style={{ display: 'flex', flex: 1, minWidth: 0, marginLeft: -80 }}>
+          {/* Days columns */}
           {weekDays.map((day, dayIndex) => {
             // Format date in local timezone (YYYY-MM-DD)
             const year = day.date.getFullYear();
@@ -2027,7 +2026,7 @@ export default function WeekView() {
                   overflow: 'visible'
                 }}
               >
-                {/* Day header - compact layout (behind -+ area when overlapping) */}
+                {/* Day header - compact layout (behind left time column when overlapping, like time entries) */}
                 <div style={{
                   height: '50px',
                   borderBottom: '1px solid var(--border-color)',
@@ -2040,7 +2039,7 @@ export default function WeekView() {
                   gap: '2px',
                   position: 'sticky',
                   top: 0,
-                  zIndex: 30,
+                  zIndex: 10,
                   transform: headerVisible ? 'translateY(0)' : 'translateY(-50px)',
                   transition: 'transform 0.2s ease-in-out',
                 }}>
@@ -2466,7 +2465,6 @@ export default function WeekView() {
               </div>
             );
           })}
-          </div>
         </div>
       </div>
       )}
