@@ -1462,7 +1462,7 @@ export default function ServiceTickets() {
    * Find a matching existing ticket record for a computed ticket.
    * Match by _matchedRecordId first (set during ticket build), then by ticket.id (standalone = record id), then by date+user+customer+project.
    */
-  const findMatchingTicketRecord = (ticket: { id?: string; _matchedRecordId?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string }) => {
+  const findMatchingTicketRecord = (ticket: { id?: string; _matchedRecordId?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string; entryLocation?: string }) => {
     if ((ticket as { _matchedRecordId?: string })._matchedRecordId && existingTickets) {
       const byMatched = existingTickets.find(et => et.id === (ticket as { _matchedRecordId?: string })._matchedRecordId);
       if (byMatched && !(byMatched as any).is_discarded) return byMatched;
@@ -1471,13 +1471,27 @@ export default function ServiceTickets() {
       const byId = existingTickets.find(et => et.id === ticket.id);
       if (byId) return (existingTickets.find(et => et.id === ticket.id && !(et as any).is_discarded) || byId) as typeof byId;
     }
-    const baseFilter = (et: NonNullable<typeof existingTickets>[number]) =>
-      et.date === ticket.date &&
-      et.user_id === ticket.userId &&
-      (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
-      ((et.project_id || '') === (ticket.projectId || '') || !et.project_id);
+    const ticketLoc = (ticket.location ?? ticket.entryLocation ?? '').trim().toLowerCase();
+    const baseFilter = (et: NonNullable<typeof existingTickets>[number]) => {
+      const recLoc = ((et as any).location ?? '').trim().toLowerCase();
+      return et.date === ticket.date &&
+        et.user_id === ticket.userId &&
+        (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+        ((et.project_id || '') === (ticket.projectId || '') || !et.project_id) &&
+        // Location must match (both empty = match, both have value = must be equal)
+        ((!recLoc && !ticketLoc) || recLoc === ticketLoc);
+    };
     const matches = existingTickets?.filter(et => baseFilter(et)) || [];
-    const found = matches.find(et => !(et as any).is_discarded) || matches[0];
+    // Fallback: if no location-filtered match, try without location (for legacy records)
+    const found = matches.find(et => !(et as any).is_discarded) || matches[0] || (() => {
+      const fallbackFilter = (et: NonNullable<typeof existingTickets>[number]) =>
+        et.date === ticket.date &&
+        et.user_id === ticket.userId &&
+        (et.customer_id === ticket.customerId || (!et.customer_id && ticket.customerId === 'unassigned')) &&
+        ((et.project_id || '') === (ticket.projectId || '') || !et.project_id);
+      const fallbackMatches = existingTickets?.filter(et => fallbackFilter(et)) || [];
+      return fallbackMatches.find(et => !(et as any).is_discarded) || fallbackMatches[0];
+    })();
     return found || null;
   };
 

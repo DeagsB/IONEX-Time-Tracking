@@ -1154,30 +1154,63 @@ export const serviceTicketsService = {
     const ticketLocation = params.location || '';
     const targetBillingKey = params.billingKey ?? '_::_::_';
     
-    // Find existing tickets matching date+user+customer+project (location is editable, not a grouping dimension)
-    let query = supabase
-      .from(tableName)
-      .select('id, header_overrides, location')
-      .eq('date', params.date)
-      .eq('user_id', params.userId)
-      .eq('customer_id', params.customerId);
-    if (params.projectId) {
-      query = query.eq('project_id', params.projectId);
+    // Find existing tickets matching date+user+customer+project+location (location is a grouping dimension)
+    const getRecordGroupingKey = (et: { header_overrides?: unknown }): string => {
+      const ov = (et.header_overrides as Record<string, string> | null) ?? {};
+      return (ov._grouping_key as string) ?? buildGroupingKey(ov.po_afe ?? '');
+    };
+    
+    // Build query with optional location and project filters
+    const buildQuery = (includeLocation: boolean) => {
+      let q = supabase
+        .from(tableName)
+        .select('id, header_overrides, location')
+        .eq('date', params.date)
+        .eq('user_id', params.userId)
+        .eq('customer_id', params.customerId);
+      if (params.projectId) {
+        q = q.eq('project_id', params.projectId);
+      }
+      if (includeLocation && ticketLocation) {
+        q = q.eq('location', ticketLocation);
+      }
+      return q;
+    };
+    
+    // First: try with location filter for exact match
+    if (ticketLocation) {
+      const { data: locCandidates, error: locError } = await buildQuery(true);
+      if (!locError && locCandidates?.length) {
+        const match = locCandidates.find(et => getRecordGroupingKey(et) === targetBillingKey);
+        if (match) return { id: match.id };
+        // If billing key didn't match but we have candidates with right location, use first one
+        if (locCandidates.length === 1) return { id: locCandidates[0].id };
+      }
     }
-    const { data: candidates, error: findError } = await query;
+    
+    // Fallback: search without location filter (for legacy records with empty location)
+    const { data: candidates, error: findError } = await buildQuery(false);
     
     if (findError) {
       console.error('Error finding ticket:', findError);
       throw findError;
     }
     
-    const getRecordGroupingKey = (et: { header_overrides?: unknown }): string => {
-      const ov = (et.header_overrides as Record<string, string> | null) ?? {};
-      return (ov._grouping_key as string) ?? buildGroupingKey(ov.po_afe ?? '');
-    };
     const existing = candidates?.find(et => getRecordGroupingKey(et) === targetBillingKey);
     if (existing) {
+      // Update the record's location to match the ticket if it was empty
+      if (ticketLocation && !(existing as any).location) {
+        await supabase.from(tableName).update({ location: ticketLocation }).eq('id', existing.id);
+      }
       return { id: existing.id };
+    }
+    // Last resort: any matching candidate without a location (legacy)
+    const legacyMatch = candidates?.find(et => !(et as any).location);
+    if (legacyMatch) {
+      if (ticketLocation) {
+        await supabase.from(tableName).update({ location: ticketLocation }).eq('id', legacyMatch.id);
+      }
+      return { id: legacyMatch.id };
     }
     
     // Look up user's initials for proper tracking
@@ -1248,7 +1281,7 @@ export const serviceTicketsService = {
   /**
    * When a time entry is saved, sync approver/po_afe/cc to the service ticket's header_overrides.
    * Only updates draft or rejected tickets - submitted/approved tickets are not modified.
-   * Matches by project > billing key (location is editable, not a grouping dimension).
+   * Matches by project > location > billing key.
    */
   async syncTicketHeaderFromTimeEntry(params: {
     date: string;
@@ -1273,6 +1306,9 @@ export const serviceTicketsService = {
       .eq('customer_id', params.customerId);
     if (params.projectId) {
       query = query.eq('project_id', params.projectId);
+    }
+    if (params.location) {
+      query = query.eq('location', params.location);
     }
     const { data: candidates, error: findError } = await query;
     if (findError || !candidates?.length) return;
