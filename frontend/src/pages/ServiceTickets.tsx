@@ -1485,13 +1485,22 @@ export default function ServiceTickets() {
       }
     }
     
-    // Add orphaned draft records (draft records with manual edits but no matching time entries)
+    // Add orphaned draft records (draft records with saved data but no matching time entries)
+    // This preserves tickets when time entries are deleted but the ticket has saved edits/hours
     const orphanedDraftRecords = draftRecords.filter(rec => {
       if (usedDraftRecordIds.has(rec.id)) return false;
-      // Include if has manual edits (per-entry overrides or legacy is_edited flag)
+      // Include if has any saved data worth preserving:
+      // 1. Per-entry overrides (manual rows added via new system)
       const hasOverrides = (rec as any).edited_entry_overrides != null && Object.keys((rec as any).edited_entry_overrides as object).length > 0;
+      // 2. Legacy is_edited flag
       const isLegacyEdited = rec.is_edited === true;
-      return hasOverrides || isLegacyEdited;
+      // 3. Has saved edited_hours (from previous saves)
+      const hasEditedHours = rec.edited_hours != null && Object.keys(rec.edited_hours as object).length > 0;
+      // 4. Has total_hours recorded (ticket was saved with hours at some point)
+      const hasTotalHours = (rec as { total_hours?: number }).total_hours != null && Number((rec as { total_hours?: number }).total_hours) > 0;
+      // 5. Is the currently-selected ticket (preserve while user is editing, even if no saved data yet)
+      const isCurrentlySelected = currentTicketRecordId != null && rec.id === currentTicketRecordId;
+      return hasOverrides || isLegacyEdited || hasEditedHours || hasTotalHours || isCurrentlySelected;
     });
     for (const rec of orphanedDraftRecords) {
       const orphanTicket = buildLockedTicketFromRecord(rec);
@@ -1502,7 +1511,7 @@ export default function ServiceTickets() {
     const lockedTickets = lockedRecords.map(buildLockedTicketFromRecord);
 
     return [...draftTickets, ...lockedTickets];
-  }, [billableEntries, employees, existingTickets, customers, allProjects]);
+  }, [billableEntries, employees, existingTickets, customers, allProjects, currentTicketRecordId]);
 
   // Live hours computed from serviceRows when a ticket is selected
   const selectedTicketId = selectedTicket?.id;
