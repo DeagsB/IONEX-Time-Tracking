@@ -3703,7 +3703,8 @@ export default function ServiceTickets() {
                     queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                   } catch (e) {
                     console.error(rejectModalMode === 'unapprove' ? 'Unapprove failed:' : 'Rejection failed:', e);
-                    alert(`Failed to ${rejectModalMode === 'unapprove' ? 'unapprove' : 'reject'} ticket: ${e instanceof Error ? e.message : String(e)}`);
+                    const errMsg = e instanceof Error ? e.message : (e && typeof (e as any).message === 'string' ? (e as any).message : String(e));
+                    alert(`Failed to ${rejectModalMode === 'unapprove' ? 'unapprove' : 'reject'} ticket: ${errMsg}`);
                   } finally {
                     setIsApproving(false);
                   }
