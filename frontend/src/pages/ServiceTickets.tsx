@@ -3046,8 +3046,10 @@ export default function ServiceTickets() {
                     
                     const hasPerEntryOverrides = Object.keys(relevantOverrides).length > 0;
                     
-                    if (hasPerEntryOverrides) {
-                      // Build rows from live entries + per-entry overrides
+                    // For approved tickets (with ticket_number), always use saved snapshot data
+                    // instead of merging with live entries - entries may have been deleted after approval
+                    if (hasPerEntryOverrides && !hasApprovedTicketNumber) {
+                      // Build rows from live entries + per-entry overrides (draft tickets only)
                       const mergedRows = buildRowsWithOverrides(ticket.entries, relevantOverrides);
                       setServiceRows(mergedRows);
                       initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
