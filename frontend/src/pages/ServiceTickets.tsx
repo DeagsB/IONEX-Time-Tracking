@@ -4362,8 +4362,8 @@ export default function ServiceTickets() {
                           <span style={{ color: '#ff9800' }}>FO = Field Overtime</span>
                         </div>
                         
-                        {/* EDITED notice - below legend. Only show when entries actually differ from time entries */}
-                        {isTicketEdited && Object.keys(editedEntryOverrides).length > 0 && (
+                        {/* EDITED notice - below legend. Only show when entries actually differ from time entries and ticket is editable (not locked) */}
+                        {!isLockedForEditing && isTicketEdited && Object.keys(editedEntryOverrides).length > 0 && (
                           <div style={{ marginTop: '12px' }}>
                             <span style={{ 
                               fontSize: '11px', 

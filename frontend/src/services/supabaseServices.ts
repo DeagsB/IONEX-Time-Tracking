@@ -1109,9 +1109,13 @@ export const serviceTicketsService = {
       if (approvalHours && approvalHours.totalHours > 0) {
         updateData.total_hours = approvalHours.totalHours;
         updateData.total_amount = approvalHours.totalAmount;
-        updateData.is_edited = true;
+        // Don't set is_edited=true - that's for manual edits only.
+        // The presence of edited_hours/edited_descriptions is enough to load saved data.
+        updateData.is_edited = false;
         updateData.edited_hours = approvalHours.editedHours;
         updateData.edited_descriptions = approvalHours.editedDescriptions;
+        // Clear per-entry overrides - not needed once approved and can cause "manually edited" label
+        updateData.edited_entry_overrides = null;
       }
     }
 
