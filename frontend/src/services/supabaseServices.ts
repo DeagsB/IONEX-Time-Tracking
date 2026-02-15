@@ -1407,7 +1407,7 @@ export const serviceTicketsService = {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     let findQuery = supabase
       .from(tableName)
-      .select('id, header_overrides')
+      .select('id, header_overrides, ticket_number')
       .eq('date', date)
       .eq('user_id', userId)
       .eq('customer_id', customerId);
@@ -1426,6 +1426,10 @@ export const serviceTicketsService = {
     const toDelete = matching.length > 0 ? matching : tickets.filter(t => getRecordGroupingKey(t) === legacyKey);
 
     for (const ticket of toDelete) {
+      // Skip approved tickets (those with ticket_number) - they should persist even if time entries are deleted
+      if ((ticket as { ticket_number?: string }).ticket_number) {
+        continue;
+      }
       await serviceTicketExpensesService.deleteByTicketId(ticket.id);
       const { error: delError } = await supabase.from(tableName).delete().eq('id', ticket.id);
       if (delError) console.error('Error deleting service ticket:', delError);
