@@ -3683,7 +3683,6 @@ export default function ServiceTickets() {
                         ticket_number: null,
                         sequence_number: null,
                         year: null,
-                        employee_initials: null,
                         workflow_status: 'rejected',
                         rejected_at: new Date().toISOString(),
                         rejection_notes: rejectNote.trim() || null,
