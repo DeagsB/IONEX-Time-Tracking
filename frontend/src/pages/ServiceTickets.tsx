@@ -3093,6 +3093,12 @@ export default function ServiceTickets() {
                         if (loadedRows.length > 0) {
                           setServiceRows(loadedRows);
                           initialServiceRowsRef.current = loadedRows.map(r => ({ ...r }));
+                          // If ticket is NOT marked as edited (is_edited=false), the legacy data is just a
+                          // snapshot from a previous save, not actual user edits. Update the baseline so
+                          // saving header-only changes doesn't incorrectly mark entries as "manually edited".
+                          if (!ticketRecord?.is_edited) {
+                            originalTimeEntryRowsRef.current = loadedRows.map(r => ({ ...r }));
+                          }
                           setIsTicketEdited(!!ticketRecord?.is_edited);
                           setEditedDescriptions(loadedDescriptions);
                           setEditedHours(
@@ -5146,12 +5152,14 @@ export default function ServiceTickets() {
                   >
                     Close
                   </button>
-                  {/* Trash button - only when NOT in trash (Restore moves to right when in trash). Non-admin: hide on Submitted/Approved tabs. */}
+                  {/* Trash button - only when NOT in trash (Restore moves to right when in trash). Non-admin: hide when ticket is submitted or approved (any tab, e.g. All). */}
                   {selectedTicket && (() => {
                     const existingRecord = findMatchingTicketRecord(selectedTicket);
                     const isCurrentlyDiscarded = !!(existingRecord as any)?.is_discarded;
+                    const ws = (existingRecord as any)?.workflow_status as string | undefined;
+                    const isSubmittedOrApproved = ws === 'submitted' || ws === 'approved';
                     if (isCurrentlyDiscarded) return null;
-                    if (!isAdmin && (activeTab === 'submitted' || activeTab === 'approved')) return null;
+                    if (!isAdmin && isSubmittedOrApproved) return null;
                     return (
                       <button
                         onClick={async () => {
