@@ -1899,11 +1899,8 @@ export default function ServiceTickets() {
       if (aRestored && !bRestored) return -1;
       if (!aRestored && bRestored) return 1;
 
+      // Draft tab: rejected tickets always at top (after restored)
       if (activeTab === 'draft' && !showDiscarded) {
-        const aNew = !aRec && (a.entries?.length ?? 0) > 0;
-        const bNew = !bRec && (b.entries?.length ?? 0) > 0;
-        if (aNew && !bNew) return -1;
-        if (!aNew && bNew) return 1;
         const aRej = aRec?.workflow_status === 'rejected';
         const bRej = bRec?.workflow_status === 'rejected';
         if (aRej && !bRej) return -1;
