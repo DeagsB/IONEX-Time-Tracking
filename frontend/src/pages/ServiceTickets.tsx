@@ -5146,11 +5146,12 @@ export default function ServiceTickets() {
                   >
                     Close
                   </button>
-                  {/* Trash button - only when NOT in trash (Restore moves to right when in trash) */}
+                  {/* Trash button - only when NOT in trash (Restore moves to right when in trash). Non-admin: hide on Submitted/Approved tabs. */}
                   {selectedTicket && (() => {
                     const existingRecord = findMatchingTicketRecord(selectedTicket);
                     const isCurrentlyDiscarded = !!(existingRecord as any)?.is_discarded;
                     if (isCurrentlyDiscarded) return null;
+                    if (!isAdmin && (activeTab === 'submitted' || activeTab === 'approved')) return null;
                     return (
                       <button
                         onClick={async () => {
