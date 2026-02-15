@@ -3688,6 +3688,14 @@ export default function ServiceTickets() {
                         rejection_notes: rejectNote.trim() || null,
                         approved_by_admin_id: null,
                         restored_at: null,
+                        // Clear all edited state so ticket reopens fresh from time entries
+                        // (avoids "manually edited" label when user resubmits)
+                        edited_entry_overrides: null,
+                        edited_hours: null,
+                        edited_descriptions: null,
+                        is_edited: false,
+                        total_hours: null,
+                        total_amount: null,
                       }).eq('id', recordId);
                       if (error) throw error;
                     } else {
