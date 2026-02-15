@@ -1566,11 +1566,16 @@ export default function ServiceTickets() {
           // Build hours from base entries + overrides (same logic as buildRowsWithOverrides)
           const baseEntryHours = { 'Shop Time': 0, 'Travel Time': 0, 'Field Time': 0, 'Shop Overtime': 0, 'Field Overtime': 0 };
           const overrideHours = { st: 0, tt: 0, ft: 0, so: 0, fo: 0 };
-          const overrideIds = new Set(Object.keys(savedOverrides));
+          
+          // Only include overrides for entries that belong to THIS ticket, plus manual rows (new-*)
+          const btEntryIds = new Set(bt.entries.map(e => e.id));
+          const relevantOverrideIds = new Set(
+            Object.keys(savedOverrides).filter(id => btEntryIds.has(id) || id.startsWith('new-'))
+          );
           
           // Sum hours from base entries that are NOT overridden
           bt.entries.forEach(entry => {
-            if (!overrideIds.has(entry.id)) {
+            if (!relevantOverrideIds.has(entry.id)) {
               const rateType = entry.rate_type as keyof typeof baseEntryHours;
               if (rateType in baseEntryHours) {
                 baseEntryHours[rateType] += entry.hours || 0;
@@ -1578,8 +1583,9 @@ export default function ServiceTickets() {
             }
           });
           
-          // Sum hours from overrides (including manual rows)
-          Object.values(savedOverrides).forEach(ov => {
+          // Sum hours from relevant overrides only (entries in this ticket + manual rows)
+          Object.entries(savedOverrides).forEach(([id, ov]) => {
+            if (!relevantOverrideIds.has(id)) return; // Skip overrides for entries in other tickets
             overrideHours.st += ov.st || 0;
             overrideHours.tt += ov.tt || 0;
             overrideHours.ft += ov.ft || 0;
@@ -3027,14 +3033,25 @@ export default function ServiceTickets() {
                     
                     // Per-entry overrides: merge live time entries with saved edits
                     const savedOverrides = (ticketRecord?.edited_entry_overrides as Record<string, EntryOverride> | null) ?? {};
-                    const hasPerEntryOverrides = Object.keys(savedOverrides).length > 0;
+                    
+                    // Filter overrides to only include entries in THIS ticket, plus manual rows (new-*)
+                    // This prevents stale overrides from entries that moved to a different ticket
+                    const ticketEntryIds = new Set(ticket.entries.map(e => e.id));
+                    const relevantOverrides: Record<string, EntryOverride> = {};
+                    Object.entries(savedOverrides).forEach(([id, ov]) => {
+                      if (ticketEntryIds.has(id) || id.startsWith('new-')) {
+                        relevantOverrides[id] = ov;
+                      }
+                    });
+                    
+                    const hasPerEntryOverrides = Object.keys(relevantOverrides).length > 0;
                     
                     if (hasPerEntryOverrides) {
                       // Build rows from live entries + per-entry overrides
-                      const mergedRows = buildRowsWithOverrides(ticket.entries, savedOverrides);
+                      const mergedRows = buildRowsWithOverrides(ticket.entries, relevantOverrides);
                       setServiceRows(mergedRows);
                       initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
-                      setEditedEntryOverrides(savedOverrides);
+                      setEditedEntryOverrides(relevantOverrides);
                       setIsTicketEdited(true);
                       // Update legacy format for backward compat
                       const legacy = serviceRowsToLegacyFormat(mergedRows);
