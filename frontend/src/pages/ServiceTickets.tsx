@@ -612,10 +612,11 @@ export default function ServiceTickets() {
       }
       return row;
     });
-    // Append manually added rows (new-xxx) from overrides
+    // Append only manually added rows (id starts with "new-") from overrides.
+    // Stale overrides with IDs that don't match current entries are ignored to prevent duplicates.
     const existingIds = new Set(baseRows.map(r => r.id));
     Object.entries(overrides).forEach(([id, ov]) => {
-      if (!existingIds.has(id)) {
+      if (!existingIds.has(id) && id.startsWith('new-')) {
         mergedRows.push({ id, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo });
       }
     });
@@ -3421,25 +3422,26 @@ export default function ServiceTickets() {
                             </button>
                           );
                         } else if (isUserSubmitted) {
-                          // User has submitted but no admin approval yet
+                          // User has submitted but no admin approval yet - same look as bulk Approve
                           return (
                             <button
-                              className="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleAssignTicketNumber(ticket);
                               }}
                               style={{
-                                padding: '6px 16px',
-                                fontSize: '13px',
-                                backgroundColor: '#3b82f6',
+                                padding: '8px 16px',
+                                backgroundColor: '#10b981',
                                 color: 'white',
                                 border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                fontWeight: '500',
                                 cursor: 'pointer',
                               }}
                               title="User submitted - click to assign ticket ID"
                             >
-                              ✓ User Approved
+                              ✓ Approve
                             </button>
                           );
                         } else {
@@ -3515,6 +3517,10 @@ export default function ServiceTickets() {
                                     edited_hours: legacy.hours,
                                     total_hours: totalEditedHours,
                                     header_overrides: headerOverrides,
+                                    // Clear per-entry overrides when submitting to prevent stale IDs from
+                                    // causing duplicate rows if ticket is rejected and reopened
+                                    edited_entry_overrides: null,
+                                    is_edited: false,
                                   }).eq('id', ticketRecord.id);
                                 }
                                 await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
