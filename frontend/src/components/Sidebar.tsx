@@ -304,6 +304,15 @@ export default function Sidebar() {
         )}
       </div>
 
+      {/* Maintenance - admins only, above sign out */}
+      {isAdmin && (
+        <div style={{ padding: '0 15px 10px', flexShrink: 0 }}>
+          <SidebarLink to="/maintenance" active={isActive('/maintenance')}>
+            🔧 Maintenance
+          </SidebarLink>
+        </div>
+      )}
+
       {/* Sign Out + theme toggle - single compact footer row */}
       <div style={{
         padding: '10px 15px 12px',
