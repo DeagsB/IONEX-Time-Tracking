@@ -1,14 +1,12 @@
 ---
-description: Always commit and push after completing work
+description: Do not commit or push; user handles Git and saves tokens
 alwaysApply: true
 ---
 
-# Commit and Push After Working
+# Do Not Commit or Push
 
-After completing code changes or finishing a task:
+**Do not run `git add`, `git commit`, or `git push`** unless the user explicitly asks you to.
 
-1. **Stage all changes**: Run `git add -A` (or stage the relevant files).
-2. **Commit**: Run `git commit` with a clear, concise message that describes what was done.
-3. **Push**: Run `git push` to update the remote.
-
-Use PowerShell-compatible command chaining (e.g. `;` not `&&`). If the user has uncommitted changes from previous work, include those in the commit when appropriate. Only commit when there are actual changes to commit.
+- The user will commit and push to GitHub themselves.
+- This reduces token usage from unnecessary Git commands.
+- Only run Git commands when the user specifically requests it (e.g. "commit this", "push for me").

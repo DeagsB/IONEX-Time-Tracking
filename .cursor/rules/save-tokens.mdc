@@ -1,0 +1,13 @@
+---
+description: Avoid extra runs (build, test, push) unless asked to save tokens
+alwaysApply: true
+---
+
+# Save Tokens – No Extra Commands
+
+To reduce token usage:
+
+1. **Do not run `npm run build`, `tsc`, or full test suites** unless the user explicitly asks (e.g. "run the build", "check it compiles").
+2. **Do not run `git add` / `git commit` / `git push`** — the user pushes to GitHub themselves (see commit-and-push rule).
+3. **Prefer targeted checks**: Use linters or read specific files when debugging instead of running full builds or tests by default.
+4. Only run terminal commands that are **necessary for the task** or **explicitly requested** by the user.

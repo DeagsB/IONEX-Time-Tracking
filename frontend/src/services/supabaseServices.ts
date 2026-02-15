@@ -1712,44 +1712,17 @@ export const serviceTicketsService = {
 
   /**
    * Permanently delete a service ticket from the database (admin only, when in trash).
-   * Deletes: expenses, ticket record, and the underlying time entries so the ticket doesn't reappear as "new".
+   * Deletes: expenses and ticket record. Time entries are preserved (user requested).
    */
   async deletePermanently(ticketId: string, isDemo: boolean = false): Promise<void> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-    const { data: ticket, error: fetchError } = await supabase
-      .from(tableName)
-      .select('id, date, user_id, customer_id')
-      .eq('id', ticketId)
-      .single();
 
-    if (fetchError || !ticket) {
-      throw fetchError || new Error('Ticket not found');
-    }
-
-    const { date, user_id, customer_id } = ticket;
-
+    // Delete associated expenses first
     await serviceTicketExpensesService.deleteByTicketId(ticketId);
 
+    // Delete the ticket record (time entries are intentionally preserved)
     const { error: delError } = await supabase.from(tableName).delete().eq('id', ticketId);
     if (delError) throw delError;
-
-    // Delete time entries that this ticket was built from so it doesn't reappear as "new"
-    // Time entries use project_id; get projects for this customer first
-    if (date && user_id && customer_id) {
-      const { data: projs } = await supabase.from('projects').select('id').eq('customer_id', customer_id);
-      const projectIds = (projs ?? []).map((p: { id: string }) => p.id);
-      if (projectIds.length > 0) {
-        const { error: entriesError } = await supabase
-          .from('time_entries')
-          .delete()
-          .eq('date', date)
-          .eq('user_id', user_id)
-          .in('project_id', projectIds)
-          .eq('billable', true)
-          .eq('is_demo', isDemo);
-        if (entriesError) console.warn('Failed to delete time entries for ticket:', entriesError);
-      }
-    }
   },
 };
 

@@ -2367,7 +2367,7 @@ export default function ServiceTickets() {
               Permanently delete {selectedTicketIds.size} ticket{selectedTicketIds.size > 1 ? 's' : ''}?
             </p>
             <p style={{ margin: '0 0 20px', color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.5 }}>
-              This will remove the tickets and their time entries from the database. This cannot be undone.
+              The tickets will be removed from the database. Time entries are preserved. This cannot be undone.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
@@ -5236,7 +5236,7 @@ export default function ServiceTickets() {
                           <button
                             onClick={async () => {
                               if (!currentTicketRecordId) return;
-                              if (!confirm('Permanently delete this service ticket? This will remove the ticket and its time entries from the database. This cannot be undone.')) return;
+                              if (!confirm('Permanently delete this service ticket? The ticket will be removed from the database. Time entries are preserved. This cannot be undone.')) return;
                               setIsDiscarding(true);
                               try {
                                 await serviceTicketsService.deletePermanently(currentTicketRecordId, isDemoMode);
