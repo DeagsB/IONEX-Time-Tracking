@@ -1,6 +1,20 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const Maintenance: React.FC = () => {
+  const { isAdmin, maintenanceMode, setMaintenanceMode } = useAuth();
+  const navigate = useNavigate();
+
+  const handleTurnOff = () => {
+    setMaintenanceMode(false);
+    navigate('/calendar');
+  };
+
+  const handleTurnOn = () => {
+    setMaintenanceMode(true);
+  };
+
   return (
     <div
       style={{
@@ -60,6 +74,57 @@ const Maintenance: React.FC = () => {
             If you have urgent questions, please contact your administrator.
           </p>
         </div>
+
+        {isAdmin && (
+          <div
+            style={{
+              marginTop: '28px',
+              paddingTop: '24px',
+              borderTop: '1px solid var(--border-color)',
+            }}
+          >
+            <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+              Admin: Maintenance mode is currently <strong>{maintenanceMode ? 'ON' : 'OFF'}</strong>
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              {maintenanceMode ? (
+                <button
+                  type="button"
+                  onClick={handleTurnOff}
+                  style={{
+                    padding: '10px 20px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: 'white',
+                    backgroundColor: '#10b981',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Turn maintenance mode OFF
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleTurnOn}
+                  style={{
+                    padding: '10px 20px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: 'white',
+                    backgroundColor: '#f59e0b',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Turn maintenance mode ON
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
