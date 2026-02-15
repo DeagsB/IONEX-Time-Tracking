@@ -2633,6 +2633,43 @@ export default function ServiceTickets() {
                     Restore Selected
                   </button>
                 </>
+              ) : activeTab === 'submitted' ? (
+                <>
+                  <button
+                    onClick={handleBulkAssignTicketNumbers}
+                    disabled={isBulkExporting}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                      opacity: isBulkExporting ? 0.6 : 1,
+                    }}
+                  >
+                    ✓ Approve
+                  </button>
+                  <button
+                    onClick={handleBulkMoveToTrash}
+                    disabled={isBulkExporting}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#6b7280',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      cursor: isBulkExporting ? 'not-allowed' : 'pointer',
+                      opacity: isBulkExporting ? 0.6 : 1,
+                    }}
+                  >
+                    🗑️ Move to Trash
+                  </button>
+                </>
               ) : (
                 <>
                   <button
