@@ -3595,6 +3595,130 @@ export default function ServiceTickets() {
         </>
       )}
 
+      {/* Reject / Unapprove with notes modal (admin) - outside panel so it works from row click without opening ticket */}
+      {showRejectNoteModal && (ticketForRejectModal || selectedTicket) && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10001,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={() => { setShowRejectNoteModal(false); setTicketForRejectModal(null); }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '8px',
+              padding: '24px',
+              maxWidth: '420px',
+              width: '100%',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p style={{ margin: '0 0 12px', color: 'var(--text-primary)', fontSize: '15px', fontWeight: '600' }}>
+              {rejectModalMode === 'unapprove' ? 'Unapprove this ticket?' : 'Reject this ticket?'}
+            </p>
+            <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+              It will move back to Drafts for the user to revise. Add a reason (optional):
+            </p>
+            <textarea
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value)}
+              placeholder="Reason for rejection..."
+              rows={4}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                fontSize: '14px',
+                resize: 'vertical',
+                marginBottom: '16px',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                className="button button-secondary"
+                onClick={() => { setShowRejectNoteModal(false); setTicketForRejectModal(null); }}
+                style={{ padding: '8px 16px' }}
+              >
+                Cancel
+              </button>
+              <button
+                className="button"
+                disabled={isApproving}
+                onClick={async () => {
+                  const ticket = ticketForRejectModal ?? selectedTicket!;
+                  setIsApproving(true);
+                  try {
+                    // For unapprove from row: locked tickets use record id as ticket.id; prefer it so we update the correct record
+                    let recordId = rejectModalMode === 'unapprove' && ticket.id
+                      ? ticket.id
+                      : (currentTicketRecordId
+                          || (ticket as { _matchedRecordId?: string })?._matchedRecordId
+                          || findMatchingTicketRecord(ticket)?.id);
+                    if (!recordId) {
+                      const billingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
+                      const record = await serviceTicketsService.getOrCreateTicket({
+                        date: ticket.date,
+                        userId: ticket.userId,
+                        customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+                        projectId: ticket.projectId,
+                        location: ticket.location || '',
+                        billingKey,
+                      }, isDemoMode);
+                      recordId = record.id;
+                    }
+                    const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                    if (rejectModalMode === 'unapprove') {
+                      const { error } = await supabase.from(tableName).update({
+                        ticket_number: null,
+                        sequence_number: null,
+                        year: null,
+                        employee_initials: null,
+                        workflow_status: 'rejected',
+                        rejected_at: new Date().toISOString(),
+                        rejection_notes: rejectNote.trim() || null,
+                        approved_by_admin_id: null,
+                        restored_at: null,
+                      }).eq('id', recordId);
+                      if (error) throw error;
+                    } else {
+                      await serviceTicketsService.updateWorkflowStatus(recordId, 'rejected', isDemoMode, rejectNote.trim() || null);
+                    }
+                    setShowRejectNoteModal(false);
+                    setTicketForRejectModal(null);
+                    closePanel();
+                    await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+                    await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+                    queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                    queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+                  } catch (e) {
+                    console.error(rejectModalMode === 'unapprove' ? 'Unapprove failed:' : 'Rejection failed:', e);
+                    alert(`Failed to ${rejectModalMode === 'unapprove' ? 'unapprove' : 'reject'} ticket: ${e instanceof Error ? e.message : String(e)}`);
+                  } finally {
+                    setIsApproving(false);
+                  }
+                }}
+                style={{ padding: '8px 16px', backgroundColor: '#ef5350', color: 'white', border: 'none' }}
+              >
+                {isApproving
+                  ? (rejectModalMode === 'unapprove' ? 'Unapproving...' : 'Rejecting...')
+                  : (rejectModalMode === 'unapprove' ? 'Unapprove' : 'Reject')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Ticket Preview Modal */}
       {selectedTicket && editableTicket && (
         <div
@@ -4902,125 +5026,6 @@ export default function ServiceTickets() {
                         style={{ padding: '8px 16px' }}
                       >
                         {isSavingTicket ? 'Saving...' : 'Save and Close'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Reject / Unapprove with notes modal (admin) */}
-              {showRejectNoteModal && (ticketForRejectModal || selectedTicket) && (
-                <div
-                  style={{
-                    position: 'fixed',
-                    inset: 0,
-                    zIndex: 10001,
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                  onClick={() => { setShowRejectNoteModal(false); setTicketForRejectModal(null); }}
-                >
-                  <div
-                    style={{
-                      backgroundColor: 'var(--bg-primary)',
-                      borderRadius: '8px',
-                      padding: '24px',
-                      maxWidth: '420px',
-                      width: '100%',
-                      boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <p style={{ margin: '0 0 12px', color: 'var(--text-primary)', fontSize: '15px', fontWeight: '600' }}>
-                      {rejectModalMode === 'unapprove' ? 'Unapprove this ticket?' : 'Reject this ticket?'}
-                    </p>
-                    <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                      It will move back to Drafts for the user to revise. Add a reason (optional):
-                    </p>
-                    <textarea
-                      value={rejectNote}
-                      onChange={(e) => setRejectNote(e.target.value)}
-                      placeholder="Reason for rejection..."
-                      rows={4}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border-color)',
-                        backgroundColor: 'var(--bg-secondary)',
-                        color: 'var(--text-primary)',
-                        fontSize: '14px',
-                        resize: 'vertical',
-                        marginBottom: '16px',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                      <button
-                        className="button button-secondary"
-                        onClick={() => { setShowRejectNoteModal(false); setTicketForRejectModal(null); }}
-                        style={{ padding: '8px 16px' }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        className="button"
-                        disabled={isApproving}
-                        onClick={async () => {
-                          const ticket = ticketForRejectModal ?? selectedTicket!;
-                          setIsApproving(true);
-                          try {
-                            let recordId = currentTicketRecordId
-                              || (ticket as { _matchedRecordId?: string })?._matchedRecordId
-                              || findMatchingTicketRecord(ticket)?.id;
-                            if (!recordId) {
-                              const billingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
-                              const record = await serviceTicketsService.getOrCreateTicket({
-                                date: ticket.date,
-                                userId: ticket.userId,
-                                customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
-                                projectId: ticket.projectId,
-                                location: ticket.location || '',
-                                billingKey,
-                              }, isDemoMode);
-                              recordId = record.id;
-                            }
-                            const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                            if (rejectModalMode === 'unapprove') {
-                              await supabase.from(tableName).update({
-                                ticket_number: null,
-                                sequence_number: null,
-                                year: null,
-                                employee_initials: null,
-                                workflow_status: 'rejected',
-                                rejected_at: new Date().toISOString(),
-                                rejection_notes: rejectNote.trim() || null,
-                                approved_by_admin_id: null,
-                              }).eq('id', recordId);
-                            } else {
-                              await serviceTicketsService.updateWorkflowStatus(recordId, 'rejected', isDemoMode, rejectNote.trim() || null);
-                            }
-                            setShowRejectNoteModal(false);
-                            setTicketForRejectModal(null);
-                            closePanel();
-                            await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                            await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
-                            queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
-                            queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
-                          } catch (e) {
-                            console.error(rejectModalMode === 'unapprove' ? 'Unapprove failed:' : 'Rejection failed:', e);
-                            alert(`Failed to ${rejectModalMode === 'unapprove' ? 'unapprove' : 'reject'} ticket: ${e instanceof Error ? e.message : String(e)}`);
-                          } finally {
-                            setIsApproving(false);
-                          }
-                        }}
-                        style={{ padding: '8px 16px', backgroundColor: '#ef5350', color: 'white', border: 'none' }}
-                      >
-                        {isApproving
-                          ? (rejectModalMode === 'unapprove' ? 'Unapproving...' : 'Rejecting...')
-                          : (rejectModalMode === 'unapprove' ? 'Unapprove' : 'Reject')}
                       </button>
                     </div>
                   </div>
