@@ -5405,6 +5405,10 @@ export default function ServiceTickets() {
                       <button
                         className="button button-primary"
                         onClick={async () => {
+                          if (hasPendingChanges) {
+                            const ok = await performSave();
+                            if (!ok) return;
+                          }
                           if (currentTicketRecordId && expenses.length === 0) await loadExpenses(currentTicketRecordId);
                           const hoursTotals = {
                             'Shop Time': serviceRows.reduce((sum, r) => sum + (r.st || 0), 0),
