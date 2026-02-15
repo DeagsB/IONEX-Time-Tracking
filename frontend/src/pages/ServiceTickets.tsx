@@ -2605,7 +2605,7 @@ export default function ServiceTickets() {
                     Restore Selected
                   </button>
                 </>
-              ) : activeTab === 'submitted' ? (
+              ) : activeTab === 'submitted' || activeTab === 'draft' ? (
                 <>
                   <button
                     onClick={handleBulkAssignTicketNumbers}
@@ -2622,7 +2622,7 @@ export default function ServiceTickets() {
                       opacity: isBulkExporting ? 0.6 : 1,
                     }}
                   >
-                    ✓ Approve
+                    ✓ Approve Selected
                   </button>
                   <button
                     onClick={handleBulkMoveToTrash}
@@ -2644,6 +2644,7 @@ export default function ServiceTickets() {
                 </>
               ) : (
                 <>
+                  {/* Approved tab: Unassign/Assign ID buttons */}
                   <button
                     onClick={handleBulkUnassignTicketNumbers}
                     disabled={isBulkExporting}
