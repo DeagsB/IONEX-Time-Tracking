@@ -897,8 +897,9 @@ export default function ServiceTickets() {
     }
   };
 
-  // Assign ticket number to a single ticket
-  const handleAssignTicketNumber = async (ticket: ServiceTicket) => {
+  // Assign ticket number to a single ticket.
+  // When useSavedData is true (e.g. admin approved from panel after saving), only assign number/metadata; do not overwrite hours/header.
+  const handleAssignTicketNumber = async (ticket: ServiceTicket, opts?: { useSavedData?: boolean }) => {
     try {
       // Find or create ticket record
       const existing = findMatchingTicketRecord(ticket);
@@ -918,26 +919,28 @@ export default function ServiceTickets() {
           return; // Already has a ticket number assigned
         }
         ticketRecordId = existing.id;
-        const headerOverrides = buildApprovalHeaderOverrides(ticket);
-        // Persist hours at approval so ticket retains them even if time entries are later deleted
-        const serviceRows = entriesToServiceRows(ticket.entries);
-        const legacy = serviceRowsToLegacyFormat(serviceRows);
-        const rtRate = ticket.rates.rt ?? 0;
-        const ttRate = ticket.rates.tt ?? 0;
-        const ftRate = ticket.rates.ft ?? 0;
-        const shopOtRate = ticket.rates.shop_ot ?? 0;
-        const fieldOtRate = ticket.rates.field_ot ?? 0;
-        const totalAmount = (ticket.hoursByRateType['Shop Time'] ?? 0) * rtRate
-          + (ticket.hoursByRateType['Travel Time'] ?? 0) * ttRate
-          + (ticket.hoursByRateType['Field Time'] ?? 0) * ftRate
-          + (ticket.hoursByRateType['Shop Overtime'] ?? 0) * shopOtRate
-          + (ticket.hoursByRateType['Field Overtime'] ?? 0) * fieldOtRate;
-        const approvalHours = ticket.totalHours > 0 ? {
-          totalHours: ticket.totalHours,
-          totalAmount,
-          editedHours: legacy.hours,
-          editedDescriptions: legacy.descriptions,
-        } : undefined;
+        const useSavedData = opts?.useSavedData === true;
+        const headerOverrides = useSavedData ? undefined : buildApprovalHeaderOverrides(ticket);
+        const approvalHours = useSavedData ? undefined : (() => {
+          const serviceRows = entriesToServiceRows(ticket.entries);
+          const legacy = serviceRowsToLegacyFormat(serviceRows);
+          const rtRate = ticket.rates.rt ?? 0;
+          const ttRate = ticket.rates.tt ?? 0;
+          const ftRate = ticket.rates.ft ?? 0;
+          const shopOtRate = ticket.rates.shop_ot ?? 0;
+          const fieldOtRate = ticket.rates.field_ot ?? 0;
+          const totalAmount = (ticket.hoursByRateType['Shop Time'] ?? 0) * rtRate
+            + (ticket.hoursByRateType['Travel Time'] ?? 0) * ttRate
+            + (ticket.hoursByRateType['Field Time'] ?? 0) * ftRate
+            + (ticket.hoursByRateType['Shop Overtime'] ?? 0) * shopOtRate
+            + (ticket.hoursByRateType['Field Overtime'] ?? 0) * fieldOtRate;
+          return ticket.totalHours > 0 ? {
+            totalHours: ticket.totalHours,
+            totalAmount,
+            editedHours: legacy.hours,
+            editedDescriptions: legacy.descriptions,
+          } : undefined;
+        })();
         await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket, user?.id, headerOverrides, approvalHours);
       } else {
         // Create ticket record with the ticket number already assigned
@@ -5345,17 +5348,12 @@ export default function ServiceTickets() {
                         )}
                         <button
                           className={isTicketApproved ? 'button button-secondary' : 'button button-primary'}
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.stopPropagation();
                             setSubmitError(null);
-                            // When submitting with pending changes, confirm save and submit
-                            if (!isTicketApproved && hasPendingChanges) {
-                              if (!confirm('You have unsaved changes. Save and submit for approval?')) {
-                                return;
-                              }
-                            }
                             setIsApproving(true);
                             try {
-                              // When submitting (not withdrawing), save first
+                              // When submitting (not withdrawing), save first so pending changes are included
                               if (!isTicketApproved) {
                                 const ok = await performSave();
                                 if (!ok) { setIsApproving(false); return; }
@@ -5489,7 +5487,7 @@ export default function ServiceTickets() {
                             try {
                               const ok = await performSave();
                               if (!ok) { setIsApproving(false); return; }
-                              await handleAssignTicketNumber(selectedTicket);
+                              await handleAssignTicketNumber(selectedTicket, { useSavedData: true });
                               queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                               queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                               queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
@@ -5518,7 +5516,7 @@ export default function ServiceTickets() {
                         try {
                           const ok = await performSave();
                           if (!ok) { setIsApproving(false); return; }
-                          await handleAssignTicketNumber(selectedTicket);
+                          await handleAssignTicketNumber(selectedTicket, { useSavedData: true });
                           queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                           queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                           queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
