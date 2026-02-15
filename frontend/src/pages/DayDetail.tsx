@@ -60,6 +60,8 @@ export default function DayDetail() {
     currentX: 0,
     currentY: 0,
   });
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const entryRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [formData, setFormData] = useState({
@@ -201,6 +203,40 @@ export default function DayDetail() {
   // Selection handlers
   const clearSelection = () => {
     setSelectedEntries(new Set());
+  };
+
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    setIsDeleting(true);
+    const entriesToDelete = timeEntries?.filter((e: any) => selectedEntries.has(e.id)) || [];
+    
+    for (const entry of entriesToDelete) {
+      try {
+        await timeEntriesService.delete(entry.id);
+        if (entry?.project_id && entry?.project?.customer?.id) {
+          const dateStr = typeof entry.date === 'string' ? entry.date : new Date(entry.date).toISOString().split('T')[0];
+          await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({
+            date: dateStr,
+            userId: entry.user_id,
+            customerId: entry.project.customer.id,
+            projectId: entry.project_id,
+            location: entry.location,
+            approver: entry.approver,
+            po_afe: entry.po_afe,
+            cc: entry.cc,
+          }, isDemoMode);
+        }
+      } catch (error) {
+        console.error('Error deleting entry:', error);
+      }
+    }
+    
+    queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+    queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
+    queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+    setSelectedEntries(new Set());
+    setShowBulkDeleteConfirm(false);
+    setIsDeleting(false);
   };
 
   // Marquee selection handlers
@@ -495,16 +531,25 @@ export default function DayDetail() {
               {selectedEntries.size} {selectedEntries.size === 1 ? 'entry' : 'entries'} selected
             </span>
             <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-              Drag selected entries to move them
+              Drag to move
             </span>
           </div>
-          <button 
-            className="button"
-            onClick={clearSelection}
-            style={{ padding: '4px 12px' }}
-          >
-            Clear Selection
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              className="button button-danger"
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              style={{ padding: '4px 12px' }}
+            >
+              Delete Selected
+            </button>
+            <button 
+              className="button"
+              onClick={clearSelection}
+              style={{ padding: '4px 12px' }}
+            >
+              Clear
+            </button>
+          </div>
         </div>
       )}
 
@@ -743,6 +788,57 @@ export default function DayDetail() {
           </div>
         )}
       </div>
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && selectedEntries.size > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+          }}
+          onClick={() => setShowBulkDeleteConfirm(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--card-bg)',
+              borderRadius: '8px',
+              padding: '24px',
+              maxWidth: '400px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px', color: 'var(--text-primary)' }}>
+              Delete {selectedEntries.size} {selectedEntries.size === 1 ? 'Entry' : 'Entries'}?
+            </h3>
+            <p style={{ margin: '0 0 20px', color: 'var(--text-secondary)', fontSize: '14px' }}>
+              Are you sure you want to delete the selected time {selectedEntries.size === 1 ? 'entry' : 'entries'}? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                className="button"
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="button button-danger"
+                onClick={handleBulkDelete}
+                disabled={isDeleting}
+                style={{ cursor: isDeleting ? 'wait' : 'pointer' }}
+              >
+                {isDeleting ? 'Deleting...' : `Delete ${selectedEntries.size} ${selectedEntries.size === 1 ? 'Entry' : 'Entries'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
