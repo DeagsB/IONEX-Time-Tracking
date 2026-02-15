@@ -25,6 +25,14 @@ interface DragState {
   startHour: number | null;
 }
 
+interface MarqueeState {
+  isSelecting: boolean;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
+
 export default function DayDetail() {
   const { date } = useParams<{ date: string }>();
   const [searchParams] = useSearchParams();
@@ -45,6 +53,15 @@ export default function DayDetail() {
     startHour: null,
   });
   const [dropTargetHour, setDropTargetHour] = useState<number | null>(null);
+  const [marquee, setMarquee] = useState<MarqueeState>({
+    isSelecting: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0,
+  });
+  const gridRef = useRef<HTMLDivElement>(null);
+  const entryRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [formData, setFormData] = useState({
     project_id: '',
     hours: '1',
@@ -182,31 +199,101 @@ export default function DayDetail() {
   };
 
   // Selection handlers
-  const handleEntrySelect = (entryId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
-    
-    if (event.ctrlKey || event.metaKey) {
-      // Toggle selection with Ctrl/Cmd click
-      setSelectedEntries(prev => {
-        const newSet = new Set(prev);
-        if (newSet.has(entryId)) {
-          newSet.delete(entryId);
-        } else {
-          newSet.add(entryId);
-        }
-        return newSet;
-      });
-    } else if (event.shiftKey && selectedEntries.size > 0) {
-      // Shift+click to select range (simplified - just add to selection)
-      setSelectedEntries(prev => new Set([...prev, entryId]));
-    } else {
-      // Single click - select only this entry
-      setSelectedEntries(new Set([entryId]));
-    }
-  };
-
   const clearSelection = () => {
     setSelectedEntries(new Set());
+  };
+
+  // Marquee selection handlers
+  const handleMarqueeStart = (event: React.MouseEvent) => {
+    // Only start marquee if clicking on empty space (not on an entry)
+    if ((event.target as HTMLElement).closest('[data-entry-id]')) {
+      return;
+    }
+    
+    const gridRect = gridRef.current?.getBoundingClientRect();
+    if (!gridRect) return;
+    
+    const x = event.clientX - gridRect.left;
+    const y = event.clientY - gridRect.top + (gridRef.current?.scrollTop || 0);
+    
+    setMarquee({
+      isSelecting: true,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y,
+    });
+    
+    // Clear previous selection when starting new marquee
+    setSelectedEntries(new Set());
+  };
+
+  const handleMarqueeMove = (event: React.MouseEvent) => {
+    if (!marquee.isSelecting) return;
+    
+    const gridRect = gridRef.current?.getBoundingClientRect();
+    if (!gridRect) return;
+    
+    const x = event.clientX - gridRect.left;
+    const y = event.clientY - gridRect.top + (gridRef.current?.scrollTop || 0);
+    
+    setMarquee(prev => ({
+      ...prev,
+      currentX: x,
+      currentY: y,
+    }));
+    
+    // Calculate which entries are within the marquee
+    const marqueeRect = {
+      left: Math.min(marquee.startX, x),
+      right: Math.max(marquee.startX, x),
+      top: Math.min(marquee.startY, y),
+      bottom: Math.max(marquee.startY, y),
+    };
+    
+    const newSelection = new Set<string>();
+    
+    entryRefs.current.forEach((element, entryId) => {
+      const entryRect = element.getBoundingClientRect();
+      const gridRect = gridRef.current?.getBoundingClientRect();
+      if (!gridRect) return;
+      
+      // Convert entry rect to grid-relative coordinates
+      const entryRelative = {
+        left: entryRect.left - gridRect.left,
+        right: entryRect.right - gridRect.left,
+        top: entryRect.top - gridRect.top + (gridRef.current?.scrollTop || 0),
+        bottom: entryRect.bottom - gridRect.top + (gridRef.current?.scrollTop || 0),
+      };
+      
+      // Check if rectangles overlap
+      const overlaps = !(
+        entryRelative.right < marqueeRect.left ||
+        entryRelative.left > marqueeRect.right ||
+        entryRelative.bottom < marqueeRect.top ||
+        entryRelative.top > marqueeRect.bottom
+      );
+      
+      if (overlaps) {
+        newSelection.add(entryId);
+      }
+    });
+    
+    setSelectedEntries(newSelection);
+  };
+
+  const handleMarqueeEnd = () => {
+    setMarquee(prev => ({
+      ...prev,
+      isSelecting: false,
+    }));
+  };
+
+  // Single entry click handler
+  const handleEntryClick = (entryId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    // Single click just selects this one entry (for dragging)
+    setSelectedEntries(new Set([entryId]));
   };
 
   // Drag handlers
@@ -408,7 +495,7 @@ export default function DayDetail() {
               {selectedEntries.size} {selectedEntries.size === 1 ? 'entry' : 'entries'} selected
             </span>
             <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-              Drag to move • Ctrl+Click to multi-select • Double-click to edit
+              Drag selected entries to move them
             </span>
           </div>
           <button 
@@ -423,7 +510,39 @@ export default function DayDetail() {
 
       <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0 }}>
         {/* Time Grid */}
-        <div className="card" style={{ flex: 1, overflowY: 'auto', padding: 0, display: 'flex', flexDirection: 'column' }}>
+        <div 
+          ref={gridRef}
+          className="card" 
+          style={{ 
+            flex: 1, 
+            overflowY: 'auto', 
+            padding: 0, 
+            display: 'flex', 
+            flexDirection: 'column',
+            position: 'relative',
+            userSelect: 'none',
+          }}
+          onMouseDown={handleMarqueeStart}
+          onMouseMove={handleMarqueeMove}
+          onMouseUp={handleMarqueeEnd}
+          onMouseLeave={handleMarqueeEnd}
+        >
+          {/* Marquee Selection Box */}
+          {marquee.isSelecting && (
+            <div
+              style={{
+                position: 'absolute',
+                left: Math.min(marquee.startX, marquee.currentX),
+                top: Math.min(marquee.startY, marquee.currentY),
+                width: Math.abs(marquee.currentX - marquee.startX),
+                height: Math.abs(marquee.currentY - marquee.startY),
+                backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                border: '2px dashed #28a745',
+                pointerEvents: 'none',
+                zIndex: 1000,
+              }}
+            />
+          )}
           {hours.map((hour) => {
             const entriesForHour = timeEntries?.filter((entry: any) => date && entrySliceOverlapsHour(entry, date, hour)) || [];
             const isDropTarget = dropTargetHour === hour;
@@ -456,13 +575,10 @@ export default function DayDetail() {
                   {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
                 </div>
                 <div 
-                  style={{ flex: 1, cursor: 'pointer', position: 'relative' }}
-                  onClick={() => {
-                    if (selectedEntries.size > 0) {
-                      clearSelection();
-                    } else {
-                      handleHourClick(hour);
-                    }
+                  style={{ flex: 1, cursor: 'crosshair', position: 'relative' }}
+                  onDoubleClick={() => {
+                    // Double-click on empty space to create new entry
+                    handleHourClick(hour);
                   }}
                 >
                   {/* Render entries for this hour (include overnight rollover on this date) */}
@@ -473,10 +589,21 @@ export default function DayDetail() {
                     return (
                       <div
                         key={entry.id}
+                        data-entry-id={entry.id}
+                        ref={(el) => {
+                          if (el) {
+                            entryRefs.current.set(entry.id, el);
+                          } else {
+                            entryRefs.current.delete(entry.id);
+                          }
+                        }}
                         draggable
                         onDragStart={(e) => handleDragStart(entry.id, hour, e)}
                         onDragEnd={handleDragEnd}
-                        onClick={(e) => handleEntrySelect(entry.id, e)}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          handleEntryClick(entry.id, e);
+                        }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           handleEditEntry(entry);
