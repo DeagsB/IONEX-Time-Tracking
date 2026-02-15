@@ -799,16 +799,21 @@ export default function WeekView() {
     
     // Look up the customer_id and project from the project
     const entryProject = projects?.find((p: any) => p.id === entry.project_id);
-    // Use entry values directly - no parsing (parsing is only for invoicing groups)
+    const customerId = entryProject?.customer_id || '';
+    const customer = customers?.find((c: any) => c.id === customerId);
+    const isIonexSystems = customer?.name?.trim().toLowerCase() === 'ionex systems';
+    // IONEX Systems = internal, default rate type to Internal
+    const defaultRateType = isIonexSystems ? 'Internal' : (entry.rate_type || 'Shop Time');
+    const defaultBillable = isIonexSystems ? false : (entry.billable !== undefined ? entry.billable : true);
     setEditedEntry({
       description: entry.description || '',
-      customer_id: entryProject?.customer_id || '',
+      customer_id: customerId,
       project_id: entry.project_id || '',
       start_time: parseTime(entry.start_time),
       end_time: parseTime(entry.end_time),
       hours: entry.hours || 0,
-      billable: entry.billable !== undefined ? entry.billable : true,
-      rate_type: entry.rate_type || 'Shop Time',
+      billable: defaultBillable,
+      rate_type: defaultRateType,
       location: entry.location || '',
       approver: entry.approver ?? '',
       poAfe: entry.po_afe ?? '',
@@ -856,15 +861,18 @@ export default function WeekView() {
     // Look up customer_id and project defaults (timer doesn't store location/approver/po/cc)
     const timerProject = projects?.find((p: any) => p.id === currentEntry.projectId);
     const fields = getProjectHeaderFields(timerProject);
+    const timerCustomerId = timerProject?.customer_id || '';
+    const timerCustomer = customers?.find((c: any) => c.id === timerCustomerId);
+    const timerIsIonexSystems = timerCustomer?.name?.trim().toLowerCase() === 'ionex systems';
     setEditedEntry({
       description: currentEntry.description || '',
-      customer_id: timerProject?.customer_id || '',
+      customer_id: timerCustomerId,
       project_id: currentEntry.projectId || '',
       start_time: formatTime(startDate),
       end_time: formatTime(now),
       hours: hours,
-      billable: true,
-      rate_type: 'Shop Time',
+      billable: !timerIsIonexSystems,
+      rate_type: timerIsIonexSystems ? 'Internal' : 'Shop Time',
       location: (currentEntry as any).location || timerProject?.location || '',
       approver: fields.approver,
       poAfe: fields.poAfe,
