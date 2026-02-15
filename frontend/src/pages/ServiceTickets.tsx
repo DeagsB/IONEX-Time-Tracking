@@ -3767,7 +3767,6 @@ export default function ServiceTickets() {
               borderRadius: '12px',
               maxWidth: '900px',
               width: '100%',
-              height: '90vh',
               maxHeight: '90vh',
               overflow: 'auto',
               boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
@@ -5157,7 +5156,8 @@ export default function ServiceTickets() {
                     const existingRecord = findMatchingTicketRecord(selectedTicket);
                     const isCurrentlyDiscarded = !!(existingRecord as any)?.is_discarded;
                     const ws = (existingRecord as any)?.workflow_status as string | undefined;
-                    const isSubmittedOrApproved = ws === 'submitted' || ws === 'approved';
+                    const hasTicketNumber = !!(existingRecord as any)?.ticket_number;
+                    const isSubmittedOrApproved = ws === 'submitted' || ws === 'approved' || hasTicketNumber;
                     if (isCurrentlyDiscarded) return null;
                     if (!isAdmin && isSubmittedOrApproved) return null;
                     return (
