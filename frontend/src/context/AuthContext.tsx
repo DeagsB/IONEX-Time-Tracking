@@ -33,6 +33,9 @@ interface AuthContextType {
   isAdmin: boolean;
   /** Display role for UI/testing: when developer with effectiveRole=USER, shows 'USER'; otherwise actual role */
   displayRole: 'ADMIN' | 'USER' | 'DEVELOPER';
+  // Maintenance mode - admins can toggle; persisted in localStorage
+  maintenanceMode: boolean;
+  setMaintenanceMode: (on: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,10 +57,11 @@ const DEV_MODE = false; // Set to false for production
 const DEV_USER_ID = '235d854a-1b7d-4e00-a5a4-43835c85c086'; // Existing user from database
 
 // =====================================================
-// MAINTENANCE MODE - Set to true to lock out regular users
-// Only DEVELOPER role users can access the app
+// MAINTENANCE MODE - Default when no override is set in localStorage
+// Only DEVELOPER role users can access when on. Admins can toggle at runtime.
 // =====================================================
-export const MAINTENANCE_MODE = true;
+const MAINTENANCE_MODE_DEFAULT = true;
+const MAINTENANCE_STORAGE_KEY = 'ionex_maintenance_mode';
 
 const DEV_USER: User = {
   id: DEV_USER_ID,
@@ -77,6 +81,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const stored = localStorage.getItem('developer_effective_role');
     return (stored === 'ADMIN' || stored === 'USER') ? stored : 'ADMIN';
   });
+
+  // Maintenance mode - admins can toggle; override persisted in localStorage
+  const [maintenanceMode, setMaintenanceModeState] = useState<boolean>(() => {
+    const stored = localStorage.getItem(MAINTENANCE_STORAGE_KEY);
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+    return MAINTENANCE_MODE_DEFAULT;
+  });
+
+  const setMaintenanceMode = (on: boolean) => {
+    setMaintenanceModeState(on);
+    localStorage.setItem(MAINTENANCE_STORAGE_KEY, String(on));
+  };
   
   const isDeveloper = user?.role === 'DEVELOPER';
   
@@ -337,6 +354,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setEffectiveRole,
         isAdmin,
         displayRole,
+        maintenanceMode,
+        setMaintenanceMode,
       }}
     >
       {children}

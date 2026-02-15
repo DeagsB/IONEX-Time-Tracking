@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth, MAINTENANCE_MODE } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
 export default function Login() {
@@ -15,7 +15,7 @@ export default function Login() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [formSubmitted, setFormSubmitted] = useState(false);
-  const { login, signUp, user, loading: authLoading } = useAuth();
+  const { login, signUp, user, loading: authLoading, maintenanceMode } = useAuth();
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -229,7 +229,7 @@ export default function Login() {
           </h2>
         </div>
         
-        {MAINTENANCE_MODE && (
+        {maintenanceMode && (
           <div style={{ 
             marginBottom: '16px', 
             padding: '12px 16px', 
