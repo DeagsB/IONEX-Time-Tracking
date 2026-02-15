@@ -1755,46 +1755,9 @@ export default function ServiceTickets() {
       return existing.id;
     }
 
-    // For admins, create with a ticket number (approval flow)
-    if (isAdmin) {
-      const ticketNumber = displayTicketNumber && !displayTicketNumber.includes('XXX')
-        ? displayTicketNumber
-        : await serviceTicketsService.getNextTicketNumber(ticket.userInitials);
-      
-      const year = new Date().getFullYear() % 100;
-      const sequenceMatch = ticketNumber.match(/\d{3}$/);
-      const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-      
-      const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
-      const rtAmount = ticket.hoursByRateType['Shop Time'] * rtRate;
-      const ttAmount = ticket.hoursByRateType['Travel Time'] * ttRate;
-      const ftAmount = ticket.hoursByRateType['Field Time'] * ftRate;
-      const shopOtAmount = ticket.hoursByRateType['Shop Overtime'] * shopOtRate;
-      const fieldOtAmount = ticket.hoursByRateType['Field Overtime'] * fieldOtRate;
-      const otAmount = shopOtAmount + fieldOtAmount;
-      const totalAmount = rtAmount + ttAmount + ftAmount + otAmount;
-
-      const headerOverrides = buildApprovalHeaderOverrides(ticket);
-      const record = await serviceTicketsService.createTicketRecord({
-        ticketNumber,
-        employeeInitials: ticket.userInitials,
-        year,
-        sequenceNumber,
-        date: ticket.date,
-        customerId: ticket.customerId !== 'unassigned' ? ticket.customerId : undefined,
-        userId: ticket.userId,
-        projectId: ticket.projectId,
-        location: ticket.location || '',
-        totalHours: ticket.totalHours,
-        totalAmount,
-        approvedByAdminId: user?.id,
-        headerOverrides,
-      });
-
-      return record.id;
-    }
-
-    // For non-admins, create a draft record without a ticket number
+    // Create a draft record (same for admins and non-admins).
+    // Admins approve tickets via the explicit Assign ID / Approve action,
+    // NOT by simply opening/viewing them.
     const billingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
     // Pass entry values so new records get correct approver/po_afe/cc (billingKey only has po_afe for grouping)
     const headerOverrides = (ticket.entryApprover != null || ticket.entryPoAfe != null || ticket.entryCc != null || ticket.entryOther != null)
