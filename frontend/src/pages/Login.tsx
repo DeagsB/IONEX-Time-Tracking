@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, MAINTENANCE_MODE } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
 export default function Login() {
@@ -229,6 +229,19 @@ export default function Login() {
           </h2>
         </div>
         
+        {MAINTENANCE_MODE && (
+          <div style={{ 
+            marginBottom: '16px', 
+            padding: '12px 16px', 
+            borderRadius: '8px',
+            fontSize: '14px',
+            backgroundColor: '#fef3c7',
+            border: '1px solid #f59e0b',
+            color: '#92400e',
+          }}>
+            <strong>Maintenance Mode:</strong> The application is currently under maintenance. Only developer accounts can access the system.
+          </div>
+        )}
         {error && (
           <div className="error" style={{ 
             marginBottom: '16px', 

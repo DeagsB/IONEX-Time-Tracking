@@ -53,6 +53,12 @@ export const canAccessInvoices = (user: { email?: string; role?: string } | null
 const DEV_MODE = false; // Set to false for production
 const DEV_USER_ID = '235d854a-1b7d-4e00-a5a4-43835c85c086'; // Existing user from database
 
+// =====================================================
+// MAINTENANCE MODE - Set to true to lock out regular users
+// Only DEVELOPER role users can access the app
+// =====================================================
+export const MAINTENANCE_MODE = true;
+
 const DEV_USER: User = {
   id: DEV_USER_ID,
   email: 'bespalkodeagan@gmail.com',

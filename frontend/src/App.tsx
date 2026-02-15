@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider, useAuth, canAccessInvoices } from './context/AuthContext';
+import { AuthProvider, useAuth, canAccessInvoices, MAINTENANCE_MODE } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TimerProvider } from './context/TimerContext';
 import { DemoModeProvider } from './context/DemoModeContext';
@@ -21,11 +21,12 @@ import UserManagement from './pages/UserManagement';
 import Changelog from './pages/Changelog';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
+import Maintenance from './pages/Maintenance';
 
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, isDeveloper } = useAuth();
 
   if (loading) {
     return (
@@ -44,6 +45,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" />;
+  }
+
+  // Maintenance mode: only developers can access the app
+  if (MAINTENANCE_MODE && !isDeveloper) {
+    return <Navigate to="/maintenance" />;
   }
 
   return <>{children}</>;
@@ -112,6 +118,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/maintenance" element={<Maintenance />} />
       <Route
         path="/"
         element={
