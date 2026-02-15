@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +19,12 @@ interface TimeEntry {
   project?: any;
 }
 
+interface DragState {
+  isDragging: boolean;
+  draggedEntryId: string | null;
+  startHour: number | null;
+}
+
 export default function DayDetail() {
   const { date } = useParams<{ date: string }>();
   const [searchParams] = useSearchParams();
@@ -32,6 +38,13 @@ export default function DayDetail() {
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [showEntryForm, setShowEntryForm] = useState(false);
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
+  const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    draggedEntryId: null,
+    startHour: null,
+  });
+  const [dropTargetHour, setDropTargetHour] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     project_id: '',
     hours: '1',
@@ -123,6 +136,39 @@ export default function DayDetail() {
     },
   });
 
+  const bulkMoveMutation = useMutation({
+    mutationFn: async ({ entryIds, hourOffset }: { entryIds: string[]; hourOffset: number }) => {
+      // Move entries by adjusting their start_time and end_time
+      const updates = [];
+      for (const entryId of entryIds) {
+        const entry = timeEntries?.find((e: any) => e.id === entryId);
+        if (!entry) continue;
+        
+        const updateData: any = {};
+        
+        if (entry.start_time) {
+          const newStart = new Date(entry.start_time);
+          newStart.setHours(newStart.getHours() + hourOffset);
+          updateData.start_time = newStart.toISOString();
+        }
+        if (entry.end_time) {
+          const newEnd = new Date(entry.end_time);
+          newEnd.setHours(newEnd.getHours() + hourOffset);
+          updateData.end_time = newEnd.toISOString();
+        }
+        
+        if (Object.keys(updateData).length > 0) {
+          updates.push(timeEntriesService.update(entryId, updateData));
+        }
+      }
+      return Promise.all(updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      setSelectedEntries(new Set());
+    },
+  });
+
   const resetForm = () => {
     setFormData({
       project_id: '',
@@ -133,6 +179,88 @@ export default function DayDetail() {
     });
     setEditingEntry(null);
     setSelectedHour(null);
+  };
+
+  // Selection handlers
+  const handleEntrySelect = (entryId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    
+    if (event.ctrlKey || event.metaKey) {
+      // Toggle selection with Ctrl/Cmd click
+      setSelectedEntries(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(entryId)) {
+          newSet.delete(entryId);
+        } else {
+          newSet.add(entryId);
+        }
+        return newSet;
+      });
+    } else if (event.shiftKey && selectedEntries.size > 0) {
+      // Shift+click to select range (simplified - just add to selection)
+      setSelectedEntries(prev => new Set([...prev, entryId]));
+    } else {
+      // Single click - select only this entry
+      setSelectedEntries(new Set([entryId]));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedEntries(new Set());
+  };
+
+  // Drag handlers
+  const handleDragStart = (entryId: string, hour: number, event: React.DragEvent) => {
+    // If dragging an unselected entry, select it first
+    if (!selectedEntries.has(entryId)) {
+      setSelectedEntries(new Set([entryId]));
+    }
+    
+    setDragState({
+      isDragging: true,
+      draggedEntryId: entryId,
+      startHour: hour,
+    });
+    
+    // Set drag data
+    event.dataTransfer.setData('text/plain', entryId);
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (hour: number, event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDropTargetHour(hour);
+  };
+
+  const handleDragLeave = () => {
+    setDropTargetHour(null);
+  };
+
+  const handleDrop = (targetHour: number, event: React.DragEvent) => {
+    event.preventDefault();
+    setDropTargetHour(null);
+    
+    if (dragState.startHour === null) return;
+    
+    const hourOffset = targetHour - dragState.startHour;
+    if (hourOffset === 0) {
+      setDragState({ isDragging: false, draggedEntryId: null, startHour: null });
+      return;
+    }
+    
+    // Move all selected entries
+    const entriesToMove = Array.from(selectedEntries);
+    if (entriesToMove.length > 0) {
+      bulkMoveMutation.mutate({ entryIds: entriesToMove, hourOffset });
+    }
+    
+    setDragState({ isDragging: false, draggedEntryId: null, startHour: null });
+  };
+
+  const handleDragEnd = () => {
+    setDragState({ isDragging: false, draggedEntryId: null, startHour: null });
+    setDropTargetHour(null);
   };
 
   const handleHourClick = (hour: number) => {
@@ -261,66 +389,136 @@ export default function DayDetail() {
         </button>
       </div>
 
+      {/* Selection Bar */}
+      {selectedEntries.size > 0 && (
+        <div 
+          style={{ 
+            backgroundColor: 'rgba(40, 167, 69, 0.1)', 
+            border: '1px solid #28a745',
+            borderRadius: '4px',
+            padding: '10px 15px',
+            marginBottom: '15px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontWeight: 'bold', color: '#28a745' }}>
+              {selectedEntries.size} {selectedEntries.size === 1 ? 'entry' : 'entries'} selected
+            </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+              Drag to move • Ctrl+Click to multi-select • Double-click to edit
+            </span>
+          </div>
+          <button 
+            className="button"
+            onClick={clearSelection}
+            style={{ padding: '4px 12px' }}
+          >
+            Clear Selection
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: 0 }}>
         {/* Time Grid */}
         <div className="card" style={{ flex: 1, overflowY: 'auto', padding: 0, display: 'flex', flexDirection: 'column' }}>
-          {hours.map((hour) => (
-            <div 
-              key={hour}
-              style={{
-                height: '60px',
-                borderBottom: '1px solid var(--border-color)',
-                display: 'flex',
-                position: 'relative',
-              }}
-            >
-              <div style={{
-                width: '60px',
-                borderRight: '1px solid var(--border-color)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '12px',
-                color: 'var(--text-secondary)',
-                flexShrink: 0,
-              }}>
-                {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
-              </div>
+          {hours.map((hour) => {
+            const entriesForHour = timeEntries?.filter((entry: any) => date && entrySliceOverlapsHour(entry, date, hour)) || [];
+            const isDropTarget = dropTargetHour === hour;
+            
+            return (
               <div 
-                style={{ flex: 1, cursor: 'pointer' }}
-                onClick={() => handleHourClick(hour)}
+                key={hour}
+                style={{
+                  height: '60px',
+                  borderBottom: '1px solid var(--border-color)',
+                  display: 'flex',
+                  position: 'relative',
+                  backgroundColor: isDropTarget ? 'rgba(40, 167, 69, 0.2)' : undefined,
+                  transition: 'background-color 0.15s',
+                }}
+                onDragOver={(e) => handleDragOver(hour, e)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(hour, e)}
               >
-                {/* Render entries for this hour (include overnight rollover on this date) */}
-                {timeEntries?.filter((entry: any) => date && entrySliceOverlapsHour(entry, date, hour)).map((entry: any) => (
-                  <div
-                    key={entry.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditEntry(entry);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      top: '2px',
-                      left: '5px',
-                      right: '5px',
-                      bottom: '2px',
-                      backgroundColor: 'var(--primary-light)',
-                      border: '1px solid var(--primary-color)',
-                      borderRadius: '4px',
-                      padding: '4px 8px',
-                      fontSize: '12px',
-                      overflow: 'hidden',
-                      cursor: 'pointer',
-                      zIndex: 10,
-                    }}
-                  >
-                    <strong>{entry.project?.name || 'No Project'}</strong>
-                    {entry.description && <span style={{ marginLeft: '5px' }}>- {entry.description}</span>}
-                  </div>
-                ))}
+                <div style={{
+                  width: '60px',
+                  borderRight: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '12px',
+                  color: 'var(--text-secondary)',
+                  flexShrink: 0,
+                }}>
+                  {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                </div>
+                <div 
+                  style={{ flex: 1, cursor: 'pointer', position: 'relative' }}
+                  onClick={() => {
+                    if (selectedEntries.size > 0) {
+                      clearSelection();
+                    } else {
+                      handleHourClick(hour);
+                    }
+                  }}
+                >
+                  {/* Render entries for this hour (include overnight rollover on this date) */}
+                  {entriesForHour.map((entry: any, index: number) => {
+                    const isSelected = selectedEntries.has(entry.id);
+                    const isBeingDragged = dragState.isDragging && selectedEntries.has(entry.id);
+                    
+                    return (
+                      <div
+                        key={entry.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(entry.id, hour, e)}
+                        onDragEnd={handleDragEnd}
+                        onClick={(e) => handleEntrySelect(entry.id, e)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          handleEditEntry(entry);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: `${2 + index * 20}px`,
+                          left: '65px',
+                          right: '5px',
+                          height: '52px',
+                          backgroundColor: isSelected ? 'rgba(40, 167, 69, 0.3)' : 'var(--primary-light)',
+                          border: isSelected ? '2px solid #28a745' : '1px solid var(--primary-color)',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          fontSize: '12px',
+                          overflow: 'hidden',
+                          cursor: 'grab',
+                          zIndex: isBeingDragged ? 100 : 10,
+                          opacity: isBeingDragged ? 0.5 : 1,
+                          userSelect: 'none',
+                        }}
+                      >
+                        <strong>{entry.project?.name || 'No Project'}</strong>
+                        {entry.description && <span style={{ marginLeft: '5px' }}>- {entry.description}</span>}
+                        {isSelected && (
+                          <span style={{ 
+                            position: 'absolute', 
+                            top: '2px', 
+                            right: '4px', 
+                            fontSize: '10px',
+                            color: '#28a745',
+                          }}>
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Entry Form Sidebar */}

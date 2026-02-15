@@ -84,6 +84,46 @@ export const timeEntriesService = {
     if (error) throw error;
   },
 
+  async bulkMove(ids: string[], newDate: string, dayOffset: number) {
+    // Move multiple time entries to a new date, adjusting start_time and end_time by the day offset
+    const results = [];
+    for (const id of ids) {
+      // First get the entry to calculate new times
+      const { data: entry, error: fetchError } = await supabase
+        .from('time_entries')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      const updates: any = { date: newDate };
+      
+      // Adjust start_time and end_time by the day offset if they exist
+      if (entry.start_time) {
+        const startDate = new Date(entry.start_time);
+        startDate.setDate(startDate.getDate() + dayOffset);
+        updates.start_time = startDate.toISOString();
+      }
+      if (entry.end_time) {
+        const endDate = new Date(entry.end_time);
+        endDate.setDate(endDate.getDate() + dayOffset);
+        updates.end_time = endDate.toISOString();
+      }
+      
+      const { data, error } = await supabase
+        .from('time_entries')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      results.push(data);
+    }
+    return results;
+  },
+
   async approve(id: string, approvedBy: string) {
     const { data, error } = await supabase
       .from('time_entries')
