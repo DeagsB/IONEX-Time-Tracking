@@ -252,6 +252,8 @@ export default function ServiceTickets() {
   const [isSavingTicket, setIsSavingTicket] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [showRejectNoteModal, setShowRejectNoteModal] = useState(false);
+  const [rejectModalMode, setRejectModalMode] = useState<'reject' | 'unapprove'>('reject');
+  const [ticketForRejectModal, setTicketForRejectModal] = useState<ServiceTicket | null>(null);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [rejectNote, setRejectNote] = useState('');
   const [showCustomTicketIdModal, setShowCustomTicketIdModal] = useState(false);
@@ -3383,7 +3385,10 @@ export default function ServiceTickets() {
                               className="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleUnassignTicketNumber(ticket);
+                                setTicketForRejectModal(ticket);
+                                setRejectModalMode('unapprove');
+                                setRejectNote('');
+                                setShowRejectNoteModal(true);
                               }}
                               style={{
                                 padding: '6px 16px',
@@ -3393,7 +3398,7 @@ export default function ServiceTickets() {
                                 border: 'none',
                                 cursor: 'pointer',
                               }}
-                              title="Click to unassign ticket ID"
+                              title="Click to unapprove and send back to drafts"
                             >
                               ✓ Approved
                             </button>
@@ -4903,8 +4908,8 @@ export default function ServiceTickets() {
                 </div>
               )}
 
-              {/* Reject with notes modal (admin) */}
-              {showRejectNoteModal && selectedTicket && (
+              {/* Reject / Unapprove with notes modal (admin) */}
+              {showRejectNoteModal && (ticketForRejectModal || selectedTicket) && (
                 <div
                   style={{
                     position: 'fixed',
@@ -4915,7 +4920,7 @@ export default function ServiceTickets() {
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
-                  onClick={() => setShowRejectNoteModal(false)}
+                  onClick={() => { setShowRejectNoteModal(false); setTicketForRejectModal(null); }}
                 >
                   <div
                     style={{
@@ -4929,7 +4934,7 @@ export default function ServiceTickets() {
                     onClick={(e) => e.stopPropagation()}
                   >
                     <p style={{ margin: '0 0 12px', color: 'var(--text-primary)', fontSize: '15px', fontWeight: '600' }}>
-                      Reject this ticket?
+                      {rejectModalMode === 'unapprove' ? 'Unapprove this ticket?' : 'Reject this ticket?'}
                     </p>
                     <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '13px' }}>
                       It will move back to Drafts for the user to revise. Add a reason (optional):
@@ -4955,7 +4960,7 @@ export default function ServiceTickets() {
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                       <button
                         className="button button-secondary"
-                        onClick={() => setShowRejectNoteModal(false)}
+                        onClick={() => { setShowRejectNoteModal(false); setTicketForRejectModal(null); }}
                         style={{ padding: '8px 16px' }}
                       >
                         Cancel
@@ -4964,43 +4969,58 @@ export default function ServiceTickets() {
                         className="button"
                         disabled={isApproving}
                         onClick={async () => {
+                          const ticket = ticketForRejectModal ?? selectedTicket!;
                           setIsApproving(true);
                           try {
-                            // Use currentTicketRecordId if available (already resolved when ticket was opened)
-                            // Also try _matchedRecordId from the ticket object (set during ticket assembly for locked tickets)
                             let recordId = currentTicketRecordId
-                              || (selectedTicket as { _matchedRecordId?: string })?._matchedRecordId
-                              || findMatchingTicketRecord(selectedTicket)?.id;
+                              || (ticket as { _matchedRecordId?: string })?._matchedRecordId
+                              || findMatchingTicketRecord(ticket)?.id;
                             if (!recordId) {
-                              // Fallback: try to find/create the record
-                              const billingKey = selectedTicket.id ? getTicketBillingKeyLocal(selectedTicket.id) : '_::_::_';
+                              const billingKey = ticket.id ? getTicketBillingKeyLocal(ticket.id) : '_::_::_';
                               const record = await serviceTicketsService.getOrCreateTicket({
-                                date: selectedTicket.date,
-                                userId: selectedTicket.userId,
-                                customerId: selectedTicket.customerId === 'unassigned' ? null : selectedTicket.customerId,
-                                projectId: selectedTicket.projectId,
-                                location: selectedTicket.location || '',
+                                date: ticket.date,
+                                userId: ticket.userId,
+                                customerId: ticket.customerId === 'unassigned' ? null : ticket.customerId,
+                                projectId: ticket.projectId,
+                                location: ticket.location || '',
                                 billingKey,
                               }, isDemoMode);
                               recordId = record.id;
                             }
-                            await serviceTicketsService.updateWorkflowStatus(recordId, 'rejected', isDemoMode, rejectNote.trim() || null);
+                            const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                            if (rejectModalMode === 'unapprove') {
+                              await supabase.from(tableName).update({
+                                ticket_number: null,
+                                sequence_number: null,
+                                year: null,
+                                employee_initials: null,
+                                workflow_status: 'rejected',
+                                rejected_at: new Date().toISOString(),
+                                rejection_notes: rejectNote.trim() || null,
+                                approved_by_admin_id: null,
+                              }).eq('id', recordId);
+                            } else {
+                              await serviceTicketsService.updateWorkflowStatus(recordId, 'rejected', isDemoMode, rejectNote.trim() || null);
+                            }
                             setShowRejectNoteModal(false);
+                            setTicketForRejectModal(null);
                             closePanel();
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                             await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
                             queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                             queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                           } catch (e) {
-                            console.error('Rejection failed:', e);
-                            alert(`Failed to reject ticket: ${e instanceof Error ? e.message : String(e)}`);
+                            console.error(rejectModalMode === 'unapprove' ? 'Unapprove failed:' : 'Rejection failed:', e);
+                            alert(`Failed to ${rejectModalMode === 'unapprove' ? 'unapprove' : 'reject'} ticket: ${e instanceof Error ? e.message : String(e)}`);
                           } finally {
                             setIsApproving(false);
                           }
                         }}
                         style={{ padding: '8px 16px', backgroundColor: '#ef5350', color: 'white', border: 'none' }}
                       >
-                        {isApproving ? 'Rejecting...' : 'Reject'}
+                        {isApproving
+                          ? (rejectModalMode === 'unapprove' ? 'Unapproving...' : 'Rejecting...')
+                          : (rejectModalMode === 'unapprove' ? 'Unapprove' : 'Reject')}
                       </button>
                     </div>
                   </div>
@@ -5430,6 +5450,8 @@ export default function ServiceTickets() {
                           className="button"
                           disabled={isApproving}
                           onClick={() => {
+                            setTicketForRejectModal(selectedTicket);
+                            setRejectModalMode('reject');
                             setRejectNote('');
                             setShowRejectNoteModal(true);
                           }}
