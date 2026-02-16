@@ -41,11 +41,7 @@ export default function ServiceTickets() {
   const queryClient = useQueryClient();
   
   // Filters state
-  const [startDate, setStartDate] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 30); // Default to last 30 days
-    return date.toISOString().split('T')[0];
-  });
+  const [startDate, setStartDate] = useState(() => '2026-01-01');
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
