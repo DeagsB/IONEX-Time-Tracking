@@ -424,10 +424,25 @@ export default function WeekView() {
       console.log('Time entry updated:', result);
       return result;
     },
-    onSuccess: async (data) => {
+    onSuccess: async (data, variables) => {
       console.log('Time entry updated successfully');
       const dateStr = typeof data.date === 'string' ? data.date : new Date(data.date).toISOString().split('T')[0];
-      
+      const { oldGroup } = variables as { id: string; data: any; oldGroup?: { date: string; userId: string; customerId: string | null; projectId?: string | null; location?: string | null; approver?: string | null; po_afe?: string | null; cc?: string | null } };
+
+      // If entry's project/customer was changed, remove the old draft ticket (it no longer has any time entries)
+      if (oldGroup && data?.project_id !== oldGroup.projectId && oldGroup.customerId) {
+        await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({
+          date: oldGroup.date,
+          userId: oldGroup.userId,
+          customerId: oldGroup.customerId,
+          projectId: oldGroup.projectId ?? undefined,
+          location: oldGroup.location,
+          approver: oldGroup.approver,
+          po_afe: oldGroup.po_afe,
+          cc: oldGroup.cc,
+        }, isDemoMode);
+      }
+
       // If entry became non-billable (Internal rate), delete the associated ticket if no billable entries remain
       // This handles the case where a rejected ticket should be removed when its only entry becomes non-billable
       if (data?.billable === false && data?.customer_id) {
@@ -1008,7 +1023,24 @@ export default function WeekView() {
       other: editedEntry.other?.trim() || null,
     };
 
-    updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData });
+    const oldProjectId = editingEntry.project_id ?? editingEntry.projectId;
+    const newProjectId = editedEntry.project_id || null;
+    const projectChanged = oldProjectId && newProjectId && oldProjectId !== newProjectId;
+    const oldProject = projects?.find((p: any) => p.id === oldProjectId);
+    const oldCustomerId = oldProject?.customer_id ?? editingEntry.customer_id ?? editingEntry.project?.customer?.id ?? null;
+
+    const oldGroup = projectChanged && oldCustomerId ? {
+      date: dateStr,
+      userId: editingEntry.user_id,
+      customerId: oldCustomerId,
+      projectId: oldProjectId,
+      location: editingEntry.location ?? null,
+      approver: editingEntry.approver ?? null,
+      po_afe: editingEntry.po_afe ?? null,
+      cc: (editingEntry as any).cc ?? null,
+    } : undefined;
+
+    updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData, oldGroup });
   };
 
   // Handle deleting time entry
