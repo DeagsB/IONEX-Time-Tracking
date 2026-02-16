@@ -1267,6 +1267,9 @@ export default function ServiceTickets() {
       }
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+      // Clear sidebar notifications for rejected/resubmitted tickets
+      queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+      queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
       setSelectedTicketIds(new Set());
     } catch (error) {
       console.error('Error bulk moving to trash:', error);
@@ -5219,6 +5222,9 @@ export default function ServiceTickets() {
                             if (error) throw error;
                             await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
                             await queryClient.refetchQueries({ queryKey: ['existingServiceTickets', isDemoMode] });
+                            // Clear sidebar notifications for rejected/resubmitted tickets
+                            queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                            queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
                             closePanel();
                           } catch (err) {
                             console.error('Error trashing ticket:', err);
