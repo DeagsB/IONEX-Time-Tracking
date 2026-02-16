@@ -1999,18 +1999,26 @@ export default function ServiceTickets() {
       } else if (freshTicket !== selectedTicket) {
         const wouldClearEntries = freshTicket.entries.length === 0 && selectedTicket.entries.length > 0;
         if (wouldClearEntries) return;
+        // Check if entries are actually different (not just reordered) by comparing sorted IDs
+        const selectedIds = [...selectedTicket.entries].map(e => e.id).sort().join(',');
+        const freshIds = [...freshTicket.entries].map(e => e.id).sort().join(',');
+        const entriesChanged = selectedIds !== freshIds;
         setSelectedTicket(freshTicket);
-        // Update original time entry rows and rebuild with any per-entry overrides
-        const freshBaseRows = entriesToServiceRows(freshTicket.entries);
-        originalTimeEntryRowsRef.current = freshBaseRows.map(r => ({ ...r }));
-        const currentOverrides = editedEntryOverrides;
-        if (Object.keys(currentOverrides).length > 0) {
-          const mergedRows = buildRowsWithOverrides(freshTicket.entries, currentOverrides);
-          setServiceRows(mergedRows);
-          initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
-        } else {
-          setServiceRows(freshBaseRows);
-          initialServiceRowsRef.current = freshBaseRows.map(r => ({ ...r }));
+        // Only rebuild serviceRows if entries actually changed (added/removed), not just reordered
+        // This prevents the modal rows from flipping order when filteredTickets updates
+        if (entriesChanged) {
+          // Update original time entry rows and rebuild with any per-entry overrides
+          const freshBaseRows = entriesToServiceRows(freshTicket.entries);
+          originalTimeEntryRowsRef.current = freshBaseRows.map(r => ({ ...r }));
+          const currentOverrides = editedEntryOverrides;
+          if (Object.keys(currentOverrides).length > 0) {
+            const mergedRows = buildRowsWithOverrides(freshTicket.entries, currentOverrides);
+            setServiceRows(mergedRows);
+            initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
+          } else {
+            setServiceRows(freshBaseRows);
+            initialServiceRowsRef.current = freshBaseRows.map(r => ({ ...r }));
+          }
         }
       }
     }

@@ -126,6 +126,11 @@ export interface ServiceTicketHours {
   edited_hours?: Record<string, number | number[]>;
 }
 
+/** Coerce billable: DB may return boolean or string; only true/'true' is billable. */
+function isBillable(entry: TimeEntry): boolean {
+  return entry.billable === true || (typeof entry.billable === 'string' && entry.billable.toLowerCase() === 'true');
+}
+
 // Aggregate metrics for a single employee from their time entries
 export function aggregateEmployeeMetrics(
   entries: TimeEntry[],
@@ -224,7 +229,7 @@ export function aggregateEmployeeMetrics(
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
     const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-    const isInternal = !entry.billable;
+    const isInternal = !isBillable(entry);
     
     if (isInternal) {
       payrollHoursByRateType.internal += hours;
@@ -363,7 +368,7 @@ export function aggregateEmployeeMetrics(
   // Calculate service ticket count (unique date+customer combinations for billable entries)
   const ticketKeys = new Set<string>();
   entries.forEach(entry => {
-    if (entry.billable && entry.project?.customer) {
+    if (isBillable(entry) && entry.project?.customer) {
       const key = `${entry.date}-${entry.project.customer.id}`;
       ticketKeys.add(key);
     }
@@ -407,7 +412,7 @@ export function aggregateEmployeeMetrics(
   entries.forEach(entry => {
     const hours = Number(entry.hours) || 0;
     const rateType = entry.rate_type || 'Shop Time';
-    const isInternal = !entry.billable;
+    const isInternal = !isBillable(entry);
     
     // Group hours by rate type (matching Payroll page grouping)
     switch (rateType) {
@@ -525,6 +530,9 @@ export function aggregateEmployeeMetrics(
   // Trends
   const trends = calculateTrends(entries);
 
+  // Use rate type breakdown as single source of truth for non-billable (keeps summary and breakdown in sync)
+  const nonBillableHoursDisplay = rateTypeBreakdown.internalTime.hours;
+
   return {
     userId,
     employeeName: user 
@@ -537,7 +545,7 @@ export function aggregateEmployeeMetrics(
     position: employee?.position,
     totalHours,
     billableHours,
-    nonBillableHours,
+    nonBillableHours: nonBillableHoursDisplay,
     billableRatio,
     totalRevenue,
     totalCost,
@@ -653,7 +661,7 @@ export function calculateRateTypeBreakdown(
   // STEP 1: Calculate Internal Time from time entries (payroll hours)
   // Internal time has NO revenue - it's a cost we cannot bill for
   entries.forEach(entry => {
-    if (!entry.billable) {
+    if (!isBillable(entry)) {
       const hours = Number(entry.hours) || 0;
       const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
       const payRate = getPayRate(rateType);
@@ -677,7 +685,7 @@ export function calculateRateTypeBreakdown(
   };
 
   entries.forEach(entry => {
-    if (entry.billable) {
+    if (isBillable(entry)) {
       const hours = Number(entry.hours) || 0;
       const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
       const payRate = getPayRate(rateType);
@@ -739,7 +747,7 @@ export function calculateRateTypeBreakdown(
     const firstTicket = tickets[0];
     const matchingEntries = entries.filter(entry => {
       if (entry.date !== firstTicket.date) return false;
-      if (!entry.billable) return false;
+      if (!isBillable(entry)) return false;
       if (firstTicket.customer_id && entry.project?.customer?.id !== firstTicket.customer_id) return false;
       if (firstTicket.project_id && entry.project_id !== firstTicket.project_id) return false;
       return true;
@@ -833,7 +841,7 @@ export function calculateRateTypeBreakdown(
 
   // Now process ALL billable time entries that weren't covered by any service tickets
   entries.forEach(entry => {
-    if (!entry.billable) return;
+    if (!isBillable(entry)) return;
     if (processedEntryIds.has(entry.id)) return; // Skip if processed by service ticket
     
     const hours = Number(entry.hours) || 0;
@@ -990,7 +998,7 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
     if (!entry.project_id || !entry.project) {
       return; // Skip entries without a project
     }
-    if (entry.rate_type === 'Internal' || !entry.billable) {
+    if (entry.rate_type === 'Internal' || !isBillable(entry)) {
       return; // Skip internal time entries - they don't count toward project totals
     }
     
@@ -1132,7 +1140,7 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
     if (!entry.project?.customer?.id) {
       return; // Skip entries without a customer
     }
-    if (entry.rate_type === 'Internal' || !entry.billable) {
+    if (entry.rate_type === 'Internal' || !isBillable(entry)) {
       return; // Skip internal time entries - they don't count toward customer totals
     }
     
@@ -1189,8 +1197,8 @@ export function calculateTrends(entries: TimeEntry[]): TrendData[] {
     const rate = Number(entry.rate) || 0;
     // Note: Trends function doesn't have employee context, so internal rate won't be used here
     // This is okay as trends are typically for billable work visualization
-    const revenue = entry.billable ? hours * rate : 0;
-    const billableHours = entry.billable ? hours : 0;
+    const revenue = isBillable(entry) ? hours * rate : 0;
+    const billableHours = isBillable(entry) ? hours : 0;
 
     if (!trendMap.has(date)) {
       trendMap.set(date, {
@@ -1238,7 +1246,7 @@ export function calculateEfficiency(entries: TimeEntry[]): {
     const rate = Number(entry.rate) || 0;
     totalHours += hours;
     uniqueDates.add(entry.date);
-    if (entry.billable) {
+    if (isBillable(entry)) {
       billableHours += hours;
       totalRevenue += hours * rate;
     }
