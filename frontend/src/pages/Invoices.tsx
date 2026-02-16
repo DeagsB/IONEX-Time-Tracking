@@ -121,12 +121,58 @@ function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: st
 
 const MARKED_INVOICED_STORAGE_KEY = 'ionex-invoices-marked';
 
-function getGroupId(group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }): string {
+export type DateRangeGrouping = 'daily' | 'weekly' | 'bi-weekly' | 'monthly';
+
+/** Get period key for a ticket date for non-CNRL grouping (daily / weekly / bi-weekly / monthly) */
+function getPeriodKey(dateStr: string, grouping: DateRangeGrouping): string {
+  const d = new Date(dateStr + 'T12:00:00');
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const date = d.getDate();
+  if (grouping === 'daily') return dateStr;
+  if (grouping === 'monthly') return `${y}-${String(m + 1).padStart(2, '0')}`;
+  const dayOfWeek = d.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(d);
+  monday.setDate(date + mondayOffset);
+  const monY = monday.getFullYear();
+  const monM = monday.getMonth();
+  const monD = monday.getDate();
+  const weekStart = `${monY}-${String(monM + 1).padStart(2, '0')}-${String(monD).padStart(2, '0')}`;
+  if (grouping === 'weekly') return weekStart;
+  const jan1 = new Date(monY, 0, 1);
+  const firstMonday = jan1.getDay() === 0 ? 2 : jan1.getDay() === 1 ? 1 : 9 - jan1.getDay();
+  const firstMon = new Date(monY, 0, firstMonday);
+  const diffMs = monday.getTime() - firstMon.getTime();
+  const weekNum = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 1;
+  const biweekNum = Math.ceil(weekNum / 2);
+  return `${monY}-B${String(biweekNum).padStart(2, '0')}`;
+}
+
+/** Human-readable label for a period key */
+function getPeriodLabel(periodKey: string, grouping: DateRangeGrouping): string {
+  if (grouping === 'daily') return periodKey;
+  if (grouping === 'monthly') {
+    const [y, m] = periodKey.split('-');
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${monthNames[parseInt(m || '1', 10) - 1]} ${y}`;
+  }
+  if (grouping === 'weekly') return `Week of ${periodKey}`;
+  const [y, b] = periodKey.split('-');
+  const bi = parseInt((b || '0').replace('B', ''), 10) || 0;
+  return `${y} Bi-week ${bi}`;
+}
+
+type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodLabel?: string };
+
+function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string {
+  const key = group.key;
+  if (key.periodKey) return `${key.projectId}|${key.periodKey}`;
   const ids = group.tickets
     .map((t) => (t as ServiceTicket & { recordId?: string }).recordId || t.id)
     .filter(Boolean)
     .sort();
-  return `${group.key.approverCode}|${ids.join(',')}`;
+  return `${key.approverCode}|${ids.join(',')}`;
 }
 
 /** Normalize ticket date to yyyy-mm-dd */
@@ -145,15 +191,38 @@ function getTicketDateRangeStr(tickets: ServiceTicket[]): string {
   return first === last ? first : `${first}_to_${last}`;
 }
 
-/** Invoice PDF filename: Approver_ProjectNumber_DateRange.pdf */
+/** Invoice PDF filename: Approver_ProjectNumber_DateRange.pdf (CNRL) or ProjectNumber_PeriodLabel.pdf (non-CNRL) */
 function getInvoicePdfFilename(
-  key: InvoiceGroupKey,
+  key: InvoiceGroupKeyWithPeriod,
   tickets: ServiceTicket[]
 ): string {
-  const approver = (key.approverCode || 'no-approver').replace(/[/\\?*:|"]/g, '_');
   const projectNum = (key.projectNumber || key.projectId || 'no-project').trim().replace(/[/\\?*:|"]/g, '_');
+  if (key.periodKey && key.periodLabel) {
+    const periodPart = key.periodLabel.replace(/[/\\?*:|"]/g, '_');
+    return `${projectNum}_${periodPart}.pdf`;
+  }
+  const approver = (key.approverCode || 'no-approver').replace(/[/\\?*:|"]/g, '_');
   const dateRange = getTicketDateRangeStr(tickets);
   return `${approver}_${projectNum}_${dateRange}.pdf`;
+}
+
+/** Single line total for non-CNRL groups (no PO/AFE breakdown) */
+function buildSingleLineBreakdown(
+  tickets: (ServiceTicket & { recordId?: string })[],
+  expensesByRecordId: Map<string, Array<{ quantity: number; rate: number }>>
+): { ticketList: string; poAfe: string; totalAmount: number }[] {
+  const nums = tickets.map((t) => t.ticketNumber).filter(Boolean) as string[];
+  let totalAmount = 0;
+  for (const t of tickets) {
+    const recordId = t.recordId;
+    const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
+    totalAmount += calculateTicketTotalAmount(t, expenses);
+  }
+  return [{
+    ticketList: formatTicketNumbersWithRanges(nums),
+    poAfe: 'Total',
+    totalAmount: Math.round(totalAmount * 100) / 100,
+  }];
 }
 
 /** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX" */
@@ -205,6 +274,9 @@ export default function Invoices() {
     return date.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [dateRangeGrouping, setDateRangeGrouping] = useState<DateRangeGrouping>('monthly');
 
   const { data: qboConnected } = useQuery({
     queryKey: ['qboStatus'],
@@ -439,11 +511,19 @@ export default function Invoices() {
     return ticketList;
   }, [billableEntries, employees, approvedRecords, customers, projects]);
 
-  // Group tickets by approver code only — all tickets with same approver code merge together
-  // Exclude tickets without approver codes (they shouldn't be invoiced until a PO/approver is assigned)
-  const groupedTickets = useMemo(() => {
-    const groups = new Map<string, ServiceTicket[]>();
-    for (const ticket of tickets) {
+  const ticketsForCustomer = useMemo(() => {
+    if (!selectedCustomerId) return tickets;
+    return tickets.filter((t) => t.customerId === selectedCustomerId);
+  }, [tickets, selectedCustomerId]);
+
+  const selectedCustomer = customers?.find((c: { id: string }) => c.id === selectedCustomerId);
+  const isCNRL = !selectedCustomerId || (selectedCustomer?.name ?? '').toUpperCase().includes('CNRL');
+
+  // Group tickets: CNRL = by approver/PO/AFE etc.; non-CNRL = by project then date period (daily/weekly/bi-weekly/monthly)
+  const groupedTickets = useMemo((): { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] => {
+    if (isCNRL) {
+      const groups = new Map<string, ServiceTicket[]>();
+      for (const ticket of ticketsForCustomer) {
       const t = ticket as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
       const keyObj = getInvoiceGroupKey(
         {
@@ -471,42 +551,84 @@ export default function Invoices() {
       const list = groups.get(groupKey) ?? [];
       list.push(ticket);
       groups.set(groupKey, list);
+      }
+      const result: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
+      const sortedGroupKeys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+      for (const groupKey of sortedGroupKeys) {
+        const list = groups.get(groupKey) ?? [];
+        list.sort((a, b) => {
+          const nameCmp = (a.userName || '').localeCompare(b.userName || '');
+          if (nameCmp !== 0) return nameCmp;
+          return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
+        });
+        const first = list[0] as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
+        const keyObj = getInvoiceGroupKey(
+          {
+            projectId: first.recordProjectId ?? first.projectId,
+            projectName: first.projectName,
+            projectNumber: first.projectNumber,
+            location: first.location,
+            projectApprover: first.projectApprover,
+            projectPoAfe: first.projectPoAfe,
+            projectCc: first.projectCc,
+            projectApproverPoAfe: first.projectApproverPoAfe,
+            projectLocation: first.projectLocation,
+            projectOther: first.projectOther,
+            customerInfo: first.customerInfo,
+            entryApprover: first.entryApprover,
+            entryPoAfe: first.entryPoAfe,
+            entryCc: first.entryCc,
+            entries: first.entries,
+          },
+          first.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+        );
+        result.push({ key: keyObj, tickets: list });
+      }
+      return result;
     }
-    // Sort groups by approver code, then within each group: by employee, then by ticket number
-    const result: { key: InvoiceGroupKey; tickets: ServiceTicket[] }[] = [];
-    const sortedGroupKeys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
-    for (const groupKey of sortedGroupKeys) {
-      const list = groups.get(groupKey) ?? [];
+
+    // Non-CNRL: group by project then by date period
+    const groupMap = new Map<string, ServiceTicket[]>();
+    for (const ticket of ticketsForCustomer) {
+      const t = ticket as ServiceTicket & { recordProjectId?: string };
+      const projectId = t.recordProjectId ?? t.projectId ?? '';
+      const periodKey = getPeriodKey(t.date ?? '', dateRangeGrouping);
+      const groupKey = `${projectId}|${periodKey}`;
+      const list = groupMap.get(groupKey) ?? [];
+      list.push(ticket);
+      groupMap.set(groupKey, list);
+    }
+    const result: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
+    const sortedKeys = [...groupMap.keys()].sort((a, b) => a.localeCompare(b));
+    for (const groupKey of sortedKeys) {
+      const list = groupMap.get(groupKey) ?? [];
       list.sort((a, b) => {
+        const dateCmp = (a.date || '').localeCompare(b.date || '');
+        if (dateCmp !== 0) return dateCmp;
         const nameCmp = (a.userName || '').localeCompare(b.userName || '');
         if (nameCmp !== 0) return nameCmp;
         return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
       });
-      const first = list[0] as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
-      const keyObj = getInvoiceGroupKey(
-        {
-          projectId: first.recordProjectId ?? first.projectId,
-          projectName: first.projectName,
-          projectNumber: first.projectNumber,
-          location: first.location,
-          projectApprover: first.projectApprover,
-          projectPoAfe: first.projectPoAfe,
-          projectCc: first.projectCc,
-          projectApproverPoAfe: first.projectApproverPoAfe,
-          projectLocation: first.projectLocation,
-          projectOther: first.projectOther,
-          customerInfo: first.customerInfo,
-          entryApprover: first.entryApprover,
-          entryPoAfe: first.entryPoAfe,
-          entryCc: first.entryCc,
-          entries: first.entries,
-        },
-        first.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-      );
+      const first = list[0] as ServiceTicket & { recordProjectId?: string };
+      const [projectId, periodKey] = groupKey.split('|');
+      const periodLabel = getPeriodLabel(periodKey, dateRangeGrouping);
+      const keyObj: InvoiceGroupKeyWithPeriod = {
+        projectId: first.recordProjectId ?? first.projectId ?? projectId,
+        projectName: first.projectName,
+        projectNumber: first.projectNumber,
+        approverCode: periodKey,
+        approver: periodLabel,
+        poAfe: '',
+        location: '',
+        cc: '',
+        other: '',
+        periodKey,
+        periodLabel,
+      };
       result.push({ key: keyObj, tickets: list });
     }
     return result;
-  }, [tickets]);
+  }, [ticketsForCustomer, isCNRL, dateRangeGrouping]);
 
   // Fetch expenses for all tickets (for CC breakdown totals)
   const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, Array<{ quantity: number; rate: number }>>>(new Map());
@@ -699,22 +821,12 @@ export default function Invoices() {
           label: `Creating invoice ${i + 1}/${total} in QuickBooks...`,
         });
 
-        // Sub-group by PO/AFE (each PO/AFE = one line item) - NO PARSING, use direct po_afe field
-        const poAfeMap = new Map<string, ServiceTicket[]>();
-        for (const ticket of groupTickets) {
-          const t = ticket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
-          const { poAfe } = getApproverPoAfeCcFromTicket(t, t.headerOverrides);
-          const poAfeKey = (poAfe || '').trim() || '(no PO/AFE)';
-          const list = poAfeMap.get(poAfeKey) ?? [];
-          list.push(ticket);
-          poAfeMap.set(poAfeKey, list);
-        }
-
-        const poAfeLineItems: Array<{ poAfe: string; tickets: string[]; totalAmount: number }> = [];
-        for (const [poAfe, poAfeTickets] of poAfeMap) {
+        let poAfeLineItems: Array<{ poAfe: string; tickets: string[]; totalAmount: number }>;
+        if (key.periodKey) {
+          // Non-CNRL: single line item for the whole group
           let totalAmount = 0;
           const ticketNumbers: string[] = [];
-          for (const ticket of poAfeTickets) {
+          for (const ticket of groupTickets) {
             const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
             let expenses: Array<{ quantity: number; rate: number }> = [];
             if (recordId) {
@@ -728,11 +840,46 @@ export default function Invoices() {
             totalAmount += calculateTicketTotalAmount(ticket, expenses);
             if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
           }
-          poAfeLineItems.push({
-            poAfe: poAfe === '(no PO/AFE)' ? '' : poAfe,
+          poAfeLineItems = [{
+            poAfe: key.periodLabel || key.periodKey,
             tickets: ticketNumbers,
             totalAmount: Math.round(totalAmount * 100) / 100,
-          });
+          }];
+        } else {
+          // CNRL: sub-group by PO/AFE (each PO/AFE = one line item)
+          const poAfeMap = new Map<string, ServiceTicket[]>();
+          for (const ticket of groupTickets) {
+            const t = ticket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
+            const { poAfe } = getApproverPoAfeCcFromTicket(t, t.headerOverrides);
+            const poAfeKey = (poAfe || '').trim() || '(no PO/AFE)';
+            const list = poAfeMap.get(poAfeKey) ?? [];
+            list.push(ticket);
+            poAfeMap.set(poAfeKey, list);
+          }
+          poAfeLineItems = [];
+          for (const [poAfe, poAfeTickets] of poAfeMap) {
+            let totalAmount = 0;
+            const ticketNumbers: string[] = [];
+            for (const ticket of poAfeTickets) {
+              const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
+              let expenses: Array<{ quantity: number; rate: number }> = [];
+              if (recordId) {
+                try {
+                  const exp = await serviceTicketExpensesService.getByTicketId(recordId);
+                  expenses = exp.map((e) => ({ quantity: e.quantity, rate: e.rate }));
+                } catch {
+                  // ignore
+                }
+              }
+              totalAmount += calculateTicketTotalAmount(ticket, expenses);
+              if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
+            }
+            poAfeLineItems.push({
+              poAfe: poAfe === '(no PO/AFE)' ? '' : poAfe,
+              tickets: ticketNumbers,
+              totalAmount: Math.round(totalAmount * 100) / 100,
+            });
+          }
         }
 
         const firstTicket = groupTickets[0];
@@ -740,10 +887,10 @@ export default function Invoices() {
           firstTicket,
           (firstTicket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } }).headerOverrides
         );
-        const reference = key.approverCode;
+        const reference = key.periodKey ? key.periodLabel : key.approverCode;
         const date = firstTicket.date || new Date().toISOString().split('T')[0];
-        const docNumber = key.approverCode
-          ? `INV-${key.approverCode}-${date.replace(/-/g, '')}`
+        const docNumber = (key.periodKey ? key.periodKey : key.approverCode)
+          ? `INV-${(key.periodKey ?? key.approverCode).replace(/[/\\?*:|"]/g, '_')}-${date.replace(/-/g, '')}`
           : undefined;
 
         const result = await quickbooksClientService.createInvoiceFromGroup({
@@ -823,9 +970,54 @@ export default function Invoices() {
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       <h1 style={{ marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
-        Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.
+        {isCNRL
+          ? 'Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.'
+          : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, or monthly) for invoicing.'}
       </p>
       <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Customer</label>
+          <select
+            value={selectedCustomerId}
+            onChange={(e) => setSelectedCustomerId(e.target.value)}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+              minWidth: '200px',
+            }}
+          >
+            <option value="">All customers</option>
+            {(customers ?? []).map((c: { id: string; name: string }) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        {!isCNRL && (
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by</label>
+            <select
+              value={dateRangeGrouping}
+              onChange={(e) => setDateRangeGrouping(e.target.value as DateRangeGrouping)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '14px',
+              }}
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="bi-weekly">Bi-weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+        )}
         <div>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Start Date</label>
           <input
@@ -972,7 +1164,9 @@ export default function Invoices() {
 
       {groupedTickets.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-          No approved tickets ready for export. Approve service tickets first in the Service Tickets page.
+          {selectedCustomerId
+            ? 'No approved tickets for this customer in the selected date range. Approve service tickets first in the Service Tickets page.'
+            : 'No approved tickets ready for export. Approve service tickets first in the Service Tickets page.'}
         </div>
       ) : showInvoiced ? (
         <div>
@@ -1005,25 +1199,27 @@ export default function Invoices() {
             {invoicedGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
-              const breakdownLines = buildPoAfeBreakdown(
-                groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
-                (t) =>
-                  getInvoiceGroupKey(
-                    {
-                      projectId: t.recordProjectId ?? t.projectId,
-                      projectName: t.projectName,
-                      projectNumber: t.projectNumber,
-                      location: t.location,
-                      projectApproverPoAfe: t.projectApproverPoAfe,
-                      projectLocation: t.projectLocation,
-                      projectOther: t.projectOther,
-                      customerInfo: t.customerInfo,
-                      entries: t.entries,
-                    },
-                    t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-                  ),
-                expensesByRecordId
-              );
+              const breakdownLines = key.periodKey
+                ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId)
+                : buildPoAfeBreakdown(
+                    groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
+                    (t) =>
+                      getInvoiceGroupKey(
+                        {
+                          projectId: t.recordProjectId ?? t.projectId,
+                          projectName: t.projectName,
+                          projectNumber: t.projectNumber,
+                          location: t.location,
+                          projectApproverPoAfe: t.projectApproverPoAfe,
+                          projectLocation: t.projectLocation,
+                          projectOther: t.projectOther,
+                          customerInfo: t.customerInfo,
+                          entries: t.entries,
+                        },
+                        t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                      ),
+                    expensesByRecordId
+                  );
               const groupTotal = breakdownLines.reduce((sum, line) => sum + line.totalAmount, 0);
               const isBreakdownExpanded = invoicedBreakdownExpanded.has(groupId);
               const projectDisplay = (() => {
@@ -1268,11 +1464,17 @@ export default function Invoices() {
                         return display.length > maxLen ? `${display.slice(0, maxLen)}…` : display;
                       })()}
                     </span>
-                    <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
-                    <span><strong>PO/AFE/CC (Cost Center):</strong> {key.poAfe || '(none)'}</span>
-                    <span><strong>Location:</strong> {key.location || '(none)'}</span>
-                    <span><strong>Coding:</strong> {key.cc || '(none)'}</span>
-                    <span><strong>Other:</strong> {key.other || '(none)'}</span>
+                    {key.periodKey ? (
+                      <span><strong>Period:</strong> {key.periodLabel || key.periodKey}</span>
+                    ) : (
+                      <>
+                        <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
+                        <span><strong>PO/AFE/CC (Cost Center):</strong> {key.poAfe || '(none)'}</span>
+                        <span><strong>Location:</strong> {key.location || '(none)'}</span>
+                        <span><strong>Coding:</strong> {key.cc || '(none)'}</span>
+                        <span><strong>Other:</strong> {key.other || '(none)'}</span>
+                      </>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                     <button
@@ -1322,24 +1524,30 @@ export default function Invoices() {
                   <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
                     Invoice Line Item Breakdown
                   </div>
-                  {buildPoAfeBreakdown(
-                    groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
-                    (t) =>
-                      getInvoiceGroupKey(
-                        {
-                          projectId: t.recordProjectId ?? t.projectId,
-                          projectName: t.projectName,
-                          projectNumber: t.projectNumber,
-                          location: t.location,
-                          projectApproverPoAfe: t.projectApproverPoAfe,
-                          projectLocation: t.projectLocation,
-                          projectOther: t.projectOther,
-                          customerInfo: t.customerInfo,
-                          entries: t.entries,
-                        },
-                        t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-                      ),
-                    expensesByRecordId
+                  {(key.periodKey
+                    ? buildSingleLineBreakdown(
+                        groupTickets as (ServiceTicket & { recordId?: string })[],
+                        expensesByRecordId
+                      )
+                    : buildPoAfeBreakdown(
+                        groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
+                        (t) =>
+                          getInvoiceGroupKey(
+                            {
+                              projectId: t.recordProjectId ?? t.projectId,
+                              projectName: t.projectName,
+                              projectNumber: t.projectNumber,
+                              location: t.location,
+                              projectApproverPoAfe: t.projectApproverPoAfe,
+                              projectLocation: t.projectLocation,
+                              projectOther: t.projectOther,
+                              customerInfo: t.customerInfo,
+                              entries: t.entries,
+                            },
+                            t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                          ),
+                        expensesByRecordId
+                      )
                   ).map(({ ticketList, poAfe, totalAmount }, i) => (
                     <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
                   ))}
