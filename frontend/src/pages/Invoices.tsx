@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -515,40 +515,62 @@ export default function Invoices() {
   const selectedCustomer = customers?.find((c: { id: string }) => c.id === selectedCustomerId);
   const isCNRL = !!selectedCustomerId && (selectedCustomer?.name ?? '').toUpperCase().includes('CNRL');
 
+  const isTicketCnrl = useCallback(
+    (ticket: ServiceTicket) =>
+      (customers?.find((c: { id: string }) => c.id === ticket.customerId)?.name ?? '').toUpperCase().includes('CNRL'),
+    [customers]
+  );
+
   // Group tickets: CNRL = by approver/PO/AFE etc.; non-CNRL = by project then date period (daily/weekly/bi-weekly/monthly)
+  // When "All customers" is selected, split by customer: CNRL tickets use CNRL grouping, others use time-frame grouping
   const groupedTickets = useMemo((): { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] => {
-    if (isCNRL) {
-      const groups = new Map<string, ServiceTicket[]>();
-      for (const ticket of ticketsForCustomer) {
-      const t = ticket as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
-      const keyObj = getInvoiceGroupKey(
-        {
-          projectId: t.recordProjectId ?? t.projectId,
-          projectName: t.projectName,
-          projectNumber: t.projectNumber,
-          location: t.location,
-          projectApprover: t.projectApprover,
-          projectPoAfe: t.projectPoAfe,
-          projectCc: t.projectCc,
-          projectApproverPoAfe: t.projectApproverPoAfe,
-          projectLocation: t.projectLocation,
-          projectOther: t.projectOther,
-          customerInfo: t.customerInfo,
-          entryApprover: t.entryApprover,
-          entryPoAfe: t.entryPoAfe,
-          entryCc: t.entryCc,
-          entries: t.entries,
-        },
-        t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-      );
-      // Skip tickets without a real approver code — only show tickets with G### or PO
-      if (!keyObj.approverCode || keyObj.approverCode === '_') continue;
-      const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}`;
-      const list = groups.get(groupKey) ?? [];
-      list.push(ticket);
-      groups.set(groupKey, list);
+    const ticketsToGroupCnrl: ServiceTicket[] = [];
+    const ticketsToGroupByPeriod: ServiceTicket[] = [];
+    if (selectedCustomerId) {
+      if (isCNRL) {
+        ticketsToGroupCnrl.push(...ticketsForCustomer);
+      } else {
+        ticketsToGroupByPeriod.push(...ticketsForCustomer);
       }
-      const result: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
+    } else {
+      for (const t of ticketsForCustomer) {
+        if (isTicketCnrl(t)) ticketsToGroupCnrl.push(t);
+        else ticketsToGroupByPeriod.push(t);
+      }
+    }
+
+    const result: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
+
+    if (ticketsToGroupCnrl.length > 0) {
+      const groups = new Map<string, ServiceTicket[]>();
+      for (const ticket of ticketsToGroupCnrl) {
+        const t = ticket as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
+        const keyObj = getInvoiceGroupKey(
+          {
+            projectId: t.recordProjectId ?? t.projectId,
+            projectName: t.projectName,
+            projectNumber: t.projectNumber,
+            location: t.location,
+            projectApprover: t.projectApprover,
+            projectPoAfe: t.projectPoAfe,
+            projectCc: t.projectCc,
+            projectApproverPoAfe: t.projectApproverPoAfe,
+            projectLocation: t.projectLocation,
+            projectOther: t.projectOther,
+            customerInfo: t.customerInfo,
+            entryApprover: t.entryApprover,
+            entryPoAfe: t.entryPoAfe,
+            entryCc: t.entryCc,
+            entries: t.entries,
+          },
+          t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+        );
+        if (!keyObj.approverCode || keyObj.approverCode === '_') continue;
+        const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}`;
+        const list = groups.get(groupKey) ?? [];
+        list.push(ticket);
+        groups.set(groupKey, list);
+      }
       const sortedGroupKeys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
       for (const groupKey of sortedGroupKeys) {
         const list = groups.get(groupKey) ?? [];
@@ -580,51 +602,51 @@ export default function Invoices() {
         );
         result.push({ key: keyObj, tickets: list });
       }
-      return result;
     }
 
-    // Non-CNRL: group by project then by date period
-    const groupMap = new Map<string, ServiceTicket[]>();
-    for (const ticket of ticketsForCustomer) {
-      const t = ticket as ServiceTicket & { recordProjectId?: string };
-      const projectId = t.recordProjectId ?? t.projectId ?? '';
-      const periodKey = getPeriodKey(t.date ?? '', dateRangeGrouping);
-      const groupKey = `${projectId}|${periodKey}`;
-      const list = groupMap.get(groupKey) ?? [];
-      list.push(ticket);
-      groupMap.set(groupKey, list);
+    if (ticketsToGroupByPeriod.length > 0) {
+      const groupMap = new Map<string, ServiceTicket[]>();
+      for (const ticket of ticketsToGroupByPeriod) {
+        const t = ticket as ServiceTicket & { recordProjectId?: string };
+        const projectId = t.recordProjectId ?? t.projectId ?? '';
+        const periodKey = getPeriodKey(t.date ?? '', dateRangeGrouping);
+        const groupKey = `${projectId}|${periodKey}`;
+        const list = groupMap.get(groupKey) ?? [];
+        list.push(ticket);
+        groupMap.set(groupKey, list);
+      }
+      const sortedKeys = [...groupMap.keys()].sort((a, b) => a.localeCompare(b));
+      for (const groupKey of sortedKeys) {
+        const list = groupMap.get(groupKey) ?? [];
+        list.sort((a, b) => {
+          const dateCmp = (a.date || '').localeCompare(b.date || '');
+          if (dateCmp !== 0) return dateCmp;
+          const nameCmp = (a.userName || '').localeCompare(b.userName || '');
+          if (nameCmp !== 0) return nameCmp;
+          return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
+        });
+        const first = list[0] as ServiceTicket & { recordProjectId?: string };
+        const [projectId, periodKey] = groupKey.split('|');
+        const periodLabel = getPeriodLabel(periodKey, dateRangeGrouping);
+        const keyObj: InvoiceGroupKeyWithPeriod = {
+          projectId: first.recordProjectId ?? first.projectId ?? projectId,
+          projectName: first.projectName,
+          projectNumber: first.projectNumber,
+          approverCode: periodKey,
+          approver: periodLabel,
+          poAfe: '',
+          location: '',
+          cc: '',
+          other: '',
+          periodKey,
+          periodLabel,
+        };
+        result.push({ key: keyObj, tickets: list });
+      }
     }
-    const result: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
-    const sortedKeys = [...groupMap.keys()].sort((a, b) => a.localeCompare(b));
-    for (const groupKey of sortedKeys) {
-      const list = groupMap.get(groupKey) ?? [];
-      list.sort((a, b) => {
-        const dateCmp = (a.date || '').localeCompare(b.date || '');
-        if (dateCmp !== 0) return dateCmp;
-        const nameCmp = (a.userName || '').localeCompare(b.userName || '');
-        if (nameCmp !== 0) return nameCmp;
-        return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
-      });
-      const first = list[0] as ServiceTicket & { recordProjectId?: string };
-      const [projectId, periodKey] = groupKey.split('|');
-      const periodLabel = getPeriodLabel(periodKey, dateRangeGrouping);
-      const keyObj: InvoiceGroupKeyWithPeriod = {
-        projectId: first.recordProjectId ?? first.projectId ?? projectId,
-        projectName: first.projectName,
-        projectNumber: first.projectNumber,
-        approverCode: periodKey,
-        approver: periodLabel,
-        poAfe: '',
-        location: '',
-        cc: '',
-        other: '',
-        periodKey,
-        periodLabel,
-      };
-      result.push({ key: keyObj, tickets: list });
-    }
+
     return result;
-  }, [ticketsForCustomer, isCNRL, dateRangeGrouping]);
+  }, [ticketsForCustomer, selectedCustomerId, isCNRL, dateRangeGrouping, isTicketCnrl]);
 
   // Fetch expenses for all tickets (for CC breakdown totals)
   const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, Array<{ quantity: number; rate: number }>>>(new Map());
