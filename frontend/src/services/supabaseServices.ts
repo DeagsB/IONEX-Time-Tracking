@@ -755,7 +755,8 @@ export const reportsService = {
       .from('service_tickets')
       .select('id, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours')
       .gte('date', startDate)
-      .lte('date', endDate);
+      .lte('date', endDate)
+      .or('is_discarded.is.null,is_discarded.eq.false');
 
     if (userId) {
       query = query.eq('user_id', userId);
