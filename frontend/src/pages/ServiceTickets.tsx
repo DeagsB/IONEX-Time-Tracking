@@ -3833,14 +3833,17 @@ export default function ServiceTickets() {
                       recordId = record.id;
                     }
                     const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+                    // Check if ticket has any backing time entries - if not, auto-discard
+                    // to prevent orphaned rejected notifications
+                    const hasNoBackingEntries = !ticket.entries || ticket.entries.length === 0;
                     if (rejectModalMode === 'unapprove') {
                       const { error } = await supabase.from(tableName).update({
                         ticket_number: null,
                         sequence_number: null,
                         year: null,
-                        workflow_status: 'rejected',
-                        rejected_at: new Date().toISOString(),
-                        rejection_notes: rejectNote.trim() || null,
+                        workflow_status: hasNoBackingEntries ? 'draft' : 'rejected',
+                        rejected_at: hasNoBackingEntries ? null : new Date().toISOString(),
+                        rejection_notes: hasNoBackingEntries ? null : (rejectNote.trim() || null),
                         approved_by_admin_id: null,
                         restored_at: null,
                         // Clear all edited state so ticket reopens fresh from time entries
@@ -3851,6 +3854,8 @@ export default function ServiceTickets() {
                         is_edited: false,
                         total_hours: null,
                         total_amount: null,
+                        // Auto-discard if no backing time entries (prevents orphaned rejected notification)
+                        is_discarded: hasNoBackingEntries ? true : false,
                       }).eq('id', recordId);
                       if (error) throw error;
                     } else {
