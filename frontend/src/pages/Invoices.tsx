@@ -268,11 +268,7 @@ export default function Invoices() {
   const [qboCreatedIds, setQboCreatedIds] = useState<string[]>([]);
 
   // Date range filter - matches Service Tickets Approved tab (only show tickets in this range)
-  const [startDate, setStartDate] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
-  });
+  const [startDate, setStartDate] = useState('2026-01-01');
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
