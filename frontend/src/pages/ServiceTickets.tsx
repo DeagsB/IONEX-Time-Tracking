@@ -81,6 +81,12 @@ export default function ServiceTickets() {
   }, [isAdmin, queryClient]);
   const [showDiscarded, setShowDiscarded] = useState(false);
 
+  // Refetch sidebar notification counts when opening Service Tickets so they stay in sync (e.g. after a ticket was removed elsewhere)
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+    queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
+  }, [queryClient]);
+
   // Clear bulk selection when switching tabs or trash view (selection is per tab)
   useEffect(() => {
     setSelectedTicketIds(new Set());
