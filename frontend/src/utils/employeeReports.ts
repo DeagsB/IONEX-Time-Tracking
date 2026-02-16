@@ -504,9 +504,9 @@ export function aggregateEmployeeMetrics(
     totalCost += roundedHours * payRate;
   }
   
-  // Internal time cost (rounded, paid at shop rate)
+  // Internal time cost (rounded) - use internal_rate when set, else shop pay rate
   if (hoursByRateType['Internal'] > 0) {
-    const payRate = Number(employee?.shop_pay_rate) || 0;
+    const payRate = Number(employee?.internal_rate) || Number(employee?.shop_pay_rate) || 0;
     const roundedHours = roundToQuarterHour(hoursByRateType['Internal']);
     totalCost += roundedHours * payRate;
   }
@@ -658,12 +658,11 @@ export function calculateRateTypeBreakdown(
   };
 
   // STEP 1: Calculate Internal Time from time entries (payroll hours)
-  // Internal time has NO revenue - it's a cost we cannot bill for
+  // Internal time has NO revenue - it's a cost we cannot bill for. Use internal_rate when set.
   entries.forEach(entry => {
     if (!isBillable(entry)) {
       const hours = Number(entry.hours) || 0;
-      const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-      const payRate = getPayRate(rateType);
+      const payRate = Number(employee?.internal_rate) || getPayRate((entry.rate_type || 'Shop Time').toLowerCase());
       const cost = hours * payRate;
 
       breakdown.internalTime.hours += hours;
