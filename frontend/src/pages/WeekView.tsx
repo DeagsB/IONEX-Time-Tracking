@@ -441,6 +441,9 @@ export default function WeekView() {
           po_afe: data.po_afe,
           cc: data.cc,
         }, isDemoMode);
+        // Clear sidebar notifications for rejected/resubmitted tickets
+        await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+        await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
       }
       
       // Sync approver/po_afe/cc to draft service ticket (only if still billable)
@@ -488,6 +491,9 @@ export default function WeekView() {
       await queryClient.invalidateQueries({ queryKey: ['timeEntries'], exact: false });
       await queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      // Clear sidebar notifications for rejected/resubmitted tickets
+      await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+      await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
       await queryClient.refetchQueries({ queryKey: ['billableEntries'] });
       await refetchTimeEntries();
       setShowEditModal(false);
