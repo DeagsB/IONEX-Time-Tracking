@@ -124,6 +124,7 @@ export interface ServiceTicketHours {
   project_id?: string;
   is_edited?: boolean;
   edited_hours?: Record<string, number | number[]>;
+  workflow_status?: string;
 }
 
 /** Coerce billable: DB may return boolean or string; only true/'true' is billable. */
@@ -356,12 +357,8 @@ export function aggregateEmployeeMetrics(
   // Using totalHours instead of totalPayrollHours to avoid efficiency > 100% when service tickets have minimums
   const billableRatio = totalHours > 0 ? (billableHours / totalHours) * 100 : 0;
   
-  // Calculate total service ticket hours for average rate calculation
-  const totalServiceTicketHours = serviceTicketHours && serviceTicketHours.length > 0
-    ? serviceTicketHours
-        .filter(t => t.user_id === userId)
-        .reduce((sum, t) => sum + (Number(t.total_hours) || 0), 0)
-    : billableHours; // Fallback to billable hours if no service tickets
+  // Total service ticket hours for average rate = billable hours (includes approved + draft/rejected from breakdown)
+  const totalServiceTicketHours = billableHours;
   
   const averageRate = totalServiceTicketHours > 0 ? totalRevenue / totalServiceTicketHours : 0;
   const efficiency = billableRatio; // Efficiency is same as billable ratio
@@ -726,11 +723,17 @@ export function calculateRateTypeBreakdown(
   // Group service tickets by date + user_id + customer_id + project_id
   // Sum hours from all tickets for the same combination (handles multiple tickets per day)
   const ticketGroupsMap = new Map<string, ServiceTicketHours[]>();
+  const isDraftOrRejected = (t: ServiceTicketHours) => {
+    const ws = (t.workflow_status || 'draft').toLowerCase();
+    return ws === 'draft' || ws === 'rejected';
+  };
+
   if (serviceTicketHours && serviceTicketHours.length > 0) {
     serviceTicketHours.forEach(ticket => {
       if (ticket.user_id !== userId) return;
-      // Skip tickets with 0 hours - they shouldn't contribute to billable hours
-      if (Number(ticket.total_hours) === 0 && (!ticket.is_edited || !ticket.edited_hours)) return;
+      // Skip tickets with 0 hours unless draft/rejected (we'll use matching time entry hours for those)
+      const hasNoSavedHours = Number(ticket.total_hours) === 0 && (!ticket.is_edited || !ticket.edited_hours);
+      if (hasNoSavedHours && !isDraftOrRejected(ticket)) return;
       
       const key = `${ticket.date}-${ticket.user_id}-${ticket.customer_id || 'unassigned'}-${ticket.project_id || 'unassigned'}`;
       if (!ticketGroupsMap.has(key)) {
@@ -806,37 +809,41 @@ export function calculateRateTypeBreakdown(
     if (editedTickets.length === 0 && nonEditedTickets.length > 0) {
       // Sum total_hours from all non-edited tickets in this group
       const totalTicketHours = nonEditedTickets.reduce((sum, t) => sum + (Number(t.total_hours) || 0), 0);
-      
-      if (totalTicketHours > 0) {
-        console.log('[RateTypeBreakdown] Processing non-edited tickets:', nonEditedTickets.length, 'total_hours:', totalTicketHours);
-        
-        // Calculate total hours from unprocessed entries to determine proportion
-        const totalEntryHours = unprocessedEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+      const totalEntryHours = unprocessedEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+      const groupIsDraftOrRejected = nonEditedTickets.some(t => isDraftOrRejected(t));
+      // Use ticket hours when present; for draft/rejected with 0 saved hours, use entry hours
+      const effectiveHours = totalTicketHours > 0
+        ? totalTicketHours
+        : (groupIsDraftOrRejected && totalEntryHours > 0 ? totalEntryHours : 0);
+
+      if (effectiveHours > 0) {
+        console.log('[RateTypeBreakdown] Processing non-edited tickets:', nonEditedTickets.length, 'effective_hours:', effectiveHours, totalTicketHours > 0 ? '(from ticket)' : '(draft from entries)');
         
         if (totalEntryHours > 0) {
-          // Distribute ticket hours proportionally by entry rate type
+          // Distribute hours proportionally by entry rate type
+          const sourceHours = totalTicketHours > 0 ? totalTicketHours : totalEntryHours;
           unprocessedEntries.forEach(entry => {
             const entryHours = Number(entry.hours) || 0;
             const proportion = entryHours / totalEntryHours;
-            const proportionalTicketHours = totalTicketHours * proportion;
+            const proportionalHours = sourceHours * proportion;
             const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
             
             if (rateType.includes('shop') && rateType.includes('overtime')) {
-              billableHoursByRateType.shopOvertime += proportionalTicketHours;
+              billableHoursByRateType.shopOvertime += proportionalHours;
             } else if (rateType.includes('field') && rateType.includes('overtime')) {
-              billableHoursByRateType.fieldOvertime += proportionalTicketHours;
+              billableHoursByRateType.fieldOvertime += proportionalHours;
             } else if (rateType.includes('field')) {
-              billableHoursByRateType.fieldTime += proportionalTicketHours;
+              billableHoursByRateType.fieldTime += proportionalHours;
             } else if (rateType.includes('travel')) {
-              billableHoursByRateType.travelTime += proportionalTicketHours;
+              billableHoursByRateType.travelTime += proportionalHours;
             } else {
-              billableHoursByRateType.shopTime += proportionalTicketHours;
+              billableHoursByRateType.shopTime += proportionalHours;
             }
           });
         } else {
           // No matching entries (entry was deleted) - use service ticket hours directly
           // Default to shop time since we don't have entry rate type info
-          billableHoursByRateType.shopTime += totalTicketHours;
+          billableHoursByRateType.shopTime += effectiveHours;
         }
       }
     }
@@ -945,15 +952,17 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
             ticketRevenue += hoursForRate * getBillableRate(rateType);
           });
         } else {
-          // Use total_hours if not edited - need to find rate type from matching entries
-          ticketHours = Number(ticket.total_hours) || 0;
-          // Find matching entries to determine rate type distribution
-          const matchingEntries = entries.filter(e => 
-            e.billable && 
-            e.project_id === ticket.project_id && 
-            e.date === ticket.date
+          // Use total_hours if not edited; for draft/rejected with 0, use matching entry hours
+          const matchingEntries = entries.filter(e =>
+            isBillable(e) &&
+            e.project_id === ticket.project_id &&
+            e.date === ticket.date &&
+            (e.project?.customer?.id === ticket.customer_id || (!ticket.customer_id && !e.project?.customer?.id))
           );
           const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+          const isDraftRejected = (t: ServiceTicketHours) => { const w = (t.workflow_status || 'draft').toLowerCase(); return w === 'draft' || w === 'rejected'; };
+          ticketHours = Number(ticket.total_hours) || 0;
+          if (ticketHours === 0 && isDraftRejected(ticket) && totalEntryHours > 0) ticketHours = totalEntryHours;
           
           if (totalEntryHours > 0) {
             matchingEntries.forEach(entry => {
@@ -963,7 +972,6 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
               ticketRevenue += proportionalHours * getBillableRate(rateType);
             });
           } else {
-            // Default to shop rate if no matching entries
             ticketRevenue = ticketHours * getBillableRate('Shop Time');
           }
         }
@@ -1087,15 +1095,17 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
             ticketRevenue += hoursForRate * getBillableRate(rateType);
           });
         } else {
-          // Use total_hours if not edited - need to find rate type from matching entries
-          ticketHours = Number(ticket.total_hours) || 0;
-          // Find matching entries to determine rate type distribution
-          const matchingEntries = entries.filter(e => 
-            e.billable && 
-            e.project?.customer?.id === ticket.customer_id && 
-            e.date === ticket.date
+          // Use total_hours if not edited; for draft/rejected with 0, use matching entry hours
+          const matchingEntries = entries.filter(e =>
+            isBillable(e) &&
+            e.project?.customer?.id === ticket.customer_id &&
+            e.date === ticket.date &&
+            (e.project_id === ticket.project_id || !ticket.project_id)
           );
           const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+          const isDraftRejected = (t: ServiceTicketHours) => { const w = (t.workflow_status || 'draft').toLowerCase(); return w === 'draft' || w === 'rejected'; };
+          ticketHours = Number(ticket.total_hours) || 0;
+          if (ticketHours === 0 && isDraftRejected(ticket) && totalEntryHours > 0) ticketHours = totalEntryHours;
           
           if (totalEntryHours > 0) {
             matchingEntries.forEach(entry => {
@@ -1105,7 +1115,6 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
               ticketRevenue += proportionalHours * getBillableRate(rateType);
             });
           } else {
-            // Default to shop rate if no matching entries
             ticketRevenue = ticketHours * getBillableRate('Shop Time');
           }
         }
