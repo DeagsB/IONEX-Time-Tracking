@@ -75,12 +75,12 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
   return parts.join(', ');
 }
 
-/** Single CC breakdown line with copy button (excludes total from copy) */
-function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; cc: string; totalAmount: number }) {
+/** Single PO/AFE breakdown line with copy button (excludes total from copy) */
+function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: string; poAfe: string; totalAmount: number }) {
   const [copied, setCopied] = useState(false);
-  const isNone = cc === '(none)';
-  const copyText = isNone ? ticketList : `${ticketList}; Coding: ${cc}`;
-  const displayText = isNone ? ticketList : `${ticketList}; Coding: ${cc}`;
+  const isNone = poAfe === '(none)';
+  const copyText = isNone ? ticketList : `${ticketList}; PO/AFE: ${poAfe}`;
+  const displayText = isNone ? ticketList : `${ticketList}; PO/AFE: ${poAfe}`;
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(copyText);
@@ -100,7 +100,7 @@ function CcBreakdownLine({ ticketList, cc, totalAmount }: { ticketList: string; 
       </span>
       <button
         onClick={handleCopy}
-        title="Copy ticket list and Coding (excludes total)"
+        title="Copy ticket list and PO/AFE (excludes total)"
         style={{
           padding: '4px 8px',
           backgroundColor: copied ? 'var(--primary-color)' : 'var(--bg-secondary)',
@@ -129,33 +129,33 @@ function getGroupId(group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }): 
   return `${group.key.approverCode}|${ids.join(',')}`;
 }
 
-/** Build Coding breakdown with totals: "AR_xx1, AR_xx2; Coding: xxxxxxxx – $X,XXX.XX" */
-function buildCcBreakdown(
+/** Build PO/AFE breakdown with totals: "AR_xx1, AR_xx2; PO/AFE: xxxxxxxx – $X,XXX.XX" */
+function buildPoAfeBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
   getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
   expensesByRecordId: Map<string, Array<{ quantity: number; rate: number }>>
-): { ticketList: string; cc: string; totalAmount: number }[] {
-  const byCc = new Map<string, { nums: string[]; tickets: typeof tickets }>();
+): { ticketList: string; poAfe: string; totalAmount: number }[] {
+  const byPoAfe = new Map<string, { nums: string[]; tickets: typeof tickets }>();
   for (const t of tickets) {
     const key = getKey(t);
-    const cc = (key.cc || '').trim() || '(none)';
-    const entry = byCc.get(cc) ?? { nums: [], tickets: [] };
+    const poAfe = (key.poAfe || '').trim() || '(none)';
+    const entry = byPoAfe.get(poAfe) ?? { nums: [], tickets: [] };
     if (t.ticketNumber) entry.nums.push(t.ticketNumber);
     entry.tickets.push(t);
-    byCc.set(cc, entry);
+    byPoAfe.set(poAfe, entry);
   }
-  return [...byCc.entries()]
+  return [...byPoAfe.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([cc, { nums, tickets: ccTickets }]) => {
+    .map(([poAfe, { nums, tickets: poAfeTickets }]) => {
       let totalAmount = 0;
-      for (const t of ccTickets) {
+      for (const t of poAfeTickets) {
         const recordId = (t as { recordId?: string }).recordId;
         const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
         totalAmount += calculateTicketTotalAmount(t, expenses);
       }
       return {
         ticketList: formatTicketNumbersWithRanges(nums),
-        cc,
+        poAfe,
         totalAmount: Math.round(totalAmount * 100) / 100,
       };
     });
@@ -675,22 +675,22 @@ export default function Invoices() {
           label: `Creating invoice ${i + 1}/${total} in QuickBooks...`,
         });
 
-        // Sub-group by CC (each CC = one line item) - NO PARSING, use direct cc field
-        const ccMap = new Map<string, ServiceTicket[]>();
+        // Sub-group by PO/AFE (each PO/AFE = one line item) - NO PARSING, use direct po_afe field
+        const poAfeMap = new Map<string, ServiceTicket[]>();
         for (const ticket of groupTickets) {
           const t = ticket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
-          const { cc } = getApproverPoAfeCcFromTicket(t, t.headerOverrides);
-          const ccKey = (cc || '').trim() || '(no CC)';
-          const list = ccMap.get(ccKey) ?? [];
+          const { poAfe } = getApproverPoAfeCcFromTicket(t, t.headerOverrides);
+          const poAfeKey = (poAfe || '').trim() || '(no PO/AFE)';
+          const list = poAfeMap.get(poAfeKey) ?? [];
           list.push(ticket);
-          ccMap.set(ccKey, list);
+          poAfeMap.set(poAfeKey, list);
         }
 
-        const ccLineItems: Array<{ cc: string; tickets: string[]; totalAmount: number }> = [];
-        for (const [cc, ccTickets] of ccMap) {
+        const poAfeLineItems: Array<{ poAfe: string; tickets: string[]; totalAmount: number }> = [];
+        for (const [poAfe, poAfeTickets] of poAfeMap) {
           let totalAmount = 0;
           const ticketNumbers: string[] = [];
-          for (const ticket of ccTickets) {
+          for (const ticket of poAfeTickets) {
             const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
             let expenses: Array<{ quantity: number; rate: number }> = [];
             if (recordId) {
@@ -704,8 +704,8 @@ export default function Invoices() {
             totalAmount += calculateTicketTotalAmount(ticket, expenses);
             if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
           }
-          ccLineItems.push({
-            cc: cc === '(no CC)' ? '' : cc,
+          poAfeLineItems.push({
+            poAfe: poAfe === '(no PO/AFE)' ? '' : poAfe,
             tickets: ticketNumbers,
             totalAmount: Math.round(totalAmount * 100) / 100,
           });
@@ -727,7 +727,7 @@ export default function Invoices() {
           customerEmail: firstTicket.customerInfo?.email,
           customerPo: customerPo || undefined,
           reference: reference || undefined,
-          ccLineItems,
+          poAfeLineItems,
           date,
           docNumber,
         });
@@ -1057,7 +1057,7 @@ export default function Invoices() {
                     <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
                       Invoice Line Item Breakdown
                     </div>
-                    {buildCcBreakdown(
+                    {buildPoAfeBreakdown(
                       groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
                       (t) =>
                         getInvoiceGroupKey(
@@ -1075,8 +1075,8 @@ export default function Invoices() {
                           t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
                         ),
                       expensesByRecordId
-                    ).map(({ ticketList, cc, totalAmount }, i) => (
-                      <CcBreakdownLine key={i} ticketList={ticketList} cc={cc} totalAmount={totalAmount} />
+                    ).map(({ ticketList, poAfe, totalAmount }, i) => (
+                      <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
                     ))}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -1266,7 +1266,7 @@ export default function Invoices() {
                   <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
                     Invoice Line Item Breakdown
                   </div>
-                  {buildCcBreakdown(
+                  {buildPoAfeBreakdown(
                     groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
                     (t) =>
                       getInvoiceGroupKey(
@@ -1284,8 +1284,8 @@ export default function Invoices() {
                         t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
                       ),
                     expensesByRecordId
-                  ).map(({ ticketList, cc, totalAmount }, i) => (
-                    <CcBreakdownLine key={i} ticketList={ticketList} cc={cc} totalAmount={totalAmount} />
+                  ).map(({ ticketList, poAfe, totalAmount }, i) => (
+                    <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
                   ))}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>

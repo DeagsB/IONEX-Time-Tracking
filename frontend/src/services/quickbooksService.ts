@@ -24,8 +24,8 @@ interface CreateInvoiceParams {
   memo?: string;
 }
 
-export interface CcLineItem {
-  cc: string;
+export interface PoAfeLineItem {
+  poAfe: string;
   tickets: string[];
   totalAmount: number;
 }
@@ -35,7 +35,7 @@ export interface CreateInvoiceFromGroupParams {
   customerEmail?: string;
   customerPo?: string;
   reference?: string;
-  ccLineItems: CcLineItem[];
+  poAfeLineItems: PoAfeLineItem[];
   date: string;
   docNumber?: string;
 }

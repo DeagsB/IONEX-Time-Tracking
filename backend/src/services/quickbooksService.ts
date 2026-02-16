@@ -48,9 +48,9 @@ interface CreateInvoiceParams {
   memo?: string;
 }
 
-/** Line item for CC-based invoice (one per CC) */
-interface CcLineItem {
-  cc: string;
+/** Line item for PO/AFE-based invoice (one per PO/AFE) */
+interface PoAfeLineItem {
+  poAfe: string;
   tickets: string[];
   totalAmount: number;
 }
@@ -60,7 +60,7 @@ interface CreateInvoiceFromGroupParams {
   customerEmail?: string;
   customerPo?: string;
   reference?: string;
-  ccLineItems: CcLineItem[];
+  poAfeLineItems: PoAfeLineItem[];
   date: string;
   docNumber?: string;
 }
@@ -332,9 +332,9 @@ class QuickBooksService {
     }
 
     const minorVersion = 75; // For custom fields support
-    const lineItems = params.ccLineItems.map((item, index) => {
-      const description = item.cc
-        ? `CC: ${item.cc} Tickets: ${item.tickets.join(', ')}`
+    const lineItems = params.poAfeLineItems.map((item, index) => {
+      const description = item.poAfe
+        ? `PO/AFE: ${item.poAfe} Tickets: ${item.tickets.join(', ')}`
         : `Tickets: ${item.tickets.join(', ')}`;
       const line: Record<string, unknown> = {
         Id: String(index + 1),

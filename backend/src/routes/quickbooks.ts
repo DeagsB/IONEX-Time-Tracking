@@ -146,16 +146,16 @@ router.post('/invoice', authenticate, authorize(['ADMIN']), async (req: Request,
 /**
  * POST /api/quickbooks/invoice/from-group
  * Create an invoice from grouped service tickets (CNRL format)
- * Body: { customerName, customerEmail?, customerPo?, reference?, ccLineItems: [{ cc, tickets, totalAmount }], date, docNumber? }
+ * Body: { customerName, customerEmail?, customerPo?, reference?, poAfeLineItems: [{ poAfe, tickets, totalAmount }], date, docNumber? }
  */
 router.post('/invoice/from-group', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
   try {
-    const { customerName, customerEmail, customerPo, reference, ccLineItems, date, docNumber } = req.body;
+    const { customerName, customerEmail, customerPo, reference, poAfeLineItems, date, docNumber } = req.body;
 
-    if (!customerName || !ccLineItems || !Array.isArray(ccLineItems) || !date) {
+    if (!customerName || !poAfeLineItems || !Array.isArray(poAfeLineItems) || !date) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: customerName, ccLineItems (array), date',
+        error: 'Missing required fields: customerName, poAfeLineItems (array), date',
       });
     }
 
@@ -164,7 +164,7 @@ router.post('/invoice/from-group', authenticate, authorize(['ADMIN']), async (re
       customerEmail,
       customerPo,
       reference,
-      ccLineItems,
+      poAfeLineItems,
       date,
       docNumber,
     });
