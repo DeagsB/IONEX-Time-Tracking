@@ -60,7 +60,7 @@ const DEV_USER_ID = '235d854a-1b7d-4e00-a5a4-43835c85c086'; // Existing user fro
 // MAINTENANCE MODE - Default when no override is set in localStorage
 // Only DEVELOPER role users can access when on. Admins can toggle at runtime.
 // =====================================================
-const MAINTENANCE_MODE_DEFAULT = true;
+const MAINTENANCE_MODE_DEFAULT = false;
 const MAINTENANCE_STORAGE_KEY = 'ionex_maintenance_mode';
 
 const DEV_USER: User = {
