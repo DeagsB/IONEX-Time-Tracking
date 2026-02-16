@@ -334,7 +334,7 @@ class QuickBooksService {
     const minorVersion = 75; // For custom fields support
     const lineItems = params.poAfeLineItems.map((item, index) => {
       const description = item.poAfe
-        ? `PO/AFE: ${item.poAfe} Tickets: ${item.tickets.join(', ')}`
+        ? `PO/AFE/CC: ${item.poAfe} Tickets: ${item.tickets.join(', ')}`
         : `Tickets: ${item.tickets.join(', ')}`;
       const line: Record<string, unknown> = {
         Id: String(index + 1),
