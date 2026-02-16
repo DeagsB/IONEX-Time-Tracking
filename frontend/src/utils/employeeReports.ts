@@ -125,6 +125,7 @@ export interface ServiceTicketHours {
   is_edited?: boolean;
   edited_hours?: Record<string, number | number[]>;
   workflow_status?: string;
+  rejected_at?: string | null;
 }
 
 /** Coerce billable: DB may return boolean or string; only true/'true' is billable. */
@@ -357,7 +358,7 @@ export function aggregateEmployeeMetrics(
   // Using totalHours instead of totalPayrollHours to avoid efficiency > 100% when service tickets have minimums
   const billableRatio = totalHours > 0 ? (billableHours / totalHours) * 100 : 0;
   
-  // Total service ticket hours for average rate = billable hours (includes approved + draft/rejected from breakdown)
+  // Total service ticket hours for average rate = billable hours (includes approved + draft/rejected/resubmitted from breakdown)
   const totalServiceTicketHours = billableHours;
   
   const averageRate = totalServiceTicketHours > 0 ? totalRevenue / totalServiceTicketHours : 0;
@@ -723,17 +724,19 @@ export function calculateRateTypeBreakdown(
   // Group service tickets by date + user_id + customer_id + project_id
   // Sum hours from all tickets for the same combination (handles multiple tickets per day)
   const ticketGroupsMap = new Map<string, ServiceTicketHours[]>();
-  const isDraftOrRejected = (t: ServiceTicketHours) => {
+  // Draft, rejected, or resubmitted (rejected then submitted again) — use entry hours when ticket has no saved hours
+  const isDraftRejectedOrResubmitted = (t: ServiceTicketHours) => {
     const ws = (t.workflow_status || 'draft').toLowerCase();
-    return ws === 'draft' || ws === 'rejected';
+    if (ws === 'draft' || ws === 'rejected') return true;
+    return !!(t.rejected_at != null && t.rejected_at !== '');
   };
 
   if (serviceTicketHours && serviceTicketHours.length > 0) {
     serviceTicketHours.forEach(ticket => {
       if (ticket.user_id !== userId) return;
-      // Skip tickets with 0 hours unless draft/rejected (we'll use matching time entry hours for those)
+      // Skip tickets with 0 hours unless draft/rejected/resubmitted (we'll use matching time entry hours for those)
       const hasNoSavedHours = Number(ticket.total_hours) === 0 && (!ticket.is_edited || !ticket.edited_hours);
-      if (hasNoSavedHours && !isDraftOrRejected(ticket)) return;
+      if (hasNoSavedHours && !isDraftRejectedOrResubmitted(ticket)) return;
       
       const key = `${ticket.date}-${ticket.user_id}-${ticket.customer_id || 'unassigned'}-${ticket.project_id || 'unassigned'}`;
       if (!ticketGroupsMap.has(key)) {
@@ -810,14 +813,14 @@ export function calculateRateTypeBreakdown(
       // Sum total_hours from all non-edited tickets in this group
       const totalTicketHours = nonEditedTickets.reduce((sum, t) => sum + (Number(t.total_hours) || 0), 0);
       const totalEntryHours = unprocessedEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-      const groupIsDraftOrRejected = nonEditedTickets.some(t => isDraftOrRejected(t));
-      // Use ticket hours when present; for draft/rejected with 0 saved hours, use entry hours
+      const groupIsDraftRejectedOrResubmitted = nonEditedTickets.some(t => isDraftRejectedOrResubmitted(t));
+      // Use ticket hours when present; for draft/rejected/resubmitted with 0 saved hours, use entry hours
       const effectiveHours = totalTicketHours > 0
         ? totalTicketHours
-        : (groupIsDraftOrRejected && totalEntryHours > 0 ? totalEntryHours : 0);
+        : (groupIsDraftRejectedOrResubmitted && totalEntryHours > 0 ? totalEntryHours : 0);
 
       if (effectiveHours > 0) {
-        console.log('[RateTypeBreakdown] Processing non-edited tickets:', nonEditedTickets.length, 'effective_hours:', effectiveHours, totalTicketHours > 0 ? '(from ticket)' : '(draft from entries)');
+        console.log('[RateTypeBreakdown] Processing non-edited tickets:', nonEditedTickets.length, 'effective_hours:', effectiveHours, totalTicketHours > 0 ? '(from ticket)' : '(draft/rejected/resubmitted from entries)');
         
         if (totalEntryHours > 0) {
           // Distribute hours proportionally by entry rate type
@@ -960,9 +963,13 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
             (e.project?.customer?.id === ticket.customer_id || (!ticket.customer_id && !e.project?.customer?.id))
           );
           const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-          const isDraftRejected = (t: ServiceTicketHours) => { const w = (t.workflow_status || 'draft').toLowerCase(); return w === 'draft' || w === 'rejected'; };
+          const isDraftRejectedOrResubmitted = (t: ServiceTicketHours) => {
+            const w = (t.workflow_status || 'draft').toLowerCase();
+            if (w === 'draft' || w === 'rejected') return true;
+            return !!(t.rejected_at != null && t.rejected_at !== '');
+          };
           ticketHours = Number(ticket.total_hours) || 0;
-          if (ticketHours === 0 && isDraftRejected(ticket) && totalEntryHours > 0) ticketHours = totalEntryHours;
+          if (ticketHours === 0 && isDraftRejectedOrResubmitted(ticket) && totalEntryHours > 0) ticketHours = totalEntryHours;
           
           if (totalEntryHours > 0) {
             matchingEntries.forEach(entry => {
@@ -1103,9 +1110,13 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
             (e.project_id === ticket.project_id || !ticket.project_id)
           );
           const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-          const isDraftRejected = (t: ServiceTicketHours) => { const w = (t.workflow_status || 'draft').toLowerCase(); return w === 'draft' || w === 'rejected'; };
+          const isDraftRejectedOrResubmitted = (t: ServiceTicketHours) => {
+            const w = (t.workflow_status || 'draft').toLowerCase();
+            if (w === 'draft' || w === 'rejected') return true;
+            return !!(t.rejected_at != null && t.rejected_at !== '');
+          };
           ticketHours = Number(ticket.total_hours) || 0;
-          if (ticketHours === 0 && isDraftRejected(ticket) && totalEntryHours > 0) ticketHours = totalEntryHours;
+          if (ticketHours === 0 && isDraftRejectedOrResubmitted(ticket) && totalEntryHours > 0) ticketHours = totalEntryHours;
           
           if (totalEntryHours > 0) {
             matchingEntries.forEach(entry => {
