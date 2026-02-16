@@ -2864,7 +2864,7 @@ export default function ServiceTickets() {
                   FO
                 </th>
                 <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                  Expense
+                  Expenses
                 </th>
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Action
