@@ -417,8 +417,23 @@ export default function WeekView() {
     },
   });
 
-  const updateTimeEntryMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+  type UpdateTimeEntryVariables = {
+    id: string;
+    data: any;
+    oldGroup?: {
+      date: string;
+      userId: string;
+      customerId: string | null;
+      projectId?: string | null;
+      location?: string | null;
+      approver?: string | null;
+      po_afe?: string | null;
+      cc?: string | null;
+    };
+  };
+
+  const updateTimeEntryMutation = useMutation<any, any, UpdateTimeEntryVariables>({
+    mutationFn: async ({ id, data }) => {
       console.log('Updating time entry:', id, data);
       const result = await timeEntriesService.update(id, data);
       console.log('Time entry updated:', result);
@@ -427,7 +442,7 @@ export default function WeekView() {
     onSuccess: async (data, variables) => {
       console.log('Time entry updated successfully');
       const dateStr = typeof data.date === 'string' ? data.date : new Date(data.date).toISOString().split('T')[0];
-      const { oldGroup } = variables as { id: string; data: any; oldGroup?: { date: string; userId: string; customerId: string | null; projectId?: string | null; location?: string | null; approver?: string | null; po_afe?: string | null; cc?: string | null } };
+      const { oldGroup } = variables;
 
       // If entry's project/customer was changed, remove the old draft ticket (it no longer has any time entries)
       if (oldGroup && data?.project_id !== oldGroup.projectId && oldGroup.customerId) {
