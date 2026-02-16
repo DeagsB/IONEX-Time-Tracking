@@ -1682,6 +1682,30 @@ export default function ServiceTickets() {
     return { st, tt, ft, so, fo, total: st + tt + ft + so + fo };
   }, [selectedTicketId, serviceRows]);
 
+  // Totals for hours columns (admin-only footer)
+  const tableFooterTotals = useMemo(() => {
+    let totalHours = 0;
+    let st = 0, tt = 0, ft = 0, so = 0, fo = 0;
+    filteredTickets.forEach((ticket) => {
+      if (ticket.id === selectedTicketId && liveHoursForSelectedTicket) {
+        totalHours += liveHoursForSelectedTicket.total;
+        st += liveHoursForSelectedTicket.st;
+        tt += liveHoursForSelectedTicket.tt;
+        ft += liveHoursForSelectedTicket.ft;
+        so += liveHoursForSelectedTicket.so;
+        fo += liveHoursForSelectedTicket.fo;
+      } else {
+        totalHours += ticket.totalHours ?? 0;
+        st += ticket.hoursByRateType['Shop Time'] ?? 0;
+        tt += ticket.hoursByRateType['Travel Time'] ?? 0;
+        ft += ticket.hoursByRateType['Field Time'] ?? 0;
+        so += ticket.hoursByRateType['Shop Overtime'] ?? 0;
+        fo += ticket.hoursByRateType['Field Overtime'] ?? 0;
+      }
+    });
+    return { totalHours, st, tt, ft, so, fo };
+  }, [filteredTickets, selectedTicketId, liveHoursForSelectedTicket]);
+
   // Expense mutations
   const createExpenseMutation = useMutation({
     mutationFn: (expense: {
@@ -3648,6 +3672,35 @@ export default function ServiceTickets() {
                 );
               })}
             </tbody>
+            {isAdmin && filteredTickets.length > 0 && (
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                  {isAdmin && <td style={{ padding: '12px 16px', width: '50px' }}> </td>}
+                  <td style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Total</td>
+                  <td colSpan={3} style={{ padding: '12px 16px' }} />
+                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    {tableFooterTotals.totalHours.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                    {tableFooterTotals.st.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                    {tableFooterTotals.tt.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                    {tableFooterTotals.ft.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                    {tableFooterTotals.so.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                    {tableFooterTotals.fo.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '12px 16px' }} />
+                  {isAdmin && !showDiscarded && activeTab === 'approved' && <td style={{ padding: '12px 16px' }} />}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
         </>
