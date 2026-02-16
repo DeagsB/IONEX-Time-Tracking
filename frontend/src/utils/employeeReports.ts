@@ -250,10 +250,13 @@ export function aggregateEmployeeMetrics(
   });
 
   // Calculate non-billable hours:
-  // Non-billable = Rounded Payroll Hours - Service Ticket Hours (billed)
-  // This matches what appears on the Payroll report (rounded to 0.10)
-  
-  // First, round each payroll rate type to 0.10 (matching Payroll page)
+  // Non-billable = internal time entries + unbilled work (entry hours not on a non-discarded service ticket).
+  // - Time that was on discarded service tickets counts as non-billable only when it has backing
+  //   calendar (time) entries; unbilled is computed from entry hours minus non-discarded ticket hours,
+  //   so discarded-ticket time that has entries is already included in unbilled.
+  // - Manually added ticket rows (no time entry on the calendar) must NOT contribute to non-billable;
+  //   we never add ticket-only hours here because unbilled uses payroll (entry) hours only.
+  // First, round each payroll rate type to 0.25 (matching Payroll page)
   const roundedPayrollHours = {
     shopTime: roundToQuarterHourForPayroll(payrollHoursByRateType.shopTime),
     fieldTime: roundToQuarterHourForPayroll(payrollHoursByRateType.fieldTime),
