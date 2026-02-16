@@ -554,6 +554,7 @@ export default function Invoices() {
   };
 
   const [showInvoiced, setShowInvoiced] = useState(false);
+  const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
 
   const invoicedGroups = useMemo(
     () => groupedTickets.filter((g) => markedInvoicedIds.has(getGroupId(g))),
@@ -981,6 +982,32 @@ export default function Invoices() {
             {invoicedGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
+              const breakdownLines = buildPoAfeBreakdown(
+                groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
+                (t) =>
+                  getInvoiceGroupKey(
+                    {
+                      projectId: t.recordProjectId ?? t.projectId,
+                      projectName: t.projectName,
+                      projectNumber: t.projectNumber,
+                      location: t.location,
+                      projectApproverPoAfe: t.projectApproverPoAfe,
+                      projectLocation: t.projectLocation,
+                      projectOther: t.projectOther,
+                      customerInfo: t.customerInfo,
+                      entries: t.entries,
+                    },
+                    t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                  ),
+                expensesByRecordId
+              );
+              const groupTotal = breakdownLines.reduce((sum, line) => sum + line.totalAmount, 0);
+              const isBreakdownExpanded = invoicedBreakdownExpanded.has(groupId);
+              const projectDisplay = (() => {
+                const num = key.projectNumber?.trim();
+                const name = key.projectName?.trim();
+                return num && name ? `${num} – ${name}` : num || name || key.projectId || '(none)';
+              })();
               return (
                 <div
                   key={groupId}
@@ -991,109 +1018,115 @@ export default function Invoices() {
                     border: '1px solid var(--border-color)',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
-                      <span title={[key.projectNumber, key.projectName].filter(Boolean).join(' – ') || key.projectId || '(none)'}>
-                        <strong>Project:</strong>{' '}
-                        {(() => {
-                          const num = key.projectNumber?.trim();
-                          const name = key.projectName?.trim();
-                          const display = num && name ? `${num} – ${name}` : num || name || key.projectId || '(none)';
-                          const maxLen = 40;
-                          return display.length > maxLen ? `${display.slice(0, maxLen)}…` : display;
-                        })()}
+                  {/* Summary: project and total very obvious */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }} title={projectDisplay}>
+                      Project: {projectDisplay.length > 60 ? `${projectDisplay.slice(0, 60)}…` : projectDisplay}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                      <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary-color)' }}>
+                        Total: ${groupTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
-                      <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
-                      <span><strong>PO/AFE/CC (Cost Center):</strong> {key.poAfe || '(none)'}</span>
-                      <span><strong>Location:</strong> {key.location || '(none)'}</span>
-                      <span><strong>Coding:</strong> {key.cc || '(none)'}</span>
-                      <span><strong>Other:</strong> {key.other || '(none)'}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                      <button
-                        onClick={() => handleExportSingleGroup(group)}
-                        disabled={!!exportProgress || !!qboProgress || exportingGroupIdx !== null}
-                        style={{
-                          padding: '6px 12px',
-                          backgroundColor: 'var(--primary-color)',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: exportProgress || qboProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
-                        }}
-                        title="Download this group's merged PDF"
-                      >
-                        {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
-                      </button>
-                      <button
-                        onClick={() => handleUnmarkAsInvoiced(groupId)}
-                        disabled={!!exportProgress || !!qboProgress}
-                        style={{
-                          padding: '6px 12px',
-                          backgroundColor: 'var(--bg-tertiary)',
-                          color: 'var(--text-secondary)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: exportProgress || qboProgress ? 'not-allowed' : 'pointer',
-                        }}
-                        title="Move this group back to pending"
-                      >
-                        Unmark as invoiced
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleExportSingleGroup(group)}
+                          disabled={!!exportProgress || !!qboProgress || exportingGroupIdx !== null}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: 'var(--primary-color)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: exportProgress || qboProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
+                          }}
+                          title="Download this group's merged PDF"
+                        >
+                          {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
+                        </button>
+                        <button
+                          onClick={() => handleUnmarkAsInvoiced(groupId)}
+                          disabled={!!exportProgress || !!qboProgress}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: exportProgress || qboProgress ? 'not-allowed' : 'pointer',
+                          }}
+                          title="Move this group back to pending"
+                        >
+                          Unmark as invoiced
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div style={{
-                    marginBottom: '12px',
-                    padding: '12px',
-                    backgroundColor: 'var(--bg-tertiary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    borderLeft: '4px solid var(--primary-color)',
-                  }}>
-                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
-                      Invoice Line Item Breakdown
-                    </div>
-                    {buildPoAfeBreakdown(
-                      groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
-                      (t) =>
-                        getInvoiceGroupKey(
-                          {
-                            projectId: t.recordProjectId ?? t.projectId,
-                            projectName: t.projectName,
-                            projectNumber: t.projectNumber,
-                            location: t.location,
-                            projectApproverPoAfe: t.projectApproverPoAfe,
-                            projectLocation: t.projectLocation,
-                            projectOther: t.projectOther,
-                            customerInfo: t.customerInfo,
-                            entries: t.entries,
-                          },
-                          t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-                        ),
-                      expensesByRecordId
-                    ).map(({ ticketList, poAfe, totalAmount }, i) => (
-                      <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {groupTickets.map((t) => (
-                      <span
-                        key={t.id}
-                        style={{
-                          padding: '4px 10px',
-                          backgroundColor: 'var(--bg-tertiary)',
-                          borderRadius: '6px',
-                          fontSize: '13px',
-                        }}
-                      >
-                        {t.ticketNumber} – {t.userName} ({t.totalHours}h)
-                      </span>
-                    ))}
-                  </div>
+                  {/* Dropdown to show/hide detailed breakdown */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInvoicedBreakdownExpanded((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(groupId)) next.delete(groupId);
+                        else next.add(groupId);
+                        return next;
+                      });
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      width: '100%',
+                      padding: '8px 12px',
+                      backgroundColor: 'var(--bg-tertiary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: 'var(--text-secondary)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    {isBreakdownExpanded ? '▼' : '▶'} Invoice line item breakdown
+                  </button>
+                  {isBreakdownExpanded && (
+                    <>
+                      <div style={{
+                        marginTop: '12px',
+                        padding: '12px',
+                        backgroundColor: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        borderLeft: '4px solid var(--primary-color)',
+                      }}>
+                        {breakdownLines.map(({ ticketList, poAfe, totalAmount }, i) => (
+                          <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                        {groupTickets.map((t) => (
+                          <span
+                            key={t.id}
+                            style={{
+                              padding: '4px 10px',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                            }}
+                          >
+                            {t.ticketNumber} – {t.userName} ({t.totalHours}h)
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}

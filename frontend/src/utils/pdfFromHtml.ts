@@ -416,9 +416,9 @@ export async function downloadPdfFromHtml(
     const opt = {
       margin: 0,
       filename: `ServiceTicket_${ticket.ticketNumber || ticket.id.substring(0, 8)}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
+      image: { type: 'jpeg', quality: 0.85 },
       html2canvas: { 
-        scale: 3,
+        scale: 2,
         useCORS: true,
         logging: false,
       },
@@ -556,9 +556,9 @@ export async function generateAndStorePdf(
     const opt = {
       margin: 0,
       filename: filename,
-      image: { type: 'jpeg', quality: 0.98 },
+      image: { type: 'jpeg', quality: 0.85 },
       html2canvas: { 
-        scale: 3,
+        scale: 2,
         useCORS: true,
         logging: false,
       },
