@@ -2863,7 +2863,7 @@ export default function ServiceTickets() {
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   FO
                 </th>
-                <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderLeft: '2px solid var(--border-color)', backgroundColor: 'rgba(0,0,0,0.04)' }}>
+                <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Expenses
                 </th>
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
@@ -3441,7 +3441,7 @@ export default function ServiceTickets() {
                       return ticket.hoursByRateType['Field Overtime'].toFixed(2);
                     })()}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', borderLeft: '2px solid var(--border-color)', backgroundColor: 'rgba(0,0,0,0.04)' }}>
+                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {selectedTicketId === ticket.id
                       ? `$${liveExpenseTotalForSelected.toFixed(2)}`
                       : `$${((findMatchingTicketRecord(ticket)?.id && expenseTotalsByRecordId[findMatchingTicketRecord(ticket)!.id]) ?? 0).toFixed(2)}`}
@@ -3737,7 +3737,7 @@ export default function ServiceTickets() {
                   <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)' }}>
                     {tableFooterTotals.fo.toFixed(2)}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)', borderLeft: '2px solid var(--border-color)', backgroundColor: 'rgba(0,0,0,0.04)' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)' }}>
                     ${tableFooterTotals.expenseTotal.toFixed(2)}
                   </td>
                   <td style={{ padding: '12px 16px' }} />
