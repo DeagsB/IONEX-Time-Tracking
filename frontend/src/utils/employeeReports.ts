@@ -271,6 +271,32 @@ export function aggregateEmployeeMetrics(
   // Non-billable hours = rounded internal time entries + unbilled work from billable rate types
   const nonBillableHours = internalTimeEntryHours + totalUnbilledWork;
   
+  // Calculate the COST of unbilled work (hours worked but not billed still have a cost)
+  // Use the employee's pay rates to determine the cost of unbilled hours
+  const isPanelShop = employee?.department === 'Panel Shop';
+  const getPayRateForUnbilled = (rateType: 'shop' | 'field' | 'travel' | 'shopOT' | 'fieldOT'): number => {
+    if (!employee) return 0;
+    if (isPanelShop) {
+      // Panel shop uses shop pay rate for most things
+      if (rateType === 'shopOT') return employee.shop_ot_pay_rate || employee.shop_pay_rate || 0;
+      if (rateType === 'fieldOT') return employee.field_ot_pay_rate || employee.shop_pay_rate || 0;
+      if (rateType === 'field') return employee.field_pay_rate || employee.shop_pay_rate || 0;
+      return employee.shop_pay_rate || 0;
+    }
+    if (rateType === 'shopOT') return employee.shop_ot_pay_rate || 0;
+    if (rateType === 'fieldOT') return employee.field_ot_pay_rate || 0;
+    if (rateType === 'field') return employee.field_pay_rate || 0;
+    if (rateType === 'travel') return employee.shop_pay_rate || 0;
+    return employee.shop_pay_rate || 0;
+  };
+  
+  const unbilledShopTimeCost = unbilledShopTime * getPayRateForUnbilled('shop');
+  const unbilledFieldTimeCost = unbilledFieldTime * getPayRateForUnbilled('field');
+  const unbilledTravelTimeCost = unbilledTravelTime * getPayRateForUnbilled('travel');
+  const unbilledShopOTCost = unbilledShopOT * getPayRateForUnbilled('shopOT');
+  const unbilledFieldOTCost = unbilledFieldOT * getPayRateForUnbilled('fieldOT');
+  const totalUnbilledWorkCost = unbilledShopTimeCost + unbilledFieldTimeCost + unbilledTravelTimeCost + unbilledShopOTCost + unbilledFieldOTCost;
+  
   console.log('[Non-Billable Calculation]:', {
     internalTimeEntryHours,
     rawPayrollHours: payrollHoursByRateType,
@@ -289,12 +315,24 @@ export function aggregateEmployeeMetrics(
       shopOT: unbilledShopOT,
       fieldOT: unbilledFieldOT,
     },
+    unbilledCosts: {
+      shopTime: unbilledShopTimeCost,
+      fieldTime: unbilledFieldTimeCost,
+      travelTime: unbilledTravelTimeCost,
+      shopOT: unbilledShopOTCost,
+      fieldOT: unbilledFieldOTCost,
+      total: totalUnbilledWorkCost,
+    },
     totalUnbilledWork,
     nonBillableHours,
   });
 
-  // Update the rate type breakdown to reflect the non-billable hours (for display)
+  // Update the rate type breakdown to reflect the non-billable hours AND cost (for display)
   rateTypeBreakdown.internalTime.hours = nonBillableHours;
+  // Add the cost of unbilled work to the internal time cost (which already has cost of non-billable entries)
+  rateTypeBreakdown.internalTime.cost += totalUnbilledWorkCost;
+  // Update profit: non-billable work has 0 revenue, so profit = -cost
+  rateTypeBreakdown.internalTime.profit = -rateTypeBreakdown.internalTime.cost;
 
   // Total hours = billable + non-billable (based on rounded payroll, for consistency)
   totalHours = billableHours + nonBillableHours;
