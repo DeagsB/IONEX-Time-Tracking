@@ -517,7 +517,7 @@ export default function Invoices() {
   }, [tickets, selectedCustomerId]);
 
   const selectedCustomer = customers?.find((c: { id: string }) => c.id === selectedCustomerId);
-  const isCNRL = !selectedCustomerId || (selectedCustomer?.name ?? '').toUpperCase().includes('CNRL');
+  const isCNRL = !!selectedCustomerId && (selectedCustomer?.name ?? '').toUpperCase().includes('CNRL');
 
   // Group tickets: CNRL = by approver/PO/AFE etc.; non-CNRL = by project then date period (daily/weekly/bi-weekly/monthly)
   const groupedTickets = useMemo((): { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] => {
