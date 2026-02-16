@@ -49,9 +49,9 @@ interface EmployeeHours {
   entries: TimeEntry[];
 }
 
-// Round UP to nearest 0.10 hour (never round down)
+// Round UP to nearest 0.25 hour (quarter hour, never round down)
 const roundToQuarterHour = (hours: number): number => {
-  return Math.ceil(hours * 10) / 10;
+  return Math.ceil(hours * 4) / 4;
 };
 
 // Fallback period: 19 Jan 2026 to 1 Feb 2026 (payday Friday 6 Feb 2026)

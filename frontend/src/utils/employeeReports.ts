@@ -376,13 +376,13 @@ export function aggregateEmployeeMetrics(
   });
   const serviceTicketCount = ticketKeys.size;
 
-  // Helper function to round up to nearest 0.10 (matching Payroll page logic)
+  // Helper function to round up to nearest 0.25 (quarter hour, matching Payroll page logic)
   const roundToQuarterHour = (hours: number): number => {
-    return Math.ceil(hours * 10) / 10;
+    return Math.ceil(hours * 4) / 4;
   };
 
   // Calculate total cost based on payroll hours (time entry hours grouped by rate type)
-  // Hours are rounded up to nearest 0.10 to match Payroll page
+  // Hours are rounded up to nearest 0.25 (quarter hour) to match Payroll page
   let totalCost = 0;
   
   // Debug: Log employee pay rates
@@ -896,7 +896,7 @@ export function calculateRateTypeBreakdown(
 // Revenue = billable hours × rate (calculated, not from total_amount)
 export function calculateProjectBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): ProjectBreakdown[] {
   const projectMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
-  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 10) / 10;
+  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 4) / 4;
   const userId = entries[0]?.user_id || '';
 
   // Helper function to get billable rate for a rate type
@@ -1039,7 +1039,7 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
 // Revenue = billable hours × rate (calculated, not from total_amount)
 export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): CustomerBreakdown[] {
   const customerMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
-  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 10) / 10;
+  const roundToQuarterHour = (hours: number): number => Math.ceil(hours * 4) / 4;
   const userId = entries[0]?.user_id || '';
 
   // Helper function to get billable rate for a rate type
