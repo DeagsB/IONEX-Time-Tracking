@@ -2863,7 +2863,7 @@ export default function ServiceTickets() {
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   FO
                 </th>
-                <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', borderLeft: '2px solid var(--border-color)', backgroundColor: 'rgba(0,0,0,0.04)' }}>
                   Expenses
                 </th>
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
@@ -3392,7 +3392,7 @@ export default function ServiceTickets() {
                   <td style={{ padding: '16px', color: 'var(--text-primary)' }}>
                     {ticket.userName}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-primary)', fontWeight: '600' }}>
+                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-primary)', fontWeight: '600' }}>
                     {(() => {
                       // When this ticket is selected, show live total from service rows
                       if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
@@ -3401,7 +3401,7 @@ export default function ServiceTickets() {
                       return ticket.totalHours.toFixed(2);
                     })()}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
                       if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.st.toFixed(2);
@@ -3409,7 +3409,7 @@ export default function ServiceTickets() {
                       return ticket.hoursByRateType['Shop Time'].toFixed(2);
                     })()}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
                       if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.tt.toFixed(2);
@@ -3417,7 +3417,7 @@ export default function ServiceTickets() {
                       return ticket.hoursByRateType['Travel Time'].toFixed(2);
                     })()}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
                       if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.ft.toFixed(2);
@@ -3425,7 +3425,7 @@ export default function ServiceTickets() {
                       return ticket.hoursByRateType['Field Time'].toFixed(2);
                     })()}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
                       if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.so.toFixed(2);
@@ -3433,7 +3433,7 @@ export default function ServiceTickets() {
                       return ticket.hoursByRateType['Shop Overtime'].toFixed(2);
                     })()}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {(() => {
                       if (selectedTicketId === ticket.id && liveHoursForSelectedTicket) {
                         return liveHoursForSelectedTicket.fo.toFixed(2);
@@ -3441,7 +3441,7 @@ export default function ServiceTickets() {
                       return ticket.hoursByRateType['Field Overtime'].toFixed(2);
                     })()}
                   </td>
-                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  <td style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', borderLeft: '2px solid var(--border-color)', backgroundColor: 'rgba(0,0,0,0.04)' }}>
                     {selectedTicketId === ticket.id
                       ? `$${liveExpenseTotalForSelected.toFixed(2)}`
                       : `$${((findMatchingTicketRecord(ticket)?.id && expenseTotalsByRecordId[findMatchingTicketRecord(ticket)!.id]) ?? 0).toFixed(2)}`}
@@ -3719,25 +3719,25 @@ export default function ServiceTickets() {
                   {isAdmin && <td style={{ padding: '12px 16px', width: '50px' }}> </td>}
                   <td style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Total</td>
                   <td colSpan={3} style={{ padding: '12px 16px' }} />
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '700', color: 'var(--text-primary)' }}>
                     {tableFooterTotals.totalHours.toFixed(2)}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)' }}>
                     {tableFooterTotals.st.toFixed(2)}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)' }}>
                     {tableFooterTotals.tt.toFixed(2)}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)' }}>
                     {tableFooterTotals.ft.toFixed(2)}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)' }}>
                     {tableFooterTotals.so.toFixed(2)}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)' }}>
                     {tableFooterTotals.fo.toFixed(2)}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', color: 'var(--text-secondary)', borderLeft: '2px solid var(--border-color)', backgroundColor: 'rgba(0,0,0,0.04)' }}>
                     ${tableFooterTotals.expenseTotal.toFixed(2)}
                   </td>
                   <td style={{ padding: '12px 16px' }} />
