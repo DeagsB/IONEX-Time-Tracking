@@ -1799,6 +1799,24 @@ export const serviceTicketExpensesService = {
     return data;
   },
 
+  /** Get total $ (quantity * rate) per service_ticket_id for the given ticket IDs */
+  async getExpenseTotalsByTicketIds(ticketIds: string[]): Promise<Record<string, number>> {
+    if (ticketIds.length === 0) return {};
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .select('service_ticket_id, quantity, rate')
+      .in('service_ticket_id', ticketIds);
+
+    if (error) throw error;
+    const totals: Record<string, number> = {};
+    for (const row of data || []) {
+      const id = row.service_ticket_id;
+      const amount = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
+      totals[id] = (totals[id] ?? 0) + amount;
+    }
+    return totals;
+  },
+
   async create(expense: {
     service_ticket_id: string;
     expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';

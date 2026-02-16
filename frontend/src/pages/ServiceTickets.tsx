@@ -472,6 +472,7 @@ export default function ServiceTickets() {
       }
       if (recordId && hadPendingExpenseChanges) {
         await loadExpenses(recordId);
+        queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
       }
       setIsTicketEdited(false);
       justSavedRef.current = true;
@@ -1682,30 +1683,6 @@ export default function ServiceTickets() {
     return { st, tt, ft, so, fo, total: st + tt + ft + so + fo };
   }, [selectedTicketId, serviceRows]);
 
-  // Totals for hours columns (admin-only footer)
-  const tableFooterTotals = useMemo(() => {
-    let totalHours = 0;
-    let st = 0, tt = 0, ft = 0, so = 0, fo = 0;
-    filteredTickets.forEach((ticket) => {
-      if (ticket.id === selectedTicketId && liveHoursForSelectedTicket) {
-        totalHours += liveHoursForSelectedTicket.total;
-        st += liveHoursForSelectedTicket.st;
-        tt += liveHoursForSelectedTicket.tt;
-        ft += liveHoursForSelectedTicket.ft;
-        so += liveHoursForSelectedTicket.so;
-        fo += liveHoursForSelectedTicket.fo;
-      } else {
-        totalHours += ticket.totalHours ?? 0;
-        st += ticket.hoursByRateType['Shop Time'] ?? 0;
-        tt += ticket.hoursByRateType['Travel Time'] ?? 0;
-        ft += ticket.hoursByRateType['Field Time'] ?? 0;
-        so += ticket.hoursByRateType['Shop Overtime'] ?? 0;
-        fo += ticket.hoursByRateType['Field Overtime'] ?? 0;
-      }
-    });
-    return { totalHours, st, tt, ft, so, fo };
-  }, [filteredTickets, selectedTicketId, liveHoursForSelectedTicket]);
-
   // Expense mutations
   const createExpenseMutation = useMutation({
     mutationFn: (expense: {
@@ -1719,6 +1696,7 @@ export default function ServiceTickets() {
     onSuccess: () => {
       if (currentTicketRecordId) {
         loadExpenses(currentTicketRecordId);
+        queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
       }
     },
   });
@@ -1729,6 +1707,7 @@ export default function ServiceTickets() {
     onSuccess: () => {
       if (currentTicketRecordId) {
         loadExpenses(currentTicketRecordId);
+        queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
       }
     },
   });
@@ -1738,6 +1717,7 @@ export default function ServiceTickets() {
     onSuccess: () => {
       if (currentTicketRecordId) {
         loadExpenses(currentTicketRecordId);
+        queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
       }
     },
   });
@@ -2028,6 +2008,59 @@ export default function ServiceTickets() {
     
     return result;
   }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
+
+  // Ticket record IDs for expense totals query (only tickets that have a DB record)
+  const ticketRecordIdsForExpenseTotals = useMemo(() => {
+    return [...new Set(
+      filteredTickets
+        .map(t => findMatchingTicketRecord(t)?.id)
+        .filter((id): id is string => !!id)
+    )];
+  }, [filteredTickets, existingTickets]);
+
+  const { data: expenseTotalsByRecordId = {} } = useQuery({
+    queryKey: ['serviceTicketExpenseTotals', [...ticketRecordIdsForExpenseTotals].sort().join(',')],
+    queryFn: () => serviceTicketExpensesService.getExpenseTotalsByTicketIds(ticketRecordIdsForExpenseTotals),
+    enabled: ticketRecordIdsForExpenseTotals.length > 0,
+  });
+
+  // Live expense total for the selected ticket (panel open: includes unsaved adds, excludes pending deletes)
+  const liveExpenseTotalForSelected = useMemo(() => {
+    if (!selectedTicketId) return 0;
+    const fromExpenses = expenses
+      .filter(e => !(e.id && pendingDeleteExpenseIds.has(e.id)))
+      .reduce((sum, e) => sum + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
+    const fromPending = pendingAddExpenses.reduce((sum, e) => sum + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
+    return fromExpenses + fromPending;
+  }, [selectedTicketId, expenses, pendingDeleteExpenseIds, pendingAddExpenses]);
+
+  // Totals for hours columns and expense (admin-only footer)
+  const tableFooterTotals = useMemo(() => {
+    let totalHours = 0;
+    let st = 0, tt = 0, ft = 0, so = 0, fo = 0;
+    let expenseTotal = 0;
+    filteredTickets.forEach((ticket) => {
+      if (ticket.id === selectedTicketId && liveHoursForSelectedTicket) {
+        totalHours += liveHoursForSelectedTicket.total;
+        st += liveHoursForSelectedTicket.st;
+        tt += liveHoursForSelectedTicket.tt;
+        ft += liveHoursForSelectedTicket.ft;
+        so += liveHoursForSelectedTicket.so;
+        fo += liveHoursForSelectedTicket.fo;
+        expenseTotal += liveExpenseTotalForSelected;
+      } else {
+        totalHours += ticket.totalHours ?? 0;
+        st += ticket.hoursByRateType['Shop Time'] ?? 0;
+        tt += ticket.hoursByRateType['Travel Time'] ?? 0;
+        ft += ticket.hoursByRateType['Field Time'] ?? 0;
+        so += ticket.hoursByRateType['Shop Overtime'] ?? 0;
+        fo += ticket.hoursByRateType['Field Overtime'] ?? 0;
+        const record = findMatchingTicketRecord(ticket);
+        expenseTotal += (record?.id && expenseTotalsByRecordId[record.id]) ?? 0;
+      }
+    });
+    return { totalHours, st, tt, ft, so, fo, expenseTotal };
+  }, [filteredTickets, selectedTicketId, liveHoursForSelectedTicket, liveExpenseTotalForSelected, expenseTotalsByRecordId]);
 
   // Close panel when selected ticket is no longer in filtered list; refresh when ticket data changes (e.g. entry deleted from calendar)
   // After save, skip sync for 2s so we don't overwrite service rows (refetch can produce different ticket structure)
@@ -2830,6 +2863,9 @@ export default function ServiceTickets() {
                 <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   FO
                 </th>
+                <th style={{ padding: '16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                  Expense
+                </th>
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Action
                 </th>
@@ -3405,6 +3441,11 @@ export default function ServiceTickets() {
                       return ticket.hoursByRateType['Field Overtime'].toFixed(2);
                     })()}
                   </td>
+                  <td style={{ padding: '16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    {selectedTicketId === ticket.id
+                      ? `$${liveExpenseTotalForSelected.toFixed(2)}`
+                      : `$${((findMatchingTicketRecord(ticket)?.id && expenseTotalsByRecordId[findMatchingTicketRecord(ticket)!.id]) ?? 0).toFixed(2)}`}
+                  </td>
                   <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                     {showDiscarded ? (
                       <button
@@ -3695,6 +3736,9 @@ export default function ServiceTickets() {
                   </td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
                     {tableFooterTotals.fo.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                    ${tableFooterTotals.expenseTotal.toFixed(2)}
                   </td>
                   <td style={{ padding: '12px 16px' }} />
                   {isAdmin && !showDiscarded && activeTab === 'approved' && <td style={{ padding: '12px 16px' }} />}
