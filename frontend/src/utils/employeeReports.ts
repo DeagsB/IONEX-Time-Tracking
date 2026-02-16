@@ -273,10 +273,10 @@ export function aggregateEmployeeMetrics(
   
   // Calculate the COST of unbilled work (hours worked but not billed still have a cost)
   // Use the employee's pay rates to determine the cost of unbilled hours
-  const isPanelShop = employee?.department === 'Panel Shop';
   const getPayRateForUnbilled = (rateType: 'shop' | 'field' | 'travel' | 'shopOT' | 'fieldOT'): number => {
     if (!employee) return 0;
-    if (isPanelShop) {
+    const panelShop = employee.department === 'Panel Shop';
+    if (panelShop) {
       // Panel shop uses shop pay rate for most things
       if (rateType === 'shopOT') return employee.shop_ot_pay_rate || employee.shop_pay_rate || 0;
       if (rateType === 'fieldOT') return employee.field_ot_pay_rate || employee.shop_pay_rate || 0;
