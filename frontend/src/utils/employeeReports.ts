@@ -840,26 +840,8 @@ export function calculateRateTypeBreakdown(
     }
   });
 
-  // Now process ALL billable time entries that weren't covered by any service tickets
-  entries.forEach(entry => {
-    if (!isBillable(entry)) return;
-    if (processedEntryIds.has(entry.id)) return; // Skip if processed by service ticket
-    
-    const hours = Number(entry.hours) || 0;
-    const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-    
-    if (rateType.includes('shop') && rateType.includes('overtime')) {
-      billableHoursByRateType.shopOvertime += hours;
-    } else if (rateType.includes('field') && rateType.includes('overtime')) {
-      billableHoursByRateType.fieldOvertime += hours;
-    } else if (rateType.includes('field')) {
-      billableHoursByRateType.fieldTime += hours;
-    } else if (rateType.includes('travel')) {
-      billableHoursByRateType.travelTime += hours;
-    } else {
-      billableHoursByRateType.shopTime += hours;
-    }
-  });
+  // NOTE: Billable time entries without matching service tickets are NOT counted as billable hours.
+  // Billable hours should only come from service tickets to ensure reports match the service tickets page.
 
   console.log('[RateTypeBreakdown] Final billableHoursByRateType:', billableHoursByRateType);
   console.log('[RateTypeBreakdown] Final payrollCostsByRateType:', payrollCostsByRateType);
