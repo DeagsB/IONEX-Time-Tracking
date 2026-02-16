@@ -129,17 +129,31 @@ function getGroupId(group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }): 
   return `${group.key.approverCode}|${ids.join(',')}`;
 }
 
-/** Latest ticket date in group (yyyy-mm-dd) for download filename */
-function getLastTicketDateStr(tickets: ServiceTicket[]): string {
-  const dates = tickets
-    .map((t) => {
-      const d = t.date;
-      if (!d) return '';
-      return typeof d === 'string' ? d.split('T')[0] : new Date(d).toISOString().split('T')[0];
-    })
-    .filter(Boolean);
+/** Normalize ticket date to yyyy-mm-dd */
+function toDateStr(d: string | undefined | null): string {
+  if (!d) return '';
+  return typeof d === 'string' ? d.split('T')[0] : new Date(d).toISOString().split('T')[0];
+}
+
+/** Date range for filename: "first_to_last" or single "yyyy-mm-dd" when same */
+function getTicketDateRangeStr(tickets: ServiceTicket[]): string {
+  const dates = tickets.map((t) => toDateStr(t.date)).filter(Boolean);
   if (dates.length === 0) return new Date().toISOString().split('T')[0];
-  return dates.sort().reverse()[0];
+  const sorted = [...new Set(dates)].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  return first === last ? first : `${first}_to_${last}`;
+}
+
+/** Invoice PDF filename: Approver_ProjectNumber_DateRange.pdf */
+function getInvoicePdfFilename(
+  key: InvoiceGroupKey,
+  tickets: ServiceTicket[]
+): string {
+  const approver = (key.approverCode || 'no-approver').replace(/[/\\?*:|"]/g, '_');
+  const projectNum = (key.projectNumber || key.projectId || 'no-project').trim().replace(/[/\\?*:|"]/g, '_');
+  const dateRange = getTicketDateRangeStr(tickets);
+  return `${approver}_${projectNum}_${dateRange}.pdf`;
 }
 
 /** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX" */
@@ -605,9 +619,7 @@ export default function Invoices() {
       }
       if (blobs.length > 0) {
         const merged = await mergePdfBlobs(blobs);
-        const approverCode = key.approverCode || 'no-approver';
-        const lastDate = getLastTicketDateStr(groupTickets);
-        const filename = `${approverCode} Up To ${lastDate}.pdf`;
+        const filename = getInvoicePdfFilename(key, groupTickets);
         saveAs(merged, filename);
       }
     } catch (err) {
@@ -659,9 +671,7 @@ export default function Invoices() {
 
         if (blobs.length > 0) {
           const merged = await mergePdfBlobs(blobs);
-          const approverCode = key.approverCode || 'no-approver';
-          const lastDate = getLastTicketDateStr(groupTickets);
-          const filename = `${approverCode} Up To ${lastDate}.pdf`;
+          const filename = getInvoicePdfFilename(key, groupTickets);
           saveAs(merged, filename);
         }
       }
@@ -770,9 +780,7 @@ export default function Invoices() {
           }
           if (blobs.length > 0) {
             const merged = await mergePdfBlobs(blobs);
-            const approverCode = key.approverCode || 'group';
-            const lastDate = getLastTicketDateStr(groupTickets);
-            const filename = `${approverCode} Up To ${lastDate}.pdf`;
+            const filename = getInvoicePdfFilename(key, groupTickets);
             const base64 = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
               reader.onload = () => {
