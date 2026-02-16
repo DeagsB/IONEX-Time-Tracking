@@ -79,8 +79,8 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
 function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: string; poAfe: string; totalAmount: number }) {
   const [copied, setCopied] = useState(false);
   const isNone = poAfe === '(none)';
-  const copyText = isNone ? ticketList : `${ticketList}; PO/AFE/CC: ${poAfe}`;
-  const displayText = isNone ? ticketList : `${ticketList}; PO/AFE/CC: ${poAfe}`;
+  const copyText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
+  const displayText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(copyText);
@@ -129,7 +129,7 @@ function getGroupId(group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }): 
   return `${group.key.approverCode}|${ids.join(',')}`;
 }
 
-/** Build PO/AFE/CC breakdown with totals: "AR_xx1, AR_xx2; PO/AFE/CC: xxxxxxxx – $X,XXX.XX" */
+/** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX" */
 function buildPoAfeBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
   getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
