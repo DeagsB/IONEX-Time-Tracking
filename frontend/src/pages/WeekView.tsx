@@ -426,10 +426,27 @@ export default function WeekView() {
     },
     onSuccess: async (data) => {
       console.log('Time entry updated successfully');
-      // Sync approver/po_afe/cc to draft service ticket
-      if (data?.customer_id) {
+      const dateStr = typeof data.date === 'string' ? data.date : new Date(data.date).toISOString().split('T')[0];
+      
+      // If entry became non-billable (Internal rate), delete the associated ticket if no billable entries remain
+      // This handles the case where a rejected ticket should be removed when its only entry becomes non-billable
+      if (data?.billable === false && data?.customer_id) {
+        await serviceTicketsService.deleteTicketIfNoTimeEntriesFor({
+          date: dateStr,
+          userId: data.user_id,
+          customerId: data.customer_id,
+          projectId: data.project_id,
+          location: data.location,
+          approver: data.approver,
+          po_afe: data.po_afe,
+          cc: data.cc,
+        }, isDemoMode);
+      }
+      
+      // Sync approver/po_afe/cc to draft service ticket (only if still billable)
+      if (data?.customer_id && data?.billable !== false) {
         await serviceTicketsService.syncTicketHeaderFromTimeEntry({
-          date: typeof data.date === 'string' ? data.date : new Date(data.date).toISOString().split('T')[0],
+          date: dateStr,
           userId: data.user_id,
           customerId: data.customer_id,
           projectId: data.project_id,
