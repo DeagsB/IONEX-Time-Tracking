@@ -18,7 +18,7 @@ export default function Sidebar() {
 
   const { data: projectsForMissingCount } = useQuery({
     queryKey: ['projects', 'sidebar-missing-count', isAdmin],
-    queryFn: () => projectsService.getAll(true),
+    queryFn: () => projectsService.getAll(false), // only active projects – ignore inactive for notification
     enabled: !!isAdmin,
   });
   const projectsMissingNumberCount = (projectsForMissingCount || []).filter(
