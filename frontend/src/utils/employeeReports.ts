@@ -802,7 +802,8 @@ export function calculateRateTypeBreakdown(
     });
     
     // Process non-edited tickets only if no edited tickets exist
-    if (editedTickets.length === 0 && nonEditedTickets.length > 0 && unprocessedEntries.length > 0) {
+    // NOTE: Process even if no matching time entries (entry may have been deleted but service ticket still exists)
+    if (editedTickets.length === 0 && nonEditedTickets.length > 0) {
       // Sum total_hours from all non-edited tickets in this group
       const totalTicketHours = nonEditedTickets.reduce((sum, t) => sum + (Number(t.total_hours) || 0), 0);
       
@@ -833,7 +834,8 @@ export function calculateRateTypeBreakdown(
             }
           });
         } else {
-          // No matching entries - default to shop time
+          // No matching entries (entry was deleted) - use service ticket hours directly
+          // Default to shop time since we don't have entry rate type info
           billableHoursByRateType.shopTime += totalTicketHours;
         }
       }
