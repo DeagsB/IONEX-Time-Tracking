@@ -1055,6 +1055,18 @@ export default function ServiceTickets() {
       const year = numPart.length >= 2 ? parseInt(numPart.slice(0, 2), 10) : new Date().getFullYear() % 100;
       const sequenceNumber = numPart.length > 2 ? parseInt(numPart.slice(2), 10) : parseInt(numPart, 10);
 
+      // Reserved sequence ranges - these cannot be manually assigned
+      // Format: { 'INITIALS': { year: lastReservedSequence } }
+      const RESERVED_SEQUENCES: Record<string, Record<number, number>> = {
+        'HV': { 26: 49 },  // HV_26001 - HV_26049 are reserved
+        'CG': { 26: 19 },  // CG_26001 - CG_26019 are reserved
+      };
+      const reservedUpTo = RESERVED_SEQUENCES[employeeInitials]?.[year] ?? 0;
+      if (sequenceNumber >= 1 && sequenceNumber <= reservedUpTo) {
+        setCustomTicketIdError(`Ticket IDs ${employeeInitials}_${year}001 through ${employeeInitials}_${year}${String(reservedUpTo).padStart(3, '0')} are reserved and cannot be assigned.`);
+        return;
+      }
+
       // Check unique constraint: (employee_initials, year, sequence_number)
       const { data: existingSeq } = await supabase
         .from(tableName)

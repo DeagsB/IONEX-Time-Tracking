@@ -897,12 +897,25 @@ export const serviceTicketsService = {
     const year = new Date().getFullYear() % 100; // Get last 2 digits of year
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     
+    // Reserved sequence ranges by initials and year - these numbers are blocked and cannot be assigned
+    // Format: { 'INITIALS': { year: lastReservedSequence } }
+    // New tickets will start AFTER the reserved range (e.g., HV in 2026 starts at 50)
+    const RESERVED_SEQUENCES: Record<string, Record<number, number>> = {
+      'HV': { 26: 49 },  // HV_26001 - HV_26049 are reserved, start at HV_26050
+      'CG': { 26: 19 },  // CG_26001 - CG_26019 are reserved, start at CG_26020
+    };
+    
+    // Get the minimum starting sequence for this initials/year (1 if no reservation)
+    const initialsUpper = userInitials.toUpperCase();
+    const reservedUpTo = RESERVED_SEQUENCES[initialsUpper]?.[year] ?? 0;
+    const minStartSequence = reservedUpTo + 1; // Start after the reserved range
+    
     // Get all used sequence numbers for this employee this year
     // Include discarded tickets since their sequence numbers are still reserved by unique constraints
     const { data, error } = await supabase
       .from(tableName)
       .select('sequence_number')
-      .eq('employee_initials', userInitials.toUpperCase())
+      .eq('employee_initials', initialsUpper)
       .eq('year', year)
       .not('sequence_number', 'is', null)
       .order('sequence_number', { ascending: true });
@@ -912,25 +925,25 @@ export const serviceTicketsService = {
       throw error;
     }
 
-    let nextSequence = 1;
+    let nextSequence = minStartSequence;
     
     if (data && data.length > 0) {
       // Build a set of used sequence numbers
       const usedSequences = new Set(data.map(d => d.sequence_number));
       
-      // Find the first available sequence number (fill gaps from unassigned tickets)
-      nextSequence = 1;
+      // Find the first available sequence number starting from minStartSequence
+      nextSequence = minStartSequence;
       while (usedSequences.has(nextSequence)) {
         nextSequence++;
       }
       
-      console.log(`[getNextTicketNumber] ${isDemo ? 'DEMO' : 'REGULAR'} - Table: ${tableName}, Used sequences: [${Array.from(usedSequences).sort((a, b) => a - b).join(', ')}], Next available: ${nextSequence}`);
+      console.log(`[getNextTicketNumber] ${isDemo ? 'DEMO' : 'REGULAR'} - Table: ${tableName}, Reserved up to: ${reservedUpTo}, Min start: ${minStartSequence}, Used sequences: [${Array.from(usedSequences).sort((a, b) => a - b).join(', ')}], Next available: ${nextSequence}`);
     } else {
-      console.log(`[getNextTicketNumber] ${isDemo ? 'DEMO' : 'REGULAR'} - Table: ${tableName}, No existing tickets, starting at 1`);
+      console.log(`[getNextTicketNumber] ${isDemo ? 'DEMO' : 'REGULAR'} - Table: ${tableName}, Reserved up to: ${reservedUpTo}, No existing tickets, starting at ${minStartSequence}`);
     }
     
     const paddedSequence = String(nextSequence).padStart(3, '0');
-    const ticketNumber = `${userInitials.toUpperCase()}_${year}${paddedSequence}`;
+    const ticketNumber = `${initialsUpper}_${year}${paddedSequence}`;
     
     // For demo mode, if we found tickets but they shouldn't exist (table should be wiped),
     // log a warning but still proceed
