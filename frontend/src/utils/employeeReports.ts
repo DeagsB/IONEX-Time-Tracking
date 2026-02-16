@@ -212,9 +212,9 @@ export function aggregateEmployeeMetrics(
                  rateTypeBreakdown.shopOvertime.revenue + 
                  rateTypeBreakdown.fieldOvertime.revenue;
 
-  // Helper function to round up to nearest 0.10 (for payroll hours calculation)
+  // Helper function to round up to nearest 0.25 (quarter hour) for payroll hours calculation
   const roundToQuarterHourForPayroll = (hours: number): number => {
-    return Math.ceil(hours * 10) / 10;
+    return Math.ceil(hours * 4) / 4;
   };
 
   // Calculate payroll hours by rate type (actual hours worked from time entries)
