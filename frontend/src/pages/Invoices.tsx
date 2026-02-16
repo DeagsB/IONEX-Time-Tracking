@@ -129,6 +129,19 @@ function getGroupId(group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }): 
   return `${group.key.approverCode}|${ids.join(',')}`;
 }
 
+/** Latest ticket date in group (yyyy-mm-dd) for download filename */
+function getLastTicketDateStr(tickets: ServiceTicket[]): string {
+  const dates = tickets
+    .map((t) => {
+      const d = t.date;
+      if (!d) return '';
+      return typeof d === 'string' ? d.split('T')[0] : new Date(d).toISOString().split('T')[0];
+    })
+    .filter(Boolean);
+  if (dates.length === 0) return new Date().toISOString().split('T')[0];
+  return dates.sort().reverse()[0];
+}
+
 /** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX" */
 function buildPoAfeBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
@@ -592,9 +605,9 @@ export default function Invoices() {
       }
       if (blobs.length > 0) {
         const merged = await mergePdfBlobs(blobs);
-        const approverLabel = key.approverCode || 'no-approver';
-        const dateStr = new Date().toISOString().split('T')[0];
-        const filename = `Invoices_${approverLabel}_${dateStr}.pdf`;
+        const approverCode = key.approverCode || 'no-approver';
+        const lastDate = getLastTicketDateStr(groupTickets);
+        const filename = `${approverCode} Up To ${lastDate}.pdf`;
         saveAs(merged, filename);
       }
     } catch (err) {
@@ -646,9 +659,9 @@ export default function Invoices() {
 
         if (blobs.length > 0) {
           const merged = await mergePdfBlobs(blobs);
-          const approverLabel = key.approverCode || 'no-approver';
-          const dateStr = new Date().toISOString().split('T')[0];
-          const filename = `Invoices_${approverLabel}_${dateStr}.pdf`;
+          const approverCode = key.approverCode || 'no-approver';
+          const lastDate = getLastTicketDateStr(groupTickets);
+          const filename = `${approverCode} Up To ${lastDate}.pdf`;
           saveAs(merged, filename);
         }
       }
@@ -757,7 +770,9 @@ export default function Invoices() {
           }
           if (blobs.length > 0) {
             const merged = await mergePdfBlobs(blobs);
-            const filename = `ServiceTickets_${key.approverCode || 'group'}_${date}.pdf`;
+            const approverCode = key.approverCode || 'group';
+            const lastDate = getLastTicketDateStr(groupTickets);
+            const filename = `${approverCode} Up To ${lastDate}.pdf`;
             const base64 = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
               reader.onload = () => {
