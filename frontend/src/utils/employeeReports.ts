@@ -128,7 +128,8 @@ export interface ServiceTicketHours {
 
 /** Coerce billable: DB may return boolean or string; only true/'true' is billable. */
 function isBillable(entry: TimeEntry): boolean {
-  return entry.billable === true || (typeof entry.billable === 'string' && entry.billable.toLowerCase() === 'true');
+  const b = entry.billable as unknown;
+  return b === true || (typeof b === 'string' && b.toLowerCase() === 'true');
 }
 
 // Aggregate metrics for a single employee from their time entries
