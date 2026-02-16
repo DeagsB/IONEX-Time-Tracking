@@ -992,7 +992,7 @@ export default function Invoices() {
             ))}
           </select>
         </div>
-        {!isCNRL && (
+        {selectedCustomerId && !isCNRL && (
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by</label>
             <select
