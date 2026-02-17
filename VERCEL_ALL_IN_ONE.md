@@ -32,6 +32,7 @@ Save.
 | `QBO_ENVIRONMENT` | `sandbox` or `production` |
 
 - **Do not** set `VITE_API_URL` (the app will use the same origin for the API).
+- **Preview deployments:** Add the same variables to the **Preview** environment so the API works on preview URLs. Set **`CORS_ORIGINS`** = **`*`** (or add your preview URL) so the preview frontend can call the API.
 - Save and redeploy so new variables are applied.
 
 ---

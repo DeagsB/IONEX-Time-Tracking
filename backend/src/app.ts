@@ -64,4 +64,10 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Not found', path: req.path });
 });
 
+// Global error handler so uncaught errors return 500 JSON instead of crashing the process (Vercel serverless)
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[API error]', err);
+  res.status(500).json({ error: 'A server error has occurred', message: err.message });
+});
+
 export default app;

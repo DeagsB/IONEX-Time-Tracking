@@ -3,12 +3,19 @@
  * Handles OAuth2 authentication and invoice creation/management
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client for token storage
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Lazy Supabase client so missing env at load time doesn't crash the serverless function
+let _supabase: SupabaseClient | null = null;
+function getSupabase(): SupabaseClient {
+  if (!_supabase) {
+    const url = process.env.SUPABASE_URL || '';
+    const key = process.env.SUPABASE_SERVICE_KEY || '';
+    if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_KEY are required for QuickBooks');
+    _supabase = createClient(url, key);
+  }
+  return _supabase;
+}
 
 // QuickBooks OAuth2 configuration
 // Optional: QBO_CUSTOM_FIELD_CUSTOMER_PO and QBO_CUSTOM_FIELD_REFERENCE = DefinitionId for invoice custom fields (Customer PO#, Reference)
@@ -168,7 +175,7 @@ class QuickBooksService {
    * Store tokens in Supabase
    */
   private async storeTokens(tokens: QBOTokens): Promise<void> {
-    const { error } = await supabase
+    const { error } = await getSupabase()
       .from('qbo_tokens')
       .upsert({
         id: 'primary',
@@ -189,7 +196,7 @@ class QuickBooksService {
    * Get stored tokens from Supabase
    */
   private async getStoredTokens(): Promise<QBOTokens | null> {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('qbo_tokens')
       .select('*')
       .eq('id', 'primary')
@@ -489,7 +496,7 @@ class QuickBooksService {
    * Disconnect QuickBooks (remove tokens)
    */
   async disconnect(): Promise<void> {
-    const { error } = await supabase
+    const { error } = await getSupabase()
       .from('qbo_tokens')
       .delete()
       .eq('id', 'primary');
