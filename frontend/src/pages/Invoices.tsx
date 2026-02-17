@@ -1917,6 +1917,7 @@ export default function Invoices() {
                         {key.approverCode && key.approverCode !== key.periodKey ? (
                           <span><strong>Approver:</strong> {key.approverCode || key.approver || '(none)'}</span>
                         ) : null}
+                        {key.cc ? <span><strong>Coding:</strong> {key.cc}</span> : null}
                         <span><strong>Period:</strong> {key.periodLabel || key.periodKey}</span>
                       </>
                     ) : (
