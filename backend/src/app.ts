@@ -52,4 +52,9 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'IONEX Time Tracking API' });
 });
 
+// 404 for unknown API paths (so we return JSON, not default Express HTML)
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found', path: req.path });
+});
+
 export default app;

@@ -10,6 +10,14 @@ import { authenticate, authorize } from '../middleware/auth';
 const router = Router();
 
 /**
+ * GET /api/quickbooks/ping
+ * Public route to verify QuickBooks API is deployed (no auth). Use in browser or health checks.
+ */
+router.get('/ping', (_req: Request, res: Response) => {
+  res.json({ ok: true, service: 'quickbooks' });
+});
+
+/**
  * GET /api/quickbooks/auth-url
  * Generate OAuth2 authorization URL for QuickBooks connection
  */

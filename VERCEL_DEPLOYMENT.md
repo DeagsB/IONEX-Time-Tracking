@@ -61,6 +61,13 @@ If you run the backend on Railway, Render, Fly.io, etc.:
 
 Put all QuickBooks/Supabase backend env vars on the backend host, not in Vercel. Set **`FRONTEND_URL`** on the backend to your frontend origin (e.g. `https://ionex-timer.vercel.app`) so CORS allows the app to call the API. In QuickBooks, set Redirect URI to `https://your-backend-url/api/quickbooks/callback`.
 
+### Deploying the backend to Railway
+
+- **Root Directory**: set to **`backend`** (so Railway builds and runs from the `backend` folder).
+- **Build**: `npm install && npm run build` (or use Railway’s default Node detection).
+- **Start**: `npm run start` (runs `node dist/index.js`).
+- Deploy from a branch that includes the QuickBooks routes (e.g. `feature/quickbooks-connect` or `main` after merge). After deploy, open **`https://your-railway-url/api/health`** and **`https://your-railway-url/api/quickbooks/ping`** in the browser; you should see JSON (`{"status":"ok",...}` and `{"ok":true,"service":"quickbooks"}`). If you get “Not found” or 404, the app or path is wrong—check Root Directory and that the latest code is deployed.
+
 ---
 
 ## After deployment
