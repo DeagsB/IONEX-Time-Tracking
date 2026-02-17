@@ -21,7 +21,7 @@ router.get('/ping', (_req: Request, res: Response) => {
  * GET /api/quickbooks/auth-url
  * Generate OAuth2 authorization URL for QuickBooks connection
  */
-router.get('/auth-url', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
+router.get('/auth-url', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
   try {
     // Generate a random state for CSRF protection
     const state = Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -74,7 +74,7 @@ router.get('/callback', async (req: Request, res: Response) => {
  * GET /api/quickbooks/status
  * Check if QuickBooks is connected
  */
-router.get('/status', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
+router.get('/status', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
   try {
     const isConnected = await quickbooksService.isConnected();
     
@@ -95,7 +95,7 @@ router.get('/status', authenticate, authorize(['ADMIN']), async (req: Request, r
  * POST /api/quickbooks/disconnect
  * Disconnect QuickBooks integration
  */
-router.post('/disconnect', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
+router.post('/disconnect', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
   try {
     await quickbooksService.disconnect();
     
@@ -116,7 +116,7 @@ router.post('/disconnect', authenticate, authorize(['ADMIN']), async (req: Reque
  * POST /api/quickbooks/invoice
  * Create an invoice in QuickBooks
  */
-router.post('/invoice', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
+router.post('/invoice', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
   try {
     const { customerName, customerEmail, lineItems, ticketNumber, date, dueDate, memo } = req.body;
     
@@ -156,7 +156,7 @@ router.post('/invoice', authenticate, authorize(['ADMIN']), async (req: Request,
  * Create an invoice from grouped service tickets (CNRL format)
  * Body: { customerName, customerEmail?, customerPo?, reference?, poAfeLineItems: [{ poAfe, tickets, totalAmount }], date, docNumber? }
  */
-router.post('/invoice/from-group', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
+router.post('/invoice/from-group', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
   try {
     const { customerName, customerEmail, customerPo, reference, poAfeLineItems, date, docNumber } = req.body;
 
@@ -195,9 +195,10 @@ router.post('/invoice/from-group', authenticate, authorize(['ADMIN']), async (re
  * POST /api/quickbooks/invoice/:invoiceId/attach
  * Attach a PDF to an invoice
  */
-router.post('/invoice/:invoiceId/attach', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
+router.post('/invoice/:invoiceId/attach', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
   try {
-    const { invoiceId } = req.params;
+    const invoiceId = Array.isArray(req.params.invoiceId) ? req.params.invoiceId[0] : req.params.invoiceId;
+    if (!invoiceId) return res.status(400).json({ success: false, error: 'Missing invoiceId' });
     const { pdfBase64, fileName } = req.body;
     
     if (!pdfBase64 || !fileName) {
@@ -228,9 +229,10 @@ router.post('/invoice/:invoiceId/attach', authenticate, authorize(['ADMIN']), as
  * GET /api/quickbooks/invoice/:invoiceId
  * Get invoice details
  */
-router.get('/invoice/:invoiceId', authenticate, authorize(['ADMIN']), async (req: Request, res: Response) => {
+router.get('/invoice/:invoiceId', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
   try {
-    const { invoiceId } = req.params;
+    const invoiceId = Array.isArray(req.params.invoiceId) ? req.params.invoiceId[0] : req.params.invoiceId;
+    if (!invoiceId) return res.status(400).json({ success: false, error: 'Missing invoiceId' });
     
     const invoice = await quickbooksService.getInvoice(invoiceId);
     

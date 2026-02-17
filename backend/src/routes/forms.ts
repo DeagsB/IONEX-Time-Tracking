@@ -112,7 +112,7 @@ router.post(
     body('title').trim().notEmpty(),
     body('content').notEmpty(),
   ],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: express.Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
