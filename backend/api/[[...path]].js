@@ -14,9 +14,18 @@ try {
   };
 }
 const handler = (req, res) => {
-  if (req.url && !req.url.startsWith('/api')) {
-    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  let pathname = (req.url && req.url.split('?')[0]) || '';
+  const qs = (req.url && req.url.includes('?')) ? '?' + req.url.split('?').slice(1).join('?') : '';
+  // Vercel catch-all may put path segments in req.query.path instead of req.url
+  if (req.query && req.query.path !== undefined) {
+    const seg = Array.isArray(req.query.path) ? req.query.path.join('/') : String(req.query.path);
+    pathname = '/api/' + seg.replace(/^\/+/, '');
+  } else if (pathname && !pathname.startsWith('/api')) {
+    pathname = '/api' + (pathname.startsWith('/') ? pathname : '/' + pathname);
   }
+  req.url = pathname + qs;
+  if (req.path !== undefined) req.path = pathname;
+  if (req.originalUrl !== undefined) req.originalUrl = pathname + qs;
   app(req, res);
 };
 module.exports = handler;
