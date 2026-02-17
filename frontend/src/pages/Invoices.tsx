@@ -1479,7 +1479,7 @@ export default function Invoices() {
                       <span><strong>Approver:</strong> {key.approverCode || key.approver || '(none)'}</span>
                       <span><strong>PO/AFE/CC:</strong> {headerPoAfe}</span>
                       {key.cc ? (
-                        <span><strong>CC:</strong> {key.cc}{key.periodLabel || key.periodKey ? ` · ${key.periodLabel || key.periodKey}` : ''}</span>
+                        <span><strong>Coding:</strong> {key.cc}{key.periodLabel || key.periodKey ? ` · ${key.periodLabel || key.periodKey}` : ''}</span>
                       ) : key.periodLabel || key.periodKey ? (
                         <span><strong>Period:</strong> {key.periodLabel || key.periodKey}</span>
                       ) : null}
