@@ -150,6 +150,14 @@ function getPeriodKey(dateStr: string, grouping: DateRangeGrouping): string {
   return `${monY}-B${String(biweekNum).padStart(2, '0')}`;
 }
 
+/** Format date as dd-mm-yyyy */
+function toDdMmYyyy(d: Date): string {
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
 /** Human-readable label for a period key */
 function getPeriodLabel(periodKey: string, grouping: DateRangeGrouping): string {
   if (grouping === 'daily') return periodKey;
@@ -159,9 +167,18 @@ function getPeriodLabel(periodKey: string, grouping: DateRangeGrouping): string 
     return `${monthNames[parseInt(m || '1', 10) - 1]} ${y}`;
   }
   if (grouping === 'weekly') return `Week of ${periodKey}`;
-  const [y, b] = periodKey.split('-');
-  const bi = parseInt((b || '0').replace('B', ''), 10) || 0;
-  return `${y} Bi-week ${bi}`;
+  // Bi-weekly: show date range dd-mm-yyyy to dd-mm-yyyy
+  const [yStr, bStr] = periodKey.split('-');
+  const y = parseInt(yStr || '0', 10);
+  const bi = parseInt((bStr || '0').replace('B', ''), 10) || 1;
+  const jan1 = new Date(y, 0, 1);
+  const firstMonday = jan1.getDay() === 0 ? 2 : jan1.getDay() === 1 ? 1 : 9 - jan1.getDay();
+  const firstMon = new Date(y, 0, firstMonday);
+  const start = new Date(firstMon);
+  start.setDate(firstMon.getDate() + (bi - 1) * 14);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 13);
+  return `${toDdMmYyyy(start)} to ${toDdMmYyyy(end)}`;
 }
 
 type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodLabel?: string };
