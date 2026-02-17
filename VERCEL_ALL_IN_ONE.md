@@ -7,16 +7,9 @@ Use this when you want **frontend + API** on one Vercel project (no Railway). Qu
 ## 1. Vercel project settings
 
 - Go to [vercel.com](https://vercel.com) → your **IONEX Time Tracking** project → **Settings** → **General**.
-- **Root Directory**: must be the **repository root** (so `vercel.json` and `api/` at the top of the repo are used).  
-  **Do not** choose **`backend`** or **`frontend`** — with `backend` you get no frontend and the API route won’t work; with `frontend` you get no `/api/*`.
-  - If the UI lets you clear the field or set **`.`**, do that and Save.
-  - **If you can’t save empty or `.`:** create a **new project** instead:
-    1. **Add New** → **Project** → import the same Git repo (**DeagsB/IONEX-Time-Tracking**).
-    2. When asked for “Root Directory”, leave the default (don’t choose `frontend` or any subdirectory). That keeps the repo root.
-    3. Add the env vars below, then deploy. Use the new project’s URL (e.g. `https://ionex-time-tracking-xxx.vercel.app`) or add your custom domain to this new project.
-- **Build Command**: leave default (from `vercel.json`: `npm run build:backend && cd frontend && npm run build`).
-- **Output Directory**: `frontend/dist`.
-- **Install Command**: `npm install`.
+- **Root Directory**: use **`backend`** (the repo has `backend/vercel.json` and `backend/api/` so frontend + API both deploy from this root).  
+  **Do not** use **`frontend`** — that gives you no `/api/*` and Connect QuickBooks won’t work.
+- **Build Command**, **Output Directory**, **Install Command**: leave as **default** (they come from `backend/vercel.json`: install from repo root, build backend + frontend, output `public`).
 
 Save.
 
@@ -46,7 +39,7 @@ Save.
 ## 3. Deploy
 
 - **Deployments** → **Redeploy** (or push a commit to the connected branch).
-- Wait for the build to finish. It runs backend build (Prisma + TypeScript) then frontend build.
+- Wait for the build to finish. With root = **backend**, the build runs from `backend/vercel.json`: install at repo root, then backend build + frontend build, then output to `public`.
 
 ---
 
