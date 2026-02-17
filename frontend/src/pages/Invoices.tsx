@@ -291,7 +291,8 @@ function buildPoAfeBreakdown(
         poAfe,
         totalAmount: Math.round(totalAmount * 100) / 100,
       };
-    });
+    })
+    .filter((line) => line.poAfe !== NO_PO_AFE_LABEL);
 }
 
 export default function Invoices() {
@@ -1054,6 +1055,7 @@ export default function Invoices() {
             return keyA.localeCompare(keyB);
           });
           for (const [poAfe, poAfeTickets] of sortedPoAfeEntries) {
+            if (poAfe === NO_PO_AFE_LABEL) continue;
             let totalAmount = 0;
             const ticketNumbers: string[] = [];
             for (const ticket of poAfeTickets) {
@@ -1071,7 +1073,7 @@ export default function Invoices() {
               if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
             }
             poAfeLineItems.push({
-              poAfe: poAfe === NO_PO_AFE_LABEL ? '' : poAfe,
+              poAfe,
               tickets: ticketNumbers,
               totalAmount: Math.round(totalAmount * 100) / 100,
             });
@@ -1417,7 +1419,34 @@ export default function Invoices() {
                       ),
                     expensesByRecordId
                   );
-              const groupTotal = breakdownLines.reduce((sum, line) => sum + line.totalAmount, 0);
+              const groupTotal = isCnrlPeriodGroup
+                ? Math.round(
+                    groupTickets.reduce((sum, t) => {
+                      const recordId = (t as ServiceTicket & { recordId?: string }).recordId;
+                      const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
+                      return sum + calculateTicketTotalAmount(t as ServiceTicket & { recordId?: string }, expenses);
+                    }, 0) * 100
+                  ) / 100
+                : breakdownLines.reduce((sum, line) => sum + line.totalAmount, 0);
+              const hasMissingPoAfe =
+                isCnrlPeriodGroup &&
+                groupTickets.some((t) => {
+                  const key = getInvoiceGroupKey(
+                    {
+                      projectId: (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? t.projectId,
+                      projectName: t.projectName,
+                      projectNumber: t.projectNumber,
+                      location: t.location,
+                      projectApproverPoAfe: (t as ServiceTicket & { projectApproverPoAfe?: string }).projectApproverPoAfe,
+                      projectLocation: (t as ServiceTicket & { projectLocation?: string }).projectLocation,
+                      projectOther: (t as ServiceTicket & { projectOther?: string }).projectOther,
+                      customerInfo: t.customerInfo,
+                      entries: t.entries,
+                    },
+                    (t as ServiceTicket & { headerOverrides?: unknown }).headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                  );
+                  return !(key.poAfe || '').trim();
+                });
               const isBreakdownExpanded = invoicedBreakdownExpanded.has(groupId);
               const projectDisplay = (() => {
                 const num = key.projectNumber?.trim();
@@ -1632,6 +1661,18 @@ export default function Invoices() {
                   </button>
                   {isBreakdownExpanded && (
                     <>
+                      {hasMissingPoAfe && (
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '8px 12px',
+                          backgroundColor: 'var(--warning-bg, #fff3cd)',
+                          color: 'var(--warning-text, #856404)',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                        }}>
+                          PO/AFE/CC is missing for some entries.
+                        </div>
+                      )}
                       <div style={{
                         marginTop: '12px',
                         padding: '12px',
@@ -1757,6 +1798,26 @@ export default function Invoices() {
             {visibleGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
+              const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
+              const hasMissingPoAfe =
+                isCnrlPeriodGroup &&
+                groupTickets.some((t) => {
+                  const k = getInvoiceGroupKey(
+                    {
+                      projectId: (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? t.projectId,
+                      projectName: t.projectName,
+                      projectNumber: t.projectNumber,
+                      location: t.location,
+                      projectApproverPoAfe: (t as ServiceTicket & { projectApproverPoAfe?: string }).projectApproverPoAfe,
+                      projectLocation: (t as ServiceTicket & { projectLocation?: string }).projectLocation,
+                      projectOther: (t as ServiceTicket & { projectOther?: string }).projectOther,
+                      customerInfo: t.customerInfo,
+                      entries: t.entries,
+                    },
+                    (t as ServiceTicket & { headerOverrides?: unknown }).headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                  );
+                  return !(k.poAfe || '').trim();
+                });
               return (
               <div
                 key={groupId}
@@ -1844,6 +1905,18 @@ export default function Invoices() {
                   <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
                     Invoice Line Item Breakdown
                   </div>
+                  {hasMissingPoAfe && (
+                    <div style={{
+                      marginBottom: '8px',
+                      padding: '8px 12px',
+                      backgroundColor: 'var(--warning-bg, #fff3cd)',
+                      color: 'var(--warning-text, #856404)',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                    }}>
+                      PO/AFE/CC is missing for some entries.
+                    </div>
+                  )}
                   {((key.periodKey && key.approverCode === key.periodKey)
                     ? buildSingleLineBreakdown(
                         groupTickets as (ServiceTicket & { recordId?: string })[],
