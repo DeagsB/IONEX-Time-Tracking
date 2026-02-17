@@ -796,9 +796,10 @@ export default function Invoices() {
 
   const handleDownloadBatchWithInvoice = async (
     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
-    groupId: string
+    groupId: string,
+    fileOverride?: File
   ) => {
-    const invoiceFile = invoiceFilesByGroupId[groupId];
+    const invoiceFile = fileOverride ?? invoiceFilesByGroupId[groupId];
     if (!invoiceFile) return;
     const { key, tickets: groupTickets } = group;
     setDownloadingWithInvoiceGroupId(groupId);
@@ -1378,7 +1379,10 @@ export default function Invoices() {
                         e.stopPropagation();
                         e.currentTarget.style.borderColor = '';
                         const file = e.dataTransfer?.files?.[0];
-                        if (file?.type === 'application/pdf') setInvoiceFileForGroup(groupId, file);
+                        if (file?.type === 'application/pdf') {
+                          setInvoiceFileForGroup(groupId, file);
+                          handleDownloadBatchWithInvoice(group, groupId, file);
+                        }
                       }}
                       onClick={() => document.getElementById(`invoice-file-${groupId}`)?.click()}
                       style={{
@@ -1397,7 +1401,10 @@ export default function Invoices() {
                         style={{ display: 'none' }}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) setInvoiceFileForGroup(groupId, file);
+                          if (file) {
+                            setInvoiceFileForGroup(groupId, file);
+                            handleDownloadBatchWithInvoice(group, groupId, file);
+                          }
                           e.target.value = '';
                         }}
                       />
