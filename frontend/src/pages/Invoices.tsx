@@ -280,16 +280,6 @@ export default function Invoices() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [dateRangeGroupingByCustomer, setDateRangeGroupingByCustomer] = useState<Record<string, DateRangeGrouping>>({});
 
-  const getGroupingForCustomer = useCallback(
-    (customerId: string) => {
-      if (dateRangeGroupingByCustomer[customerId]) return dateRangeGroupingByCustomer[customerId];
-      const customer = customers?.find((c: { id: string; name?: string }) => c.id === customerId);
-      const isCnrl = (customer?.name ?? '').toUpperCase().includes('CNRL');
-      return isCnrl ? 'bi-weekly' : 'monthly';
-    },
-    [dateRangeGroupingByCustomer, customers]
-  );
-
   const { data: qboConnected } = useQuery({
     queryKey: ['qboStatus'],
     queryFn: () => quickbooksClientService.checkStatus(),
@@ -323,6 +313,16 @@ export default function Invoices() {
     queryKey: ['customers'],
     queryFn: () => customersService.getAll(),
   });
+
+  const getGroupingForCustomer = useCallback(
+    (customerId: string) => {
+      if (dateRangeGroupingByCustomer[customerId]) return dateRangeGroupingByCustomer[customerId];
+      const customer = customers?.find((c: { id: string; name?: string }) => c.id === customerId);
+      const isCnrl = (customer?.name ?? '').toUpperCase().includes('CNRL');
+      return isCnrl ? 'bi-weekly' : 'monthly';
+    },
+    [dateRangeGroupingByCustomer, customers]
+  );
 
   const { data: employees } = useQuery({
     queryKey: ['employees'],
