@@ -3,9 +3,6 @@
   "installCommand": "cd .. && npm install",
   "buildCommand": "npm run build && cd ../frontend && npm run build && cp -r dist ../backend/public",
   "outputDirectory": "public",
-  "functions": {
-    "api/[[...path]].js": {
-      "maxDuration": 30
-    }
-  }
+  "functions": { "api/[[...path]].js": { "maxDuration": 30 } },
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
