@@ -19,6 +19,8 @@ import Invoices from './pages/Invoices';
 import EmployeeReports from './pages/EmployeeReports';
 import UserManagement from './pages/UserManagement';
 import Changelog from './pages/Changelog';
+import TermsOfService from './pages/TermsOfService';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 import Maintenance from './pages/Maintenance';
@@ -119,6 +121,8 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/maintenance" element={<Maintenance />} />
+      <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route
         path="/"
         element={
