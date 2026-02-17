@@ -121,6 +121,7 @@ function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: st
 }
 
 const MARKED_INVOICED_STORAGE_KEY = 'ionex-invoices-marked';
+const FROZEN_INVOICED_GROUPS_KEY = 'ionex-invoices-frozen-groups';
 
 export type DateRangeGrouping = 'daily' | 'weekly' | 'bi-weekly' | 'monthly';
 
@@ -846,6 +847,20 @@ export default function Invoices() {
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
+  type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[] };
+  const [frozenInvoicedGroups, setFrozenInvoicedGroups] = useState<Record<string, FrozenGroupSnapshot>>(() => {
+    try {
+      const raw = localStorage.getItem(FROZEN_INVOICED_GROUPS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, FrozenGroupSnapshot>;
+        return typeof parsed === 'object' && parsed !== null ? parsed : {};
+      }
+    } catch {
+      // ignore
+    }
+    return {};
+  });
+
   const setInvoiceFileForGroup = useCallback((groupId: string, file: File | null) => {
     setInvoiceFilesByGroupId((prev) => {
       const next = { ...prev };
@@ -855,10 +870,47 @@ export default function Invoices() {
     });
   }, []);
 
-  const invoicedGroups = useMemo(
-    () => groupedTickets.filter((g) => effectiveMarkedInvoicedIds.has(getGroupId(g))),
-    [groupedTickets, effectiveMarkedInvoicedIds]
-  );
+  const idsWithPdfSet = useMemo(() => new Set(invoicedGroupIdsFromDb), [invoicedGroupIdsFromDb]);
+
+  useEffect(() => {
+    let updated = false;
+    const next: Record<string, FrozenGroupSnapshot> = { ...frozenInvoicedGroups };
+    for (const g of groupedTickets) {
+      const gid = getGroupId(g);
+      if (effectiveMarkedInvoicedIds.has(gid) && idsWithPdfSet.has(gid)) {
+        const snap: FrozenGroupSnapshot = { key: g.key, ticketIds: g.tickets.map((t) => t.id) };
+        const existing = next[gid];
+        if (!existing || existing.ticketIds.join(',') !== snap.ticketIds.join(',') || JSON.stringify(existing.key) !== JSON.stringify(snap.key)) {
+          next[gid] = snap;
+          updated = true;
+        }
+      }
+    }
+    if (updated) {
+      setFrozenInvoicedGroups(next);
+      try {
+        localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+    }
+  }, [groupedTickets, effectiveMarkedInvoicedIds, idsWithPdfSet, frozenInvoicedGroups]);
+
+  const invoicedGroups = useMemo(() => {
+    const fromCurrent = groupedTickets.filter((g) => effectiveMarkedInvoicedIds.has(getGroupId(g)));
+    const currentGroupIds = new Set(fromCurrent.map((g) => getGroupId(g)));
+    const idsWithPdfNotInCurrent = invoicedGroupIdsFromDb.filter((id) => !currentGroupIds.has(id));
+    const fromFrozen: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
+    const ticketIdSet = new Set(ticketsForCustomer.map((t) => t.id));
+    for (const id of idsWithPdfNotInCurrent) {
+      const snap = frozenInvoicedGroups[id];
+      if (!snap) continue;
+      const tickets = ticketsForCustomer.filter((t) => snap.ticketIds.includes(t.id));
+      if (tickets.length === 0) continue;
+      fromFrozen.push({ key: snap.key, tickets });
+    }
+    return [...fromCurrent, ...fromFrozen];
+  }, [groupedTickets, effectiveMarkedInvoicedIds, invoicedGroupIdsFromDb, frozenInvoicedGroups, ticketsForCustomer]);
 
   const visibleGroups = useMemo(
     () => groupedTickets.filter((g) => !effectiveMarkedInvoicedIds.has(getGroupId(g))),
@@ -867,9 +919,9 @@ export default function Invoices() {
 
   const invoicedGroupIds = useMemo(() => invoicedGroups.map((g) => getGroupId(g)), [invoicedGroups]);
   const { data: savedInvoiceMetadata } = useQuery({
-    queryKey: ['invoicedBatchInvoices', [...invoicedGroupIds].sort().join(',')],
-    queryFn: () => invoicedBatchInvoicesService.getMetadataByGroupIds(invoicedGroupIds),
-    enabled: showInvoiced && invoicedGroupIds.length > 0,
+    queryKey: ['invoicedBatchInvoices', [...invoicedGroupIdsFromDb].sort().join(',')],
+    queryFn: () => invoicedBatchInvoicesService.getMetadataByGroupIds(invoicedGroupIdsFromDb),
+    enabled: showInvoiced && invoicedGroupIdsFromDb.length > 0,
   });
 
   const handleExportSingleGroup = async (group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }) => {
