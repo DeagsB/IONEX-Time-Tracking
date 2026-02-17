@@ -870,14 +870,12 @@ export default function Invoices() {
     });
   }, []);
 
-  const idsWithPdfSet = useMemo(() => new Set(invoicedGroupIdsFromDb), [invoicedGroupIdsFromDb]);
-
   useEffect(() => {
     let updated = false;
     const next: Record<string, FrozenGroupSnapshot> = { ...frozenInvoicedGroups };
     for (const g of groupedTickets) {
       const gid = getGroupId(g);
-      if (effectiveMarkedInvoicedIds.has(gid) && idsWithPdfSet.has(gid)) {
+      if (effectiveMarkedInvoicedIds.has(gid)) {
         const snap: FrozenGroupSnapshot = { key: g.key, ticketIds: g.tickets.map((t) => t.id) };
         const existing = next[gid];
         if (!existing || existing.ticketIds.join(',') !== snap.ticketIds.join(',') || JSON.stringify(existing.key) !== JSON.stringify(snap.key)) {
@@ -894,15 +892,14 @@ export default function Invoices() {
         // ignore
       }
     }
-  }, [groupedTickets, effectiveMarkedInvoicedIds, idsWithPdfSet, frozenInvoicedGroups]);
+  }, [groupedTickets, effectiveMarkedInvoicedIds, frozenInvoicedGroups]);
 
   const invoicedGroups = useMemo(() => {
     const fromCurrent = groupedTickets.filter((g) => effectiveMarkedInvoicedIds.has(getGroupId(g)));
     const currentGroupIds = new Set(fromCurrent.map((g) => getGroupId(g)));
-    const idsWithPdfNotInCurrent = invoicedGroupIdsFromDb.filter((id) => !currentGroupIds.has(id));
+    const markedIdsNotInCurrent = [...effectiveMarkedInvoicedIds].filter((id) => !currentGroupIds.has(id));
     const fromFrozen: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
-    const ticketIdSet = new Set(ticketsForCustomer.map((t) => t.id));
-    for (const id of idsWithPdfNotInCurrent) {
+    for (const id of markedIdsNotInCurrent) {
       const snap = frozenInvoicedGroups[id];
       if (!snap) continue;
       const tickets = ticketsForCustomer.filter((t) => snap.ticketIds.includes(t.id));
@@ -910,7 +907,7 @@ export default function Invoices() {
       fromFrozen.push({ key: snap.key, tickets });
     }
     return [...fromCurrent, ...fromFrozen];
-  }, [groupedTickets, effectiveMarkedInvoicedIds, invoicedGroupIdsFromDb, frozenInvoicedGroups, ticketsForCustomer]);
+  }, [groupedTickets, effectiveMarkedInvoicedIds, frozenInvoicedGroups, ticketsForCustomer]);
 
   const visibleGroups = useMemo(
     () => groupedTickets.filter((g) => !effectiveMarkedInvoicedIds.has(getGroupId(g))),
@@ -1242,8 +1239,10 @@ export default function Invoices() {
           ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.'
           : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, or monthly) for invoicing.'}
       </p>
-      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '24px', flexWrap: 'wrap' }}>
-        <div>
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ flexShrink: 0 }}>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Customer</label>
           <select
             value={selectedCustomerId}
@@ -1264,7 +1263,7 @@ export default function Invoices() {
             ))}
           </select>
         </div>
-        <div>
+        <div style={{ flexShrink: 0 }}>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Project</label>
           <select
             value={selectedProjectId}
@@ -1278,6 +1277,7 @@ export default function Invoices() {
               fontSize: '14px',
               minWidth: '200px',
             }}
+            aria-label="Filter by project"
           >
             <option value="">All projects</option>
             {(projects ?? []).map((p: { id: string; name?: string; project_number?: string }) => (
@@ -1364,6 +1364,7 @@ export default function Invoices() {
         <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
           Only tickets in this date range (matching Service Tickets Approved tab) are shown.
         </span>
+        </div>
       </div>
 
       {exportProgress && (
