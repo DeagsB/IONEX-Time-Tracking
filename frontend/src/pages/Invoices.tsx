@@ -168,6 +168,11 @@ type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodL
 
 function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string {
   const key = group.key;
+  // CNRL with period: projectId|approverCode|periodKey
+  if (key.periodKey && key.approverCode && key.approverCode !== key.periodKey) {
+    return `${key.projectId ?? ''}|${key.approverCode}|${key.periodKey}`;
+  }
+  // Non-CNRL (period only): projectId|periodKey
   if (key.periodKey) return `${key.projectId}|${key.periodKey}`;
   const ids = group.tickets
     .map((t) => (t as ServiceTicket & { recordId?: string }).recordId || t.id)
@@ -276,8 +281,13 @@ export default function Invoices() {
   const [dateRangeGroupingByCustomer, setDateRangeGroupingByCustomer] = useState<Record<string, DateRangeGrouping>>({});
 
   const getGroupingForCustomer = useCallback(
-    (customerId: string) => dateRangeGroupingByCustomer[customerId] ?? 'monthly',
-    [dateRangeGroupingByCustomer]
+    (customerId: string) => {
+      if (dateRangeGroupingByCustomer[customerId]) return dateRangeGroupingByCustomer[customerId];
+      const customer = customers?.find((c: { id: string; name?: string }) => c.id === customerId);
+      const isCnrl = (customer?.name ?? '').toUpperCase().includes('CNRL');
+      return isCnrl ? 'bi-weekly' : 'monthly';
+    },
+    [dateRangeGroupingByCustomer, customers]
   );
 
   const { data: qboConnected } = useQuery({
@@ -549,6 +559,7 @@ export default function Invoices() {
 
     if (ticketsToGroupCnrl.length > 0) {
       const groups = new Map<string, ServiceTicket[]>();
+      const singleCustomer = !!selectedCustomerId;
       for (const ticket of ticketsToGroupCnrl) {
         const t = ticket as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
         const keyObj = getInvoiceGroupKey(
@@ -572,7 +583,10 @@ export default function Invoices() {
           t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
         );
         if (!keyObj.approverCode || keyObj.approverCode === '_') continue;
-        const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}`;
+        const customerIdForGrouping = singleCustomer ? selectedCustomerId! : (t.customerId ?? '');
+        const grouping = getGroupingForCustomer(customerIdForGrouping);
+        const periodKey = getPeriodKey(t.date ?? '', grouping);
+        const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}|${periodKey}`;
         const list = groups.get(groupKey) ?? [];
         list.push(ticket);
         groups.set(groupKey, list);
@@ -606,7 +620,17 @@ export default function Invoices() {
           },
           first.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
         );
-        result.push({ key: keyObj, tickets: list });
+        const parts = groupKey.split('|');
+        const periodKeyFromKey = parts[2] ?? '';
+        const customerIdForLabel = singleCustomer ? selectedCustomerId! : (first.customerId ?? '');
+        const grouping = getGroupingForCustomer(customerIdForLabel);
+        const periodLabel = getPeriodLabel(periodKeyFromKey, grouping);
+        const keyWithPeriod: InvoiceGroupKeyWithPeriod = {
+          ...keyObj,
+          periodKey: periodKeyFromKey,
+          periodLabel,
+        };
+        result.push({ key: keyWithPeriod, tickets: list });
       }
     }
 
@@ -1083,7 +1107,7 @@ export default function Invoices() {
       <h1 style={{ marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
         {isCNRL
-          ? 'Approved service tickets ready for PDF export. Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.'
+          ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.'
           : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, or monthly) for invoicing.'}
       </p>
       <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -1108,7 +1132,7 @@ export default function Invoices() {
             ))}
           </select>
         </div>
-        {selectedCustomerId && !isCNRL && (
+        {selectedCustomerId && (
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by</label>
             <select
