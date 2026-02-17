@@ -5,7 +5,10 @@
 
 import { supabase } from '../lib/supabaseClient';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// In production (Vercel), use same origin if VITE_API_URL not set so /api/* is used
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
 interface InvoiceLineItem {
   description: string;
@@ -115,8 +118,10 @@ class QuickBooksClientService {
       if (err instanceof Error && (err.message.includes('sign in') || err.message.includes('admins') || err.message.includes('Could not') || err.message.includes('authorization'))) {
         throw err;
       }
+      const base = API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
+      const attemptedUrl = base ? `${base}/api/quickbooks/auth-url` : '/api/quickbooks/auth-url (same origin)';
       console.error('Error getting auth URL:', err);
-      throw new Error('Cannot reach the backend. Ensure it is running and VITE_API_URL is correct.');
+      throw new Error(`Cannot reach the backend at ${attemptedUrl}. Ensure it is running and VITE_API_URL is correct.`);
     }
   }
 

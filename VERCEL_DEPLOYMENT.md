@@ -3,57 +3,70 @@
 ## Your GitHub Repository
 https://github.com/DeagsB/IONEX-Time-Tracking
 
-## Deployment Steps
+---
 
-1. **Go to Vercel** (should open automatically): https://vercel.com/new
+## Option A: Full stack on Vercel (frontend + API for QuickBooks)
 
-2. **Connect GitHub Repository**:
-   - Sign in with GitHub if needed
-   - Click "Import Git Repository"
-   - Select: `DeagsB/IONEX-Time-Tracking`
-   - Click "Import"
+Use this so the app and the QuickBooks API run on the same domain. The repo’s root `vercel.json` builds the backend and frontend and runs `/api/*` as serverless.
 
-3. **Configure Project Settings**:
-   - **Framework Preset**: Vite (should auto-detect)
-   - **Root Directory**: `frontend` ← **IMPORTANT!**
-   - **Build Command**: `npm run build` (should auto-fill)
-   - **Output Directory**: `dist` (should auto-fill)
-   - **Install Command**: `npm install` (should auto-fill)
+1. **Connect the repo** in Vercel and open the project.
 
-4. **Add Environment Variables** (before clicking Deploy):
-   Click "Environment Variables" and add:
-   
-   **VITE_SUPABASE_URL**
-   - Value: Your Supabase project URL (from Supabase Dashboard → Settings → API)
-   - Environment: Production, Preview, Development (select all)
-   
-   **VITE_SUPABASE_ANON_KEY**
-   - Value: Your Supabase anon/public key (from Supabase Dashboard → Settings → API)
-   - Environment: Production, Preview, Development (select all)
-   
-   **VITE_API_URL** (required for QuickBooks)
-   - Value: Your backend API URL
-   - Local dev: `http://localhost:3001` (run `npm run dev` from repo root)
-   - Production: Deploy backend to Railway/Render/Fly.io, then use that URL
-   - Environment: Production, Preview, Development (select all)
-   
-   > **Note**: Never commit API keys to version control. Get these values from your Supabase project dashboard.
+2. **Project settings**:
+   - **Root Directory**: leave **empty** (repo root), or set to **`.`**
+   - **Framework Preset**: Other (or leave as detected)
+   - **Build Command**: (use repo default from `vercel.json`: builds backend then frontend)
+   - **Output Directory**: `frontend/dist`
+   - **Install Command**: `npm install`
 
-5. **Deploy**:
-   - Click "Deploy"
-   - Wait 1-2 minutes for build to complete
-   - Your app will be live at `https://your-project.vercel.app`
+3. **Environment variables** (Settings → Environment Variables):
 
-6. **After Deployment - Update Supabase**:
-   - Go to Supabase Dashboard → Authentication → URL Configuration
-   - Add to Redirect URLs:
-     - `https://your-project.vercel.app`
-     - `https://your-project.vercel.app/**`
+   **Frontend (build-time):**
+   - `VITE_SUPABASE_URL` – Supabase project URL
+   - `VITE_SUPABASE_ANON_KEY` – Supabase anon key
+   - `VITE_API_URL` – **Optional** for same-origin: the app uses the current origin in production if unset. Set to **`https://ionex-timer.vercel.app`** (or your Vercel URL) only if you need to override.
 
-## Important Notes
+   **Backend / API (QuickBooks and Supabase):**
+   - `QBO_CLIENT_ID` – QuickBooks app Client ID
+   - `QBO_CLIENT_SECRET` – QuickBooks app Client Secret
+   - `QBO_REDIRECT_URI` – **`https://ionex-timer.vercel.app/api/quickbooks/callback`**
+   - `FRONTEND_URL` – **`https://ionex-timer.vercel.app`**
+   - `SUPABASE_URL` – Supabase project URL
+   - `SUPABASE_SERVICE_KEY` – Supabase **service role** key
+   - `QBO_ENVIRONMENT` – `sandbox` or `production`
 
-- ✅ Your code is already on GitHub
-- ✅ Team: IONEX Systems' projects
-- ⚠️ Remember to set Root Directory to `frontend`
-- ⚠️ Don't forget to add environment variables before deploying
+   Add them for **Production** (and **Preview** if you use preview envs).
 
+4. **Deploy**  
+   Push to your connected branch (or trigger a deploy). The build runs `npm run build:backend` then builds the frontend; `/api/*` is served by the serverless function.
+
+5. **Supabase**  
+   In Supabase → Authentication → URL Configuration, add your app URL (e.g. `https://ionex-timer.vercel.app` and `https://ionex-timer.vercel.app/**`).
+
+6. **QuickBooks**  
+   In the QuickBooks app’s Redirect URIs, add:  
+   `https://ionex-timer.vercel.app/api/quickbooks/callback`
+
+---
+
+## Option B: Frontend only on Vercel (backend elsewhere)
+
+If you run the backend on Railway, Render, Fly.io, etc.:
+
+1. **Root Directory**: **`frontend`**
+2. **Build Command**: `npm run build`
+3. **Output Directory**: `dist`
+4. **Environment variables**:
+   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+   - **`VITE_API_URL`** = your backend URL (e.g. `https://your-api.railway.app`)
+
+Put all QuickBooks/Supabase backend env vars on the backend host, not in Vercel. In QuickBooks, set Redirect URI to `https://your-backend-url/api/quickbooks/callback`.
+
+---
+
+## After deployment
+
+- App: `https://ionex-timer.vercel.app` (or your project URL)
+- API health: `https://ionex-timer.vercel.app/api/health`  
+  You should see: `{"status":"ok","message":"IONEX Time Tracking API"}`
+
+Do not commit secrets; set all of the above in the Vercel (or backend) dashboard.
