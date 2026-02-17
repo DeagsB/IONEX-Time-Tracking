@@ -59,7 +59,7 @@ If you run the backend on Railway, Render, Fly.io, etc.:
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
    - **`VITE_API_URL`** = your backend URL (e.g. `https://your-api.railway.app`)
 
-Put all QuickBooks/Supabase backend env vars on the backend host, not in Vercel. In QuickBooks, set Redirect URI to `https://your-backend-url/api/quickbooks/callback`.
+Put all QuickBooks/Supabase backend env vars on the backend host, not in Vercel. Set **`FRONTEND_URL`** on the backend to your frontend origin (e.g. `https://ionex-timer.vercel.app`) so CORS allows the app to call the API. In QuickBooks, set Redirect URI to `https://your-backend-url/api/quickbooks/callback`.
 
 ---
 

@@ -17,7 +17,14 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+// Allow frontend origin (e.g. Vercel → Railway) so cross-origin API calls with Authorization work
+const frontendUrl = process.env.FRONTEND_URL?.replace(/\/+$/, '');
+const corsOptions: { origin: string | true; credentials: boolean; allowedHeaders: string[] } = {
+  origin: frontendUrl || true, // specific origin when set, else reflect request origin (local dev)
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+};
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' })); // Increased limit for PDF uploads
 
 app.use('/api/auth', authRoutes);
