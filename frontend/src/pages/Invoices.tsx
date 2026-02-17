@@ -1317,10 +1317,15 @@ export default function Invoices() {
                     border: '1px solid var(--border-color)',
                   }}
                 >
-                  {/* Summary: project and total very obvious */}
+                  {/* Summary: project, approver, PO/AFE/CC, and total */}
                   <div style={{ marginBottom: '12px' }}>
                     <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }} title={projectDisplay}>
                       Project: {projectDisplay.length > 60 ? `${projectDisplay.slice(0, 60)}…` : projectDisplay}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                      <span><strong>Approver:</strong> {key.approverCode || key.approver || '(none)'}</span>
+                      <span><strong>PO/AFE/CC:</strong> {key.poAfe || '(none)'}</span>
+                      {key.cc ? <span><strong>CC:</strong> {key.cc}</span> : null}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                       <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary-color)' }}>
