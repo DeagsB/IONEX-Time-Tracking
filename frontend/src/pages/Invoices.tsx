@@ -806,9 +806,10 @@ export default function Invoices() {
 
   const handleDownloadBatchWithInvoice = async (
     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
-    groupId: string
+    groupId: string,
+    fileOverride?: File
   ) => {
-    const invoiceFile = invoiceFilesByGroupId[groupId];
+    const invoiceFile = fileOverride ?? invoiceFilesByGroupId[groupId];
     const saved = savedInvoiceMetadata?.[groupId];
     let invoiceBlob: Blob;
     let downloadFilename: string;
@@ -1404,6 +1405,7 @@ export default function Invoices() {
                           await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
                           setInvoiceFileForGroup(groupId, file);
                           await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                          await handleDownloadBatchWithInvoice(group, groupId, file);
                         } catch (err) {
                           setExportError(err instanceof Error ? err.message : 'Upload failed');
                         } finally {
@@ -1435,6 +1437,7 @@ export default function Invoices() {
                             await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
                             setInvoiceFileForGroup(groupId, file);
                             await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                            await handleDownloadBatchWithInvoice(group, groupId, file);
                           } catch (err) {
                             setExportError(err instanceof Error ? err.message : 'Upload failed');
                           } finally {
