@@ -88,6 +88,8 @@ When the frontend (e.g. Vercel) calls a separate API (e.g. Railway):
    `https://your-api.railway.app/api/health`  
    You should see `{"status":"ok",...}`. If you get an error or nothing, the API is down or the URL is wrong.
 
-2. **CORS**: On the **backend** (Railway), set **`FRONTEND_URL`** to the **exact** URL you see in the browser when using the app (e.g. `https://ionex-timer.vercel.app` — no trailing slash, correct protocol). If you use multiple frontend URLs (e.g. preview deployments), set **`CORS_ORIGINS`** = comma-separated list, e.g. `https://ionex-timer.vercel.app,https://ionex-timer-abc123.vercel.app`. To quickly confirm CORS was the issue, you can temporarily set **`CORS_ORIGINS`** = **`*`** (allows any origin); then set `FRONTEND_URL` and remove or replace `CORS_ORIGINS` for production. Redeploy the backend after changing env vars.
+2. **CORS**: On the **backend** (Railway), set **`FRONTEND_URL`** to your main app URL (e.g. `https://ionex-timer.vercel.app`). For **preview deployments** (e.g. `https://ionex-timer-pojl7qm4x-ionex-systems-projects.vercel.app`), add **`CORS_ORIGINS`** with the **exact** origin(s), comma-separated, no trailing slash:
+   - Example: `CORS_ORIGINS=https://ionex-timer-pojl7qm4x-ionex-systems-projects.vercel.app`
+   - Or allow any origin temporarily: `CORS_ORIGINS=*`. Redeploy the backend after changing env vars.
 
 3. **Frontend**: Set **`VITE_API_URL`** to your backend URL, e.g. `https://ionex-api.railway.app` (no trailing slash). Rebuild/redeploy the frontend so the env is baked in.
