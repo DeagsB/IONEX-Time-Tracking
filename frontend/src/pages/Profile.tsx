@@ -669,6 +669,13 @@ export default function Profile() {
                 setQboConnectError(null);
                 setQboConnectLoading(true);
                 try {
+                  const health = await quickbooksClientService.checkBackendReachable();
+                  if (!health.ok) {
+                    setQboConnectError(
+                      `Backend is not reachable. ${health.message ?? ''} Ensure the API is running and FRONTEND_URL / CORS_ORIGINS allow this site.`
+                    );
+                    return;
+                  }
                   const url = await quickbooksClientService.getAuthUrl();
                   if (url) {
                     window.location.href = url;

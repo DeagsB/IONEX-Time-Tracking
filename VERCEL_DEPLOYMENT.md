@@ -70,3 +70,17 @@ Put all QuickBooks/Supabase backend env vars on the backend host, not in Vercel.
   You should see: `{"status":"ok","message":"IONEX Time Tracking API"}`
 
 Do not commit secrets; set all of the above in the Vercel (or backend) dashboard.
+
+---
+
+## Troubleshooting "Cannot reach the backend" / "Backend is not reachable"
+
+When the frontend (e.g. Vercel) calls a separate API (e.g. Railway):
+
+1. **Open the API health URL in your browser** (same origin as the app):  
+   `https://your-api.railway.app/api/health`  
+   You should see `{"status":"ok",...}`. If you get an error or nothing, the API is down or the URL is wrong.
+
+2. **CORS**: On the **backend** (Railway), set **`FRONTEND_URL`** to your frontend origin exactly, e.g. `https://ionex-timer.vercel.app` (no trailing slash). If you use multiple frontend URLs (e.g. preview deployments), add **`CORS_ORIGINS`** = comma-separated list of those origins. Redeploy the backend after changing env vars.
+
+3. **Frontend**: Set **`VITE_API_URL`** to your backend URL, e.g. `https://ionex-api.railway.app` (no trailing slash). Rebuild/redeploy the frontend so the env is baked in.

@@ -93,17 +93,47 @@ class QuickBooksClientService {
   }
 
   /**
+   * Check if the backend is reachable (for clearer errors before auth flow).
+   */
+  async checkBackendReachable(): Promise<{ ok: boolean; message?: string }> {
+    const url = `${API_BASE}/api/health`;
+    try {
+      const res = await fetch(url, { method: 'GET', credentials: 'include' });
+      if (res.ok) return { ok: true };
+      const text = await res.text();
+      return { ok: false, message: `Backend returned ${res.status}: ${text.slice(0, 100)}` };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, message: msg };
+    }
+  }
+
+  /**
    * Get authorization URL to connect QuickBooks
    */
   async getAuthUrl(): Promise<string | null> {
+    const attemptedUrl = API_BASE ? `${API_BASE}/api/quickbooks/auth-url` : `${typeof window !== 'undefined' ? window.location.origin : ''}/api/quickbooks/auth-url`;
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(`${API_BASE}/api/quickbooks/auth-url`, { headers });
-      const data: QBOAuthUrlResponse = await response.json();
+      const response = await fetch(attemptedUrl, {
+        headers,
+        credentials: 'include',
+      });
+      let data: QBOAuthUrlResponse | { error?: string };
+      try {
+        data = await response.json();
+      } catch {
+        const text = await response.text().catch(() => '');
+        throw new Error(
+          response.ok
+            ? 'Invalid response from backend.'
+            : `Backend returned ${response.status} (not JSON). ${text.slice(0, 80)}`
+        );
+      }
 
-      if (data.success) {
-        sessionStorage.setItem('qbo_state', data.state);
-        return data.authUrl;
+      if ((data as QBOAuthUrlResponse).success) {
+        sessionStorage.setItem('qbo_state', (data as QBOAuthUrlResponse).state);
+        return (data as QBOAuthUrlResponse).authUrl;
       }
 
       if (response.status === 401) {
@@ -120,10 +150,12 @@ class QuickBooksClientService {
       if (err instanceof Error && (err.message.includes('sign in') || err.message.includes('admins') || err.message.includes('Could not') || err.message.includes('authorization'))) {
         throw err;
       }
-      const base = API_BASE || (typeof window !== 'undefined' ? window.location.origin : '');
-      const attemptedUrl = base ? `${base}/api/quickbooks/auth-url` : '/api/quickbooks/auth-url (same origin)';
+      const isNetwork = err instanceof TypeError && (err.message === 'Failed to fetch' || err.message.includes('NetworkError'));
+      const hint = isNetwork
+        ? ' Check that the backend is running, CORS allows this origin (FRONTEND_URL or CORS_ORIGINS), and VITE_API_URL is correct.'
+        : ` ${err instanceof Error ? err.message : ''}`;
       console.error('Error getting auth URL:', err);
-      throw new Error(`Cannot reach the backend at ${attemptedUrl}. Ensure it is running and VITE_API_URL is correct.`);
+      throw new Error(`Cannot reach the backend at ${attemptedUrl}.${hint}`);
     }
   }
 
