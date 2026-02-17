@@ -9,6 +9,8 @@ https://github.com/DeagsB/IONEX-Time-Tracking
 
 Use this so the app and the QuickBooks API run on the same domain. The repo’s root `vercel.json` builds the backend and frontend and runs `/api/*` as serverless.
 
+**→ Step-by-step checklist: [VERCEL_ALL_IN_ONE.md](./VERCEL_ALL_IN_ONE.md)**
+
 1. **Connect the repo** in Vercel and open the project.
 
 2. **Project settings**:
