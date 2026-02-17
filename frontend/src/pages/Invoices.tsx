@@ -625,6 +625,14 @@ export default function Invoices() {
       for (const groupKey of sortedGroupKeys) {
         const list = groups.get(groupKey) ?? [];
         list.sort((a, b) => {
+          const ta = a as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
+          const tb = b as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
+          const { poAfe: poAfeA, cc: ccA } = getApproverPoAfeCcFromTicket(ta, ta.headerOverrides);
+          const { poAfe: poAfeB, cc: ccB } = getApproverPoAfeCcFromTicket(tb, tb.headerOverrides);
+          const poCmp = (poAfeA || '').localeCompare(poAfeB || '');
+          if (poCmp !== 0) return poCmp;
+          const ccCmp = (ccA || '').localeCompare(ccB || '');
+          if (ccCmp !== 0) return ccCmp;
           const nameCmp = (a.userName || '').localeCompare(b.userName || '');
           if (nameCmp !== 0) return nameCmp;
           return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
