@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import {
@@ -8,6 +8,7 @@ import {
   customersService,
   employeesService,
   projectsService,
+  invoicedBatchInvoicesService,
 } from '../services/supabaseServices';
 import {
   groupEntriesIntoTickets,
@@ -735,6 +736,8 @@ export default function Invoices() {
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
   const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
+  const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const setInvoiceFileForGroup = useCallback((groupId: string, file: File | null) => {
     setInvoiceFilesByGroupId((prev) => {
@@ -754,6 +757,13 @@ export default function Invoices() {
     () => groupedTickets.filter((g) => !markedInvoicedIds.has(getGroupId(g))),
     [groupedTickets, markedInvoicedIds]
   );
+
+  const invoicedGroupIds = useMemo(() => invoicedGroups.map((g) => getGroupId(g)), [invoicedGroups]);
+  const { data: savedInvoiceMetadata } = useQuery({
+    queryKey: ['invoicedBatchInvoices', [...invoicedGroupIds].sort().join(',')],
+    queryFn: () => invoicedBatchInvoicesService.getMetadataByGroupIds(invoicedGroupIds),
+    enabled: showInvoiced && invoicedGroupIds.length > 0,
+  });
 
   const handleExportSingleGroup = async (group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }) => {
     const { key, tickets: groupTickets } = group;
@@ -796,16 +806,25 @@ export default function Invoices() {
 
   const handleDownloadBatchWithInvoice = async (
     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
-    groupId: string,
-    fileOverride?: File
+    groupId: string
   ) => {
-    const invoiceFile = fileOverride ?? invoiceFilesByGroupId[groupId];
-    if (!invoiceFile) return;
-    const { key, tickets: groupTickets } = group;
+    const invoiceFile = invoiceFilesByGroupId[groupId];
+    const saved = savedInvoiceMetadata?.[groupId];
+    let invoiceBlob: Blob;
+    let downloadFilename: string;
+    if (invoiceFile) {
+      invoiceBlob = invoiceFile;
+      downloadFilename = invoiceFile.name || 'invoice.pdf';
+    } else if (saved?.storagePath) {
+      invoiceBlob = await invoicedBatchInvoicesService.downloadInvoice(saved.storagePath);
+      downloadFilename = saved.filename || 'invoice.pdf';
+    } else return;
+
+    const { tickets: groupTickets } = group;
     setDownloadingWithInvoiceGroupId(groupId);
     setExportError(null);
     try {
-      const blobs: Blob[] = [invoiceFile];
+      const blobs: Blob[] = [invoiceBlob];
       for (const ticket of groupTickets) {
         const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
         const recordId = t.recordId;
@@ -824,8 +843,7 @@ export default function Invoices() {
         blobs.push(result.blob);
       }
       const merged = await mergePdfBlobs(blobs);
-      const filename = invoiceFile.name || 'invoice.pdf';
-      saveAs(merged, filename);
+      saveAs(merged, downloadFilename);
     } catch (err) {
       console.error('Export with invoice error:', err);
       setExportError(err instanceof Error ? err.message : 'Export failed');
@@ -1374,14 +1392,22 @@ export default function Invoices() {
                     <div
                       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
                       onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
-                      onDrop={(e) => {
+                      onDrop={async (e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         e.currentTarget.style.borderColor = '';
                         const file = e.dataTransfer?.files?.[0];
-                        if (file?.type === 'application/pdf') {
+                        if (file?.type !== 'application/pdf') return;
+                        setUploadingInvoiceGroupId(groupId);
+                        setExportError(null);
+                        try {
+                          await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
                           setInvoiceFileForGroup(groupId, file);
-                          handleDownloadBatchWithInvoice(group, groupId, file);
+                          await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                        } catch (err) {
+                          setExportError(err instanceof Error ? err.message : 'Upload failed');
+                        } finally {
+                          setUploadingInvoiceGroupId(null);
                         }
                       }}
                       onClick={() => document.getElementById(`invoice-file-${groupId}`)?.click()}
@@ -1389,7 +1415,7 @@ export default function Invoices() {
                         border: '2px dashed var(--border-color)',
                         borderRadius: '8px',
                         padding: '12px 16px',
-                        cursor: 'pointer',
+                        cursor: uploadingInvoiceGroupId === groupId ? 'wait' : 'pointer',
                         backgroundColor: 'var(--bg-tertiary)',
                         marginBottom: '8px',
                       }}
@@ -1399,21 +1425,42 @@ export default function Invoices() {
                         type="file"
                         accept=".pdf,application/pdf"
                         style={{ display: 'none' }}
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
-                          if (file) {
-                            setInvoiceFileForGroup(groupId, file);
-                            handleDownloadBatchWithInvoice(group, groupId, file);
-                          }
                           e.target.value = '';
+                          if (!file) return;
+                          setUploadingInvoiceGroupId(groupId);
+                          setExportError(null);
+                          try {
+                            await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
+                            setInvoiceFileForGroup(groupId, file);
+                            await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                          } catch (err) {
+                            setExportError(err instanceof Error ? err.message : 'Upload failed');
+                          } finally {
+                            setUploadingInvoiceGroupId(null);
+                          }
                         }}
                       />
-                      {invoiceFilesByGroupId[groupId] ? (
+                      {uploadingInvoiceGroupId === groupId ? (
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Uploading…</span>
+                      ) : invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId] ? (
                         <span style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span title={invoiceFilesByGroupId[groupId].name}>{invoiceFilesByGroupId[groupId].name}</span>
+                          <span title={invoiceFilesByGroupId[groupId]?.name ?? savedInvoiceMetadata?.[groupId]?.filename}>
+                            {invoiceFilesByGroupId[groupId]?.name ?? savedInvoiceMetadata?.[groupId]?.filename}
+                          </span>
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); setInvoiceFileForGroup(groupId, null); }}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setInvoiceFileForGroup(groupId, null);
+                              try {
+                                await invoicedBatchInvoicesService.deleteInvoice(groupId);
+                                await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                              } catch (err) {
+                                setExportError(err instanceof Error ? err.message : 'Remove failed');
+                              }
+                            }}
                             style={{
                               padding: '2px 8px',
                               fontSize: '11px',
@@ -1429,22 +1476,22 @@ export default function Invoices() {
                         </span>
                       ) : (
                         <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          Drop invoice PDF here or click to choose
+                          Drop invoice PDF here or click to choose (saved to storage)
                         </span>
                       )}
                     </div>
                     <button
                       onClick={() => handleDownloadBatchWithInvoice(group, groupId)}
-                      disabled={!invoiceFilesByGroupId[groupId] || !!exportProgress || !!qboProgress || downloadingWithInvoiceGroupId === groupId}
+                      disabled={!(invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]) || !!exportProgress || !!qboProgress || downloadingWithInvoiceGroupId === groupId}
                       style={{
                         padding: '6px 12px',
-                        backgroundColor: invoiceFilesByGroupId[groupId] ? 'var(--primary-color)' : 'var(--bg-tertiary)',
-                        color: invoiceFilesByGroupId[groupId] ? 'white' : 'var(--text-tertiary)',
+                        backgroundColor: (invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]) ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                        color: (invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]) ? 'white' : 'var(--text-tertiary)',
                         border: '1px solid var(--border-color)',
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: 600,
-                        cursor: invoiceFilesByGroupId[groupId] && !exportProgress && !qboProgress && !downloadingWithInvoiceGroupId ? 'pointer' : 'not-allowed',
+                        cursor: (invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]) && !exportProgress && !qboProgress && downloadingWithInvoiceGroupId !== groupId ? 'pointer' : 'not-allowed',
                       }}
                       title="Merge invoice PDF (first) with this batch and download"
                     >

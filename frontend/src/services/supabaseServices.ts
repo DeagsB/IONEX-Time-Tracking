@@ -1953,3 +1953,75 @@ export const bugReportsService = {
     if (error) throw error;
   },
 };
+
+const INVOICED_BATCH_BUCKET = 'invoiced-batch-invoices';
+
+function sanitizeStoragePathSegment(s: string): string {
+  return s.replace(/[/\\?*:|"]/g, '_').slice(0, 200);
+}
+
+export const invoicedBatchInvoicesService = {
+  async uploadInvoice(groupId: string, file: File): Promise<{ storagePath: string; filename: string }> {
+    const safeId = sanitizeStoragePathSegment(groupId);
+    const timestamp = Date.now();
+    const safeName = sanitizeStoragePathSegment(file.name || 'invoice.pdf');
+    const storagePath = `${safeId}/${timestamp}_${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(INVOICED_BATCH_BUCKET)
+      .upload(storagePath, file, { contentType: 'application/pdf', upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { error: upsertError } = await supabase
+      .from('invoiced_batch_invoices')
+      .upsert(
+        {
+          group_id: groupId,
+          invoice_filename: file.name || 'invoice.pdf',
+          storage_path: storagePath,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'group_id' }
+      );
+
+    if (upsertError) throw upsertError;
+    return { storagePath, filename: file.name || 'invoice.pdf' };
+  },
+
+  async getMetadataByGroupIds(groupIds: string[]): Promise<Record<string, { filename: string; storagePath: string }>> {
+    if (groupIds.length === 0) return {};
+    const { data, error } = await supabase
+      .from('invoiced_batch_invoices')
+      .select('group_id, invoice_filename, storage_path')
+      .in('group_id', groupIds);
+
+    if (error) throw error;
+    const out: Record<string, { filename: string; storagePath: string }> = {};
+    for (const row of data || []) {
+      out[row.group_id] = { filename: row.invoice_filename, storagePath: row.storage_path };
+    }
+    return out;
+  },
+
+  async downloadInvoice(storagePath: string): Promise<Blob> {
+    const { data, error } = await supabase.storage.from(INVOICED_BATCH_BUCKET).download(storagePath);
+    if (error) throw error;
+    if (!data) throw new Error('No data returned');
+    return data;
+  },
+
+  async deleteInvoice(groupId: string): Promise<void> {
+    const { data: rows } = await supabase
+      .from('invoiced_batch_invoices')
+      .select('storage_path')
+      .eq('group_id', groupId)
+      .limit(1);
+
+    if (rows?.[0]?.storage_path) {
+      await supabase.storage.from(INVOICED_BATCH_BUCKET).remove([rows[0].storage_path]);
+    }
+    const { error } = await supabase.from('invoiced_batch_invoices').delete().eq('group_id', groupId);
+    if (error) throw error;
+  },
+};
