@@ -624,16 +624,14 @@ export default function Invoices() {
       });
       for (const groupKey of sortedGroupKeys) {
         const list = groups.get(groupKey) ?? [];
-        // Sort by PO/AFE/CC (poAfe) then Coding (cc) — poAfe and cc are the two billing fields
+        // Sort by PO/AFE/CC only (then name, ticket#) — Coding is not used for line order
         list.sort((a, b) => {
           const ta = a as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
           const tb = b as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
-          const { poAfe: poAfeA, cc: ccA } = getApproverPoAfeCcFromTicket(ta, ta.headerOverrides); // poAfe = PO/AFE/CC, cc = Coding
-          const { poAfe: poAfeB, cc: ccB } = getApproverPoAfeCcFromTicket(tb, tb.headerOverrides);
+          const { poAfe: poAfeA } = getApproverPoAfeCcFromTicket(ta, ta.headerOverrides);
+          const { poAfe: poAfeB } = getApproverPoAfeCcFromTicket(tb, tb.headerOverrides);
           const poCmp = (poAfeA || '').localeCompare(poAfeB || '');
           if (poCmp !== 0) return poCmp;
-          const codingCmp = (ccA || '').localeCompare(ccB || '');
-          if (codingCmp !== 0) return codingCmp;
           const nameCmp = (a.userName || '').localeCompare(b.userName || '');
           if (nameCmp !== 0) return nameCmp;
           return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
