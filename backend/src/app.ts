@@ -19,19 +19,26 @@ const app = express();
 
 // Allow frontend origin(s) so cross-origin API calls with Authorization work (e.g. Vercel → Railway)
 const frontendUrl = process.env.FRONTEND_URL?.replace(/\/+$/, '');
-const corsOriginsRaw = process.env.CORS_ORIGINS ?? '';
-const allowedOrigins = [
-  ...(frontendUrl ? [frontendUrl] : []),
-  ...corsOriginsRaw.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
-];
+const corsOriginsRaw = (process.env.CORS_ORIGINS ?? '').trim();
+const allowAnyOrigin = corsOriginsRaw === '*';
+const allowedOrigins = allowAnyOrigin
+  ? []
+  : [
+      ...(frontendUrl ? [frontendUrl] : []),
+      ...corsOriginsRaw.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
+    ];
 const corsOptions = {
-  origin: allowedOrigins.length > 0
-    ? (origin: string | undefined, cb: (err: Error | null, allow?: boolean | string) => void) => {
-        if (!origin) return cb(null, true); // same-origin or tools like Postman
-        const allow = allowedOrigins.includes(origin);
-        return cb(null, allow ? origin : false);
-      }
-    : true,
+  origin:
+    allowAnyOrigin || allowedOrigins.length === 0
+      ? true // allow any origin (reflect request origin)
+      : (origin: string | undefined, cb: (err: Error | null, allow?: boolean | string) => void) => {
+          if (!origin) return cb(null, true); // same-origin or tools like Postman
+          const allow = allowedOrigins.some((o) => o === origin);
+          if (!allow) {
+            console.warn(`[CORS] Rejected origin: ${origin}. Allowed: ${allowedOrigins.join(', ') || 'FRONTEND_URL/CORS_ORIGINS'}`);
+          }
+          return cb(null, allow ? origin : false);
+        },
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   optionsSuccessStatus: 200,

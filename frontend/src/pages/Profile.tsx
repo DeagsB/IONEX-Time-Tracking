@@ -672,7 +672,7 @@ export default function Profile() {
                   const health = await quickbooksClientService.checkBackendReachable();
                   if (!health.ok) {
                     setQboConnectError(
-                      `Backend is not reachable. ${health.message ?? ''} Ensure the API is running and FRONTEND_URL / CORS_ORIGINS allow this site.`
+                      `Backend is not reachable. ${health.message ?? ''} On the API server set FRONTEND_URL to this site’s URL (e.g. ${typeof window !== 'undefined' ? window.location.origin : 'your app URL'}), or set CORS_ORIGINS=* temporarily to test.`
                     );
                     return;
                   }
