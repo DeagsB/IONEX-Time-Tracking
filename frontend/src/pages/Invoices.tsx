@@ -733,6 +733,17 @@ export default function Invoices() {
 
   const [showInvoiced, setShowInvoiced] = useState(false);
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
+  const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
+  const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
+
+  const setInvoiceFileForGroup = useCallback((groupId: string, file: File | null) => {
+    setInvoiceFilesByGroupId((prev) => {
+      const next = { ...prev };
+      if (file) next[groupId] = file;
+      else delete next[groupId];
+      return next;
+    });
+  }, []);
 
   const invoicedGroups = useMemo(
     () => groupedTickets.filter((g) => markedInvoicedIds.has(getGroupId(g))),
@@ -782,6 +793,46 @@ export default function Invoices() {
   };
 
   const isExportingGroup = (groupId: string) => exportingGroupIdx === groupId;
+
+  const handleDownloadBatchWithInvoice = async (
+    group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
+    groupId: string
+  ) => {
+    const invoiceFile = invoiceFilesByGroupId[groupId];
+    if (!invoiceFile) return;
+    const { key, tickets: groupTickets } = group;
+    setDownloadingWithInvoiceGroupId(groupId);
+    setExportError(null);
+    try {
+      const blobs: Blob[] = [invoiceFile];
+      for (const ticket of groupTickets) {
+        const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
+        const recordId = t.recordId;
+        let expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+        if (recordId) {
+          try {
+            expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+          } catch {
+            expenses = [];
+          }
+        }
+        const result = await generateAndStorePdf(ticket, expenses, {
+          uploadToStorage: false,
+          downloadLocally: false,
+        });
+        blobs.push(result.blob);
+      }
+      const merged = await mergePdfBlobs(blobs);
+      const baseName = getInvoicePdfFilename(key, groupTickets).replace(/\.pdf$/i, '');
+      const filename = `${baseName}_with_invoice.pdf`;
+      saveAs(merged, filename);
+    } catch (err) {
+      console.error('Export with invoice error:', err);
+      setExportError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setDownloadingWithInvoiceGroupId(null);
+    }
+  };
 
   const handleExportForInvoicing = async () => {
     setExportError(null);
@@ -1312,6 +1363,82 @@ export default function Invoices() {
                         </button>
                       </div>
                     </div>
+                  </div>
+                  {/* Attach invoice PDF and download batch with invoice */}
+                  <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
+                      onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.currentTarget.style.borderColor = '';
+                        const file = e.dataTransfer?.files?.[0];
+                        if (file?.type === 'application/pdf') setInvoiceFileForGroup(groupId, file);
+                      }}
+                      onClick={() => document.getElementById(`invoice-file-${groupId}`)?.click()}
+                      style={{
+                        border: '2px dashed var(--border-color)',
+                        borderRadius: '8px',
+                        padding: '12px 16px',
+                        cursor: 'pointer',
+                        backgroundColor: 'var(--bg-tertiary)',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      <input
+                        id={`invoice-file-${groupId}`}
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setInvoiceFileForGroup(groupId, file);
+                          e.target.value = '';
+                        }}
+                      />
+                      {invoiceFilesByGroupId[groupId] ? (
+                        <span style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span title={invoiceFilesByGroupId[groupId].name}>{invoiceFilesByGroupId[groupId].name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setInvoiceFileForGroup(groupId, null); }}
+                            style={{
+                              padding: '2px 8px',
+                              fontSize: '11px',
+                              backgroundColor: 'var(--bg-primary)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                          Drop invoice PDF here or click to choose
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleDownloadBatchWithInvoice(group, groupId)}
+                      disabled={!invoiceFilesByGroupId[groupId] || !!exportProgress || !!qboProgress || downloadingWithInvoiceGroupId === groupId}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: invoiceFilesByGroupId[groupId] ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                        color: invoiceFilesByGroupId[groupId] ? 'white' : 'var(--text-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: invoiceFilesByGroupId[groupId] && !exportProgress && !qboProgress && !downloadingWithInvoiceGroupId ? 'pointer' : 'not-allowed',
+                      }}
+                      title="Merge invoice PDF (first) with this batch and download"
+                    >
+                      {downloadingWithInvoiceGroupId === groupId ? 'Generating…' : 'Download batch with invoice'}
+                    </button>
                   </div>
                   {/* Dropdown to show/hide detailed breakdown */}
                   <button
