@@ -823,8 +823,7 @@ export default function Invoices() {
         blobs.push(result.blob);
       }
       const merged = await mergePdfBlobs(blobs);
-      const baseName = getInvoicePdfFilename(key, groupTickets).replace(/\.pdf$/i, '');
-      const filename = `${baseName}_with_invoice.pdf`;
+      const filename = invoiceFile.name || 'invoice.pdf';
       saveAs(merged, filename);
     } catch (err) {
       console.error('Export with invoice error:', err);
