@@ -706,6 +706,19 @@ export default function Invoices() {
     }
   });
 
+  // Invoiced group IDs from DB (uploaded PDFs) — syncs across devices
+  const { data: invoicedGroupIdsFromDb = [] } = useQuery({
+    queryKey: ['invoicedBatchInvoices', 'allGroupIds'],
+    queryFn: () => invoicedBatchInvoicesService.getAllInvoicedGroupIds(),
+  });
+
+  // Effective "marked as invoiced" = localStorage (this device) ∪ DB (any device)
+  const effectiveMarkedInvoicedIds = useMemo(() => {
+    const set = new Set(markedInvoicedIds);
+    invoicedGroupIdsFromDb.forEach((id) => set.add(id));
+    return set;
+  }, [markedInvoicedIds, invoicedGroupIdsFromDb]);
+
   const handleMarkAsInvoiced = (groupId: string) => {
     setMarkedInvoicedIds((prev) => {
       const next = new Set(prev);
@@ -749,13 +762,13 @@ export default function Invoices() {
   }, []);
 
   const invoicedGroups = useMemo(
-    () => groupedTickets.filter((g) => markedInvoicedIds.has(getGroupId(g))),
-    [groupedTickets, markedInvoicedIds]
+    () => groupedTickets.filter((g) => effectiveMarkedInvoicedIds.has(getGroupId(g))),
+    [groupedTickets, effectiveMarkedInvoicedIds]
   );
 
   const visibleGroups = useMemo(
-    () => groupedTickets.filter((g) => !markedInvoicedIds.has(getGroupId(g))),
-    [groupedTickets, markedInvoicedIds]
+    () => groupedTickets.filter((g) => !effectiveMarkedInvoicedIds.has(getGroupId(g))),
+    [groupedTickets, effectiveMarkedInvoicedIds]
   );
 
   const invoicedGroupIds = useMemo(() => invoicedGroups.map((g) => getGroupId(g)), [invoicedGroups]);
