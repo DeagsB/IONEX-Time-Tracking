@@ -6,9 +6,11 @@
 import { supabase } from '../lib/supabaseClient';
 
 // In production (Vercel), use same origin if VITE_API_URL not set so /api/* is used
-const API_BASE =
+const API_BASE_RAW =
   import.meta.env.VITE_API_URL ||
   (import.meta.env.PROD ? '' : 'http://localhost:3001');
+// Strip trailing slash so we never get double slashes in URLs (e.g. ...railway.app//api/...)
+const API_BASE = typeof API_BASE_RAW === 'string' ? API_BASE_RAW.replace(/\/+$/, '') : '';
 
 interface InvoiceLineItem {
   description: string;
