@@ -63,6 +63,10 @@ Put all QuickBooks/Supabase backend env vars on the backend host, not in Vercel.
 
 ### Deploying the backend to Railway
 
+**Full step-by-step:** see **[RAILWAY_SETUP.md](./RAILWAY_SETUP.md)** in this repo.
+
+Short version:
+
 - **Root Directory**: set to **`backend`** (so Railway builds and runs from the `backend` folder).
 - **Build**: `npm install && npm run build` (or use Railway’s default Node detection).
 - **Start**: `npm run start` (runs `node dist/index.js`).

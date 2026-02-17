@@ -1,39 +1,40 @@
-# Railway setup – IONEX backend API
+# Railway setup guide – IONEX backend API
 
-Use this to run the **backend** (Node/Express API) on Railway so your Vercel frontend can call it (e.g. QuickBooks connect).
+Use this when your **frontend** is on Vercel and you want the **backend** (QuickBooks API, auth, etc.) on Railway.
+
+---
 
 ## 1. Create a Railway account and project
 
 1. Go to **[railway.app](https://railway.app)** and sign in (GitHub is easiest).
 2. Click **“New Project”**.
-3. Choose **“Deploy from GitHub repo”** and select your **IONEX-Time-Tracking** repository.
-4. When asked which repo to use, pick **DeagsB/IONEX-Time-Tracking** (or your fork). Railway will create a new service from it.
+3. Choose **“Deploy from GitHub repo”**.
+4. Select your GitHub account and the repo **`DeagsB/IONEX-Time-Tracking`** (or your fork). Authorize Railway if asked.
+5. Railway will ask what to deploy. Choose **“Configure a service”** or **“Add a service”** so you can set the root directory in the next step.
 
-## 2. Configure the service to use the `backend` folder
+---
 
-Railway will deploy the **root** of the repo by default. We need it to use the **backend** folder only.
+## 2. Point the service at the `backend` folder
 
-1. Click the **service** (the box that was created).
+1. Click the new **service** (the box that represents your app).
 2. Open the **Settings** tab (or the **⋮** menu → **Settings**).
-3. Under **Source** / **Root Directory** (or **Build**):
-   - Set **Root Directory** to **`backend`**  
-     (so the working directory for build and start is `backend/`).
+3. Under **Source**:
+   - **Root Directory**: set to **`backend`** (so Railway builds and runs only the backend, not the whole repo).
+   - **Watch Paths** (if present): you can leave default so it redeploys when `backend/**` changes.
+4. Under **Build** (or in the service settings):
+   - **Build Command**: `npm install && npx prisma generate && npm run build`
+   - **Start Command**: `npm run start`
+   - **Output Directory**: leave empty (Node app, not static).
+5. Save / let Railway pick up the config.
 
-If Railway doesn’t show “Root Directory”, look for **Build** → **Custom build command** and use:
-
-- **Build command:** `npx prisma generate && npm run build`
-- **Start command:** `npm run start`
-
-(If Root Directory is set to `backend`, the default **Build** = `npm run build` and **Start** = `npm run start` are usually enough, and `postinstall` in `backend/package.json` runs `prisma generate`.)
+---
 
 ## 3. Add environment variables
 
-In the same service:
-
-1. Open the **Variables** tab.
+1. In the same service, open the **Variables** tab.
 2. Add these (replace placeholders with your real values):
 
-| Variable | Example / notes |
+| Variable | Example / value |
 |----------|------------------|
 | `PORT` | `3001` (optional; Railway often sets this) |
 | `SUPABASE_URL` | `https://your-project.supabase.co` |
@@ -41,56 +42,64 @@ In the same service:
 | `FRONTEND_URL` | `https://ionex-timer.vercel.app` (no trailing slash) |
 | `QBO_CLIENT_ID` | QuickBooks app Client ID |
 | `QBO_CLIENT_SECRET` | QuickBooks app Client Secret |
-| `QBO_REDIRECT_URI` | **Must match the URL from step 5** (e.g. `https://your-app.up.railway.app/api/quickbooks/callback`) |
+| `QBO_REDIRECT_URI` | `https://YOUR-RAILWAY-URL/api/quickbooks/callback` (see step 4) |
 | `QBO_ENVIRONMENT` | `sandbox` or `production` |
 
-Optional:
+3. **Optional (CORS):**  
+   - For preview URLs, add: `CORS_ORIGINS` = `https://ionex-timer-pojl7qm4x-ionex-systems-projects.vercel.app` (or a comma-separated list).  
+   - To allow any origin temporarily: `CORS_ORIGINS` = `*` (remove for production).
 
-- `CORS_ORIGINS` – comma-separated extra origins, or `*` for debugging only.
+4. Save. Railway will redeploy when you change variables.
 
-Save. Railway will redeploy with the new variables.
+---
 
 ## 4. Get your public URL
 
 1. In the service, open the **Settings** tab.
-2. Under **Networking** / **Public Networking**, click **Generate Domain** (or **Add domain**).
-3. Railway will assign a URL like **`https://ionex-time-tracking-production-xxxx.up.railway.app`** (or similar). Copy it.
+2. Under **Networking** or **Domains**, click **“Generate domain”** (or **“Add domain”**).
+3. Railway will assign a URL like **`ionex-api-production-xxxx.up.railway.app`** (or you can add a custom domain later).
+4. Copy this base URL (e.g. `https://ionex-api-production-xxxx.up.railway.app`).
+5. **Update `QBO_REDIRECT_URI`** in Variables to:  
+   `https://YOUR-RAILWAY-URL/api/quickbooks/callback`  
+   (use the exact URL Railway gave you).
 
-This is your **backend base URL**. No trailing slash when you use it in config (e.g. `https://your-app.up.railway.app`).
+---
 
-## 5. Point the frontend and QuickBooks at the backend
+## 5. Check the deploy
 
-1. **Vercel (frontend)**  
-   - Project → **Settings** → **Environment Variables**.  
-   - Add (or update) for **Production** (and Preview if you use it):  
-     **`VITE_API_URL`** = your Railway URL, e.g. `https://your-app.up.railway.app`  
-   - **Redeploy** the frontend so the new value is used.
+1. In Railway, open the **Deployments** tab and wait for the latest deploy to succeed.
+2. In a browser, open:
+   - **`https://YOUR-RAILWAY-URL/api/health`**  
+     You should see: `{"status":"ok","message":"IONEX Time Tracking API"}`.
+   - **`https://YOUR-RAILWAY-URL/api/quickbooks/ping`**  
+     You should see: `{"ok":true,"service":"quickbooks"}`.
 
-2. **QuickBooks Developer Portal**  
-   - In your QuickBooks app settings, set **Redirect URI** to:  
-     **`https://your-railway-url/api/quickbooks/callback`**  
-     (same base URL as above, path `/api/quickbooks/callback`).
+If you get “Not found” or an error, double‑check **Root Directory** is `backend` and the build/start commands above.
 
-3. **Railway `QBO_REDIRECT_URI`**  
-   - In Railway **Variables**, set **`QBO_REDIRECT_URI`** to that same URL:  
-     `https://your-railway-url/api/quickbooks/callback`
+---
 
-## 6. Check that the backend is running
+## 6. Wire the frontend (Vercel) to Railway
 
-In a browser, open:
+1. In **Vercel** → your IONEX project → **Settings** → **Environment Variables**.
+2. For **Production** (and Preview if you use it), set:
+   - **`VITE_API_URL`** = your Railway URL, e.g. `https://ionex-api-production-xxxx.up.railway.app` (no trailing slash).
+3. **Redeploy** the frontend (Deployments → ⋮ → Redeploy, or push a new commit) so the new value is baked in.
 
-- **`https://your-railway-url/api/health`**  
-  You should see something like: `{"status":"ok","message":"IONEX Time Tracking API"}`.
-- **`https://your-railway-url/api/quickbooks/ping`**  
-  You should see: `{"ok":true,"service":"quickbooks"}`.
+---
 
-If you get 404 or an error, check **Root Directory** is `backend` and that the latest commit (with QuickBooks routes) is deployed.
+## 7. QuickBooks Developer Portal
 
-## 7. Test Connect QuickBooks
+1. In the [Intuit Developer](https://developer.intuit.com) portal, open your app.
+2. Under **Keys & credentials** → **Redirect URIs**, add:
+   - **`https://YOUR-RAILWAY-URL/api/quickbooks/callback`**
+3. Save.
 
-1. Open your **production** frontend (e.g. `https://ionex-timer.vercel.app`).
-2. Sign in as an **admin**.
-3. Go to **Profile** and click **Connect QuickBooks**.  
-   You should be sent to Intuit to authorize, then back to Profile with success.
+---
 
-If you still see “Cannot reach the backend”, double-check **VITE_API_URL** on Vercel and that you redeployed the frontend after changing it.
+## Summary
+
+- **Railway**: Root = `backend`, build = `npm install && npx prisma generate && npm run build`, start = `npm run start`, all env vars above, generate domain.
+- **Vercel**: `VITE_API_URL` = Railway URL, redeploy.
+- **QuickBooks**: Redirect URI = `https://YOUR-RAILWAY-URL/api/quickbooks/callback`.
+
+After that, **Connect QuickBooks** on the Profile page should hit your Railway API and redirect to Intuit.
