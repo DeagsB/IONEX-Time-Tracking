@@ -275,6 +275,11 @@ function buildPoAfeBreakdown(
       return keyA.localeCompare(keyB);
     })
     .map(([poAfe, { nums, tickets: poAfeTickets }]) => {
+      const sortedNums = [...nums].sort((a, b) => {
+        const prefixCmp = (a.split(/\d+$/)[0] || a).localeCompare(b.split(/\d+$/)[0] || b);
+        if (prefixCmp !== 0) return prefixCmp;
+        return ticketNumberSortValue(a) - ticketNumberSortValue(b);
+      });
       let totalAmount = 0;
       for (const t of poAfeTickets) {
         const recordId = (t as { recordId?: string }).recordId;
@@ -282,7 +287,7 @@ function buildPoAfeBreakdown(
         totalAmount += calculateTicketTotalAmount(t, expenses);
       }
       return {
-        ticketList: formatTicketNumbersWithRanges(nums),
+        ticketList: formatTicketNumbersWithRanges(sortedNums),
         poAfe,
         totalAmount: Math.round(totalAmount * 100) / 100,
       };
@@ -1775,7 +1780,12 @@ export default function Invoices() {
                       })()}
                     </span>
                     {key.periodKey ? (
-                      <span><strong>Period:</strong> {key.periodLabel || key.periodKey}</span>
+                      <>
+                        {key.approverCode && key.approverCode !== key.periodKey ? (
+                          <span><strong>Approver:</strong> {key.approverCode || key.approver || '(none)'}</span>
+                        ) : null}
+                        <span><strong>Period:</strong> {key.periodLabel || key.periodKey}</span>
+                      </>
                     ) : (
                       <>
                         <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
