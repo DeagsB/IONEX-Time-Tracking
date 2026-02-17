@@ -229,7 +229,7 @@ function getInvoicePdfFilename(
   return `${approver}_${projectNum}_${dateRange}.pdf`;
 }
 
-/** Single line total for non-CNRL groups (no PO/AFE breakdown) */
+/** Single line for non-CNRL period groups (no PO/AFE breakdown); poAfe empty so "PO/AFE/CC:" is not shown */
 function buildSingleLineBreakdown(
   tickets: (ServiceTicket & { recordId?: string })[],
   expensesByRecordId: Map<string, Array<{ quantity: number; rate: number }>>
@@ -243,7 +243,7 @@ function buildSingleLineBreakdown(
   }
   return [{
     ticketList: formatTicketNumbersWithRanges(nums),
-    poAfe: 'Total',
+    poAfe: '',
     totalAmount: Math.round(totalAmount * 100) / 100,
   }];
 }
