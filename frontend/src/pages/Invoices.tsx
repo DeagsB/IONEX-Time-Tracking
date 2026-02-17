@@ -79,7 +79,7 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
 /** Single PO/AFE breakdown line with copy button (excludes total from copy) */
 function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: string; poAfe: string; totalAmount: number }) {
   const [copied, setCopied] = useState(false);
-  const isNone = poAfe === '(none)';
+  const isNone = !poAfe || poAfe === '(none)';
   const copyText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const displayText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const handleCopy = async () => {
@@ -624,15 +624,16 @@ export default function Invoices() {
       });
       for (const groupKey of sortedGroupKeys) {
         const list = groups.get(groupKey) ?? [];
+        // Sort by PO/AFE/CC (poAfe) then Coding (cc) — poAfe and cc are the two billing fields
         list.sort((a, b) => {
           const ta = a as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
           const tb = b as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
-          const { poAfe: poAfeA, cc: ccA } = getApproverPoAfeCcFromTicket(ta, ta.headerOverrides);
+          const { poAfe: poAfeA, cc: ccA } = getApproverPoAfeCcFromTicket(ta, ta.headerOverrides); // poAfe = PO/AFE/CC, cc = Coding
           const { poAfe: poAfeB, cc: ccB } = getApproverPoAfeCcFromTicket(tb, tb.headerOverrides);
           const poCmp = (poAfeA || '').localeCompare(poAfeB || '');
           if (poCmp !== 0) return poCmp;
-          const ccCmp = (ccA || '').localeCompare(ccB || '');
-          if (ccCmp !== 0) return ccCmp;
+          const codingCmp = (ccA || '').localeCompare(ccB || '');
+          if (codingCmp !== 0) return codingCmp;
           const nameCmp = (a.userName || '').localeCompare(b.userName || '');
           if (nameCmp !== 0) return nameCmp;
           return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
@@ -1025,13 +1026,13 @@ export default function Invoices() {
           for (const ticket of groupTickets) {
             const t = ticket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
             const { poAfe } = getApproverPoAfeCcFromTicket(t, t.headerOverrides);
-            const poAfeKey = (poAfe || '').trim() || '(no PO/AFE)';
+            const poAfeKey = (poAfe || '').trim() || '(no PO/AFE/CC)';
             const list = poAfeMap.get(poAfeKey) ?? [];
             list.push(ticket);
             poAfeMap.set(poAfeKey, list);
           }
           poAfeLineItems = [];
-          const noPoAfeKey = '(no PO/AFE)';
+          const noPoAfeKey = '(no PO/AFE/CC)';
           const sortedPoAfeEntries = [...poAfeMap.entries()].sort(([keyA], [keyB]) => {
             if (keyA === noPoAfeKey) return 1;
             if (keyB === noPoAfeKey) return -1;
@@ -1055,7 +1056,7 @@ export default function Invoices() {
               if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
             }
             poAfeLineItems.push({
-              poAfe: poAfe === '(no PO/AFE)' ? '' : poAfe,
+              poAfe: poAfe === '(no PO/AFE/CC)' ? '' : poAfe,
               tickets: ticketNumbers,
               totalAmount: Math.round(totalAmount * 100) / 100,
             });

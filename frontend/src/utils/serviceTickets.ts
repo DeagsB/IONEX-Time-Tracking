@@ -637,7 +637,8 @@ export function applyHeaderOverridesToTicket(
   };
 }
 
-/** Get approver/PO/AFE/CC from a ticket - NO PARSING. Uses direct fields only. */
+/** Get approver, PO/AFE/CC, and Coding from a ticket - NO PARSING. Uses direct fields only.
+ *  poAfe = PO/AFE/CC (one combined field); cc = Coding (separate field). */
 export function getApproverPoAfeCcFromTicket(
   ticket: { projectApprover?: string; projectPoAfe?: string; projectCc?: string; projectApproverPoAfe?: string; entryApprover?: string; entryPoAfe?: string; entryCc?: string; entries?: Array<{ approver?: string; po_afe?: string; cc?: string }> },
   headerOverrides?: { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string } | null
