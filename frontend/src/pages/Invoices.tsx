@@ -1004,8 +1004,9 @@ export default function Invoices() {
         });
 
         let poAfeLineItems: Array<{ poAfe: string; tickets: string[]; totalAmount: number }>;
-        if (key.periodKey) {
-          // Non-CNRL: single line item for the whole group
+        const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
+        if (key.periodKey && !isCnrlPeriodGroup) {
+          // Non-CNRL period: single line item for the whole group
           let totalAmount = 0;
           const ticketNumbers: string[] = [];
           for (const ticket of groupTickets) {
@@ -1389,7 +1390,8 @@ export default function Invoices() {
             {invoicedGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
-              const breakdownLines = key.periodKey
+              const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
+              const breakdownLines = key.periodKey && !isCnrlPeriodGroup
                 ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId)
                 : buildPoAfeBreakdown(
                     groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
@@ -1832,7 +1834,7 @@ export default function Invoices() {
                   <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
                     Invoice Line Item Breakdown
                   </div>
-                  {(key.periodKey
+                  {((key.periodKey && key.approverCode === key.periodKey)
                     ? buildSingleLineBreakdown(
                         groupTickets as (ServiceTicket & { recordId?: string })[],
                         expensesByRecordId
