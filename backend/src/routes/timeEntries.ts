@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { body, validationResult } from 'express-validator';
@@ -107,7 +107,7 @@ router.post(
     body('hours').isFloat({ min: 0 }),
     body('rate').isFloat({ min: 0 }),
   ],
-  async (req: AuthRequest, res) => {
+  async (req: AuthRequest, res: Response) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {

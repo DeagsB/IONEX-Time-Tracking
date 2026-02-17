@@ -106,7 +106,7 @@ class QuickBooksService {
       throw new Error(`Failed to exchange code for tokens: ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { access_token: string; refresh_token: string; expires_in: number };
     
     const tokens: QBOTokens = {
       access_token: data.access_token,
@@ -150,7 +150,7 @@ class QuickBooksService {
       throw new Error(`Failed to refresh token: ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { access_token: string; refresh_token: string; expires_in: number };
     
     const tokens: QBOTokens = {
       access_token: data.access_token,
