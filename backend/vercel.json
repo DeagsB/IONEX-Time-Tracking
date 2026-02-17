@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "cd .. && npm install",
-  "buildCommand": "npx prisma generate && npm run build && cd ../frontend && npm run build && cp -r dist ../backend/public",
+  "buildCommand": "npm run build && cd ../frontend && npm run build && cp -r dist ../backend/public",
   "outputDirectory": "public",
   "functions": {
     "api/[[...path]].js": {
