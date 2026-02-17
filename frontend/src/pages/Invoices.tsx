@@ -1448,6 +1448,13 @@ export default function Invoices() {
                   return !(key.poAfe || '').trim();
                 });
               const isBreakdownExpanded = invoicedBreakdownExpanded.has(groupId);
+              const uniquePoAfeFromBreakdown = [...new Set(breakdownLines.map((l) => l.poAfe).filter(Boolean))];
+              const headerPoAfe =
+                uniquePoAfeFromBreakdown.length === 0
+                  ? '(none)'
+                  : uniquePoAfeFromBreakdown.length === 1
+                    ? uniquePoAfeFromBreakdown[0]!
+                    : 'Multiple';
               const projectDisplay = (() => {
                 const num = key.projectNumber?.trim();
                 const name = key.projectName?.trim();
@@ -1470,8 +1477,12 @@ export default function Invoices() {
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                       <span><strong>Approver:</strong> {key.approverCode || key.approver || '(none)'}</span>
-                      <span><strong>PO/AFE/CC:</strong> {key.poAfe || '(none)'}</span>
-                      {key.cc ? <span><strong>CC:</strong> {key.cc}</span> : null}
+                      <span><strong>PO/AFE/CC:</strong> {headerPoAfe}</span>
+                      {key.cc ? (
+                        <span><strong>CC:</strong> {key.cc}{key.periodLabel || key.periodKey ? ` · ${key.periodLabel || key.periodKey}` : ''}</span>
+                      ) : key.periodLabel || key.periodKey ? (
+                        <span><strong>Period:</strong> {key.periodLabel || key.periodKey}</span>
+                      ) : null}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                       <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary-color)' }}>
