@@ -272,7 +272,12 @@ export default function Invoices() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const [dateRangeGrouping, setDateRangeGrouping] = useState<DateRangeGrouping>('monthly');
+  const [dateRangeGroupingByCustomer, setDateRangeGroupingByCustomer] = useState<Record<string, DateRangeGrouping>>({});
+
+  const getGroupingForCustomer = useCallback(
+    (customerId: string) => dateRangeGroupingByCustomer[customerId] ?? 'monthly',
+    [dateRangeGroupingByCustomer]
+  );
 
   const { data: qboConnected } = useQuery({
     queryKey: ['qboStatus'],
@@ -606,11 +611,13 @@ export default function Invoices() {
 
     if (ticketsToGroupByPeriod.length > 0) {
       const groupMap = new Map<string, ServiceTicket[]>();
+      const singleCustomer = !!selectedCustomerId;
       for (const ticket of ticketsToGroupByPeriod) {
         const t = ticket as ServiceTicket & { recordProjectId?: string };
         const projectId = t.recordProjectId ?? t.projectId ?? '';
-        const periodKey = getPeriodKey(t.date ?? '', dateRangeGrouping);
-        const groupKey = `${projectId}|${periodKey}`;
+        const grouping = singleCustomer ? getGroupingForCustomer(selectedCustomerId) : getGroupingForCustomer(t.customerId ?? '');
+        const periodKey = getPeriodKey(t.date ?? '', grouping);
+        const groupKey = singleCustomer ? `${projectId}|${periodKey}` : `${t.customerId ?? ''}|${projectId}|${periodKey}`;
         const list = groupMap.get(groupKey) ?? [];
         list.push(ticket);
         groupMap.set(groupKey, list);
@@ -626,10 +633,14 @@ export default function Invoices() {
           return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
         });
         const first = list[0] as ServiceTicket & { recordProjectId?: string };
-        const [projectId, periodKey] = groupKey.split('|');
-        const periodLabel = getPeriodLabel(periodKey, dateRangeGrouping);
+        const parts = groupKey.split('|');
+        const periodKey = singleCustomer ? parts[1]! : parts[2]!;
+        const customerIdForLabel = singleCustomer ? selectedCustomerId : (parts[0] ?? '');
+        const grouping = getGroupingForCustomer(customerIdForLabel);
+        const periodLabel = getPeriodLabel(periodKey, grouping);
+        const projectIdFromKey = singleCustomer ? parts[0]! : parts[1]!;
         const keyObj: InvoiceGroupKeyWithPeriod = {
-          projectId: first.recordProjectId ?? first.projectId ?? projectId,
+          projectId: first.recordProjectId ?? first.projectId ?? projectIdFromKey,
           projectName: first.projectName,
           projectNumber: first.projectNumber,
           approverCode: periodKey,
@@ -646,7 +657,7 @@ export default function Invoices() {
     }
 
     return result;
-  }, [ticketsForCustomer, selectedCustomerId, isCNRL, dateRangeGrouping, isTicketCnrl]);
+  }, [ticketsForCustomer, selectedCustomerId, isCNRL, dateRangeGroupingByCustomer, getGroupingForCustomer, isTicketCnrl]);
 
   // Fetch expenses for all tickets (for CC breakdown totals)
   const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, Array<{ quantity: number; rate: number }>>>(new Map());
@@ -1018,8 +1029,8 @@ export default function Invoices() {
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by</label>
             <select
-              value={dateRangeGrouping}
-              onChange={(e) => setDateRangeGrouping(e.target.value as DateRangeGrouping)}
+              value={getGroupingForCustomer(selectedCustomerId)}
+              onChange={(e) => setDateRangeGroupingByCustomer((prev) => ({ ...prev, [selectedCustomerId]: e.target.value as DateRangeGrouping }))}
               style={{
                 padding: '8px 12px',
                 backgroundColor: 'var(--bg-primary)',
