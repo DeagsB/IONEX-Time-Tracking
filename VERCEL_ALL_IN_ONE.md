@@ -7,7 +7,8 @@ Use this when you want **frontend + API** on one Vercel project (no Railway). Qu
 ## 1. Vercel project settings
 
 - Go to [vercel.com](https://vercel.com) → your **IONEX Time Tracking** project → **Settings** → **General**.
-- **Root Directory**: must be the **repository root** so `vercel.json` and `api/` are used.
+- **Root Directory**: must be the **repository root** (so `vercel.json` and `api/` at the top of the repo are used).  
+  **Do not** choose **`backend`** or **`frontend`** — with `backend` you get no frontend and the API route won’t work; with `frontend` you get no `/api/*`.
   - If the UI lets you clear the field or set **`.`**, do that and Save.
   - **If you can’t save empty or `.`:** create a **new project** instead:
     1. **Add New** → **Project** → import the same Git repo (**DeagsB/IONEX-Time-Tracking**).
