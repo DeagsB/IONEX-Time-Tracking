@@ -608,7 +608,20 @@ export default function Invoices() {
         list.push(ticket);
         groups.set(groupKey, list);
       }
-      const sortedGroupKeys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+      // Sort CNRL groups by PO/AFE (approverCode) first, then period, then project (restore PO/AFE ordering)
+      const sortedGroupKeys = [...groups.keys()].sort((a, b) => {
+        const pa = a.split('|');
+        const pb = b.split('|');
+        const projA = pa[0] ?? '';
+        const approverA = pa[1] ?? '';
+        const periodA = pa[2] ?? '';
+        const projB = pb[0] ?? '';
+        const approverB = pb[1] ?? '';
+        const periodB = pb[2] ?? '';
+        if (approverA !== approverB) return approverA.localeCompare(approverB);
+        if (periodA !== periodB) return periodA.localeCompare(periodB);
+        return projA.localeCompare(projB);
+      });
       for (const groupKey of sortedGroupKeys) {
         const list = groups.get(groupKey) ?? [];
         list.sort((a, b) => {
@@ -1010,7 +1023,13 @@ export default function Invoices() {
             poAfeMap.set(poAfeKey, list);
           }
           poAfeLineItems = [];
-          for (const [poAfe, poAfeTickets] of poAfeMap) {
+          const noPoAfeKey = '(no PO/AFE)';
+          const sortedPoAfeEntries = [...poAfeMap.entries()].sort(([keyA], [keyB]) => {
+            if (keyA === noPoAfeKey) return 1;
+            if (keyB === noPoAfeKey) return -1;
+            return keyA.localeCompare(keyB);
+          });
+          for (const [poAfe, poAfeTickets] of sortedPoAfeEntries) {
             let totalAmount = 0;
             const ticketNumbers: string[] = [];
             for (const ticket of poAfeTickets) {
