@@ -68,4 +68,14 @@ Save.
 
 ---
 
+## 7. Troubleshooting 404 on /api/*
+
+- **Test /api/ping first:**  
+  Open **https://ionex-timer.vercel.app/api/ping**  
+  - If you get **`{"ok":true,"source":"api",...}`** → API routes are deployed. The problem is likely the catch-all path (already normalized in code). Redeploy from the branch that has the latest `api/[[...path]].js` and path normalization.  
+  - If you get **404** (or an HTML error page) → the `api` folder is not in the deployment. In **Settings → General**, set **Root Directory** to **`backend`** (not `frontend`, not blank). Save and redeploy.
+- **Root Directory** must be **`backend`** for this repo so that `backend/api/` and `backend/vercel.json` are used. Using **`frontend`** gives no `/api/*` routes.
+
+---
+
 After this, **Connect QuickBooks** on the Profile page should work without Railway.
