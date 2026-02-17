@@ -79,7 +79,7 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
 /** Single PO/AFE breakdown line with copy button (excludes total from copy) */
 function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: string; poAfe: string; totalAmount: number }) {
   const [copied, setCopied] = useState(false);
-  const isNone = !poAfe || poAfe === '(none)';
+  const isNone = !poAfe || poAfe === '(none)' || poAfe === NO_PO_AFE_LABEL;
   const copyText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const displayText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const handleCopy = async () => {
@@ -248,7 +248,9 @@ function buildSingleLineBreakdown(
   }];
 }
 
-/** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX" */
+const NO_PO_AFE_LABEL = '(no PO/AFE/CC)';
+
+/** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX". Sorted by PO/AFE value (ascending), with (no PO/AFE/CC) last. */
 function buildPoAfeBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
   getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
@@ -257,14 +259,21 @@ function buildPoAfeBreakdown(
   const byPoAfe = new Map<string, { nums: string[]; tickets: typeof tickets }>();
   for (const t of tickets) {
     const key = getKey(t);
-    const poAfe = (key.poAfe || '').trim() || '(none)';
+    const poAfe = (key.poAfe || '').trim() || NO_PO_AFE_LABEL;
     const entry = byPoAfe.get(poAfe) ?? { nums: [], tickets: [] };
     if (t.ticketNumber) entry.nums.push(t.ticketNumber);
     entry.tickets.push(t);
     byPoAfe.set(poAfe, entry);
   }
   return [...byPoAfe.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([keyA], [keyB]) => {
+      if (keyA === NO_PO_AFE_LABEL) return 1;
+      if (keyB === NO_PO_AFE_LABEL) return -1;
+      const numA = /^\d+$/.test(keyA) ? Number(keyA) : NaN;
+      const numB = /^\d+$/.test(keyB) ? Number(keyB) : NaN;
+      if (!Number.isNaN(numA) && !Number.isNaN(numB)) return numA - numB;
+      return keyA.localeCompare(keyB);
+    })
     .map(([poAfe, { nums, tickets: poAfeTickets }]) => {
       let totalAmount = 0;
       for (const t of poAfeTickets) {
@@ -1024,16 +1033,18 @@ export default function Invoices() {
           for (const ticket of groupTickets) {
             const t = ticket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
             const { poAfe } = getApproverPoAfeCcFromTicket(t, t.headerOverrides);
-            const poAfeKey = (poAfe || '').trim() || '(no PO/AFE/CC)';
+            const poAfeKey = (poAfe || '').trim() || NO_PO_AFE_LABEL;
             const list = poAfeMap.get(poAfeKey) ?? [];
             list.push(ticket);
             poAfeMap.set(poAfeKey, list);
           }
           poAfeLineItems = [];
-          const noPoAfeKey = '(no PO/AFE/CC)';
           const sortedPoAfeEntries = [...poAfeMap.entries()].sort(([keyA], [keyB]) => {
-            if (keyA === noPoAfeKey) return 1;
-            if (keyB === noPoAfeKey) return -1;
+            if (keyA === NO_PO_AFE_LABEL) return 1;
+            if (keyB === NO_PO_AFE_LABEL) return -1;
+            const numA = /^\d+$/.test(keyA) ? Number(keyA) : NaN;
+            const numB = /^\d+$/.test(keyB) ? Number(keyB) : NaN;
+            if (!Number.isNaN(numA) && !Number.isNaN(numB)) return numA - numB;
             return keyA.localeCompare(keyB);
           });
           for (const [poAfe, poAfeTickets] of sortedPoAfeEntries) {
@@ -1054,7 +1065,7 @@ export default function Invoices() {
               if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
             }
             poAfeLineItems.push({
-              poAfe: poAfe === '(no PO/AFE/CC)' ? '' : poAfe,
+              poAfe: poAfe === NO_PO_AFE_LABEL ? '' : poAfe,
               tickets: ticketNumbers,
               totalAmount: Math.round(totalAmount * 100) / 100,
             });
