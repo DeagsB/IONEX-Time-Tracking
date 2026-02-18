@@ -26,7 +26,7 @@ import {
 } from '../utils/serviceTickets';
 import { generateAndStorePdf, mergePdfBlobs } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
-import { quickbooksClientService } from '../services/quickbooksService';
+import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
 
 type ApprovedRecord = {
   id: string;
@@ -315,11 +315,13 @@ export default function Invoices() {
   const [dateRangeGroupingByCustomer, setDateRangeGroupingByCustomer] = useState<Record<string, DateRangeGrouping>>({});
   const [dateRangeGroupingByProject, setDateRangeGroupingByProject] = useState<Record<string, DateRangeGrouping>>({});
 
+  const qboApiLocal = isQuickBooksApiLocal();
   const { data: qboConnected } = useQuery({
     queryKey: ['qboStatus'],
     queryFn: () => quickbooksClientService.checkStatus(),
-    enabled: isAdmin,
+    enabled: isAdmin && !qboApiLocal,
   });
+  const effectiveQboConnected = qboApiLocal ? false : (qboConnected ?? false);
 
   // Fetch approved tickets ready for export (filtered by date range to match Service Tickets Approved tab)
   const { data: approvedRecords, isLoading: loadingApproved } = useQuery({
@@ -1062,6 +1064,7 @@ export default function Invoices() {
   };
 
   const handleCreateInQuickBooks = async () => {
+    if (qboApiLocal) return;
     setQboError(null);
     setQboCreatedIds([]);
     const total = visibleGroups.length;
@@ -1877,22 +1880,22 @@ export default function Invoices() {
             </button>
             <button
               onClick={handleCreateInQuickBooks}
-              disabled={!qboConnected || !!exportProgress || !!qboProgress || visibleGroups.length === 0}
+              disabled={!effectiveQboConnected || !!exportProgress || !!qboProgress || visibleGroups.length === 0}
               style={{
                 padding: '10px 20px',
-                backgroundColor: qboConnected ? '#0ea5e9' : 'var(--bg-tertiary)',
-                color: qboConnected ? 'white' : 'var(--text-tertiary)',
+                backgroundColor: effectiveQboConnected ? '#0ea5e9' : 'var(--bg-tertiary)',
+                color: effectiveQboConnected ? 'white' : 'var(--text-tertiary)',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '14px',
                 fontWeight: 600,
-                cursor: qboConnected && !exportProgress && !qboProgress ? 'pointer' : 'not-allowed',
+                cursor: effectiveQboConnected && !exportProgress && !qboProgress ? 'pointer' : 'not-allowed',
               }}
-              title={!qboConnected ? 'Connect QuickBooks in Profile (admin) first' : 'Create invoices in QuickBooks Online'}
+              title={!effectiveQboConnected ? 'Connect QuickBooks in Profile (admin) first' : 'Create invoices in QuickBooks Online'}
             >
               Create in QuickBooks
             </button>
-            {!qboConnected && (
+            {!effectiveQboConnected && (
               <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
                 Connect QuickBooks in Profile (admin) to create invoices
               </span>

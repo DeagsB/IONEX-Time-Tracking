@@ -7,6 +7,20 @@ import { supabase } from '../lib/supabaseClient';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+/** True when the QuickBooks API base is localhost or local network. Invoicing page skips status checks and QBO calls in that case. */
+export function isQuickBooksApiLocal(): boolean {
+  try {
+    const u = new URL(API_BASE);
+    const host = (u.hostname || '').toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+    if (host.startsWith('192.168.') || host.startsWith('10.') || host === '::1') return true;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 interface InvoiceLineItem {
   description: string;
   amount: number;
