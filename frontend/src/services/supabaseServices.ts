@@ -1788,6 +1788,27 @@ export const serviceTicketsService = {
     return count ?? 0;
   },
 
+  /**
+   * Clear rejected state for all of a user's rejected tickets (set to draft). Admin-only use to clear stuck sidebar notification.
+   * Excludes trashed tickets. Returns the number of tickets updated.
+   */
+  async clearRejectedTicketsForUser(userId: string, isDemo: boolean = false): Promise<number> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { data, error } = await supabase
+      .from(tableName)
+      .update({
+        workflow_status: 'draft',
+        rejected_at: null,
+        rejection_notes: null,
+      })
+      .eq('user_id', userId)
+      .eq('workflow_status', 'rejected')
+      .or('is_discarded.eq.false,is_discarded.is.null')
+      .select('id');
+    if (error) throw error;
+    return data?.length ?? 0;
+  },
+
   /** Count of tickets in Submitted tab that were resubmitted after rejection (admin only – for sidebar notification) - excludes trashed */
   async getResubmittedCountForAdmin(isDemo: boolean = false): Promise<number> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';

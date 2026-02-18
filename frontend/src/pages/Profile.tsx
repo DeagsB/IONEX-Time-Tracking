@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { usersService } from '../services/supabaseServices';
+import { useDemoMode } from '../context/DemoModeContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { usersService, employeesService, serviceTicketsService } from '../services/supabaseServices';
 import { quickbooksClientService } from '../services/quickbooksService';
 
 // Common timezone options
@@ -45,6 +47,8 @@ interface PasswordData {
 
 export default function Profile() {
   const { user, updateUser, refreshUserProfile, isAdmin, displayRole } = useAuth();
+  const { isDemoMode } = useDemoMode();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Profile form state
@@ -81,6 +85,16 @@ export default function Profile() {
 
   const [qboConnectLoading, setQboConnectLoading] = useState(false);
   const [qboConnectError, setQboConnectError] = useState<string | null>(null);
+
+  const [clearRejectedUserId, setClearRejectedUserId] = useState('');
+  const [clearRejectedMessage, setClearRejectedMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [clearRejectedLoading, setClearRejectedLoading] = useState(false);
+
+  const { data: employees } = useQuery({
+    queryKey: ['employees', 'profile-admin'],
+    queryFn: () => employeesService.getAll(false),
+    enabled: isAdmin === true,
+  });
 
   // Handle QBO callback params (?qbo=success or ?qbo=error)
   useEffect(() => {
@@ -696,6 +710,93 @@ export default function Profile() {
               {qboConnectLoading ? 'Connecting...' : 'Connect QuickBooks'}
             </button>
           )}
+        </div>
+      )}
+
+      {/* Clear stuck rejected notification - Admin only */}
+      {isAdmin && (
+        <div style={cardStyle}>
+          <h3 style={sectionTitleStyle}>
+            <span style={{ fontSize: '20px' }}>🔔</span>
+            Clear stuck rejected notification
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+            If a user has a red rejected-ticket badge stuck on the Service Tickets sidebar, clear it by setting their rejected tickets back to draft.
+          </p>
+          {clearRejectedMessage && (
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              backgroundColor: clearRejectedMessage.type === 'success' ? 'rgba(78, 205, 196, 0.1)' : 'rgba(255, 71, 87, 0.1)',
+              border: `1px solid ${clearRejectedMessage.type === 'success' ? '#4ecdc4' : '#ff4757'}`,
+              color: clearRejectedMessage.type === 'success' ? '#4ecdc4' : '#ff4757',
+            }}>
+              {clearRejectedMessage.text}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flexShrink: 0 }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>User</label>
+              <select
+                value={clearRejectedUserId}
+                onChange={(e) => { setClearRejectedUserId(e.target.value); setClearRejectedMessage(null); }}
+                style={{
+                  padding: '8px 12px',
+                  minWidth: '200px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '14px',
+                }}
+              >
+                <option value="">Select user</option>
+                {(employees ?? []).map((emp: { user_id: string; user?: { first_name?: string; last_name?: string; email?: string } }) => (
+                  <option key={emp.user_id} value={emp.user_id}>
+                    {[emp.user?.first_name, emp.user?.last_name].filter(Boolean).join(' ') || emp.user?.email || emp.user_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={!clearRejectedUserId || clearRejectedLoading}
+              onClick={async () => {
+                setClearRejectedMessage(null);
+                setClearRejectedLoading(true);
+                try {
+                  const count = await serviceTicketsService.clearRejectedTicketsForUser(clearRejectedUserId, isDemoMode);
+                  queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                  setClearRejectedMessage({
+                    type: 'success',
+                    text: count > 0
+                      ? `Cleared ${count} rejected ticket(s) for that user. Their sidebar notification will update on next load.`
+                      : 'That user had no rejected tickets to clear.',
+                  });
+                } catch (err) {
+                  setClearRejectedMessage({
+                    type: 'error',
+                    text: err instanceof Error ? err.message : 'Failed to clear rejected tickets.',
+                  });
+                } finally {
+                  setClearRejectedLoading(false);
+                }
+              }}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: clearRejectedUserId && !clearRejectedLoading ? '#ef5350' : 'var(--bg-tertiary)',
+                color: clearRejectedUserId && !clearRejectedLoading ? '#fff' : 'var(--text-tertiary)',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '14px',
+                cursor: clearRejectedUserId && !clearRejectedLoading ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {clearRejectedLoading ? 'Clearing...' : 'Clear rejected notification'}
+            </button>
+          </div>
         </div>
       )}
     </div>
