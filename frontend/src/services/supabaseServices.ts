@@ -1215,11 +1215,11 @@ export const serviceTicketsService = {
       return (ov._grouping_key as string) ?? buildGroupingKey(ov.po_afe ?? '');
     };
     
-    // Build query with optional location and project filters
+    // Build query with optional location and project filters (include workflow_status for draft reuse)
     const buildQuery = (includeLocation: boolean) => {
       let q = supabase
         .from(tableName)
-        .select('id, header_overrides, location')
+        .select('id, header_overrides, location, workflow_status')
         .eq('date', params.date)
         .eq('user_id', params.userId)
         .eq('customer_id', params.customerId);
@@ -1267,7 +1267,36 @@ export const serviceTicketsService = {
       }
       return { id: legacyMatch.id };
     }
-    
+
+    // Reuse draft/rejected record when billing key changed (e.g. user edited PO/AFE before approving).
+    // Prevents duplicate rows: one approved, one orphan draft with old _grouping_key.
+    const ws = (r: { workflow_status?: string | null }) => (r.workflow_status || 'draft') as string;
+    const isDraftOrRejected = (et: { workflow_status?: string | null }) =>
+      ws(et) === 'draft' || (et as any).workflow_status === 'rejected';
+    const draftOrRejected =
+      candidates?.find(et => isDraftOrRejected(et) && (!ticketLocation || ((et as any).location ?? '') === ticketLocation)) ??
+      candidates?.find(isDraftOrRejected);
+    if (draftOrRejected) {
+      const ho = params.headerOverrides;
+      const existingOv = (draftOrRejected.header_overrides as Record<string, string> | null) ?? {};
+      const mergedOverrides: Record<string, string> = {
+        ...existingOv,
+        _grouping_key: targetBillingKey,
+        _billing_key: ho
+          ? buildBillingKey(ho.approver ?? '', ho.po_afe ?? '', ho.cc ?? '')
+          : targetBillingKey,
+      };
+      if (ho?.approver != null) mergedOverrides.approver = (ho.approver ?? '').trim();
+      if (ho?.po_afe != null) mergedOverrides.po_afe = (ho.po_afe ?? '').trim();
+      if (ho?.cc != null) mergedOverrides.cc = (ho.cc ?? '').trim();
+      if (ho?.other != null) mergedOverrides.other = String(ho.other ?? '').trim();
+      if (ho?.service_location != null) mergedOverrides.service_location = String(ho.service_location ?? '').trim();
+      const updatePayload: Record<string, unknown> = { header_overrides: mergedOverrides };
+      if (ticketLocation) (updatePayload as any).location = ticketLocation;
+      await supabase.from(tableName).update(updatePayload).eq('id', draftOrRejected.id);
+      return { id: draftOrRejected.id };
+    }
+
     // Look up user's initials for proper tracking
     let employeeInitials: string | null = null;
     const { data: userData } = await supabase
