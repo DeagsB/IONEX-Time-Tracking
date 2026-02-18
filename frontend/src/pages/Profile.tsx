@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { usersService, employeesService, serviceTicketsService } from '../services/supabaseServices';
-import { quickbooksClientService } from '../services/quickbooksService';
+import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
 
 // Common timezone options
 const TIMEZONE_OPTIONS = [
@@ -77,11 +77,13 @@ export default function Profile() {
   const [profileErrors, setProfileErrors] = useState<Partial<ProfileData>>({});
   const [passwordErrors, setPasswordErrors] = useState<Partial<PasswordData>>({});
 
+  const qboApiLocal = isQuickBooksApiLocal();
   const { data: qboConnected, refetch: refetchQbo } = useQuery({
     queryKey: ['qboStatus'],
     queryFn: () => quickbooksClientService.checkStatus(),
-    enabled: isAdmin === true,
+    enabled: isAdmin === true && !qboApiLocal,
   });
+  const effectiveQboConnected = qboApiLocal ? false : (qboConnected ?? false);
 
   const [qboConnectLoading, setQboConnectLoading] = useState(false);
   const [qboConnectError, setQboConnectError] = useState<string | null>(null);
@@ -644,7 +646,7 @@ export default function Profile() {
               {qboConnectError || searchParams.get('message') || 'QuickBooks connection failed.'}
             </div>
           )}
-          {qboConnected ? (
+          {effectiveQboConnected ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <span style={{
                 padding: '6px 12px',
@@ -659,6 +661,7 @@ export default function Profile() {
               <button
                 type="button"
                 onClick={async () => {
+                  if (qboApiLocal) return;
                   const ok = await quickbooksClientService.disconnect();
                   if (ok) refetchQbo();
                 }}
@@ -676,39 +679,47 @@ export default function Profile() {
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              disabled={qboConnectLoading}
-              onClick={async () => {
-                setQboConnectError(null);
-                setQboConnectLoading(true);
-                try {
-                  const url = await quickbooksClientService.getAuthUrl();
-                  if (url) {
-                    window.location.href = url;
-                  } else {
-                    setQboConnectError('Could not get QuickBooks authorization URL. Ensure the backend is running and configured (VITE_API_URL, QBO_CLIENT_ID, etc.).');
+            <>
+              {qboApiLocal && (
+                <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+                  QuickBooks status is not checked when using a local backend.
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={qboConnectLoading || qboApiLocal}
+                onClick={async () => {
+                  if (qboApiLocal) return;
+                  setQboConnectError(null);
+                  setQboConnectLoading(true);
+                  try {
+                    const url = await quickbooksClientService.getAuthUrl();
+                    if (url) {
+                      window.location.href = url;
+                    } else {
+                      setQboConnectError('Could not get QuickBooks authorization URL. Ensure the backend is running and configured (VITE_API_URL, QBO_CLIENT_ID, etc.).');
+                    }
+                  } catch (err) {
+                    setQboConnectError(err instanceof Error ? err.message : 'Failed to connect to QuickBooks.');
+                  } finally {
+                    setQboConnectLoading(false);
                   }
-                } catch (err) {
-                  setQboConnectError(err instanceof Error ? err.message : 'Failed to connect to QuickBooks.');
-                } finally {
-                  setQboConnectLoading(false);
-                }
-              }}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#0ea5e9',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: qboConnectLoading ? 'not-allowed' : 'pointer',
-                opacity: qboConnectLoading ? 0.7 : 1,
-              }}
-            >
-              {qboConnectLoading ? 'Connecting...' : 'Connect QuickBooks'}
-            </button>
+                }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: (qboConnectLoading || qboApiLocal) ? 'var(--bg-tertiary)' : '#0ea5e9',
+                  color: (qboConnectLoading || qboApiLocal) ? 'var(--text-tertiary)' : 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  cursor: (qboConnectLoading || qboApiLocal) ? 'not-allowed' : 'pointer',
+                  opacity: qboConnectLoading ? 0.7 : 1,
+                }}
+              >
+                {qboConnectLoading ? 'Connecting...' : 'Connect QuickBooks'}
+              </button>
+            </>
           )}
         </div>
       )}

@@ -1790,23 +1790,30 @@ export const serviceTicketsService = {
 
   /**
    * Clear rejected state for all of a user's rejected tickets (set to draft). Admin-only use to clear stuck sidebar notification.
-   * Excludes trashed tickets. Returns the number of tickets updated.
+   * Excludes trashed tickets. Fetches IDs then updates each via updateWorkflowStatus so updates use the same path as the app.
+   * Returns the number of tickets updated.
    */
   async clearRejectedTicketsForUser(userId: string, isDemo: boolean = false): Promise<number> {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-    const { data, error } = await supabase
+    const { data: rows, error: fetchError } = await supabase
       .from(tableName)
-      .update({
-        workflow_status: 'draft',
-        rejected_at: null,
-        rejection_notes: null,
-      })
+      .select('id')
       .eq('user_id', userId)
       .eq('workflow_status', 'rejected')
-      .or('is_discarded.eq.false,is_discarded.is.null')
-      .select('id');
-    if (error) throw error;
-    return data?.length ?? 0;
+      .or('is_discarded.eq.false,is_discarded.is.null');
+    if (fetchError) {
+      throw new Error(`Could not load rejected tickets: ${fetchError.message}`);
+    }
+    const ids = (rows ?? []).map((r: { id: string }) => r.id);
+    for (const id of ids) {
+      try {
+        await this.updateWorkflowStatus(id, 'draft', isDemo, null);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Could not clear ticket ${id}: ${msg}`);
+      }
+    }
+    return ids.length;
   },
 
   /** Count of tickets in Submitted tab that were resubmitted after rejection (admin only – for sidebar notification) - excludes trashed */
