@@ -581,6 +581,20 @@ export default function Invoices() {
   const selectedCustomer = customers?.find((c: { id: string }) => c.id === selectedCustomerId);
   const isCNRL = !!selectedCustomerId && (selectedCustomer?.name ?? '').toUpperCase().includes('CNRL');
 
+  // When a customer is selected, only show projects for that customer in the Project dropdown
+  const projectsForFilter = useMemo(() => {
+    const list = projects ?? [];
+    if (!selectedCustomerId) return list;
+    return list.filter((p: { customer_id?: string | null }) => (p.customer_id ?? '') === selectedCustomerId);
+  }, [projects, selectedCustomerId]);
+
+  // Clear project selection if it no longer belongs to the selected customer
+  useEffect(() => {
+    if (selectedProjectId && selectedCustomerId && !projectsForFilter.some((p: { id: string }) => p.id === selectedProjectId)) {
+      setSelectedProjectId('');
+    }
+  }, [selectedCustomerId, selectedProjectId, projectsForFilter]);
+
   const isTicketCnrl = useCallback(
     (ticket: ServiceTicket) =>
       (customers?.find((c: { id: string }) => c.id === ticket.customerId)?.name ?? '').toUpperCase().includes('CNRL'),
@@ -1249,7 +1263,12 @@ export default function Invoices() {
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Customer</label>
           <select
             value={selectedCustomerId}
-            onChange={(e) => setSelectedCustomerId(e.target.value)}
+            onChange={(e) => {
+              const nextCustomerId = e.target.value;
+              setSelectedCustomerId(nextCustomerId);
+              // Clear project when customer changes so selection stays valid for the new customer
+              setSelectedProjectId('');
+            }}
             style={{
               padding: '8px 12px',
               backgroundColor: 'var(--bg-primary)',
@@ -1283,7 +1302,7 @@ export default function Invoices() {
             aria-label="Filter by project"
           >
             <option value="">All projects</option>
-            {(projects ?? []).map((p: { id: string; name?: string; project_number?: string }) => (
+            {projectsForFilter.map((p: { id: string; name?: string; project_number?: string }) => (
               <option key={p.id} value={p.id}>{[p.project_number, p.name].filter(Boolean).join(' – ') || p.id}</option>
             ))}
           </select>
