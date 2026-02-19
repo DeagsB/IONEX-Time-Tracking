@@ -1182,6 +1182,60 @@ export const serviceTicketsService = {
       console.error('Error updating ticket number:', error);
       throw error;
     }
+
+    // When assigning a ticket number, permanently delete any other draft/rejected records for the same logical ticket
+    // so we don't leave a duplicate draft row (same date/user/customer/project/location). They are removed, not trashed.
+    if (ticketNumber != null) {
+      await this.deleteOtherDraftRecordsForTicket(ticketId, isDemo);
+    }
+  },
+
+  /**
+   * Permanently delete other draft/rejected records that match the same logical ticket (date, user, customer, project, location)
+   * as the given approved record. Prevents duplicate draft row after admin approval; removed records do not show in trash.
+   */
+  async deleteOtherDraftRecordsForTicket(approvedTicketId: string, isDemo: boolean = false): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { data: approved, error: fetchError } = await supabase
+      .from(tableName)
+      .select('date, user_id, customer_id, project_id, location')
+      .eq('id', approvedTicketId)
+      .single();
+    if (fetchError || !approved) return;
+
+    let query = supabase
+      .from(tableName)
+      .select('id')
+      .neq('id', approvedTicketId)
+      .eq('date', approved.date)
+      .eq('user_id', approved.user_id)
+      .eq('customer_id', approved.customer_id)
+      .in('workflow_status', ['draft', 'rejected'])
+      .or('is_discarded.eq.false,is_discarded.is.null');
+    if (approved.project_id != null && approved.project_id !== '') {
+      query = query.eq('project_id', approved.project_id);
+    } else {
+      query = query.is('project_id', null);
+    }
+    const loc = approved.location ?? '';
+    if (loc !== '') {
+      query = query.eq('location', loc);
+    } else {
+      query = query.or('location.is.null,location.eq.');
+    }
+    const { data: others, error: listError } = await query;
+    if (listError) {
+      console.warn('deleteOtherDraftRecordsForTicket list:', listError);
+      return;
+    }
+    const ids = (others ?? []).map((r: { id: string }) => r.id);
+    for (const id of ids) {
+      try {
+        await this.deletePermanently(id, isDemo);
+      } catch (e) {
+        console.warn('deleteOtherDraftRecordsForTicket delete:', id, e);
+      }
+    }
   },
 
   /**
