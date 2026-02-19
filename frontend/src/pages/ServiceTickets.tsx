@@ -1663,14 +1663,9 @@ export default function ServiceTickets() {
     // Locked tickets: from DB records (submitted + approved)
     const lockedTickets = lockedRecords.map(buildLockedTicketFromRecord);
 
-    // Standalone discarded tickets: DB records that are discarded and have no matching base ticket
-    // (e.g. time entry was deleted after discard). These must appear in the list so trash view can show them.
+    // All discarded tickets: show every discarded record in trash (including approved tickets that were trashed).
     const discardedRecords = existing.filter(rec => (rec as any).is_discarded === true);
-    const orphanedDiscardedRecords = discardedRecords.filter(rec => {
-      const hasMatchingBaseTicket = baseTickets.some(bt => baseTicketMatchesRecord(bt, rec));
-      return !hasMatchingBaseTicket;
-    });
-    const discardedTickets = orphanedDiscardedRecords.map(rec => buildLockedTicketFromRecord(rec));
+    const discardedTickets = discardedRecords.map(rec => buildLockedTicketFromRecord(rec));
 
     return [...draftTickets, ...lockedTickets, ...discardedTickets];
   }, [billableEntries, employees, existingTickets, customers, allProjects, currentTicketRecordId]);
