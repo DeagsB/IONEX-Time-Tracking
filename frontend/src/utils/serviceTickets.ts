@@ -164,6 +164,28 @@ export function groupEntriesIntoTickets(
 ): ServiceTicket[] {
   const ticketMap = new Map<string, ServiceTicket>();
   
+  // --- Pre-processing: Inherit missing fields (location, po_afe, approver, cc, other) ---
+  // When users log Travel Time, they often leave location or PO blank, while Field Time has it filled.
+  // To prevent them from splitting into separate tickets, we share these values across the same date/user/project.
+  const sharedFieldsMap = new Map<string, { location?: string; po_afe?: string; approver?: string; cc?: string; other?: string }>();
+  
+  for (const entry of entries) {
+    if (!entry.project) continue;
+    const key = `${entry.date}-${entry.user_id}-${entry.project.id}`;
+    
+    let shared = sharedFieldsMap.get(key);
+    if (!shared) {
+      shared = {};
+      sharedFieldsMap.set(key, shared);
+    }
+    
+    if (!shared.location && entry.location?.trim()) shared.location = entry.location;
+    if (!shared.po_afe && entry.po_afe?.trim()) shared.po_afe = entry.po_afe;
+    if (!shared.approver && entry.approver?.trim()) shared.approver = entry.approver;
+    if (!shared.cc && entry.cc?.trim()) shared.cc = entry.cc;
+    if (!shared.other && entry.other?.trim()) shared.other = entry.other;
+  }
+  
   // Create a map of user_id to employee rates for quick lookup
   const employeeRatesMap = new Map<string, { rt: number; tt: number; ft: number; shop_ot: number; field_ot: number }>();
   const employeeDepartmentMap = new Map<string, string>();
@@ -225,14 +247,25 @@ export function groupEntriesIntoTickets(
 
     const date = entry.date;
     const userId = entry.user_id;
+    const projectId = entry.project?.id ?? '';
+    
+    // Retrieve shared fields for this date+user+project to fill in any blanks
+    const sharedKey = `${date}-${userId}-${projectId}`;
+    const shared = sharedFieldsMap.get(sharedKey) || {};
+    
+    const effectiveLocation = entry.location?.trim() ? entry.location : shared.location;
+    const effectivePoAfe = entry.po_afe?.trim() ? entry.po_afe : shared.po_afe;
+    const effectiveApprover = entry.approver?.trim() ? entry.approver : shared.approver;
+    const effectiveCc = entry.cc?.trim() ? entry.cc : shared.cc;
+    const effectiveOther = entry.other?.trim() ? entry.other : shared.other;
+
     // Use entry location, or fall back to project location, or empty string
-    const entryLocation = entry.location || entry.project?.location || '';
+    const entryLocation = effectiveLocation || entry.project?.location || '';
 
     // Grouping hierarchy: Customer > Project > Location > PO/AFE
     // Different project = new ticket. Same project, different location = new ticket. Same location, different PO = new ticket.
-    const poAfe = entry.po_afe ?? entry.project?.po_afe ?? '';
+    const poAfe = effectivePoAfe ?? entry.project?.po_afe ?? '';
     const groupingKey = buildGroupingKey(poAfe);
-    const projectId = entry.project?.id ?? '';
     // Normalize location for grouping (lowercase, trimmed)
     const locationKey = (entryLocation || '').trim().toLowerCase().replace(/\s+/g, ' ') || '_no_location_';
     const ticketKey = `${date}-${customerId}-${userId}-${projectId}-${locationKey}-${groupingKey}`;
@@ -309,28 +342,28 @@ export function groupEntriesIntoTickets(
         projectName: entry.project?.name,
         projectNumber: entry.project?.project_number,
         projectLocation: entry.project?.location,
-        projectApproverPoAfe: getProjectApproverPoAfe(entry.project) || entry.po_afe || undefined,
+        projectApproverPoAfe: getProjectApproverPoAfe(entry.project) || effectivePoAfe || undefined,
         projectApprover: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.approver;
-          return (entry as any).approver || '';
+          return effectiveApprover || '';
         })(),
         projectPoAfe: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.poAfe;
-          return entry.po_afe || '';
+          return effectivePoAfe || '';
         })(),
         projectCc: (() => {
           const pf = getProjectHeaderFields(entry.project);
           if (pf.approver || pf.poAfe || pf.cc) return pf.cc;
-          return (entry as any).cc || '';
+          return effectiveCc || '';
         })(),
         projectOther: entry.project?.other,
-        entryLocation: entry.location || undefined,
-        entryApprover: (entry as any).approver || undefined,
-        entryPoAfe: entry.po_afe || undefined,
-        entryCc: (entry as any).cc || undefined,
-        entryOther: (entry as any).other || undefined,
+        entryLocation: effectiveLocation || undefined,
+        entryApprover: effectiveApprover || undefined,
+        entryPoAfe: effectivePoAfe || undefined,
+        entryCc: effectiveCc || undefined,
+        entryOther: effectiveOther || undefined,
         totalHours: 0,
         entries: [],
         hoursByRateType: {
