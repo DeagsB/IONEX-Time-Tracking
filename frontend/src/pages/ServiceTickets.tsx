@@ -5528,7 +5528,15 @@ export default function ServiceTickets() {
                                 projectId: selectedTicket.projectId,
                                 location: selectedTicket.location || '',
                                 billingKey,
-                                headerOverrides: selectedTicket.headerOverrides,
+                                headerOverrides: (selectedTicket.entryApprover != null || selectedTicket.entryPoAfe != null || selectedTicket.entryCc != null || selectedTicket.entryOther != null)
+                                  ? {
+                                      approver: selectedTicket.entryApprover ?? '',
+                                      po_afe: selectedTicket.entryPoAfe ?? '',
+                                      cc: selectedTicket.entryCc ?? '',
+                                      other: selectedTicket.entryOther ?? '',
+                                      service_location: selectedTicket.entryLocation ?? selectedTicket.location ?? '',
+                                    }
+                                  : undefined,
                               }, isDemoMode);
                               const newStatus = isTicketApproved ? 'draft' : 'approved';
                               await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
