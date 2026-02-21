@@ -542,6 +542,7 @@ export default function ServiceTickets() {
   const closePanel = () => {
     setShowCloseConfirm(false);
     setSelectedTicket(null);
+    setCurrentTicketRecordId(null);
     setEditableTicket(null);
     setSubmitError(null);
     setServiceRows([]);
@@ -974,6 +975,10 @@ export default function ServiceTickets() {
           headerOverrides,
         });
         ticketRecordId = record.id;
+        
+        // Ensure any other draft/submitted records for this same logical ticket are removed
+        // since we just created a fresh approved record
+        await serviceTicketsService.deleteOtherDraftRecordsForTicket(ticketRecordId, isDemoTicket);
       }
 
       // Refresh the tickets list
@@ -2889,6 +2894,9 @@ export default function ServiceTickets() {
                   // Non-admins: lock when discarded, admin-approved, or user-submitted (workflow='approved' without ticket_number)
                   const isUserSubmitted = !isAdminApproved && ws === 'approved';
                   setIsLockedForEditing(isDiscarded || (isAdminApproved && !isAdmin) || (isUserSubmitted && !isAdmin));
+                  
+                  // Reset current ticket record ID synchronously to prevent cross-ticket state leaks during async load
+                  setCurrentTicketRecordId(existingRecord?.id || null);
                   
                   setSelectedTicket(ticket);
                   setPendingDeleteExpenseIds(new Set());
@@ -5520,9 +5528,17 @@ export default function ServiceTickets() {
                                 projectId: selectedTicket.projectId,
                                 location: selectedTicket.location || '',
                                 billingKey,
+                                headerOverrides: selectedTicket.headerOverrides,
                               }, isDemoMode);
                               const newStatus = isTicketApproved ? 'draft' : 'approved';
                               await serviceTicketsService.updateWorkflowStatus(ticketRecord.id, newStatus, isDemoMode);
+                              
+                              // Clean up any old duplicate draft records for this logical ticket (same PO/AFE)
+                              // if we just submitted it, to prevent orphaned drafts showing up alongside submitted tickets
+                              if (newStatus === 'approved') {
+                                await serviceTicketsService.deleteOtherDraftRecordsForTicket(ticketRecord.id, isDemoMode);
+                              }
+                              
                               await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                               await queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                               await queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
