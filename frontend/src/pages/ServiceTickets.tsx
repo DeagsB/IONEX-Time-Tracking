@@ -3172,7 +3172,13 @@ export default function ServiceTickets() {
                       const loadedHours = (ticketRecord?.edited_hours as Record<string, number | number[]>) || {};
                       const hasLegacyData = Object.keys(loadedDescriptions).length > 0 || Object.keys(loadedHours).length > 0;
                       
-                      if (hasLegacyData) {
+                      // Only use the saved snapshot if the user manually edited the hours (is_edited=true) 
+                      // OR if the ticket is locked/frozen (submitted/approved).
+                      // Otherwise, for unedited drafts, always rebuild from live time entries so we don't 
+                      // get stuck with a stale auto-saved snapshot when new time entries are added.
+                      const shouldUseSnapshot = hasLegacyData && (ticketRecord?.is_edited || isFrozen);
+                      
+                      if (shouldUseSnapshot) {
                         const rowMap = new Map<string, ServiceRow>();
                         let rowIndex = 0;
                         // Build rows from descriptions if available
