@@ -946,6 +946,9 @@ export default function ServiceTickets() {
           } : undefined;
         })();
         await serviceTicketsService.updateTicketNumber(ticketRecordId, ticketNumber, isDemoTicket, user?.id, headerOverrides, approvalHours);
+        
+        // Clean up any duplicate draft records since this ticket is now approved
+        await serviceTicketsService.deleteOtherDraftRecordsForTicket(ticketRecordId, isDemoTicket);
       } else {
         // Create ticket record with the ticket number already assigned
         const rtRate = ticket.rates.rt, ttRate = ticket.rates.tt, ftRate = ticket.rates.ft, shopOtRate = ticket.rates.shop_ot, fieldOtRate = ticket.rates.field_ot;
@@ -1109,6 +1112,10 @@ export default function ServiceTickets() {
       } : undefined;
 
       await serviceTicketsService.updateTicketNumber(existing.id, trimmed, isDemoMode, user?.id, headerOverrides, approvalHours);
+
+      // Clean up any duplicate draft records since this ticket is now approved
+      const isDemoTicket = ticket.entries.length > 0 && ticket.entries.every(entry => entry.is_demo === true);
+      await serviceTicketsService.deleteOtherDraftRecordsForTicket(existing.id, isDemoTicket);
 
       setShowCustomTicketIdModal(false);
       setCustomTicketId('');
