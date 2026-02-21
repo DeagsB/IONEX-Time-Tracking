@@ -1553,7 +1553,7 @@ export default function ServiceTickets() {
         projectNumber,
         projectName,
         ticketNumber: st.ticket_number || undefined,
-        approverNotes: st.approver_notes || undefined,
+        approverNotes: (st as any).approver_notes || undefined,
         totalHours,
         entries: matchedEntries,
         hoursByRateType,
@@ -3126,6 +3126,7 @@ export default function ServiceTickets() {
                         techName: useOverride(ov.tech_name, initialEditable.techName),
                         projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
                         date: useOverride(ov.date, initialEditable.date),
+                        approverNotes: initialEditable.approverNotes,
                       };
                     } else {
                       merged = initialEditable;
