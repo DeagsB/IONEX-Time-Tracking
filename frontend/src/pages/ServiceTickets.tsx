@@ -182,6 +182,7 @@ export default function ServiceTickets() {
     techName: string;
     projectNumber: string;
     date: string;
+    approverNotes?: string;
   } | null>(null);
   
   // Editable service descriptions and hours state - new row-based format
@@ -1552,6 +1553,7 @@ export default function ServiceTickets() {
         projectNumber,
         projectName,
         ticketNumber: st.ticket_number || undefined,
+        approverNotes: st.approver_notes || undefined,
         totalHours,
         entries: matchedEntries,
         hoursByRateType,
@@ -2955,6 +2957,7 @@ export default function ServiceTickets() {
                     techName: ticket.userName || '',
                     projectNumber: ticket.projectNumber || '',
                     date: ticket.date || '',
+                    approverNotes: ticket.approverNotes || '',
                   };
                   // Apply header_overrides from existingRecord immediately to avoid flash of default before override
                   const ov = (existingRecord?.header_overrides as Record<string, string | number> | null) ?? {};
@@ -4695,9 +4698,37 @@ export default function ServiceTickets() {
                           </div>
                         )}
                       </div>
-                    </div>
+              <div style={{ marginTop: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-secondary)' }}>Internal Receipts</label>
+                  {!isLockedForEditing && (
+                    <div style={{ marginLeft: '12px', flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }} />
+                  )}
+                </div>
+                <div
+                  style={{
+                    width: '100%',
+                    padding: '20px',
+                    borderRadius: '6px',
+                    border: '1px dashed var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-tertiary)',
+                    fontSize: '14px',
+                    textAlign: 'center',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => alert('Add expenses and receipts on the new Expenses page.')}
+                >
+                  Drag and drop receipt images here, or click to upload
+                </div>
+              </div>
 
-                    {/* Expenses Section */}
+            </div>
+
+            {/* Expenses Section */}
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={sectionTitleStyle}>Travel / Subsistence / Expenses / Equipment</h3>

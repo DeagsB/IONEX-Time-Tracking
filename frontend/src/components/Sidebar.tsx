@@ -92,10 +92,13 @@ export default function Sidebar() {
           }}>
             TRACK
           </div>
-          <SidebarLink to="/calendar" active={isActive('/calendar')}>
-            Timer
-          </SidebarLink>
-        </div>
+            <SidebarLink to="/calendar" active={isActive('/calendar')}>
+              Timer
+            </SidebarLink>
+            <SidebarLink to="/expenses" active={isActive('/expenses')}>
+              Expenses
+            </SidebarLink>
+          </div>
 
         {!isAdmin && (
           <div style={{ marginBottom: '30px' }}>

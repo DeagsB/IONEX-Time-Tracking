@@ -2091,6 +2091,127 @@ export const bugReportsService = {
 };
 
 const INVOICED_BATCH_BUCKET = 'invoiced-batch-invoices';
+const RECEIPTS_BUCKET = 'receipts';
+
+export const userExpensesService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('user_expenses')
+      .select(`
+        *,
+        service_tickets (
+          ticket_number
+        )
+      `)
+      .order('expense_date', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getByServiceTicketId(ticketId: string) {
+    const { data, error } = await supabase
+      .from('user_expenses')
+      .select('*')
+      .eq('service_ticket_id', ticketId)
+      .order('expense_date', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  async create(expense: {
+    amount: number;
+    description: string;
+    expense_date: string;
+    service_ticket_id?: string;
+    receipt_url?: string;
+    notes?: string;
+    status?: 'pending' | 'approved' | 'rejected' | 'paid';
+  }) {
+    // Note: user_id will be handled by RLS via auth.uid() if we don't supply it. 
+    // Wait, actually, user_id is NOT NULL, let's get the user ID first or rely on the caller or default it if we can.
+    // Let's get the current user ID.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('user_expenses')
+      .insert({ ...expense, user_id: user.id })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async update(id: string, updates: Partial<{
+    amount: number;
+    description: string;
+    expense_date: string;
+    service_ticket_id: string | null;
+    receipt_url: string;
+    notes: string;
+    status: 'pending' | 'approved' | 'rejected' | 'paid';
+  }>) {
+    const { data, error } = await supabase
+      .from('user_expenses')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id: string) {
+    // If there's a receipt_url, we might want to delete it from storage too
+    const { data: expense } = await supabase.from('user_expenses').select('receipt_url').eq('id', id).single();
+    
+    if (expense?.receipt_url) {
+      // Clean up the storage file
+      const pathSegments = expense.receipt_url.split('/');
+      const fileName = pathSegments[pathSegments.length - 1];
+      const folderName = pathSegments[pathSegments.length - 2];
+      if (fileName && folderName) {
+         await supabase.storage.from(RECEIPTS_BUCKET).remove([`${folderName}/${fileName}`]);
+      }
+    }
+
+    const { error } = await supabase
+      .from('user_expenses')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async uploadReceipt(file: File): Promise<string> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const storagePath = `${user.id}/${timestamp}_${safeName}`;
+
+    const { data, error } = await supabase.storage
+      .from(RECEIPTS_BUCKET)
+      .upload(storagePath, file, { 
+        cacheControl: '3600',
+        upsert: false 
+      });
+
+    if (error) throw error;
+
+    // Get public URL
+    const { data: publicUrlData } = supabase.storage
+      .from(RECEIPTS_BUCKET)
+      .getPublicUrl(storagePath);
+
+    return publicUrlData.publicUrl;
+  }
+};
 
 function sanitizeStoragePathSegment(s: string): string {
   return s.replace(/[/\\?*:|"]/g, '_').slice(0, 200);

@@ -19,6 +19,7 @@ import Invoices from './pages/Invoices';
 import EmployeeReports from './pages/EmployeeReports';
 import UserManagement from './pages/UserManagement';
 import Changelog from './pages/Changelog';
+import Expenses from './pages/Expenses';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 import Maintenance from './pages/Maintenance';
@@ -131,6 +132,7 @@ function AppRoutes() {
         <Route path="calendar" element={<WeekView />} />
         <Route path="calendar/:date" element={<DayDetail />} />
         <Route path="time-entries" element={<TimeEntries />} />
+        <Route path="expenses" element={<Expenses />} />
         <Route path="manage" element={<Navigate to="/projects" replace />} />
         <Route path="projects" element={<Projects />} />
         <Route path="payroll" element={<Payroll />} />

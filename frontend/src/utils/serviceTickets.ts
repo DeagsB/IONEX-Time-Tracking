@@ -44,8 +44,9 @@ export interface ServiceTicket {
   entryApprover?: string;
   entryPoAfe?: string;
   entryCc?: string;
-  entryOther?: string;
-  ticketNumber?: string; // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
+    entryOther?: string;
+    approverNotes?: string;
+    ticketNumber?: string; // Format: {initials}_{YY}{sequence} e.g., "DB_25001"
   totalHours: number;
   entries: TimeEntryWithRelations[];
   hoursByRateType: {
