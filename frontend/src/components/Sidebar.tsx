@@ -95,9 +95,6 @@ export default function Sidebar() {
             <SidebarLink to="/calendar" active={isActive('/calendar')}>
               Timer
             </SidebarLink>
-            <SidebarLink to="/expenses" active={isActive('/expenses')}>
-              Expenses
-            </SidebarLink>
           </div>
 
         {!isAdmin && (
@@ -143,6 +140,9 @@ export default function Sidebar() {
                   </span>
                 )}
               </span>
+            </SidebarLink>
+            <SidebarLink to="/expenses" active={isActive('/expenses')}>
+              Expenses
             </SidebarLink>
           </div>
         )}
@@ -235,6 +235,9 @@ export default function Sidebar() {
                   </span>
                 )}
               </span>
+            </SidebarLink>
+            <SidebarLink to="/expenses" active={isActive('/expenses')}>
+              Expenses
             </SidebarLink>
             <SidebarLink to="/employees" active={isActive('/employees')}>
               Employees
