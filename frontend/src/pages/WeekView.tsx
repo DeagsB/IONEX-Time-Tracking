@@ -39,6 +39,7 @@ export default function WeekView() {
   
   // Get viewUserId from query params (for admins viewing another employee's calendar)
   const viewUserId = searchParams.get('viewUserId');
+  const cameFromPayroll = searchParams.get('from') === 'payroll';
   // Only allow admins to view other users' calendars
   const effectiveUserId = (isAdmin && viewUserId) ? viewUserId : user?.id;
   const [currentProject, setCurrentProject] = useState<string>('Time Tracking Software');
@@ -1509,7 +1510,7 @@ export default function WeekView() {
           </span>
           <button
             onClick={() => {
-              navigate('/calendar');
+              navigate(cameFromPayroll ? '/payroll' : '/calendar');
             }}
             style={{
               padding: '6px 12px',
@@ -1521,7 +1522,7 @@ export default function WeekView() {
               fontSize: '13px'
             }}
           >
-            View My Calendar
+            {cameFromPayroll ? 'Return to Payroll' : 'View My Calendar'}
           </button>
         </div>
       )}

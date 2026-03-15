@@ -815,55 +815,19 @@ export default function Payroll() {
         </div>
       ) : (
         <>
-          {/* Summary Cards - admin sees total costs, non-admin sees hours */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
+          {/* Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+            <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>
                 {isAdmin && grandTotalsCosts ? 'Total Cost' : 'Total Hours'}
               </div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)' }}>
                 {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.totalCost.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
               </div>
             </div>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Internal Time</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#dc3545' }}>
-                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.internalCost.toFixed(2)}` : grandTotals.internalHours.toFixed(2)}
-              </div>
-            </div>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Shop Time</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#4caf50' }}>
-                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.shopTimeCost.toFixed(2)}` : grandTotals.shopTime.toFixed(2)}
-              </div>
-            </div>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Shop OT</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#ff9800' }}>
-                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.shopOvertimeCost.toFixed(2)}` : grandTotals.shopOvertime.toFixed(2)}
-              </div>
-            </div>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Travel Time</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#2196f3' }}>
-                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.travelTimeCost.toFixed(2)}` : grandTotals.travelTime.toFixed(2)}
-              </div>
-            </div>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Field Time</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#9c27b0' }}>
-                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.fieldTimeCost.toFixed(2)}` : grandTotals.fieldTime.toFixed(2)}
-              </div>
-            </div>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Field OT</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#e91e63' }}>
-                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.fieldOvertimeCost.toFixed(2)}` : grandTotals.fieldOvertime.toFixed(2)}
-              </div>
-            </div>
-            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
+            <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Reimbursements</div>
-              <div style={{ fontSize: '28px', fontWeight: '700', color: '#00897b' }}>
+              <div style={{ fontSize: '32px', fontWeight: '700', color: '#00897b' }}>
                 ${grandTotalReimbursements.toFixed(2)}
               </div>
             </div>
@@ -929,16 +893,18 @@ export default function Payroll() {
                             }}
                             style={{
                               cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)',
-                              transition: 'transform 0.15s', display: 'inline-block',
+                              transition: 'transform 0.15s, color 0.15s', display: 'inline-block',
                               transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                               userSelect: 'none', flexShrink: 0, width: '14px', textAlign: 'center',
                             }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLSpanElement).style.color = 'var(--text-primary)'; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLSpanElement).style.color = 'var(--text-secondary)'; }}
                             title="Toggle payroll breakdown"
                           >&#9654;</span>
                         )}
                         <div
                           style={{ cursor: isAdmin ? 'pointer' : 'default' }}
-                          onClick={() => { if (isAdmin) navigate(`/calendar?viewUserId=${emp.userId}`); }}
+                          onClick={() => { if (isAdmin) navigate(`/calendar?viewUserId=${emp.userId}&from=payroll`); }}
                           title={isAdmin ? `View ${emp.name}'s calendar and time entries` : undefined}
                         >
                           <div style={{ fontWeight: '500', color: isAdmin ? 'var(--link-color, #2563eb)' : 'var(--text-primary)' }}>
