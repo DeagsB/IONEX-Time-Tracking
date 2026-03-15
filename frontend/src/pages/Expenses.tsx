@@ -939,7 +939,7 @@ export default function Expenses() {
                     )}
                   </div>
                 )))
-              )}
+              }
             </div>
           </div>
         </div>
