@@ -2285,10 +2285,9 @@ export const userExpensesService = {
   },
 
   async delete(id: string) {
-    const { data: expense } = await supabase.from('user_expenses').select('receipt_url').eq('id', id).single();
-    
+    const { data: expense } = await supabase.from('user_expenses').select('receipt_url, service_ticket_id, description').eq('id', id).single();
+
     if (expense?.receipt_url) {
-      // Clean up the storage file
       const pathSegments = expense.receipt_url.split('/');
       const fileName = pathSegments[pathSegments.length - 1];
       const folderName = pathSegments[pathSegments.length - 2];
@@ -2297,12 +2296,31 @@ export const userExpensesService = {
       }
     }
 
+    if (expense?.service_ticket_id) {
+      await userExpensesService._removeLinkedTicketExpense(expense.service_ticket_id, expense.description);
+    }
+
     const { error } = await supabase
       .from('user_expenses')
       .delete()
       .eq('id', id);
 
     if (error) throw error;
+  },
+
+  async _removeLinkedTicketExpense(serviceTicketId: string, description: string) {
+    const { data: linked } = await supabase
+      .from('service_ticket_expenses')
+      .select('id')
+      .eq('service_ticket_id', serviceTicketId)
+      .ilike('description', description);
+
+    if (linked && linked.length > 0) {
+      await supabase
+        .from('service_ticket_expenses')
+        .delete()
+        .eq('id', linked[0].id);
+    }
   },
 
   async uploadReceipt(file: File): Promise<string> {

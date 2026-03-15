@@ -43,6 +43,12 @@ export default function Expenses() {
   const [showTicketPickerModal, setShowTicketPickerModal] = useState(false);
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
 
+  // Markup modal state (step 2 after picking a ticket)
+  const [markupModalTicket, setMarkupModalTicket] = useState<{ id: string; ticketNumber: string } | null>(null);
+  const [markupValue, setMarkupValue] = useState('0');
+  const [markupType, setMarkupType] = useState<'dollar' | 'percent'>('dollar');
+  const [isApplyingMarkup, setIsApplyingMarkup] = useState(false);
+
   // Viewing receipt
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
   const [viewingReceiptIsPdf, setViewingReceiptIsPdf] = useState(false);
@@ -113,6 +119,7 @@ export default function Expenses() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
     },
   });
 
@@ -168,6 +175,16 @@ export default function Expenses() {
         queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
       } else {
         await userExpensesService.update(itemId, { status: newStatus });
+
+        if (newStatus === 'rejected') {
+          const expense = expenses.find((e: any) => e.id === itemId);
+          if (expense?.service_ticket_id) {
+            await userExpensesService._removeLinkedTicketExpense(expense.service_ticket_id, expense.description);
+            await userExpensesService.update(itemId, { service_ticket_id: null, markup_amount: 0 });
+            queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+          }
+        }
+
         queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       }
     } catch (err: any) {
@@ -249,29 +266,36 @@ export default function Expenses() {
     }
   };
 
-  const handleApplyToTicket = async (ticketRecordId: string, ticketNumber: string) => {
-    if (!applyExpenseId) return;
+  const handlePickTicketForMarkup = (ticketRecordId: string, ticketNumber: string) => {
+    setMarkupModalTicket({ id: ticketRecordId, ticketNumber });
+    setMarkupValue('0');
+    setMarkupType('dollar');
+    setShowTicketPickerModal(false);
+  };
+
+  const handleConfirmMarkup = async () => {
+    if (!applyExpenseId || !markupModalTicket) return;
     const expense = expenses.find((e: any) => e.id === applyExpenseId);
     if (!expense) return;
 
-    const markupStr = prompt('Enter markup (e.g. 10 for $10, 10% for percentage, or 0 for none):') || '0';
-    let markup = 0;
     const expAmt = parseFloat(expense.amount);
-    if (markupStr.includes('%')) {
-      const pct = parseFloat(markupStr.replace('%', ''));
-      markup = (expAmt * pct) / 100;
+    let markup = 0;
+    const val = parseFloat(markupValue) || 0;
+    if (markupType === 'percent') {
+      markup = (expAmt * val) / 100;
     } else {
-      markup = parseFloat(markupStr) || 0;
+      markup = val;
     }
     const totalWithMarkup = expAmt + markup;
 
+    setIsApplyingMarkup(true);
     try {
       await userExpensesService.update(applyExpenseId, {
-        service_ticket_id: ticketRecordId,
+        service_ticket_id: markupModalTicket.id,
         markup_amount: markup,
       });
       await serviceTicketExpensesService.create({
-        service_ticket_id: ticketRecordId,
+        service_ticket_id: markupModalTicket.id,
         expense_type: 'Expenses',
         description: expense.description,
         quantity: 1,
@@ -281,11 +305,18 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
-      setShowTicketPickerModal(false);
+      setMarkupModalTicket(null);
       setApplyExpenseId(null);
     } catch (err: any) {
       alert('Failed to apply expense to ticket: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsApplyingMarkup(false);
     }
+  };
+
+  const handleBackToTicketPicker = () => {
+    setMarkupModalTicket(null);
+    setShowTicketPickerModal(true);
   };
 
   const handleViewReceipt = async (expense: any) => {
@@ -545,7 +576,9 @@ export default function Expenses() {
                     <button
                       onClick={(e) => { e.stopPropagation(); if (confirm('Delete this expense?')) deleteExpenseMutation.mutate(exp.id); }}
                       title="Delete"
-                      style={{ color: '#ef5350', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', padding: '4px', lineHeight: 1 }}
+                      style={{ color: '#ef5350', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', padding: '6px', lineHeight: 1, borderRadius: '4px', transition: 'background-color 0.15s' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(239, 83, 80, 0.15)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                     </button>
@@ -740,7 +773,7 @@ export default function Expenses() {
                 filteredPickerTickets.map((t: any) => (
                   <div
                     key={t.id}
-                    onClick={() => handleApplyToTicket(t.id, t.ticket_number || 'Draft')}
+                    onClick={() => handlePickTicketForMarkup(t.id, t.ticket_number || 'Draft')}
                     style={{
                       padding: '12px',
                       borderRadius: '6px',
@@ -771,6 +804,99 @@ export default function Expenses() {
           </div>
         </div>
       )}
+
+      {/* Markup Modal (step 2 after picking a ticket) */}
+      {markupModalTicket && applyExpenseId && (() => {
+        const expense = expenses.find((e: any) => e.id === applyExpenseId);
+        if (!expense) return null;
+        const expAmt = parseFloat(expense.amount);
+        const val = parseFloat(markupValue) || 0;
+        const markup = markupType === 'percent' ? (expAmt * val) / 100 : val;
+        const total = expAmt + markup;
+
+        return (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }} onClick={() => { setMarkupModalTicket(null); setApplyExpenseId(null); }}>
+            <div onClick={(e) => e.stopPropagation()} style={{
+              backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px',
+              maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Apply Markup</h3>
+                <button onClick={() => { setMarkupModalTicket(null); setApplyExpenseId(null); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
+              </div>
+
+              <div style={{ marginBottom: '16px', padding: '10px 12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '13px' }}>
+                <div><span style={{ color: 'var(--text-secondary)' }}>Expense:</span> <span style={{ fontWeight: '600' }}>{expense.description}</span></div>
+                <div><span style={{ color: 'var(--text-secondary)' }}>Amount:</span> <span style={{ fontWeight: '600' }}>${expAmt.toFixed(2)}</span></div>
+                <div><span style={{ color: 'var(--text-secondary)' }}>Ticket:</span> <span style={{ fontWeight: '600' }}>{markupModalTicket.ticketNumber}</span></div>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Markup</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={markupValue}
+                    onChange={(e) => setMarkupValue(e.target.value)}
+                    style={{ ...inputStyle, flex: 1 }}
+                    autoFocus
+                  />
+                  <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                    <button
+                      onClick={() => setMarkupType('dollar')}
+                      style={{
+                        padding: '8px 12px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+                        backgroundColor: markupType === 'dollar' ? 'var(--primary-color)' : 'var(--bg-secondary)',
+                        color: markupType === 'dollar' ? 'white' : 'var(--text-secondary)',
+                      }}
+                    >$</button>
+                    <button
+                      onClick={() => setMarkupType('percent')}
+                      style={{
+                        padding: '8px 12px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+                        backgroundColor: markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)',
+                        color: markupType === 'percent' ? 'white' : 'var(--text-secondary)',
+                      }}
+                    >%</button>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', marginBottom: '20px', fontSize: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Markup:</span>
+                  <span style={{ fontWeight: '600', color: markup > 0 ? '#2196F3' : 'var(--text-tertiary)' }}>${markup.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid var(--border-color)' }}>
+                  <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>Total on Ticket:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--text-primary)', fontSize: '16px' }}>${total.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleBackToTicketPicker}
+                  style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleConfirmMarkup}
+                  disabled={isApplyingMarkup}
+                  style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: '600', cursor: isApplyingMarkup ? 'not-allowed' : 'pointer', opacity: isApplyingMarkup ? 0.7 : 1 }}
+                >
+                  {isApplyingMarkup ? 'Applying...' : 'Apply to Ticket'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Receipt Viewer Modal */}
       {viewingReceiptUrl && (

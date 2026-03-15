@@ -810,11 +810,11 @@ export default function Payroll() {
                   <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#e91e63', textTransform: 'uppercase' }}>
                     Field OT
                   </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
-                    Total
-                  </th>
                   <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#00897b', textTransform: 'uppercase' }}>
                     Reimburse
+                  </th>
+                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+                    Total
                   </th>
                 </tr>
               </thead>
@@ -855,9 +855,6 @@ export default function Payroll() {
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.fieldOvertime > 0 ? '#e91e63' : 'var(--text-secondary)' }}>
                       {emp.fieldOvertime.toFixed(2)}
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                      {emp.totalHours.toFixed(2)}
-                    </td>
                     <td
                       style={{
                         padding: '14px 16px',
@@ -876,6 +873,9 @@ export default function Payroll() {
                       title={(reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? 'Click for breakdown' : undefined}
                     >
                       ${(reimbursementsByUser.get(emp.userId)?.total || 0).toFixed(2)}
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                      {emp.totalHours.toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -902,11 +902,11 @@ export default function Payroll() {
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#e91e63' }}>
                     {grandTotals.fieldOvertime.toFixed(2)}
                   </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                    {grandTotals.totalHours.toFixed(2)}
-                  </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#00897b' }}>
                     ${grandTotalReimbursements.toFixed(2)}
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    {grandTotals.totalHours.toFixed(2)}
                   </td>
                 </tr>
               </tbody>
