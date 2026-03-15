@@ -15,13 +15,18 @@ interface WhatsNewEntry {
 
 const entries: WhatsNewEntry[] = [
   {
-    title: 'Expense & Payroll Improvements',
+    title: 'Expenses',
     items: [
-      'Expenses are now **automatically marked as paid** when their pay period ends (if approved before the period ended).',
-      'Expenses **re-approved after their pay period** are carried forward to the **current period** so they pay out on the next pay run.',
-      'Only **approved or paid** expenses appear in payroll reimbursements — pending/rejected expenses are excluded.',
-      'You can now **unapply an expense** from a service ticket using the new "Unapply" button in the Edit Expense modal.',
-      'Unchecking **Billable** on an expense that\'s applied to a ticket will automatically remove it from the ticket.',
+      '**Expenses page** is now available to all users — submit receipts, track reimbursements, and apply expenses to service tickets.',
+      'You can **unapply an expense** from a service ticket directly from the Edit Expense modal.',
+      'Approved expenses are **automatically included in your next pay run** as reimbursements.',
+    ],
+  },
+  {
+    title: 'Service Tickets',
+    items: [
+      '**See Details** when applying an expense to a ticket — view time entries and expenses on each ticket before choosing.',
+      '**Right-click to delete** time entries on the calendar week view.',
     ],
   },
 ];
