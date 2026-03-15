@@ -91,11 +91,14 @@ export default function Expenses() {
   });
 
   const handleFileDrop = (file: File) => {
-    if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
     setReceiptFile(file);
     setReceiptForm(initialReceiptForm);
     setUploadError(null);
-    setReceiptPreviewUrl(URL.createObjectURL(file));
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setReceiptPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmitReceipt = async () => {
@@ -121,7 +124,6 @@ export default function Expenses() {
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
-      if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
       setReceiptFile(null);
       setReceiptPreviewUrl(null);
       setReceiptForm(initialReceiptForm);
@@ -280,11 +282,30 @@ export default function Expenses() {
             padding: '16px',
             overflow: 'auto',
           }}>
-            <img
-              src={receiptPreviewUrl}
-              alt="Receipt preview"
-              style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '4px' }}
-            />
+            {receiptFile && receiptFile.type === 'application/pdf' ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <div style={{ fontSize: '48px', marginBottom: '8px' }}>&#128196;</div>
+                <div style={{ fontSize: '14px', fontWeight: '500' }}>{receiptFile.name}</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>PDF receipt — preview not available</div>
+              </div>
+            ) : (
+              <img
+                src={receiptPreviewUrl}
+                alt="Receipt preview"
+                style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '4px' }}
+                onError={(e) => {
+                  console.error('Receipt image failed to load. src:', receiptPreviewUrl?.substring(0, 100));
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  const parent = (e.target as HTMLImageElement).parentElement;
+                  if (parent) {
+                    const msg = document.createElement('div');
+                    msg.textContent = 'Could not preview this file. It will still be uploaded.';
+                    msg.style.cssText = 'color: var(--text-tertiary); font-size: 14px; text-align: center;';
+                    parent.appendChild(msg);
+                  }
+                }}
+              />
+            )}
           </div>
 
           {/* Right: Form Inputs */}
@@ -321,7 +342,7 @@ export default function Expenses() {
 
             <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '12px' }}>
               <button
-                onClick={() => { if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl); setReceiptFile(null); setReceiptPreviewUrl(null); setReceiptForm(initialReceiptForm); setUploadError(null); }}
+                onClick={() => { setReceiptFile(null); setReceiptPreviewUrl(null); setReceiptForm(initialReceiptForm); setUploadError(null); }}
                 style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}
               >
                 Cancel
