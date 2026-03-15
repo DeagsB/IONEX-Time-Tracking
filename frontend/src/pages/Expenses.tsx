@@ -74,7 +74,7 @@ export default function Expenses() {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
       let query = supabase
         .from(tableName)
-        .select('id, ticket_number, date, location, workflow_status, user_id')
+        .select('id, ticket_number, date, location, workflow_status, user_id, customers(name), projects(name, project_number)')
         .order('date', { ascending: false })
         .limit(200);
 
@@ -110,7 +110,10 @@ export default function Expenses() {
     const q = ticketSearchQuery.toLowerCase();
     return (
       (t.ticket_number || '').toLowerCase().includes(q) ||
-      (t.location || '').toLowerCase().includes(q)
+      (t.location || '').toLowerCase().includes(q) ||
+      (t.customers?.name || '').toLowerCase().includes(q) ||
+      (t.projects?.name || '').toLowerCase().includes(q) ||
+      (t.projects?.project_number || '').toLowerCase().includes(q)
     );
   });
 
@@ -757,7 +760,7 @@ export default function Expenses() {
               <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>Select a Service Ticket</h3>
               <input
                 type="text"
-                placeholder="Search by ticket # or location..."
+                placeholder="Search by ticket #, customer, project, or location..."
                 value={ticketSearchQuery}
                 onChange={(e) => setTicketSearchQuery(e.target.value)}
                 style={{ ...inputStyle, marginBottom: '4px' }}
@@ -787,15 +790,20 @@ export default function Expenses() {
                     onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-secondary)'; }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>
-                        {t.ticket_number || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Draft</span>}
-                      </span>
-                      <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '10px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                        <span style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)', flexShrink: 0 }}>
+                          {t.ticket_number || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Draft</span>}
+                        </span>
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {t.customers?.name || 'No Customer'}{t.projects?.name ? ` — ${t.projects.name}` : ''}{t.projects?.project_number ? ` (${t.projects.project_number})` : ''}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '10px', flexShrink: 0, marginLeft: '8px', backgroundColor: t.workflow_status === 'approved' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', color: t.workflow_status === 'approved' ? '#10b981' : '#f59e0b' }}>
                         {t.workflow_status || 'draft'}
                       </span>
                     </div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                      {t.location || 'No location'} &middot; {t.date ? new Date(t.date).toLocaleDateString() : 'No date'}
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                      {t.location ? t.location : 'No location'} &middot; {t.date ? new Date(t.date + 'T12:00:00').toLocaleDateString() : 'No date'}
                     </div>
                   </div>
                 ))
