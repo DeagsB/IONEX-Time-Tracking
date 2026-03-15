@@ -91,14 +91,11 @@ export default function Expenses() {
   });
 
   const handleFileDrop = (file: File) => {
+    if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
     setReceiptFile(file);
     setReceiptForm(initialReceiptForm);
     setUploadError(null);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setReceiptPreviewUrl(ev.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    setReceiptPreviewUrl(URL.createObjectURL(file));
   };
 
   const handleSubmitReceipt = async () => {
@@ -124,6 +121,7 @@ export default function Expenses() {
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
       setReceiptFile(null);
       setReceiptPreviewUrl(null);
       setReceiptForm(initialReceiptForm);
@@ -323,7 +321,7 @@ export default function Expenses() {
 
             <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '12px' }}>
               <button
-                onClick={() => { setReceiptFile(null); setReceiptPreviewUrl(null); setReceiptForm(initialReceiptForm); setUploadError(null); }}
+                onClick={() => { if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl); setReceiptFile(null); setReceiptPreviewUrl(null); setReceiptForm(initialReceiptForm); setUploadError(null); }}
                 style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}
               >
                 Cancel

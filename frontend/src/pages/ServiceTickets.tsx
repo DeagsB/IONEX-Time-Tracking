@@ -5108,15 +5108,12 @@ export default function ServiceTickets() {
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (!file) return;
+                              if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                               setReceiptFile(file);
                               setReceiptForm({ description: '', amount: '', gst: '', is_billable: false });
                               setReceiptUploadError(null);
-                              const reader = new FileReader();
-                              reader.onload = (ev) => {
-                                setReceiptPreviewUrl(ev.target?.result as string);
-                                setShowReceiptModal(true);
-                              };
-                              reader.readAsDataURL(file);
+                              setReceiptPreviewUrl(URL.createObjectURL(file));
+                              setShowReceiptModal(true);
                               e.target.value = '';
                             }}
                           />
@@ -5129,15 +5126,12 @@ export default function ServiceTickets() {
                               e.currentTarget.style.borderColor = 'var(--border-color)';
                               const file = e.dataTransfer.files?.[0];
                               if (!file) return;
+                              if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                               setReceiptFile(file);
                               setReceiptForm({ description: '', amount: '', gst: '', is_billable: false });
                               setReceiptUploadError(null);
-                              const reader = new FileReader();
-                              reader.onload = (ev) => {
-                                setReceiptPreviewUrl(ev.target?.result as string);
-                                setShowReceiptModal(true);
-                              };
-                              reader.readAsDataURL(file);
+                              setReceiptPreviewUrl(URL.createObjectURL(file));
+                              setShowReceiptModal(true);
                             }}
                             onClick={() => receiptFileInputRef.current?.click()}
                             style={{
@@ -5232,7 +5226,7 @@ export default function ServiceTickets() {
                         <label htmlFor="receipt-billable" style={{ fontSize: '14px', color: 'var(--text-primary)', cursor: 'pointer' }}>Billable</label>
                       </div>
                       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
-                        <button onClick={() => { setShowReceiptModal(false); setReceiptPreviewUrl(null); setReceiptFile(null); }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
+                        <button onClick={() => { setShowReceiptModal(false); if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl); setReceiptPreviewUrl(null); setReceiptFile(null); }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
                         <button
                           disabled={isUploadingReceipt}
                           onClick={async () => {
@@ -5272,6 +5266,7 @@ export default function ServiceTickets() {
                               }
                               queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
                               setShowReceiptModal(false);
+                              if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                               setReceiptPreviewUrl(null);
                               setReceiptFile(null);
                             } catch (err: any) {
