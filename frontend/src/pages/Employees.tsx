@@ -29,6 +29,12 @@ export default function Employees() {
     mileage_reimb_rate: '0.90',
     truck_reimb_rate: '1.00',
     per_diem_reimb_rate: '1.00',
+    employment_type: 'Employee',
+    sick_pay_pct: '0',
+    stat_holiday_pay_pct: '0',
+    vacation_pay_pct: '0',
+    cell_phone_allowance: '0',
+    health_allowance: '0',
   });
 
   const { data: employees, isLoading, error } = useQuery({
@@ -78,6 +84,12 @@ export default function Employees() {
         mileage_reimb_rate: data.mileage_reimb_rate ? parseFloat(data.mileage_reimb_rate) : 0.90,
         truck_reimb_rate: data.truck_reimb_rate ? parseFloat(data.truck_reimb_rate) : 1.00,
         per_diem_reimb_rate: data.per_diem_reimb_rate ? parseFloat(data.per_diem_reimb_rate) : 1.00,
+        employment_type: data.employment_type || 'Employee',
+        sick_pay_pct: data.sick_pay_pct ? parseFloat(data.sick_pay_pct) : 0,
+        stat_holiday_pay_pct: data.stat_holiday_pay_pct ? parseFloat(data.stat_holiday_pay_pct) : 0,
+        vacation_pay_pct: data.vacation_pay_pct ? parseFloat(data.vacation_pay_pct) : 0,
+        cell_phone_allowance: data.cell_phone_allowance ? parseFloat(data.cell_phone_allowance) : 0,
+        health_allowance: data.health_allowance ? parseFloat(data.health_allowance) : 0,
       };
       return await employeesService.create(employeeData);
     },
@@ -127,6 +139,12 @@ export default function Employees() {
         mileage_reimb_rate: data.mileage_reimb_rate ? parseFloat(data.mileage_reimb_rate) : 0.90,
         truck_reimb_rate: data.truck_reimb_rate ? parseFloat(data.truck_reimb_rate) : 1.00,
         per_diem_reimb_rate: data.per_diem_reimb_rate ? parseFloat(data.per_diem_reimb_rate) : 1.00,
+        employment_type: data.employment_type || 'Employee',
+        sick_pay_pct: data.sick_pay_pct ? parseFloat(data.sick_pay_pct) : 0,
+        stat_holiday_pay_pct: data.stat_holiday_pay_pct ? parseFloat(data.stat_holiday_pay_pct) : 0,
+        vacation_pay_pct: data.vacation_pay_pct ? parseFloat(data.vacation_pay_pct) : 0,
+        cell_phone_allowance: data.cell_phone_allowance ? parseFloat(data.cell_phone_allowance) : 0,
+        health_allowance: data.health_allowance ? parseFloat(data.health_allowance) : 0,
       };
       return await employeesService.update(id, employeeData);
     },
@@ -174,6 +192,12 @@ export default function Employees() {
       mileage_reimb_rate: '0.90',
       truck_reimb_rate: '1.00',
       per_diem_reimb_rate: '1.00',
+      employment_type: 'Employee',
+      sick_pay_pct: '0',
+      stat_holiday_pay_pct: '0',
+      vacation_pay_pct: '0',
+      cell_phone_allowance: '0',
+      health_allowance: '0',
     });
   };
 
@@ -194,6 +218,12 @@ export default function Employees() {
       mileage_reimb_rate: employee.mileage_reimb_rate?.toString() || '0.90',
       truck_reimb_rate: employee.truck_reimb_rate?.toString() || '1.00',
       per_diem_reimb_rate: employee.per_diem_reimb_rate?.toString() || '1.00',
+      employment_type: employee.employment_type || 'Employee',
+      sick_pay_pct: employee.sick_pay_pct?.toString() || '0',
+      stat_holiday_pay_pct: employee.stat_holiday_pay_pct?.toString() || '0',
+      vacation_pay_pct: employee.vacation_pay_pct?.toString() || '0',
+      cell_phone_allowance: employee.cell_phone_allowance?.toString() || '0',
+      health_allowance: employee.health_allowance?.toString() || '0',
     });
     setShowForm(true);
   };
@@ -325,6 +355,31 @@ export default function Employees() {
                 </select>
               </div>
             </div>
+
+            {isAdmin && (
+              <>
+                <h4 style={{ marginTop: '20px', marginBottom: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+                  Employment Type
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', maxWidth: '300px' }}>
+                  <div className="form-group">
+                    <select
+                      className="input"
+                      value={formData.employment_type}
+                      onChange={(e) => setFormData({ ...formData, employment_type: e.target.value })}
+                    >
+                      <option value="Employee">Employee</option>
+                      <option value="Contractor">Contractor</option>
+                    </select>
+                  </div>
+                </div>
+                {formData.employment_type === 'Contractor' && (
+                  <div style={{ marginTop: '6px', padding: '8px 12px', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#f59e0b' }}>
+                    Contractors are invoiced with 5% GST. They do not receive employee benefits or contribute to EI/CPP.
+                  </div>
+                )}
+              </>
+            )}
 
             {formData.department !== 'Panel Shop' && (
               <>
@@ -493,6 +548,90 @@ export default function Employees() {
               </div>
               <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
                 Percentage of billed rate reimbursed to the employee. Mileage default 90%, Truck &amp; Per Diem default 100%.
+              </div>
+            </div>
+            )}
+
+            {isAdmin && formData.employment_type === 'Employee' && (
+            <div style={{ marginTop: '20px' }}>
+              <h4 style={{ marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Payroll Benefits (% of Hours)
+              </h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+                These percentages are applied to all payroll hours (base pay) and added to compensation. Does not apply to reimbursements.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Sick Pay (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.sick_pay_pct}
+                    onChange={(e) => setFormData({ ...formData, sick_pay_pct: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Stat Holiday Pay (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.stat_holiday_pay_pct}
+                    onChange={(e) => setFormData({ ...formData, stat_holiday_pay_pct: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Vacation Pay (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.vacation_pay_pct}
+                    onChange={(e) => setFormData({ ...formData, vacation_pay_pct: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <h4 style={{ marginTop: '20px', marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Flat Allowances (Per Paycheque)
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Cell Phone ($)</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', marginTop: '-0.5em', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1em', fontSize: '14px' }}>$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="input"
+                      style={{ paddingLeft: '28px' }}
+                      value={formData.cell_phone_allowance}
+                      onChange={(e) => setFormData({ ...formData, cell_phone_allowance: e.target.value })}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Health Allowance ($)</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', marginTop: '-0.5em', color: 'var(--text-secondary)', zIndex: 1, pointerEvents: 'none', lineHeight: '1em', fontSize: '14px' }}>$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="input"
+                      style={{ paddingLeft: '28px' }}
+                      value={formData.health_allowance}
+                      onChange={(e) => setFormData({ ...formData, health_allowance: e.target.value })}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
             )}

@@ -47,6 +47,13 @@ export interface EmployeeWithRates {
   field_pay_rate?: number;
   shop_ot_pay_rate?: number;
   field_ot_pay_rate?: number;
+  // Employment type & benefits
+  employment_type?: string;
+  sick_pay_pct?: number;
+  stat_holiday_pay_pct?: number;
+  vacation_pay_pct?: number;
+  cell_phone_allowance?: number;
+  health_allowance?: number;
   user?: {
     id: string;
     first_name?: string;

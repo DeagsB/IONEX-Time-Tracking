@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -450,6 +450,9 @@ export default function Payroll() {
   // State for the reimbursement breakdown modal
   const [reimbursementModalUserId, setReimbursementModalUserId] = useState<string | null>(null);
 
+  // State for expandable payroll breakdown rows
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+
   interface ReimbursementLine {
     category: string;
     description: string;
@@ -554,6 +557,96 @@ export default function Payroll() {
     reimbursementsByUser.forEach((v) => { total += v.total; });
     return total;
   }, [reimbursementsByUser]);
+
+  // --- Payroll Breakdown (base pay, benefits, GST, allowances, total payout) ---
+  interface PayrollBreakdown {
+    basePay: number;
+    sickPay: number;
+    statHolidayPay: number;
+    vacationPay: number;
+    cellPhoneAllowance: number;
+    healthAllowance: number;
+    benefitsTotal: number;
+    gst: number;
+    reimbursements: number;
+    grossPay: number;
+    totalPayout: number;
+    isContractor: boolean;
+    sickPct: number;
+    statPct: number;
+    vacationPct: number;
+  }
+
+  const payrollBreakdownByUser = useMemo(() => {
+    const map = new Map<string, PayrollBreakdown>();
+    if (!allEmployees) return map;
+
+    const empByUserId = new Map<string, any>();
+    for (const e of allEmployees as any[]) {
+      if (e.user_id) empByUserId.set(e.user_id, e);
+    }
+
+    for (const emp of employeeHours) {
+      const employee = empByUserId.get(emp.userId);
+      const shopRate = Number(employee?.shop_pay_rate) || 0;
+      const shopOtRate = Number(employee?.shop_ot_pay_rate) || shopRate * 1.5;
+      const fieldRate = Number(employee?.field_pay_rate) || shopRate;
+      const fieldOtRate = Number(employee?.field_ot_pay_rate) || fieldRate * 1.5;
+      const isPanelShop = employee?.department === 'Panel Shop';
+      const ftRate = isPanelShop ? (fieldRate || shopRate) : fieldRate;
+      const foRate = isPanelShop ? (fieldOtRate || shopOtRate) : fieldOtRate;
+
+      const basePay =
+        emp.internalHours * shopRate +
+        emp.shopTime * shopRate +
+        emp.shopOvertime * shopOtRate +
+        emp.travelTime * shopRate +
+        emp.fieldTime * ftRate +
+        emp.fieldOvertime * foRate;
+
+      const isContractor = (employee?.employment_type || 'Employee') === 'Contractor';
+      const sickPct = Number(employee?.sick_pay_pct) || 0;
+      const statPct = Number(employee?.stat_holiday_pay_pct) || 0;
+      const vacationPct = Number(employee?.vacation_pay_pct) || 0;
+
+      let sickPay = 0, statHolidayPay = 0, vacationPay = 0, cellPhone = 0, health = 0, gst = 0;
+
+      if (isContractor) {
+        gst = basePay * 0.05;
+      } else {
+        sickPay = basePay * (sickPct / 100);
+        statHolidayPay = basePay * (statPct / 100);
+        vacationPay = basePay * (vacationPct / 100);
+        cellPhone = Number(employee?.cell_phone_allowance) || 0;
+        health = Number(employee?.health_allowance) || 0;
+      }
+
+      const benefitsTotal = sickPay + statHolidayPay + vacationPay + cellPhone + health;
+      const grossPay = basePay + benefitsTotal + gst;
+      const reimb = reimbursementsByUser.get(emp.userId)?.total || 0;
+      const totalPayout = grossPay + reimb;
+
+      map.set(emp.userId, {
+        basePay,
+        sickPay,
+        statHolidayPay,
+        vacationPay,
+        cellPhoneAllowance: cellPhone,
+        healthAllowance: health,
+        benefitsTotal,
+        gst,
+        reimbursements: reimb,
+        grossPay,
+        totalPayout,
+        isContractor,
+        sickPct,
+        statPct,
+        vacationPct,
+      });
+    }
+
+    return map;
+  }, [allEmployees, employeeHours, reimbursementsByUser]);
 
   // Which preset (if any) matches the current date range — used to highlight the active button
   const activePreset = useMemo(() => {
@@ -819,23 +912,46 @@ export default function Payroll() {
                 </tr>
               </thead>
               <tbody>
-                {employeeHours.map((emp) => (
-                  <tr key={emp.userId} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td
-                      style={{
-                        padding: '14px 16px',
-                        cursor: isAdmin ? 'pointer' : 'default',
-                      }}
-                      onClick={() => {
-                        if (!isAdmin) return;
-                        navigate(`/calendar?viewUserId=${emp.userId}`);
-                      }}
-                      title={isAdmin ? `View ${emp.name}'s calendar and time entries` : undefined}
-                    >
-                      <div style={{ fontWeight: '500', color: isAdmin ? 'var(--link-color, #2563eb)' : 'var(--text-primary)' }}>
-                        {emp.name}
+                {employeeHours.map((emp) => {
+                  const isExpanded = expandedUsers.has(emp.userId);
+                  const breakdown = payrollBreakdownByUser.get(emp.userId);
+                  return (
+                  <React.Fragment key={emp.userId}>
+                  <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--border-color)' }}>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isAdmin && (
+                          <span
+                            onClick={() => {
+                              const next = new Set(expandedUsers);
+                              if (next.has(emp.userId)) next.delete(emp.userId); else next.add(emp.userId);
+                              setExpandedUsers(next);
+                            }}
+                            style={{
+                              cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)',
+                              transition: 'transform 0.15s', display: 'inline-block',
+                              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                              userSelect: 'none', flexShrink: 0, width: '14px', textAlign: 'center',
+                            }}
+                            title="Toggle payroll breakdown"
+                          >&#9654;</span>
+                        )}
+                        <div
+                          style={{ cursor: isAdmin ? 'pointer' : 'default' }}
+                          onClick={() => { if (isAdmin) navigate(`/calendar?viewUserId=${emp.userId}`); }}
+                          title={isAdmin ? `View ${emp.name}'s calendar and time entries` : undefined}
+                        >
+                          <div style={{ fontWeight: '500', color: isAdmin ? 'var(--link-color, #2563eb)' : 'var(--text-primary)' }}>
+                            {emp.name}
+                            {breakdown?.isContractor && (
+                              <span style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', backgroundColor: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontWeight: '600', verticalAlign: 'middle' }}>
+                                Contractor
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{emp.email}</div>
+                        </div>
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{emp.email}</div>
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.internalHours > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
                       {emp.internalHours.toFixed(2)}
@@ -878,7 +994,77 @@ export default function Payroll() {
                       {emp.totalHours.toFixed(2)}
                     </td>
                   </tr>
-                ))}
+                  {isExpanded && isAdmin && breakdown && (
+                    <tr>
+                      <td colSpan={9} style={{ padding: '0 16px 16px 42px', backgroundColor: 'var(--bg-secondary)' }}>
+                        <div style={{ padding: '14px 16px', borderRadius: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
+                          <div style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)', marginBottom: '10px' }}>
+                            Payroll Breakdown — {emp.name}
+                            {breakdown.isContractor && <span style={{ fontSize: '11px', marginLeft: '8px', color: '#f59e0b' }}>(Contractor)</span>}
+                          </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                            <tbody>
+                              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Base Pay (Hours)</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>${breakdown.basePay.toFixed(2)}</td>
+                              </tr>
+                              {!breakdown.isContractor && (
+                                <>
+                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Sick Pay ({breakdown.sickPct}%)</td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.sickPay.toFixed(2)}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Stat Holiday Pay ({breakdown.statPct}%)</td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.statHolidayPay.toFixed(2)}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Vacation Pay ({breakdown.vacationPct}%)</td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.vacationPay.toFixed(2)}</td>
+                                  </tr>
+                                  {breakdown.cellPhoneAllowance > 0 && (
+                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Cell Phone Allowance</td>
+                                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.cellPhoneAllowance.toFixed(2)}</td>
+                                    </tr>
+                                  )}
+                                  {breakdown.healthAllowance > 0 && (
+                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Health Allowance</td>
+                                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.healthAllowance.toFixed(2)}</td>
+                                    </tr>
+                                  )}
+                                </>
+                              )}
+                              {breakdown.isContractor && (
+                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                  <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>GST (5%)</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.gst.toFixed(2)}</td>
+                                </tr>
+                              )}
+                              <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                                <td style={{ padding: '6px 8px', fontWeight: '600', color: 'var(--text-primary)' }}>Gross Pay</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>${breakdown.grossPay.toFixed(2)}</td>
+                              </tr>
+                              {breakdown.reimbursements > 0 && (
+                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                  <td style={{ padding: '6px 8px', color: '#00897b' }}>Reimbursements</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#00897b' }}>${breakdown.reimbursements.toFixed(2)}</td>
+                                </tr>
+                              )}
+                              <tr style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                                <td style={{ padding: '8px', fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>Total Payout</td>
+                                <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>${breakdown.totalPayout.toFixed(2)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  );
+                })}
                 {/* Totals Row */}
                 <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
                   <td style={{ padding: '14px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>
