@@ -52,6 +52,11 @@ export default function Expenses() {
   const [adminStatusFilter, setAdminStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'paid' | 'all'>('pending');
   const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
 
+  // Edit receipt
+  const [editingExpense, setEditingExpense] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ description: '', amount: '', gst: '', is_billable: false, expense_date: '', notes: '' });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ['userExpenses'],
     queryFn: () => userExpensesService.getAll(),
@@ -94,6 +99,43 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
     },
   });
+
+  const handleStartEdit = (exp: any) => {
+    setEditingExpense(exp);
+    setEditForm({
+      description: exp.description || '',
+      amount: String(parseFloat(exp.amount)),
+      gst: String(parseFloat(exp.gst || 0)),
+      is_billable: exp.is_billable || false,
+      expense_date: exp.expense_date || '',
+      notes: exp.notes || '',
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingExpense) return;
+    if (!editForm.description.trim()) { alert('Description is required'); return; }
+    if (!editForm.amount || parseFloat(editForm.amount) <= 0) { alert('Amount must be greater than 0'); return; }
+    setIsSavingEdit(true);
+    try {
+      await userExpensesService.updateAndSyncTicket(editingExpense.id, {
+        description: editForm.description.trim(),
+        amount: parseFloat(editForm.amount),
+        gst: parseFloat(editForm.gst) || 0,
+        is_billable: editForm.is_billable,
+        expense_date: editForm.expense_date,
+        notes: editForm.notes.trim(),
+      });
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+      setEditingExpense(null);
+    } catch (err: any) {
+      alert('Failed to save: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   // Fetch service ticket expenses that need reimbursement (admin only)
   const { data: ticketReimbExpenses = [] } = useQuery({
@@ -477,7 +519,13 @@ export default function Expenses() {
                       ) : '-'
                     )}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button
+                      onClick={() => handleStartEdit(exp)}
+                      style={{ color: 'var(--primary-color)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', marginRight: '8px' }}
+                    >
+                      Edit
+                    </button>
                     <button
                       onClick={() => { if (confirm('Delete this expense?')) deleteExpenseMutation.mutate(exp.id); }}
                       style={{ color: '#ef5350', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' }}
@@ -725,6 +773,63 @@ export default function Expenses() {
             ) : (
               <img src={viewingReceiptUrl} alt="Receipt" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px' }} />
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Expense Modal */}
+      {editingExpense && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setEditingExpense(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px',
+            maxWidth: '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Edit Expense</h3>
+              <button onClick={() => setEditingExpense(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
+            </div>
+            {editingExpense.service_ticket_id && (
+              <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3' }}>
+                Applied to ticket {editingExpense.service_tickets?.ticket_number || editingExpense.service_ticket_id}. Changes will sync to the service ticket.
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Description</label>
+                <input type="text" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} style={inputStyle} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
+                  <input type="number" step="0.01" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
+                  <input type="number" step="0.01" min="0" value={editForm.gst} onChange={(e) => setEditForm({ ...editForm, gst: e.target.value })} style={inputStyle} />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Date</label>
+                <input type="date" value={editForm.expense_date} onChange={(e) => setEditForm({ ...editForm, expense_date: e.target.value })} style={inputStyle} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input type="checkbox" id="edit-billable" checked={editForm.is_billable} onChange={(e) => setEditForm({ ...editForm, is_billable: e.target.checked })} />
+                <label htmlFor="edit-billable" style={{ fontSize: '13px', cursor: 'pointer' }}>Billable</label>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Notes</label>
+                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
+              <button onClick={() => setEditingExpense(null)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handleSaveEdit} disabled={isSavingEdit} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: '600', cursor: isSavingEdit ? 'not-allowed' : 'pointer', opacity: isSavingEdit ? 0.7 : 1 }}>
+                {isSavingEdit ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </div>
       )}

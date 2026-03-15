@@ -277,6 +277,38 @@ export default function ServiceTickets() {
   const receiptDropRef = useRef<HTMLDivElement>(null);
   const receiptFileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleStartReceiptEdit = (receipt: any) => {
+    setEditingReceipt(receipt);
+    setEditReceiptForm({
+      description: receipt.description || '',
+      amount: String(parseFloat(receipt.amount)),
+      gst: String(parseFloat(receipt.gst || 0)),
+    });
+  };
+
+  const handleSaveReceiptEdit = async () => {
+    if (!editingReceipt) return;
+    if (!editReceiptForm.description.trim()) { alert('Description is required'); return; }
+    if (!editReceiptForm.amount || parseFloat(editReceiptForm.amount) <= 0) { alert('Amount must be greater than 0'); return; }
+    setIsSavingReceipt(true);
+    try {
+      await userExpensesService.updateAndSyncTicket(editingReceipt.id, {
+        description: editReceiptForm.description.trim(),
+        amount: parseFloat(editReceiptForm.amount),
+        gst: parseFloat(editReceiptForm.gst) || 0,
+      });
+      queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+      if (currentTicketRecordId) loadExpenses(currentTicketRecordId);
+      setEditingReceipt(null);
+    } catch (err: any) {
+      alert('Failed to save: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSavingReceipt(false);
+    }
+  };
+
   const OPENED_NEW_IDS_KEY = 'ionex_serviceTickets_openedNewIds';
   const [openedNewTicketIds, setOpenedNewTicketIds] = useState<Set<string>>(() => {
     try {
@@ -2060,6 +2092,18 @@ export default function ServiceTickets() {
     queryFn: () => userExpensesService.getUnappliedBillable(),
     enabled: !!selectedTicketId,
   });
+
+  // Receipts attached to the currently open ticket
+  const { data: attachedReceipts = [] } = useQuery({
+    queryKey: ['attachedReceipts', currentTicketRecordId],
+    queryFn: () => userExpensesService.getByServiceTicketId(currentTicketRecordId!),
+    enabled: !!currentTicketRecordId,
+  });
+
+  // Editing an attached receipt from the service ticket
+  const [editingReceipt, setEditingReceipt] = useState<any>(null);
+  const [editReceiptForm, setEditReceiptForm] = useState({ description: '', amount: '', gst: '' });
+  const [isSavingReceipt, setIsSavingReceipt] = useState(false);
 
   // Live expense total for the selected ticket (panel open: includes unsaved adds, excludes pending deletes)
   const liveExpenseTotalForSelected = useMemo(() => {
@@ -5170,6 +5214,30 @@ export default function ServiceTickets() {
                           </div>
                         </div>
                       )}
+
+                          {/* Attached Receipts List */}
+                          {attachedReceipts.length > 0 && (
+                            <div style={{ marginTop: '12px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '6px' }}>Attached Receipts</div>
+                              {attachedReceipts.map((r: any) => (
+                                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', marginBottom: '4px', fontSize: '13px' }}>
+                                  <div>
+                                    <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{r.description}</span>
+                                    <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>${parseFloat(r.amount).toFixed(2)}</span>
+                                    {parseFloat(r.gst || 0) > 0 && <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px', fontSize: '11px' }}>GST: ${parseFloat(r.gst).toFixed(2)}</span>}
+                                  </div>
+                                  {!isLockedForEditing && (
+                                    <button
+                                      onClick={() => handleStartReceiptEdit(r)}
+                                      style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                    >
+                                      Edit
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                     </div>
 
                   {/* Notes for the approver (bottom of modal, internal use only) */}
@@ -6561,6 +6629,49 @@ export default function ServiceTickets() {
                   {isCreatingTicket ? 'Creating...' : 'Create Service Ticket'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Receipt Modal */}
+      {editingReceipt && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10010, backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setEditingReceipt(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px',
+            maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Edit Receipt</h3>
+              <button onClick={() => setEditingReceipt(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
+            </div>
+            <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3' }}>
+              Changes will sync to this service ticket's expense line and the Expenses page.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Description</label>
+                <input type="text" value={editReceiptForm.description} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, description: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
+                  <input type="number" step="0.01" min="0" value={editReceiptForm.amount} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, amount: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
+                  <input type="number" step="0.01" min="0" value={editReceiptForm.gst} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, gst: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
+              <button onClick={() => setEditingReceipt(null)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handleSaveReceiptEdit} disabled={isSavingReceipt} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: '600', cursor: isSavingReceipt ? 'not-allowed' : 'pointer', opacity: isSavingReceipt ? 0.7 : 1 }}>
+                {isSavingReceipt ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>

@@ -2240,8 +2240,51 @@ export const userExpensesService = {
     return data;
   },
 
+  async updateAndSyncTicket(id: string, updates: Partial<{
+    amount: number;
+    description: string;
+    expense_date: string;
+    notes: string;
+    gst: number;
+    is_billable: boolean;
+  }>) {
+    const { data: existing } = await supabase
+      .from('user_expenses')
+      .select('service_ticket_id, markup_amount, amount, description')
+      .eq('id', id)
+      .single();
+
+    const { data, error } = await supabase
+      .from('user_expenses')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+
+    if (existing?.service_ticket_id) {
+      const newAmount = updates.amount ?? existing.amount;
+      const markupAmount = Number(existing.markup_amount) || 0;
+      const newDescription = updates.description ?? existing.description;
+      const totalWithMarkup = Number(newAmount) + markupAmount;
+
+      const { data: linkedExpenses } = await supabase
+        .from('service_ticket_expenses')
+        .select('id')
+        .eq('service_ticket_id', existing.service_ticket_id)
+        .ilike('description', existing.description);
+
+      if (linkedExpenses && linkedExpenses.length > 0) {
+        await supabase
+          .from('service_ticket_expenses')
+          .update({ description: newDescription, rate: totalWithMarkup })
+          .eq('id', linkedExpenses[0].id);
+      }
+    }
+    return data;
+  },
+
   async delete(id: string) {
-    // If there's a receipt_url, we might want to delete it from storage too
     const { data: expense } = await supabase.from('user_expenses').select('receipt_url').eq('id', id).single();
     
     if (expense?.receipt_url) {
