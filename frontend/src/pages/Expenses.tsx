@@ -283,27 +283,16 @@ export default function Expenses() {
             overflow: 'auto',
           }}>
             {receiptFile && receiptFile.type === 'application/pdf' ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                <div style={{ fontSize: '48px', marginBottom: '8px' }}>&#128196;</div>
-                <div style={{ fontSize: '14px', fontWeight: '500' }}>{receiptFile.name}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>PDF receipt — preview not available</div>
-              </div>
+              <iframe
+                src={receiptPreviewUrl!}
+                title="PDF receipt preview"
+                style={{ width: '100%', height: '100%', minHeight: '380px', border: 'none', borderRadius: '4px' }}
+              />
             ) : (
               <img
-                src={receiptPreviewUrl}
+                src={receiptPreviewUrl!}
                 alt="Receipt preview"
                 style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '4px' }}
-                onError={(e) => {
-                  console.error('Receipt image failed to load. src:', receiptPreviewUrl?.substring(0, 100));
-                  (e.target as HTMLImageElement).style.display = 'none';
-                  const parent = (e.target as HTMLImageElement).parentElement;
-                  if (parent) {
-                    const msg = document.createElement('div');
-                    msg.textContent = 'Could not preview this file. It will still be uploaded.';
-                    msg.style.cssText = 'color: var(--text-tertiary); font-size: 14px; text-align: center;';
-                    parent.appendChild(msg);
-                  }
-                }}
               />
             )}
           </div>

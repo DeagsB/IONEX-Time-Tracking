@@ -5203,7 +5203,11 @@ export default function ServiceTickets() {
                   }}>
                     {/* Left: Receipt preview */}
                     <div style={{ flex: 1, backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', padding: '16px', minHeight: '400px' }}>
-                      <img src={receiptPreviewUrl} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '4px' }} />
+                      {receiptFile?.type === 'application/pdf' ? (
+                        <iframe src={receiptPreviewUrl!} title="PDF receipt preview" style={{ width: '100%', height: '100%', minHeight: '380px', border: 'none', borderRadius: '4px' }} />
+                      ) : (
+                        <img src={receiptPreviewUrl!} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '4px' }} />
+                      )}
                     </div>
                     {/* Right: Inputs */}
                     <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
