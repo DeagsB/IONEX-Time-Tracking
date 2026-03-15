@@ -1,7 +1,27 @@
 import React from 'react';
 
 // ─── What's New (summary) ─────────────────────────────────────────────────────
-const WHATS_NEW_SUMMARY = `**v1.1.0** – PO/AFE/CC split into separate fields; service ticket handling updated; trash workflow improvements; right-click delete on calendar; auto-save on submit; UI polish. **v1.0.0** – Trash (formerly Discard), New badge, status tabs, approve/reject, and service ticket enhancements.`;
+const WHATS_NEW_SUMMARY = `**v1.2.0** – Payroll: Employee vs Contractor, benefits & allowances, expandable pay breakdown; expense ticket picker details; summary cards simplified; Return to Payroll from calendar; Expenses tab for all users. **v1.1.0** – PO/AFE/CC split; trash workflow; right-click delete; UI polish. **v1.0.0** – Trash, New badge, approve/reject, service ticket enhancements.`;
+
+// ─── v1.2.0 ───────────────────────────────────────────────────────────────────
+const V120_ADDED = [
+  '**Expense ticket picker – See Details** – In the "Select a Service Ticket" modal, a **Details** button on each ticket expands a panel showing that ticket\'s time entries (type, hours, description) and expenses (type, description, amount) so you can confirm which ticket to apply an expense to.',
+  '**Employee vs Contractor** – On the employee edit page (admin), **Employment Type** can be set to **Employee** or **Contractor**. Contractors do not receive benefit percentages or flat allowances; their pay includes 5% GST for invoicing. Employees receive sick pay, stat holiday pay, vacation pay (as % of hours) and optional Cell Phone and Health allowances (flat per paycheque).',
+  '**Payroll benefits and allowances** – Employee edit (admin) now includes: **Sick Pay (%)**, **Stat Holiday Pay (%)**, **Vacation Pay (%)**, **Cell Phone ($)**, **Health Allowance ($)**. These apply only to employees; percentages are applied to base pay from hours; flat allowances are added once per pay period.',
+  '**Payroll expandable breakdown** – On the Payroll page, each employee row has a chevron (►). Click it to expand a **Payroll Breakdown** showing base pay, benefit lines, GST (contractors), reimbursements, and **Total Payout**. Contractors are labeled with an orange **Contractor** badge.',
+  '**Return to Payroll** – When an admin opens an employee\'s calendar from the Payroll page (by clicking the employee name), the orange banner button now says **Return to Payroll** and navigates back to the Payroll page instead of "View My Calendar".',
+  '**Expenses tab for everyone** – The **Expenses** sidebar link is now visible to all authenticated users and admins (no longer restricted to specific users).',
+];
+
+const V120_CHANGED = [
+  '**Expense ticket picker** – Grey italic "Draft" text removed from draft tickets. Ticket number is only shown when present so the customer/project title aligns with the location line below. Card title is left-justified.',
+  '**Payroll summary cards** – The top summary now shows only **Total Cost** and **Reimbursements**. Internal Time, Shop Time, Shop OT, Travel Time, Field Time, and Field OT cards were removed; that breakdown remains in Employee Reports and in each row\'s expandable pay details.',
+  '**Payroll row chevron** – The expand/collapse arrow next to each employee name highlights (darker) on hover.',
+];
+
+const V120_FIXED = [
+  '**Expense ticket picker** – Corrected JSX closing parentheses so the ternary and map expressions parse correctly (fixes TS1005 build error).',
+];
 
 // ─── v1.1.0 ───────────────────────────────────────────────────────────────────
 const V110_ADDED = [
@@ -183,6 +203,14 @@ export default function Changelog() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <VersionBlock version="v1.2.0" date="February 2026">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <Section title="Added">{renderList(V120_ADDED)}</Section>
+            <Section title="Changed">{renderList(V120_CHANGED)}</Section>
+            <Section title="Fixed">{renderList(V120_FIXED)}</Section>
+          </div>
+        </VersionBlock>
+
         <VersionBlock version="v1.1.0" date="February 2026">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <Section title="Added">{renderList(V110_ADDED)}</Section>

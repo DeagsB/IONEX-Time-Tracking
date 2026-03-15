@@ -52,6 +52,9 @@ export const useAuth = () => {
 export const canAccessInvoices = (user: { email?: string; role?: string } | null) =>
   user?.role === 'ADMIN' || user?.role === 'DEVELOPER';
 
+/** Expenses page: all authenticated users and admins can access */
+export const canAccessExpenses = (_user: { id?: string } | null) => true;
+
 // Development mode - bypass authentication
 const DEV_MODE = false; // Set to false for production
 const DEV_USER_ID = '235d854a-1b7d-4e00-a5a4-43835c85c086'; // Existing user from database

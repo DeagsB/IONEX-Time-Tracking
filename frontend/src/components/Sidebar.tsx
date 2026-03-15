@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth, canAccessInvoices } from '../context/AuthContext';
+import { useAuth, canAccessInvoices, canAccessExpenses } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { useTheme } from '../context/ThemeContext';
 import { serviceTicketsService, projectsService } from '../services/supabaseServices';
@@ -141,9 +141,11 @@ export default function Sidebar() {
                 )}
               </span>
             </SidebarLink>
-            <SidebarLink to="/expenses" active={isActive('/expenses')}>
-              Expenses
-            </SidebarLink>
+            {canAccessExpenses(user) && (
+              <SidebarLink to="/expenses" active={isActive('/expenses')}>
+                Expenses
+              </SidebarLink>
+            )}
           </div>
         )}
 
@@ -236,9 +238,11 @@ export default function Sidebar() {
                 )}
               </span>
             </SidebarLink>
-            <SidebarLink to="/expenses" active={isActive('/expenses')}>
-              Expenses
-            </SidebarLink>
+            {canAccessExpenses(user) && (
+              <SidebarLink to="/expenses" active={isActive('/expenses')}>
+                Expenses
+              </SidebarLink>
+            )}
             <SidebarLink to="/employees" active={isActive('/employees')}>
               Employees
             </SidebarLink>
