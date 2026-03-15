@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import WhatsNewModal from './WhatsNewModal';
 import { useTimer } from '../context/TimerContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,6 +20,7 @@ export default function Layout() {
       aria-label={`IONEX Time Tracking${isAdmin ? ' (Admin)' : ' (User)'}`}
       style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: 'var(--bg-secondary)' }}
     >
+      <WhatsNewModal />
       <Sidebar />
       <div style={{
         marginLeft: '240px',
