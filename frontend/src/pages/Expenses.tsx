@@ -26,7 +26,7 @@ const initialReceiptForm: ReceiptFormState = {
 
 export default function Expenses() {
   const queryClient = useQueryClient();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
 
   // Receipt drag-and-drop + split view state
@@ -63,14 +63,20 @@ export default function Expenses() {
   });
 
   const { data: allTicketRecords = [] } = useQuery({
-    queryKey: ['ticketsForExpensePicker', isDemoMode],
+    queryKey: ['ticketsForExpensePicker', isDemoMode, isAdmin, user?.id],
     queryFn: async () => {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-      const { data, error } = await supabase
+      let query = supabase
         .from(tableName)
         .select('id, ticket_number, date, location, workflow_status, user_id')
         .order('date', { ascending: false })
         .limit(200);
+
+      if (!isAdmin && user?.id) {
+        query = query.eq('user_id', user.id);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
@@ -83,7 +89,17 @@ export default function Expenses() {
     return !['qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'].includes(status);
   });
 
-  const filteredPickerTickets = uninvoicedTickets.filter((t: any) => {
+  // Admin: own tickets first, then others. Non-admin: already filtered to own.
+  const sortedUninvoiced = isAdmin && user?.id
+    ? [...uninvoicedTickets].sort((a: any, b: any) => {
+        const aOwn = a.user_id === user.id ? 0 : 1;
+        const bOwn = b.user_id === user.id ? 0 : 1;
+        if (aOwn !== bOwn) return aOwn - bOwn;
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      })
+    : uninvoicedTickets;
+
+  const filteredPickerTickets = sortedUninvoiced.filter((t: any) => {
     if (!ticketSearchQuery.trim()) return true;
     const q = ticketSearchQuery.toLowerCase();
     return (
@@ -463,18 +479,24 @@ export default function Expenses() {
                 <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Billable</th>
                 <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Status</th>
                 <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Ticket</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Actions</th>
+                <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', width: '50px' }}></th>
               </tr>
             </thead>
             <tbody>
               {expenses.map((exp: any) => (
-                <tr key={exp.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <td style={{ padding: '12px 16px', fontSize: '14px' }}>{new Date(exp.expense_date).toLocaleDateString()}</td>
+                <tr
+                  key={exp.id}
+                  onClick={() => handleStartEdit(exp)}
+                  style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer', transition: 'background-color 0.15s' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-secondary)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = ''; }}
+                >
+                  <td style={{ padding: '12px 16px', fontSize: '14px' }}>{new Date(exp.expense_date + 'T12:00:00').toLocaleDateString()}</td>
                   <td style={{ padding: '12px 16px', fontSize: '14px' }}>
                     <div style={{ fontWeight: '500' }}>{exp.description}</div>
                     {exp.receipt_url && (
                       <button
-                        onClick={() => handleViewReceipt(exp)}
+                        onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
                         style={{ fontSize: '12px', color: 'var(--primary-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '2px' }}
                       >
                         {loadingReceiptId === exp.id ? 'Loading...' : 'View Receipt'}
@@ -511,7 +533,7 @@ export default function Expenses() {
                     {exp.service_tickets?.ticket_number || (
                       exp.is_billable && !exp.service_ticket_id ? (
                         <button
-                          onClick={() => { setApplyExpenseId(exp.id); setShowTicketPickerModal(true); setTicketSearchQuery(''); }}
+                          onClick={(e) => { e.stopPropagation(); setApplyExpenseId(exp.id); setShowTicketPickerModal(true); setTicketSearchQuery(''); }}
                           style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                         >
                           Apply to Ticket
@@ -519,18 +541,13 @@ export default function Expenses() {
                       ) : '-'
                     )}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <button
-                      onClick={() => handleStartEdit(exp)}
-                      style={{ color: 'var(--primary-color)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', marginRight: '8px' }}
+                      onClick={(e) => { e.stopPropagation(); if (confirm('Delete this expense?')) deleteExpenseMutation.mutate(exp.id); }}
+                      title="Delete"
+                      style={{ color: '#ef5350', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', padding: '4px', lineHeight: 1 }}
                     >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => { if (confirm('Delete this expense?')) deleteExpenseMutation.mutate(exp.id); }}
-                      style={{ color: '#ef5350', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' }}
-                    >
-                      Delete
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
                     </button>
                   </td>
                 </tr>
@@ -603,7 +620,7 @@ export default function Expenses() {
                         {exp._employeeName || '-'}
                         {source === 'ticket' && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Ticket Expense</div>}
                       </td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px' }}>{exp._date ? new Date(exp._date).toLocaleDateString() : '-'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: '13px' }}>{exp._date ? new Date(exp._date + 'T12:00:00').toLocaleDateString() : '-'}</td>
                       <td style={{ padding: '10px 14px', fontSize: '13px' }}>
                         <div style={{ fontWeight: '500' }}>{exp.description}</div>
                         {source === 'receipt' && exp.receipt_url && (
