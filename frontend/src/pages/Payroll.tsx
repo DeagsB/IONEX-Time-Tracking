@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
@@ -100,6 +100,22 @@ const getCurrentPayPeriod = (): { start: string; end: string } => {
   } catch {
     return FALLBACK_PERIOD;
   }
+};
+
+/** Return the end date (YYYY-MM-DD) of the 14-day pay period that contains the given date. */
+const getPeriodEndForDate = (dateStr: string): string => {
+  const referenceStart = new Date(2026, 0, 19);
+  const periodLengthDays = 14;
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const d = new Date(dateStr + 'T12:00:00');
+  const daysSinceRef = Math.floor((d.getTime() - referenceStart.getTime()) / msPerDay);
+  const periodIndex = daysSinceRef >= 0 ? Math.floor(daysSinceRef / periodLengthDays) : Math.ceil(daysSinceRef / periodLengthDays) - 1;
+  const periodEnd = new Date(referenceStart.getTime() + (periodIndex + 1) * periodLengthDays * msPerDay);
+  periodEnd.setDate(periodEnd.getDate() - 1);
+  const y = periodEnd.getFullYear();
+  const m = String(periodEnd.getMonth() + 1).padStart(2, '0');
+  const day = String(periodEnd.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 };
 
 // Payday is Friday, 5 days after period end. For selected range, show its payday when it's a 14-day period.
@@ -447,6 +463,53 @@ export default function Payroll() {
     },
   });
 
+  const todayStr = useMemo(() => {
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    return t.toISOString().split('T')[0];
+  }, []);
+
+  const isCurrentPeriod = endDate >= todayStr;
+
+  const { data: catchUpReceiptsRaw = [] } = useQuery({
+    queryKey: ['payrollCatchUpReceipts', startDate],
+    queryFn: () => userExpensesService.getCatchUpReceipts(startDate),
+    enabled: isCurrentPeriod,
+  });
+
+  const catchUpReceipts = useMemo(() => {
+    if (!isCurrentPeriod) return [];
+    const periodEnd = endDate + 'T23:59:59.999Z';
+    return (catchUpReceiptsRaw as any[]).filter((r) => {
+      const periodEndForExpense = getPeriodEndForDate(r.expense_date);
+      const cutoff = periodEndForExpense + 'T23:59:59.999Z';
+      return r.approved_at && r.approved_at > cutoff;
+    });
+  }, [isCurrentPeriod, endDate, catchUpReceiptsRaw]);
+
+  const receiptExpensesForReimbursements = useMemo(
+    () => (receiptExpenses as any[]).concat(catchUpReceipts),
+    [receiptExpenses, catchUpReceipts]
+  );
+
+  const queryClient = useQueryClient();
+  const markPaidMutation = useMutation({
+    mutationFn: async () => {
+      await userExpensesService.markPaidForPeriod(startDate, endDate);
+      await serviceTicketExpensesService.markReimbursementPaidForPeriod(startDate, endDate);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payrollReceiptExpenses', startDate, endDate] });
+      queryClient.invalidateQueries({ queryKey: ['payrollTicketExpenses', startDate, endDate] });
+    },
+  });
+
+  useEffect(() => {
+    if (!isCurrentPeriod && startDate && endDate) {
+      markPaidMutation.mutate();
+    }
+  }, [startDate, endDate, isCurrentPeriod]);
+
   // State for the reimbursement breakdown modal
   const [reimbursementModalUserId, setReimbursementModalUserId] = useState<string | null>(null);
 
@@ -531,8 +594,8 @@ export default function Payroll() {
       });
     }
 
-    // Process receipt expenses (pre-markup cost = amount field directly)
-    for (const exp of receiptExpenses as any[]) {
+    // Process receipt expenses (pre-markup cost = amount field directly); includes catch-up for current period
+    for (const exp of receiptExpensesForReimbursements as any[]) {
       const userId = exp.user_id;
       if (!userId) continue;
 
@@ -550,7 +613,7 @@ export default function Payroll() {
     }
 
     return map;
-  }, [ticketExpenses, receiptExpenses, allEmployees]);
+  }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees]);
 
   const grandTotalReimbursements = useMemo(() => {
     let total = 0;

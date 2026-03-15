@@ -1987,15 +1987,52 @@ export const serviceTicketExpensesService = {
   },
 
   async updateReimbursementStatus(id: string, status: 'pending' | 'approved' | 'rejected' | 'paid') {
+    const updatePayload: Record<string, unknown> = { reimbursement_status: status };
+    if (status === 'approved') {
+      updatePayload.reimbursement_approved_at = new Date().toISOString();
+    }
     const { data, error } = await supabase
       .from('service_ticket_expenses')
-      .update({ reimbursement_status: status })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * Mark approved ticket reimbursement expenses (needs_reimbursement) as paid when the ticket's period has passed
+   * and they were approved before/during the period. Skips re-approved after period end.
+   */
+  async markReimbursementPaidForPeriod(startDate: string, endDate: string): Promise<{ count: number }> {
+    const endOfDay = endDate + 'T23:59:59.999Z';
+    const { data: rows, error: selectError } = await supabase
+      .from('service_ticket_expenses')
+      .select(`
+        id,
+        reimbursement_approved_at,
+        service_tickets!inner ( date )
+      `)
+      .eq('needs_reimbursement', true)
+      .eq('reimbursement_status', 'approved');
+
+    if (selectError) throw selectError;
+    const toMark = (rows || []).filter((r: any) => {
+      const ticketDate = r.service_tickets?.date;
+      if (!ticketDate || ticketDate < startDate || ticketDate > endDate) return false;
+      const approvedAt = r.reimbursement_approved_at;
+      return approvedAt == null || approvedAt <= endOfDay;
+    });
+    if (toMark.length === 0) return { count: 0 };
+    const ids = toMark.map((r: any) => r.id);
+    const { error: updateError } = await supabase
+      .from('service_ticket_expenses')
+      .update({ reimbursement_status: 'paid' })
+      .in('id', ids);
+    if (updateError) throw updateError;
+    return { count: ids.length };
   },
 
   async create(expense: {
@@ -2229,15 +2266,61 @@ export const userExpensesService = {
     markup_amount: number;
     status: 'pending' | 'approved' | 'rejected' | 'paid';
   }>) {
+    const payload = { ...updates };
+    if (updates.status === 'approved') {
+      (payload as any).approved_at = new Date().toISOString();
+    }
     const { data, error } = await supabase
       .from('user_expenses')
-      .update(updates)
+      .update(payload)
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * Mark approved receipt expenses as paid when their period has passed and they were approved before/during the period.
+   * Skips expenses that were re-approved after the period end (approved_at > endDate).
+   */
+  async markPaidForPeriod(startDate: string, endDate: string): Promise<{ count: number }> {
+    const endOfDay = endDate + 'T23:59:59.999Z';
+    const { data: rows, error: selectError } = await supabase
+      .from('user_expenses')
+      .select('id, approved_at')
+      .gte('expense_date', startDate)
+      .lte('expense_date', endDate)
+      .eq('status', 'approved');
+
+    if (selectError) throw selectError;
+    const toMark = (rows || []).filter(
+      (r: any) => r.approved_at == null || r.approved_at <= endOfDay
+    );
+    if (toMark.length === 0) return { count: 0 };
+    const ids = toMark.map((r: any) => r.id);
+    const { error: updateError } = await supabase
+      .from('user_expenses')
+      .update({ status: 'paid' })
+      .in('id', ids);
+    if (updateError) throw updateError;
+    return { count: ids.length };
+  },
+
+  /**
+   * Fetch approved (unpaid) receipt expenses with expense_date before the given date.
+   * Used to find catch-up expenses for the current pay period (re-approved after their period ended).
+   */
+  async getCatchUpReceipts(expenseDateBefore: string) {
+    const { data, error } = await supabase
+      .from('user_expenses')
+      .select('*')
+      .eq('status', 'approved')
+      .lt('expense_date', expenseDateBefore)
+      .order('expense_date', { ascending: false });
+    if (error) throw error;
+    return data || [];
   },
 
   async updateAndSyncTicket(id: string, updates: Partial<{
