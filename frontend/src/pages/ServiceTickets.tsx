@@ -5225,10 +5225,6 @@ export default function ServiceTickets() {
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
                         <input type="number" step="0.01" value={receiptForm.gst} onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input type="checkbox" id="receipt-billable" checked={receiptForm.is_billable} onChange={(e) => setReceiptForm({ ...receiptForm, is_billable: e.target.checked })} />
-                        <label htmlFor="receipt-billable" style={{ fontSize: '14px', color: 'var(--text-primary)', cursor: 'pointer' }}>Billable</label>
-                      </div>
                       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
                         <button onClick={() => { setShowReceiptModal(false); if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl); setReceiptPreviewUrl(null); setReceiptFile(null); }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
                         <button
@@ -5250,11 +5246,11 @@ export default function ServiceTickets() {
                                 expense_date: new Date().toISOString().split('T')[0],
                                 receipt_url: storagePath,
                                 gst: parseFloat(receiptForm.gst) || 0,
-                                is_billable: receiptForm.is_billable,
+                                is_billable: true,
                                 service_ticket_id: currentTicketRecordId || undefined,
                               });
                               // If billable AND attached to this ticket, also add to the billable expenses list on the ticket
-                              if (receiptForm.is_billable && currentTicketRecordId) {
+                              if (currentTicketRecordId) {
                                 const amt = parseFloat(receiptForm.amount);
                                 setPendingAddExpenses((prev) => [
                                   ...prev,
