@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService } from '../services/supabaseServices';
+import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService, userExpensesService } from '../services/supabaseServices';
+import { optimizeImage } from '../utils/imageOptimizer';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, getTicketBillingKey, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
 import { Link } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
@@ -264,6 +265,16 @@ export default function ServiceTickets() {
   const [customTicketIdError, setCustomTicketIdError] = useState('');
   const [pendingChangesVersion, setPendingChangesVersion] = useState(0);
 
+  // Receipt drag-and-drop split view state
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptForm, setReceiptForm] = useState({ description: '', amount: '', gst: '', is_billable: false });
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
+  const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
+  const receiptDropRef = useRef<HTMLDivElement>(null);
+  const receiptFileInputRef = useRef<HTMLInputElement>(null);
+
   const OPENED_NEW_IDS_KEY = 'ionex_serviceTickets_openedNewIds';
   const [openedNewTicketIds, setOpenedNewTicketIds] = useState<Set<string>>(() => {
     try {
@@ -392,6 +403,7 @@ export default function ServiceTickets() {
           .from(tableName)
           .update({
             location: newLocation,
+            approver_notes: editableTicket.approverNotes?.trim() || null,
             header_overrides: {
               customer_name: editableTicket.customerName ?? '',
               address: editableTicket.address ?? '',
@@ -2036,6 +2048,13 @@ export default function ServiceTickets() {
     queryKey: ['serviceTicketExpenseTotals', [...ticketRecordIdsForExpenseTotals].sort().join(',')],
     queryFn: () => serviceTicketExpensesService.getExpenseTotalsByTicketIds(ticketRecordIdsForExpenseTotals),
     enabled: ticketRecordIdsForExpenseTotals.length > 0,
+  });
+
+  // Unapplied billable receipts (for suggestion list in expense section)
+  const { data: unappliedBillableReceipts = [] } = useQuery({
+    queryKey: ['unappliedBillableReceipts'],
+    queryFn: () => userExpensesService.getUnappliedBillable(),
+    enabled: !!selectedTicketId,
   });
 
   // Live expense total for the selected ticket (panel open: includes unsaved adds, excludes pending deletes)
@@ -4699,34 +4718,6 @@ export default function ServiceTickets() {
                           </div>
                         )}
                       </div>
-              <div style={{ marginTop: '24px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-secondary)' }}>Internal Receipts</label>
-                  {!isLockedForEditing && (
-                    <div style={{ marginLeft: '12px', flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }} />
-                  )}
-                </div>
-                <div
-                  style={{
-                    width: '100%',
-                    padding: '20px',
-                    borderRadius: '6px',
-                    border: '1px dashed var(--border-color)',
-                    backgroundColor: 'var(--bg-tertiary)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-tertiary)',
-                    fontSize: '14px',
-                    textAlign: 'center',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => alert('Add expenses and receipts on the new Expenses page.')}
-                >
-                  Drag and drop receipt images here, or click to upload
-                </div>
-              </div>
-
             </div>
 
             {/* Expenses Section */}
@@ -4760,6 +4751,55 @@ export default function ServiceTickets() {
                         )}
                       </div>
                       
+                      {/* Suggested billable receipts from Expenses page */}
+                      {!isLockedForEditing && unappliedBillableReceipts.length > 0 && (
+                        <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.06)', border: '1px solid rgba(33, 150, 243, 0.2)', borderRadius: '6px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(33, 150, 243, 0.8)', marginBottom: '8px' }}>Suggested Billable Receipts</div>
+                          {unappliedBillableReceipts.map((r: any) => (
+                            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(33, 150, 243, 0.1)' }}>
+                              <div>
+                                <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '500' }}>{r.description}</span>
+                                <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--text-tertiary)' }}>${parseFloat(r.amount).toFixed(2)}</span>
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  const markupStr = prompt('Enter markup (e.g. 10 for $10, 10% for percentage, or 0 for none):') || '0';
+                                  let markup = 0;
+                                  const expAmt = parseFloat(r.amount);
+                                  if (markupStr.includes('%')) {
+                                    const pct = parseFloat(markupStr.replace('%', ''));
+                                    markup = (expAmt * pct) / 100;
+                                  } else {
+                                    markup = parseFloat(markupStr) || 0;
+                                  }
+                                  const totalWithMarkup = expAmt + markup;
+                                  try {
+                                    await userExpensesService.update(r.id, { service_ticket_id: currentTicketRecordId, markup_amount: markup });
+                                    setPendingAddExpenses((prev) => [
+                                      ...prev,
+                                      {
+                                        expense_type: 'Expenses' as const,
+                                        description: r.description,
+                                        quantity: 1,
+                                        rate: totalWithMarkup,
+                                        unit: '',
+                                        tempId: `receipt-${r.id}`,
+                                      },
+                                    ]);
+                                    queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+                                  } catch (err: any) {
+                                    alert('Failed to apply receipt: ' + (err.message || 'Unknown error'));
+                                  }
+                                }}
+                                style={{ padding: '4px 10px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                              >
+                                + Add to Ticket
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length === 0 && pendingAddExpenses.length === 0 && !editingExpense && (
                         <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
                           No expenses added yet.
@@ -5055,10 +5095,200 @@ export default function ServiceTickets() {
                           </span>
                         </div>
                       )}
+
+                      {/* Internal Receipts Drag & Drop */}
+                      {!isLockedForEditing && (
+                        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                          <h4 style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '8px' }}>Internal Receipts</h4>
+                          <input
+                            type="file"
+                            accept="image/*,.pdf"
+                            ref={receiptFileInputRef}
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setReceiptFile(file);
+                              setReceiptForm({ description: '', amount: '', gst: '', is_billable: false });
+                              setReceiptUploadError(null);
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                setReceiptPreviewUrl(ev.target?.result as string);
+                                setShowReceiptModal(true);
+                              };
+                              reader.readAsDataURL(file);
+                              e.target.value = '';
+                            }}
+                          />
+                          <div
+                            ref={receiptDropRef}
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
+                            onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+                            onDrop={(e) => {
+                              e.preventDefault(); e.stopPropagation();
+                              e.currentTarget.style.borderColor = 'var(--border-color)';
+                              const file = e.dataTransfer.files?.[0];
+                              if (!file) return;
+                              setReceiptFile(file);
+                              setReceiptForm({ description: '', amount: '', gst: '', is_billable: false });
+                              setReceiptUploadError(null);
+                              const reader = new FileReader();
+                              reader.onload = (ev) => {
+                                setReceiptPreviewUrl(ev.target?.result as string);
+                                setShowReceiptModal(true);
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                            onClick={() => receiptFileInputRef.current?.click()}
+                            style={{
+                              padding: '16px',
+                              borderRadius: '6px',
+                              border: '2px dashed var(--border-color)',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'var(--text-tertiary)',
+                              fontSize: '13px',
+                              textAlign: 'center',
+                              cursor: 'pointer',
+                              transition: 'border-color 0.2s',
+                            }}
+                          >
+                            Drop receipt image here, or click to upload
+                          </div>
+                        </div>
+                      )}
                     </div>
+
+                  {/* Notes for the approver (bottom of modal, internal use only) */}
+                  {editableTicket && (
+                    <div style={{ ...sectionStyle, marginTop: '20px' }}>
+                      <h3 style={sectionTitleStyle}>Notes for the Approver (Internal Use Only)</h3>
+                      {isLockedForEditing ? (
+                        <div style={{ padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '14px', color: 'var(--text-primary)', minHeight: '48px', whiteSpace: 'pre-wrap' }}>
+                          {editableTicket.approverNotes || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No notes provided.</span>}
+                        </div>
+                      ) : (
+                        <textarea
+                          value={editableTicket.approverNotes ?? ''}
+                          onChange={(e) => setEditableTicket({ ...editableTicket, approverNotes: e.target.value })}
+                          placeholder="Add any notes for the admin approving this ticket..."
+                          style={{
+                            width: '100%',
+                            minHeight: '80px',
+                            padding: '10px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'var(--bg-primary)',
+                            color: 'var(--text-primary)',
+                            fontSize: '14px',
+                            resize: 'vertical',
+                            fontFamily: 'inherit',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      )}
+                    </div>
+                  )}
+
                   </>
                 );
               })()}
+
+              {/* Receipt Split-View Modal */}
+              {showReceiptModal && receiptPreviewUrl && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 10002, backgroundColor: 'rgba(0,0,0,0.6)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }} onClick={() => setShowReceiptModal(false)}>
+                  <div onClick={(e) => e.stopPropagation()} style={{
+                    backgroundColor: 'var(--bg-primary)', borderRadius: '10px', width: '90%', maxWidth: '800px',
+                    maxHeight: '85vh', display: 'flex', flexDirection: 'row', overflow: 'hidden',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                  }}>
+                    {/* Left: Receipt preview */}
+                    <div style={{ flex: 1, backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', padding: '16px', minHeight: '400px' }}>
+                      <img src={receiptPreviewUrl} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '4px' }} />
+                    </div>
+                    {/* Right: Inputs */}
+                    <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>New Receipt Expense</h3>
+                      {receiptUploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{receiptUploadError}</div>}
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Name / Description</label>
+                        <input type="text" value={receiptForm.description} onChange={(e) => setReceiptForm({ ...receiptForm, description: e.target.value })} placeholder="e.g. Hotel, Fuel, Parts..." style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
+                        <input type="number" step="0.01" value={receiptForm.amount} onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
+                        <input type="number" step="0.01" value={receiptForm.gst} onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input type="checkbox" id="receipt-billable" checked={receiptForm.is_billable} onChange={(e) => setReceiptForm({ ...receiptForm, is_billable: e.target.checked })} />
+                        <label htmlFor="receipt-billable" style={{ fontSize: '14px', color: 'var(--text-primary)', cursor: 'pointer' }}>Billable</label>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
+                        <button onClick={() => { setShowReceiptModal(false); setReceiptPreviewUrl(null); setReceiptFile(null); }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
+                        <button
+                          disabled={isUploadingReceipt}
+                          onClick={async () => {
+                            if (!receiptForm.description.trim()) { setReceiptUploadError('Name is required'); return; }
+                            if (!receiptForm.amount || parseFloat(receiptForm.amount) <= 0) { setReceiptUploadError('Amount is required'); return; }
+                            setIsUploadingReceipt(true);
+                            setReceiptUploadError(null);
+                            try {
+                              let storagePath: string | undefined;
+                              if (receiptFile) {
+                                const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
+                                storagePath = await userExpensesService.uploadReceipt(optimized);
+                              }
+                              await userExpensesService.create({
+                                description: receiptForm.description.trim(),
+                                amount: parseFloat(receiptForm.amount),
+                                expense_date: new Date().toISOString().split('T')[0],
+                                receipt_url: storagePath,
+                                gst: parseFloat(receiptForm.gst) || 0,
+                                is_billable: receiptForm.is_billable,
+                                service_ticket_id: currentTicketRecordId || undefined,
+                              });
+                              // If billable AND attached to this ticket, also add to the billable expenses list on the ticket
+                              if (receiptForm.is_billable && currentTicketRecordId) {
+                                const amt = parseFloat(receiptForm.amount);
+                                setPendingAddExpenses((prev) => [
+                                  ...prev,
+                                  {
+                                    expense_type: 'Expenses' as const,
+                                    description: receiptForm.description.trim(),
+                                    quantity: 1,
+                                    rate: amt,
+                                    unit: '',
+                                    tempId: `receipt-${Date.now()}`,
+                                  },
+                                ]);
+                              }
+                              queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+                              setShowReceiptModal(false);
+                              setReceiptPreviewUrl(null);
+                              setReceiptFile(null);
+                            } catch (err: any) {
+                              setReceiptUploadError(err.message || 'Failed to save receipt');
+                            } finally {
+                              setIsUploadingReceipt(false);
+                            }
+                          }}
+                          style={{ flex: 1, padding: '10px', backgroundColor: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '6px', cursor: isUploadingReceipt ? 'not-allowed' : 'pointer', fontSize: '14px', fontWeight: '600', opacity: isUploadingReceipt ? 0.7 : 1 }}
+                        >
+                          {isUploadingReceipt ? 'Saving...' : 'Save Receipt'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Workflow Status Section - only visible to admins, hidden when ticket is trashed */}
               {isAdmin && (() => {

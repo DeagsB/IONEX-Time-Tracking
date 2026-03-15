@@ -2120,6 +2120,22 @@ export const userExpensesService = {
     return data;
   },
 
+  async getUnappliedBillable() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase
+      .from('user_expenses')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_billable', true)
+      .is('service_ticket_id', null)
+      .order('expense_date', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
   async create(expense: {
     amount: number;
     description: string;
@@ -2127,6 +2143,9 @@ export const userExpensesService = {
     service_ticket_id?: string;
     receipt_url?: string;
     notes?: string;
+    gst?: number;
+    is_billable?: boolean;
+    markup_amount?: number;
     status?: 'pending' | 'approved' | 'rejected' | 'paid';
   }) {
     // Note: user_id will be handled by RLS via auth.uid() if we don't supply it. 
@@ -2152,6 +2171,9 @@ export const userExpensesService = {
     service_ticket_id: string | null;
     receipt_url: string;
     notes: string;
+    gst: number;
+    is_billable: boolean;
+    markup_amount: number;
     status: 'pending' | 'approved' | 'rejected' | 'paid';
   }>) {
     const { data, error } = await supabase
@@ -2195,7 +2217,7 @@ export const userExpensesService = {
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const storagePath = `${user.id}/${timestamp}_${safeName}`;
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(RECEIPTS_BUCKET)
       .upload(storagePath, file, { 
         cacheControl: '3600',
@@ -2204,12 +2226,17 @@ export const userExpensesService = {
 
     if (error) throw error;
 
-    // Get public URL
-    const { data: publicUrlData } = supabase.storage
-      .from(RECEIPTS_BUCKET)
-      .getPublicUrl(storagePath);
+    // Return the storage path so we can generate signed URLs on demand
+    return storagePath;
+  },
 
-    return publicUrlData.publicUrl;
+  async getReceiptSignedUrl(storagePath: string): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from(RECEIPTS_BUCKET)
+      .createSignedUrl(storagePath, 3600);
+
+    if (error) throw error;
+    return data.signedUrl;
   }
 };
 
