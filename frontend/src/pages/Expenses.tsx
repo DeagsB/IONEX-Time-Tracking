@@ -43,8 +43,9 @@ export default function Expenses() {
   const [showTicketPickerModal, setShowTicketPickerModal] = useState(false);
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
 
-  // Viewing receipt image
+  // Viewing receipt
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
+  const [viewingReceiptIsPdf, setViewingReceiptIsPdf] = useState(false);
   const [loadingReceiptId, setLoadingReceiptId] = useState<string | null>(null);
 
   const { data: expenses = [], isLoading } = useQuery({
@@ -176,11 +177,12 @@ export default function Expenses() {
   const handleViewReceipt = async (expense: any) => {
     if (!expense.receipt_url) return;
     setLoadingReceiptId(expense.id);
+    const isPdf = (expense.receipt_url || '').toLowerCase().endsWith('.pdf');
+    setViewingReceiptIsPdf(isPdf);
     try {
       const signedUrl = await userExpensesService.getReceiptSignedUrl(expense.receipt_url);
       setViewingReceiptUrl(signedUrl);
     } catch {
-      // Fallback: try using as a direct URL (legacy data)
       setViewingReceiptUrl(expense.receipt_url);
     } finally {
       setLoadingReceiptId(null);
@@ -509,14 +511,18 @@ export default function Expenses() {
           position: 'fixed', inset: 0, zIndex: 10004, backgroundColor: 'rgba(0,0,0,0.8)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }} onClick={() => setViewingReceiptUrl(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', width: viewingReceiptIsPdf ? '80vw' : 'auto', height: viewingReceiptIsPdf ? '90vh' : 'auto', maxWidth: '90vw', maxHeight: '90vh' }}>
             <button
               onClick={() => setViewingReceiptUrl(null)}
-              style={{ position: 'absolute', top: -12, right: -12, width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#333', color: 'white', border: 'none', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              style={{ position: 'absolute', top: -12, right: -12, zIndex: 1, width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#333', color: 'white', border: 'none', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               &times;
             </button>
-            <img src={viewingReceiptUrl} alt="Receipt" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px' }} />
+            {viewingReceiptIsPdf ? (
+              <iframe src={viewingReceiptUrl} title="Receipt PDF" style={{ width: '100%', height: '100%', border: 'none', borderRadius: '8px', backgroundColor: 'white' }} />
+            ) : (
+              <img src={viewingReceiptUrl} alt="Receipt" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px' }} />
+            )}
           </div>
         </div>
       )}
