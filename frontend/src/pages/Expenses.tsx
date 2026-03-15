@@ -48,6 +48,10 @@ export default function Expenses() {
   const [viewingReceiptIsPdf, setViewingReceiptIsPdf] = useState(false);
   const [loadingReceiptId, setLoadingReceiptId] = useState<string | null>(null);
 
+  // Admin approval
+  const [adminStatusFilter, setAdminStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'paid' | 'all'>('pending');
+  const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
+
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ['userExpenses'],
     queryFn: () => userExpensesService.getAll(),
@@ -89,6 +93,23 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
     },
+  });
+
+  const handleAdminStatusChange = async (expenseId: string, newStatus: 'approved' | 'rejected' | 'paid') => {
+    setUpdatingExpenseId(expenseId);
+    try {
+      await userExpensesService.update(expenseId, { status: newStatus });
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+    } catch (err: any) {
+      alert('Failed to update status: ' + (err.message || 'Unknown error'));
+    } finally {
+      setUpdatingExpenseId(null);
+    }
+  };
+
+  const adminFilteredExpenses = expenses.filter((exp: any) => {
+    if (adminStatusFilter === 'all') return true;
+    return exp.status === adminStatusFilter;
   });
 
   const handleFileDrop = (file: File) => {
@@ -440,6 +461,147 @@ export default function Expenses() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Admin: Expense Approval Section */}
+      {isAdmin && (
+        <div style={{ marginTop: '40px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px' }}>
+            Expense Approvals
+          </h2>
+
+          {/* Status filter tabs */}
+          <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+            {(['pending', 'approved', 'rejected', 'paid', 'all'] as const).map((status) => (
+              <button
+                key={status}
+                onClick={() => setAdminStatusFilter(status)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: adminStatusFilter === status ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
+                  backgroundColor: adminStatusFilter === status ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
+                  color: adminStatusFilter === status ? 'var(--primary-color)' : 'var(--text-secondary)',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  textTransform: 'capitalize',
+                }}
+              >
+                {status}{status !== 'all' ? ` (${expenses.filter((e: any) => e.status === status).length})` : ` (${expenses.length})`}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Date</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Description</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Amount</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>GST</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Billable</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Status</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Ticket</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adminFilteredExpenses.map((exp: any) => {
+                  const employeeName = exp.users
+                    ? `${exp.users.first_name || ''} ${exp.users.last_name || ''}`.trim() || exp.users.email
+                    : 'Unknown';
+                  const isUpdating = updatingExpenseId === exp.id;
+                  return (
+                    <tr key={exp.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '500' }}>{employeeName}</td>
+                      <td style={{ padding: '10px 14px', fontSize: '13px' }}>{new Date(exp.expense_date).toLocaleDateString()}</td>
+                      <td style={{ padding: '10px 14px', fontSize: '13px' }}>
+                        <div style={{ fontWeight: '500' }}>{exp.description}</div>
+                        {exp.receipt_url && (
+                          <button
+                            onClick={() => handleViewReceipt(exp)}
+                            style={{ fontSize: '11px', color: 'var(--primary-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '2px' }}
+                          >
+                            {loadingReceiptId === exp.id ? 'Loading...' : 'View Receipt'}
+                          </button>
+                        )}
+                        {exp.notes && <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Note: {exp.notes}</div>}
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '500', fontSize: '13px' }}>${parseFloat(exp.amount).toFixed(2)}</td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: '13px', color: 'var(--text-tertiary)' }}>${parseFloat(exp.gst || 0).toFixed(2)}</td>
+                      <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '12px' }}>
+                        {exp.is_billable ? <span style={{ color: '#2196F3', fontWeight: '600' }}>Yes</span> : <span style={{ color: 'var(--text-tertiary)' }}>No</span>}
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600',
+                          backgroundColor: exp.status === 'approved' ? 'rgba(16, 185, 129, 0.1)' : exp.status === 'rejected' ? 'rgba(239, 68, 68, 0.1)' : exp.status === 'paid' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                          color: exp.status === 'approved' ? '#10b981' : exp.status === 'rejected' ? '#ef4444' : exp.status === 'paid' ? '#3b82f6' : '#f59e0b',
+                        }}>
+                          {exp.status.charAt(0).toUpperCase() + exp.status.slice(1)}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '12px' }}>
+                        {exp.service_tickets?.ticket_number || '-'}
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {exp.status === 'pending' && (
+                          <>
+                            <button
+                              disabled={isUpdating}
+                              onClick={() => handleAdminStatusChange(exp.id, 'approved')}
+                              style={{ padding: '3px 8px', marginRight: '4px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              disabled={isUpdating}
+                              onClick={() => handleAdminStatusChange(exp.id, 'rejected')}
+                              style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {exp.status === 'approved' && (
+                          <button
+                            disabled={isUpdating}
+                            onClick={() => handleAdminStatusChange(exp.id, 'paid')}
+                            style={{ padding: '3px 8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
+                          >
+                            Mark Paid
+                          </button>
+                        )}
+                        {exp.status === 'rejected' && (
+                          <button
+                            disabled={isUpdating}
+                            onClick={() => handleAdminStatusChange(exp.id, 'approved')}
+                            style={{ padding: '3px 8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
+                          >
+                            Re-approve
+                          </button>
+                        )}
+                        {exp.status === 'paid' && (
+                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Done</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {adminFilteredExpenses.length === 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
+                      No {adminStatusFilter === 'all' ? '' : adminStatusFilter} expenses found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

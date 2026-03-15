@@ -2101,6 +2101,11 @@ export const userExpensesService = {
         *,
         service_tickets (
           ticket_number
+        ),
+        users (
+          first_name,
+          last_name,
+          email
         )
       `)
       .order('expense_date', { ascending: false });
