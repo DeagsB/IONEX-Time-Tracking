@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
-import { employeesService } from '../services/supabaseServices';
+import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
 
 interface TimeEntry {
   id: string;
@@ -427,6 +427,134 @@ export default function Payroll() {
     return { totalCost, internalCost, shopTimeCost, shopOvertimeCost, travelTimeCost, fieldTimeCost, fieldOvertimeCost };
   }, [isAdmin, allEmployees, employeeHours]);
 
+  // --- Reimbursement Data ---
+  const { data: ticketExpenses = [] } = useQuery({
+    queryKey: ['payrollTicketExpenses', startDate, endDate],
+    queryFn: () => serviceTicketExpensesService.getReimbursableByDateRange(startDate, endDate),
+  });
+
+  const { data: receiptExpenses = [] } = useQuery({
+    queryKey: ['payrollReceiptExpenses', startDate, endDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_expenses')
+        .select('*')
+        .gte('expense_date', startDate)
+        .lte('expense_date', endDate)
+        .in('status', ['approved', 'paid']);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // State for the reimbursement breakdown modal
+  const [reimbursementModalUserId, setReimbursementModalUserId] = useState<string | null>(null);
+
+  interface ReimbursementLine {
+    category: string;
+    description: string;
+    quantity: number;
+    rate: number;
+    reimbRate: number;
+    amount: number;
+    ticketNumber?: string;
+  }
+
+  interface EmployeeReimbursement {
+    userId: string;
+    total: number;
+    lines: ReimbursementLine[];
+  }
+
+  const reimbursementsByUser = useMemo(() => {
+    const empByUserId = new Map<string, any>();
+    if (allEmployees) {
+      for (const e of allEmployees as any[]) {
+        if (e.user_id) empByUserId.set(e.user_id, e);
+      }
+    }
+
+    const map = new Map<string, EmployeeReimbursement>();
+    const getOrCreate = (userId: string): EmployeeReimbursement => {
+      if (!map.has(userId)) {
+        map.set(userId, { userId, total: 0, lines: [] });
+      }
+      return map.get(userId)!;
+    };
+
+    // Process service ticket expenses
+    for (const exp of ticketExpenses as any[]) {
+      const userId = exp.service_tickets?.user_id;
+      if (!userId) continue;
+
+      const employee = empByUserId.get(userId);
+      const qty = Number(exp.quantity) || 0;
+      const rate = Number(exp.rate) || 0;
+      const ticketNumber = exp.service_tickets?.ticket_number;
+
+      const expType = (exp.expense_type || '').toLowerCase();
+      const desc = (exp.description || '').toLowerCase();
+
+      let reimbRate = 0;
+      let category = '';
+
+      if (expType === 'travel' && desc.includes('mileage')) {
+        reimbRate = Number(employee?.mileage_reimb_rate) || 0.90;
+        category = 'Mileage';
+      } else if (expType === 'equipment' && desc.includes('truck')) {
+        reimbRate = Number(employee?.truck_reimb_rate) || 1.00;
+        category = 'Truck';
+      } else if (expType === 'subsistence' && desc.includes('per diem')) {
+        reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
+        category = 'Per Diem';
+      } else if (exp.needs_reimbursement && ['approved', 'paid'].includes(exp.reimbursement_status)) {
+        reimbRate = 1.00;
+        category = 'Other Expense';
+      } else {
+        continue;
+      }
+
+      const amount = qty * rate * reimbRate;
+      const entry = getOrCreate(userId);
+      entry.total += amount;
+      entry.lines.push({
+        category,
+        description: exp.description || '',
+        quantity: qty,
+        rate,
+        reimbRate,
+        amount,
+        ticketNumber,
+      });
+    }
+
+    // Process receipt expenses (pre-markup cost = amount field directly)
+    for (const exp of receiptExpenses as any[]) {
+      const userId = exp.user_id;
+      if (!userId) continue;
+
+      const amount = Number(exp.amount) || 0;
+      const entry = getOrCreate(userId);
+      entry.total += amount;
+      entry.lines.push({
+        category: 'Receipt',
+        description: exp.description || '',
+        quantity: 1,
+        rate: amount,
+        reimbRate: 1.00,
+        amount,
+      });
+    }
+
+    return map;
+  }, [ticketExpenses, receiptExpenses, allEmployees]);
+
+  const grandTotalReimbursements = useMemo(() => {
+    let total = 0;
+    reimbursementsByUser.forEach((v) => { total += v.total; });
+    return total;
+  }, [reimbursementsByUser]);
+
   // Which preset (if any) matches the current date range — used to highlight the active button
   const activePreset = useMemo(() => {
     for (const key of PRESET_KEYS) {
@@ -640,6 +768,12 @@ export default function Payroll() {
                 {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.fieldOvertimeCost.toFixed(2)}` : grandTotals.fieldOvertime.toFixed(2)}
               </div>
             </div>
+            <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Reimbursements</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', color: '#00897b' }}>
+                ${grandTotalReimbursements.toFixed(2)}
+              </div>
+            </div>
           </div>
 
           {/* Employee Hours Table */}
@@ -678,6 +812,9 @@ export default function Payroll() {
                   </th>
                   <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
                     Total
+                  </th>
+                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#00897b', textTransform: 'uppercase' }}>
+                    Reimburse
                   </th>
                 </tr>
               </thead>
@@ -721,6 +858,25 @@ export default function Payroll() {
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
                       {emp.totalHours.toFixed(2)}
                     </td>
+                    <td
+                      style={{
+                        padding: '14px 16px',
+                        textAlign: 'right',
+                        fontFamily: 'monospace',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        color: (reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? '#00897b' : 'var(--text-secondary)',
+                        cursor: (reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? 'pointer' : 'default',
+                        textDecoration: (reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? 'underline' : 'none',
+                      }}
+                      onClick={() => {
+                        const reimb = reimbursementsByUser.get(emp.userId);
+                        if (reimb && reimb.total > 0) setReimbursementModalUserId(emp.userId);
+                      }}
+                      title={(reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? 'Click for breakdown' : undefined}
+                    >
+                      ${(reimbursementsByUser.get(emp.userId)?.total || 0).toFixed(2)}
+                    </td>
                   </tr>
                 ))}
                 {/* Totals Row */}
@@ -749,12 +905,92 @@ export default function Payroll() {
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
                     {grandTotals.totalHours.toFixed(2)}
                   </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#00897b' }}>
+                    ${grandTotalReimbursements.toFixed(2)}
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </>
       )}
+
+      {/* Reimbursement Breakdown Modal */}
+      {reimbursementModalUserId && (() => {
+        const reimb = reimbursementsByUser.get(reimbursementModalUserId);
+        const empName = employeeHours.find(e => e.userId === reimbursementModalUserId)?.name || 'Employee';
+        if (!reimb) return null;
+
+        const grouped = new Map<string, { lines: ReimbursementLine[]; subtotal: number }>();
+        for (const line of reimb.lines) {
+          if (!grouped.has(line.category)) grouped.set(line.category, { lines: [], subtotal: 0 });
+          const g = grouped.get(line.category)!;
+          g.lines.push(line);
+          g.subtotal += line.amount;
+        }
+
+        return (
+          <div
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
+            onClick={() => setReimbursementModalUserId(null)}
+          >
+            <div
+              style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px', maxWidth: '700px', width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                  Reimbursement Breakdown — {empName}
+                </h3>
+                <button
+                  onClick={() => setReimbursementModalUserId(null)}
+                  style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)', padding: '4px' }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              {Array.from(grouped.entries()).map(([category, group]) => (
+                <div key={category} style={{ marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid var(--border-color)' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#00897b', textTransform: 'uppercase' }}>{category}</h4>
+                    <span style={{ fontSize: '14px', fontWeight: '700', color: '#00897b' }}>${group.subtotal.toFixed(2)}</span>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Description</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Qty</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Rate</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Reimb %</th>
+                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Amount</th>
+                        {category !== 'Receipt' && <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Ticket</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.lines.map((line, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>{line.description}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace' }}>{line.quantity}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace' }}>${line.rate.toFixed(2)}</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace' }}>{(line.reimbRate * 100).toFixed(0)}%</td>
+                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace', fontWeight: '600' }}>${line.amount.toFixed(2)}</td>
+                          {category !== 'Receipt' && <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '12px', color: 'var(--text-tertiary)' }}>{line.ticketNumber || '-'}</td>}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '2px solid var(--border-color)' }}>
+                <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>Total Reimbursement</span>
+                <span style={{ fontSize: '18px', fontWeight: '700', color: '#00897b' }}>${reimb.total.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

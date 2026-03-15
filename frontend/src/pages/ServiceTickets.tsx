@@ -153,6 +153,7 @@ export default function ServiceTickets() {
     quantity: number;
     rate: number;
     unit?: string;
+    needs_reimbursement?: boolean;
   } | null>(null);
   const [pendingDeleteExpenseIds, setPendingDeleteExpenseIds] = useState<Set<string>>(new Set());
   const [pendingAddExpenses, setPendingAddExpenses] = useState<Array<{
@@ -162,6 +163,7 @@ export default function ServiceTickets() {
     rate: number;
     unit?: string;
     tempId?: string;
+    needs_reimbursement?: boolean;
   }>>([]);
   
   // Editable ticket fields state
@@ -475,6 +477,8 @@ export default function ServiceTickets() {
             quantity: exp.quantity,
             rate: exp.rate,
             unit: exp.unit,
+            needs_reimbursement: exp.needs_reimbursement || false,
+            reimbursement_status: exp.needs_reimbursement ? 'pending' : undefined,
           });
         }
         setPendingAddExpenses([]);
@@ -4912,6 +4916,18 @@ export default function ServiceTickets() {
                               />
                             </div>
                           </div>
+                          {/* Needs Reimbursement checkbox — hidden for Mileage/Per Diem (auto-reimbursed) */}
+                          {editingExpense.expense_type !== 'Travel' && editingExpense.expense_type !== 'Subsistence' && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                              <input
+                                type="checkbox"
+                                id="needs-reimbursement"
+                                checked={editingExpense.needs_reimbursement || false}
+                                onChange={(e) => setEditingExpense({ ...editingExpense, needs_reimbursement: e.target.checked })}
+                              />
+                              <label htmlFor="needs-reimbursement" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>Needs Reimbursement</label>
+                            </div>
+                          )}
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                             <button
                               onClick={() => setEditingExpense(null)}
@@ -4958,6 +4974,7 @@ export default function ServiceTickets() {
                                         rate: Number(editingExpense.rate) || 0,
                                         unit: editingExpense.unit?.trim() || undefined,
                                         tempId: `pending-${Date.now()}-${prev.length}`,
+                                        needs_reimbursement: editingExpense.needs_reimbursement || false,
                                       },
                                     ]);
                                     setEditingExpense(null);

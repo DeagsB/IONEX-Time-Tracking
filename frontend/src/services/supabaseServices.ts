@@ -1954,6 +1954,50 @@ export const serviceTicketExpensesService = {
     return totals;
   },
 
+  async getReimbursableByDateRange(startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .select(`
+        *,
+        service_tickets!inner (
+          id, user_id, date, ticket_number
+        )
+      `)
+      .gte('service_tickets.date', startDate)
+      .lte('service_tickets.date', endDate);
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getNeedsReimbursement() {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .select(`
+        *,
+        service_tickets (
+          id, user_id, date, ticket_number
+        )
+      `)
+      .eq('needs_reimbursement', true)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async updateReimbursementStatus(id: string, status: 'pending' | 'approved' | 'rejected' | 'paid') {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .update({ reimbursement_status: status })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
   async create(expense: {
     service_ticket_id: string;
     expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
@@ -1961,6 +2005,8 @@ export const serviceTicketExpensesService = {
     quantity: number;
     rate: number;
     unit?: string;
+    needs_reimbursement?: boolean;
+    reimbursement_status?: string;
   }) {
     const { data, error } = await supabase
       .from('service_ticket_expenses')
@@ -1978,6 +2024,8 @@ export const serviceTicketExpensesService = {
     quantity?: number;
     rate?: number;
     unit?: string;
+    needs_reimbursement?: boolean;
+    reimbursement_status?: string;
   }) {
     const { data, error } = await supabase
       .from('service_ticket_expenses')

@@ -25,6 +25,10 @@ export default function Employees() {
     shop_pay_rate: '25.00',
     field_pay_rate: '30.00',
     // OT pay rates are calculated automatically (1.5x base pay rates)
+    // Reimbursement rates (multipliers, e.g. 0.90 = 90%)
+    mileage_reimb_rate: '0.90',
+    truck_reimb_rate: '1.00',
+    per_diem_reimb_rate: '1.00',
   });
 
   const { data: employees, isLoading, error } = useQuery({
@@ -71,6 +75,9 @@ export default function Employees() {
         field_pay_rate: fieldPayRate,
         shop_ot_pay_rate: shopOtPayRate,
         field_ot_pay_rate: fieldOtPayRate,
+        mileage_reimb_rate: data.mileage_reimb_rate ? parseFloat(data.mileage_reimb_rate) : 0.90,
+        truck_reimb_rate: data.truck_reimb_rate ? parseFloat(data.truck_reimb_rate) : 1.00,
+        per_diem_reimb_rate: data.per_diem_reimb_rate ? parseFloat(data.per_diem_reimb_rate) : 1.00,
       };
       return await employeesService.create(employeeData);
     },
@@ -117,6 +124,9 @@ export default function Employees() {
         field_pay_rate: fieldPayRate,
         shop_ot_pay_rate: shopOtPayRate,
         field_ot_pay_rate: fieldOtPayRate,
+        mileage_reimb_rate: data.mileage_reimb_rate ? parseFloat(data.mileage_reimb_rate) : 0.90,
+        truck_reimb_rate: data.truck_reimb_rate ? parseFloat(data.truck_reimb_rate) : 1.00,
+        per_diem_reimb_rate: data.per_diem_reimb_rate ? parseFloat(data.per_diem_reimb_rate) : 1.00,
       };
       return await employeesService.update(id, employeeData);
     },
@@ -161,6 +171,9 @@ export default function Employees() {
       internal_rate: '0.00',
       shop_pay_rate: '25.00',
       field_pay_rate: '30.00',
+      mileage_reimb_rate: '0.90',
+      truck_reimb_rate: '1.00',
+      per_diem_reimb_rate: '1.00',
     });
   };
 
@@ -178,6 +191,9 @@ export default function Employees() {
       internal_rate: employee.internal_rate?.toString() || '0.00',
       shop_pay_rate: employee.shop_pay_rate?.toString() || '25.00',
       field_pay_rate: employee.field_pay_rate?.toString() || '30.00',
+      mileage_reimb_rate: employee.mileage_reimb_rate?.toString() || '0.90',
+      truck_reimb_rate: employee.truck_reimb_rate?.toString() || '1.00',
+      per_diem_reimb_rate: employee.per_diem_reimb_rate?.toString() || '1.00',
     });
     setShowForm(true);
   };
@@ -437,6 +453,49 @@ export default function Employees() {
             <div style={{ marginTop: '10px', padding: '10px', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '0.9em', color: 'var(--text-secondary)' }}>
               <strong>Calculated OT Pay Rates:</strong> Shop OT = ${((parseFloat(formData.shop_pay_rate) || 25) * 1.5).toFixed(2)}, Field OT = ${((parseFloat(formData.field_pay_rate) || 30) * 1.5).toFixed(2)}
             </div>
+
+            {isAdmin && (
+            <div style={{ marginTop: '20px' }}>
+              <h4 style={{ marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Reimbursement Rates
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Mileage (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={(parseFloat(formData.mileage_reimb_rate) * 100).toFixed(0)}
+                    onChange={(e) => setFormData({ ...formData, mileage_reimb_rate: (parseFloat(e.target.value) / 100).toString() })}
+                    placeholder="90"
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Truck (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={(parseFloat(formData.truck_reimb_rate) * 100).toFixed(0)}
+                    onChange={(e) => setFormData({ ...formData, truck_reimb_rate: (parseFloat(e.target.value) / 100).toString() })}
+                    placeholder="100"
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label>Per Diem (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={(parseFloat(formData.per_diem_reimb_rate) * 100).toFixed(0)}
+                    onChange={(e) => setFormData({ ...formData, per_diem_reimb_rate: (parseFloat(e.target.value) / 100).toString() })}
+                    placeholder="100"
+                  />
+                </div>
+              </div>
+              <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                Percentage of billed rate reimbursed to the employee. Mileage default 90%, Truck &amp; Per Diem default 100%.
+              </div>
+            </div>
+            )}
 
             <button 
               type="submit" 
