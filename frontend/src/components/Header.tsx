@@ -6,6 +6,7 @@ import { projectsService, customersService, timeEntriesService } from '../servic
 import { useNavigate } from 'react-router-dom';
 import SearchableSelect, { SearchableSelectRef } from './SearchableSelect';
 import { getProjectHeaderFields } from '../utils/serviceTickets';
+import WhatsNewModal from './WhatsNewModal';
 
 interface HeaderProps {
   onTimerStart: (description: string, projectId?: string) => void;
@@ -30,6 +31,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
   const [cc, setCc] = useState('');
   const [other, setOther] = useState('');
   const [rateType, setRateType] = useState<string>('Shop Time');
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
   const projectSelectRef = useRef<SearchableSelectRef>(null);
 
   const { data: projects } = useQuery({
@@ -486,6 +488,36 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
               </button>
             </div>
           )}
+          <button
+            onClick={() => setShowWhatsNew(true)}
+            title="What's New"
+            style={{
+              background: 'none',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
+              e.currentTarget.style.color = 'var(--primary-color)';
+              e.currentTarget.style.borderColor = 'var(--primary-color)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.borderColor = 'var(--border-color)';
+            }}
+          >
+            <span style={{ fontSize: '14px' }}>&#9889;</span>
+            New
+          </button>
           <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
             {user?.firstName} {user?.lastName}
             {isDeveloper && (
@@ -599,6 +631,7 @@ export default function Header({ onTimerStart, onTimerStop, timerRunning, timerD
           )}
         </div>
       )}
+      <WhatsNewModal open={showWhatsNew} onClose={() => setShowWhatsNew(false)} />
     </div>
   );
 }

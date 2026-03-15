@@ -1,12 +1,4 @@
-import React, { useState, useEffect } from 'react';
-
-// ────────────────────────────────────────────────────────────────────────────
-// Bump this key every time you add a new "What's New" release.
-// The modal will re-appear for all users when this changes.
-// ────────────────────────────────────────────────────────────────────────────
-const WHATS_NEW_VERSION = '2026-02-21-v1.3.0';
-
-const STORAGE_KEY = 'ionex_whats_new_dismissed';
+import React from 'react';
 
 interface WhatsNewEntry {
   title: string;
@@ -35,22 +27,13 @@ function bold(text: string) {
   return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
-export default function WhatsNewModal() {
-  const [visible, setVisible] = useState(false);
+interface WhatsNewModalProps {
+  open: boolean;
+  onClose: () => void;
+}
 
-  useEffect(() => {
-    const dismissed = localStorage.getItem(STORAGE_KEY);
-    if (dismissed !== WHATS_NEW_VERSION) {
-      setVisible(true);
-    }
-  }, []);
-
-  const handleDismiss = () => {
-    localStorage.setItem(STORAGE_KEY, WHATS_NEW_VERSION);
-    setVisible(false);
-  };
-
-  if (!visible) return null;
+export default function WhatsNewModal({ open, onClose }: WhatsNewModalProps) {
+  if (!open) return null;
 
   return (
     <div
@@ -64,7 +47,7 @@ export default function WhatsNewModal() {
         justifyContent: 'center',
         animation: 'fadeIn 200ms ease',
       }}
-      onClick={handleDismiss}
+      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -97,7 +80,7 @@ export default function WhatsNewModal() {
               </h2>
             </div>
             <button
-              onClick={handleDismiss}
+              onClick={onClose}
               style={{
                 background: 'none',
                 border: 'none',
@@ -124,7 +107,6 @@ export default function WhatsNewModal() {
                   color: 'var(--primary-color)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.4px',
-                  marginBottom: '10px',
                   margin: '0 0 10px 0',
                 }}
               >
@@ -159,7 +141,7 @@ export default function WhatsNewModal() {
           }}
         >
           <button
-            onClick={handleDismiss}
+            onClick={onClose}
             style={{
               padding: '8px 22px',
               borderRadius: '8px',
