@@ -1077,8 +1077,25 @@ export default function Expenses() {
               <button onClick={() => setEditingExpense(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
             </div>
             {editingExpense.service_ticket_id && (
-              <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3' }}>
-                Applied to ticket {editingExpense.service_tickets?.ticket_number || editingExpense.service_ticket_id}. Changes will sync to the service ticket.
+              <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Applied to ticket {editingExpense.service_tickets?.ticket_number || editingExpense.service_ticket_id}. Changes will sync to the service ticket.</span>
+                <button
+                  onClick={async () => {
+                    if (!confirm('Remove this expense from the service ticket? The ticket expense line will be deleted.')) return;
+                    try {
+                      await userExpensesService.unapplyFromTicket(editingExpense.id);
+                      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+                      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+                      queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+                      setEditingExpense({ ...editingExpense, service_ticket_id: null, service_tickets: null, markup_amount: null });
+                    } catch (err: any) {
+                      alert('Failed to unapply: ' + (err.message || 'Unknown error'));
+                    }
+                  }}
+                  style={{ marginLeft: '8px', padding: '4px 10px', backgroundColor: 'rgba(244, 67, 54, 0.1)', color: '#f44336', border: '1px solid rgba(244, 67, 54, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  Unapply
+                </button>
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

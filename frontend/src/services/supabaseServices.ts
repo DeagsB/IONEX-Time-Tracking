@@ -2337,6 +2337,13 @@ export const userExpensesService = {
       .eq('id', id)
       .single();
 
+    // If billable was unchecked and expense is applied to a ticket, unapply first
+    if (updates.is_billable === false && existing?.service_ticket_id) {
+      await userExpensesService._removeLinkedTicketExpense(existing.service_ticket_id, existing.description);
+      (updates as any).service_ticket_id = null;
+      (updates as any).markup_amount = null;
+    }
+
     const { data, error } = await supabase
       .from('user_expenses')
       .update(updates)
@@ -2345,7 +2352,7 @@ export const userExpensesService = {
       .single();
     if (error) throw error;
 
-    if (existing?.service_ticket_id) {
+    if (existing?.service_ticket_id && updates.is_billable !== false) {
       const newAmount = updates.amount ?? existing.amount;
       const markupAmount = Number(existing.markup_amount) || 0;
       const newDescription = updates.description ?? existing.description;
@@ -2389,6 +2396,24 @@ export const userExpensesService = {
       .eq('id', id);
 
     if (error) throw error;
+  },
+
+  async unapplyFromTicket(id: string) {
+    const { data: expense, error: fetchErr } = await supabase
+      .from('user_expenses')
+      .select('service_ticket_id, description')
+      .eq('id', id)
+      .single();
+    if (fetchErr) throw fetchErr;
+    if (!expense?.service_ticket_id) return;
+
+    await userExpensesService._removeLinkedTicketExpense(expense.service_ticket_id, expense.description);
+
+    const { error: updateErr } = await supabase
+      .from('user_expenses')
+      .update({ service_ticket_id: null, markup_amount: null })
+      .eq('id', id);
+    if (updateErr) throw updateErr;
   },
 
   async _removeLinkedTicketExpense(serviceTicketId: string, description: string) {
