@@ -63,6 +63,9 @@ export default function Expenses() {
   const [editForm, setEditForm] = useState({ description: '', amount: '', gst: '', is_billable: false, expense_date: '', notes: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
+  // Ticket details popup (inside picker)
+  const [detailsTicketId, setDetailsTicketId] = useState<string | null>(null);
+
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ['userExpenses'],
     queryFn: () => userExpensesService.getAll(),
@@ -115,6 +118,34 @@ export default function Expenses() {
       (t.projects?.name || '').toLowerCase().includes(q) ||
       (t.projects?.project_number || '').toLowerCase().includes(q)
     );
+  });
+
+  const detailsTicket = allTicketRecords.find((t: any) => t.id === detailsTicketId) as any;
+
+  const { data: ticketDetails, isLoading: isLoadingDetails } = useQuery({
+    queryKey: ['ticketPickerDetails', detailsTicketId],
+    queryFn: async () => {
+      if (!detailsTicketId || !detailsTicket) return null;
+      const [timeRes, expRes] = await Promise.all([
+        supabase
+          .from('time_entries')
+          .select('id, date, hours, rate_type, description, start_time, end_time')
+          .eq('user_id', detailsTicket.user_id)
+          .eq('date', detailsTicket.date)
+          .eq('billable', true)
+          .not('project_id', 'is', null)
+          .order('start_time', { ascending: true }),
+        supabase
+          .from('service_ticket_expenses')
+          .select('id, expense_type, description, quantity, rate, unit')
+          .eq('service_ticket_id', detailsTicketId)
+          .order('created_at', { ascending: true }),
+      ]);
+      if (timeRes.error) throw timeRes.error;
+      if (expRes.error) throw expRes.error;
+      return { timeEntries: timeRes.data || [], expenses: expRes.data || [] };
+    },
+    enabled: !!detailsTicketId && !!detailsTicket,
   });
 
   const deleteExpenseMutation = useMutation({
@@ -751,7 +782,7 @@ export default function Expenses() {
         <div style={{
           position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => { setShowTicketPickerModal(false); setApplyExpenseId(null); }}>
+        }} onClick={() => { setShowTicketPickerModal(false); setApplyExpenseId(null); setDetailsTicketId(null); }}>
           <div onClick={(e) => e.stopPropagation()} style={{
             backgroundColor: 'var(--bg-primary)', borderRadius: '10px', width: '90%', maxWidth: '600px',
             maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
@@ -774,39 +805,140 @@ export default function Expenses() {
                 </div>
               ) : (
                 filteredPickerTickets.map((t: any) => (
-                  <div
-                    key={t.id}
-                    onClick={() => handlePickTicketForMarkup(t.id, t.ticket_number || 'Draft')}
-                    style={{
-                      padding: '12px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border-color)',
-                      marginBottom: '8px',
-                      cursor: 'pointer',
-                      transition: 'background-color 0.15s',
-                      backgroundColor: 'var(--bg-secondary)',
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-tertiary)'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-secondary)'; }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                        <span style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)', flexShrink: 0 }}>
-                          {t.ticket_number || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Draft</span>}
-                        </span>
-                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {t.customers?.name || 'No Customer'}{t.projects?.name ? ` — ${t.projects.name}` : ''}{t.projects?.project_number ? ` (${t.projects.project_number})` : ''}
-                        </span>
+                  <div key={t.id} style={{ marginBottom: '8px' }}>
+                    <div
+                      onClick={() => handlePickTicketForMarkup(t.id, t.ticket_number || 'Draft')}
+                      style={{
+                        padding: '12px',
+                        borderRadius: detailsTicketId === t.id ? '6px 6px 0 0' : '6px',
+                        border: '1px solid var(--border-color)',
+                        borderBottom: detailsTicketId === t.id ? 'none' : '1px solid var(--border-color)',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.15s',
+                        backgroundColor: 'var(--bg-secondary)',
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-tertiary)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-secondary)'; }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                          <span style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)', flexShrink: 0 }}>
+                            {t.ticket_number || ''}
+                          </span>
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {t.customers?.name || 'No Customer'}{t.projects?.name ? ` — ${t.projects.name}` : ''}{t.projects?.project_number ? ` (${t.projects.project_number})` : ''}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: '8px' }}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDetailsTicketId(detailsTicketId === t.id ? null : t.id); }}
+                            style={{
+                              padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border-color)',
+                              backgroundColor: detailsTicketId === t.id ? 'var(--primary-color)' : 'transparent',
+                              color: detailsTicketId === t.id ? 'white' : 'var(--text-secondary)',
+                              fontSize: '11px', cursor: 'pointer', fontWeight: '500', whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {detailsTicketId === t.id ? 'Hide' : 'Details'}
+                          </button>
+                          <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '10px', backgroundColor: t.workflow_status === 'approved' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', color: t.workflow_status === 'approved' ? '#10b981' : '#f59e0b' }}>
+                            {t.workflow_status || 'draft'}
+                          </span>
+                        </div>
                       </div>
-                      <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '10px', flexShrink: 0, marginLeft: '8px', backgroundColor: t.workflow_status === 'approved' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', color: t.workflow_status === 'approved' ? '#10b981' : '#f59e0b' }}>
-                        {t.workflow_status || 'draft'}
-                      </span>
+                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                        {t.location ? t.location : 'No location'} &middot; {t.date ? new Date(t.date + 'T12:00:00').toLocaleDateString() : 'No date'}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                      {t.location ? t.location : 'No location'} &middot; {t.date ? new Date(t.date + 'T12:00:00').toLocaleDateString() : 'No date'}
-                    </div>
+
+                    {detailsTicketId === t.id && (
+                      <div style={{
+                        border: '1px solid var(--border-color)', borderTop: '1px dashed var(--border-color)',
+                        borderRadius: '0 0 6px 6px', padding: '12px 14px',
+                        backgroundColor: 'var(--bg-primary)', fontSize: '13px',
+                      }}>
+                        {isLoadingDetails ? (
+                          <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '12px 0' }}>Loading...</div>
+                        ) : !ticketDetails ? (
+                          <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '12px 0' }}>No data.</div>
+                        ) : (
+                          <>
+                            {/* Time Entries */}
+                            <div style={{ marginBottom: ticketDetails.expenses.length > 0 ? '12px' : 0 }}>
+                              <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                Time Entries ({ticketDetails.timeEntries.length})
+                              </div>
+                              {ticketDetails.timeEntries.length === 0 ? (
+                                <div style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>No time entries.</div>
+                              ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                      <th style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: '600' }}>Type</th>
+                                      <th style={{ textAlign: 'right', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: '600' }}>Hours</th>
+                                      <th style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: '600' }}>Description</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {ticketDetails.timeEntries.map((te: any) => (
+                                      <tr key={te.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                        <td style={{ padding: '4px 6px', color: 'var(--text-primary)' }}>{te.rate_type || 'Shop Time'}</td>
+                                        <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: '600', color: 'var(--text-primary)' }}>{Number(te.hours).toFixed(1)}</td>
+                                        <td style={{ padding: '4px 6px', color: 'var(--text-tertiary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{te.description || '—'}</td>
+                                      </tr>
+                                    ))}
+                                    <tr>
+                                      <td style={{ padding: '4px 6px', fontWeight: '700', color: 'var(--text-primary)' }}>Total</td>
+                                      <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                        {ticketDetails.timeEntries.reduce((s: number, te: any) => s + Number(te.hours), 0).toFixed(1)}
+                                      </td>
+                                      <td />
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+
+                            {/* Expenses */}
+                            {ticketDetails.expenses.length > 0 && (
+                              <div>
+                                <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                  Expenses ({ticketDetails.expenses.length})
+                                </div>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                      <th style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: '600' }}>Type</th>
+                                      <th style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: '600' }}>Description</th>
+                                      <th style={{ textAlign: 'right', padding: '4px 6px', color: 'var(--text-secondary)', fontWeight: '600' }}>Amount</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {ticketDetails.expenses.map((ex: any) => (
+                                      <tr key={ex.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                        <td style={{ padding: '4px 6px', color: 'var(--text-primary)' }}>{ex.expense_type || '—'}</td>
+                                        <td style={{ padding: '4px 6px', color: 'var(--text-primary)' }}>{ex.description || '—'}</td>
+                                        <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: '600', color: 'var(--text-primary)' }}>
+                                          ${(Number(ex.quantity || 0) * Number(ex.rate || 0)).toFixed(2)}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    <tr>
+                                      <td colSpan={2} style={{ padding: '4px 6px', fontWeight: '700', color: 'var(--text-primary)' }}>Total</td>
+                                      <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                        ${ticketDetails.expenses.reduce((s: number, ex: any) => s + Number(ex.quantity || 0) * Number(ex.rate || 0), 0).toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))
+                )))
               )}
             </div>
           </div>
