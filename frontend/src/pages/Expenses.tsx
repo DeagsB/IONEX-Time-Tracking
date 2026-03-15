@@ -846,7 +846,7 @@ export default function Expenses() {
                           </span>
                         </div>
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px', textAlign: 'left' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
                         {t.location ? t.location : 'No location'} &middot; {t.date ? new Date(t.date + 'T12:00:00').toLocaleDateString() : 'No date'}
                       </div>
                     </div>
@@ -855,7 +855,7 @@ export default function Expenses() {
                       <div style={{
                         border: '1px solid var(--border-color)', borderTop: '1px dashed var(--border-color)',
                         borderRadius: '0 0 6px 6px', padding: '12px 14px',
-                        backgroundColor: 'var(--bg-primary)', fontSize: '13px', textAlign: 'left',
+                        backgroundColor: 'var(--bg-primary)', fontSize: '13px',
                       }}>
                         {isLoadingDetails ? (
                           <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '12px 0' }}>Loading...</div>
@@ -864,8 +864,8 @@ export default function Expenses() {
                         ) : (
                           <>
                             {/* Time Entries */}
-                            <div style={{ marginBottom: ticketDetails.expenses.length > 0 ? '12px' : 0, textAlign: 'left' }}>
-                              <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px', textAlign: 'left' }}>
+                            <div style={{ marginBottom: ticketDetails.expenses.length > 0 ? '12px' : 0 }}>
+                              <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
                                 Time Entries ({ticketDetails.timeEntries.length})
                               </div>
                               {ticketDetails.timeEntries.length === 0 ? (
@@ -901,8 +901,8 @@ export default function Expenses() {
 
                             {/* Expenses */}
                             {ticketDetails.expenses.length > 0 && (
-                              <div style={{ textAlign: 'left' }}>
-                                <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px', textAlign: 'left' }}>
+                              <div>
+                                <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
                                   Expenses ({ticketDetails.expenses.length})
                                 </div>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
