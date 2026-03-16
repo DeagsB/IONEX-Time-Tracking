@@ -989,23 +989,23 @@ export default function Expenses() {
                   const status = exp._status;
                   const source = exp._source;
                   return (
-                    <tr key={`${source}-${exp.id}`} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <tr
+                      key={`${source}-${exp.id}`}
+                      style={{
+                        borderBottom: '1px solid var(--border-color)',
+                        cursor: source === 'receipt' ? 'pointer' : undefined,
+                      }}
+                      onClick={source === 'receipt' ? () => handleStartEdit(exp) : undefined}
+                      role={source === 'receipt' ? 'button' : undefined}
+                      tabIndex={source === 'receipt' ? 0 : undefined}
+                      onKeyDown={source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
+                    >
                       <td style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '500' }}>
                         {exp._employeeName || '-'}
                         {source === 'ticket' && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Ticket Expense</div>}
                       </td>
                       <td style={{ padding: '10px 14px', fontSize: '13px' }}>{exp._date ? new Date(exp._date + 'T12:00:00').toLocaleDateString() : '-'}</td>
-                      <td
-                        style={{
-                          padding: '10px 14px',
-                          fontSize: '13px',
-                          cursor: source === 'receipt' ? 'pointer' : undefined,
-                        }}
-                        onClick={source === 'receipt' ? () => handleStartEdit(exp) : undefined}
-                        role={source === 'receipt' ? 'button' : undefined}
-                        tabIndex={source === 'receipt' ? 0 : undefined}
-                        onKeyDown={source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
-                      >
+                      <td style={{ padding: '10px 14px', fontSize: '13px' }}>
                         <div style={{ fontWeight: '500' }}>{exp.description}</div>
                         {source === 'receipt' && exp.receipt_url && (
                           <button
@@ -1037,27 +1037,19 @@ export default function Expenses() {
                       <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '12px' }}>
                         {exp._ticketNumber || '-'}
                       </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {source === 'receipt' && (
-                          <button
-                            onClick={() => handleStartEdit(exp)}
-                            style={{ padding: '3px 8px', marginRight: '4px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                          >
-                            Edit
-                          </button>
-                        )}
+                      <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                         {status === 'pending' && (
                           <>
                             <button
                               disabled={isUpdating}
-                              onClick={() => handleAdminStatusChange(exp.id, 'approved', source)}
+                              onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'approved', source); }}
                               style={{ padding: '3px 8px', marginRight: '4px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
                             >
                               Approve
                             </button>
                             <button
                               disabled={isUpdating}
-                              onClick={() => handleAdminStatusChange(exp.id, 'rejected', source)}
+                              onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'rejected', source); }}
                               style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
                             >
                               Reject
@@ -1067,7 +1059,7 @@ export default function Expenses() {
                         {status === 'approved' && (
                           <button
                             disabled={isUpdating}
-                            onClick={() => handleAdminStatusChange(exp.id, 'paid', source)}
+                            onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'paid', source); }}
                             style={{ padding: '3px 8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
                           >
                             Mark Paid
@@ -1076,7 +1068,7 @@ export default function Expenses() {
                         {status === 'rejected' && (
                           <button
                             disabled={isUpdating}
-                            onClick={() => handleAdminStatusChange(exp.id, 'approved', source)}
+                            onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'approved', source); }}
                             style={{ padding: '3px 8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
                           >
                             Re-approve
