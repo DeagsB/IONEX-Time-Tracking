@@ -778,6 +778,7 @@ function BillableBar({
         {/* Approved (revenue-contributing) */}
         {approvedPct > 0 && (
           <div
+            title="Approved: hours from approved/exported tickets (contributing to revenue)"
             style={{
               width: `${approvedPct}%`,
               height: '100%',
@@ -800,7 +801,7 @@ function BillableBar({
         {/* Pending (draft/submitted/rejected) */}
         {pendingPct > 0 && (
           <div
-            title="Draft/submitted/rejected (not yet revenue)"
+            title="Pending: hours on draft, submitted, or rejected tickets (not yet contributing to revenue)"
             style={{
               width: `${pendingPct}%`,
               height: '100%',
@@ -814,6 +815,20 @@ function BillableBar({
               flexShrink: 0,
               borderTopRightRadius: nonBillablePct <= 0 ? height / 2 : 0,
               borderBottomRightRadius: nonBillablePct <= 0 ? height / 2 : 0,
+            }}
+          />
+        )}
+        {/* Non-billable (remaining) */}
+        {nonBillablePct > 0 && (
+          <div
+            title="Non-billable: internal time and unbilled work"
+            style={{
+              width: `${nonBillablePct}%`,
+              height: '100%',
+              backgroundColor: 'rgba(158,158,158,0.15)',
+              flexShrink: 0,
+              borderTopRightRadius: height / 2,
+              borderBottomRightRadius: height / 2,
             }}
           />
         )}

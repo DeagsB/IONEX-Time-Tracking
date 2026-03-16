@@ -895,6 +895,7 @@ function BudgetBar({
         {/* Approved (revenue-contributing) */}
         {approvedPct > 0 && (
           <div
+            title="Approved: revenue from approved/exported tickets"
             style={{
               width: `${approvedPct}%`,
               height: '100%',
@@ -917,7 +918,7 @@ function BudgetBar({
         {/* Pending (draft/submitted/rejected) */}
         {pendingPct > 0 && (
           <div
-            title="Draft/submitted/rejected (not yet revenue)"
+            title="Pending: revenue on draft, submitted, or rejected tickets (not yet contributing)"
             style={{
               width: `${pendingPct}%`,
               height: '100%',
@@ -931,6 +932,20 @@ function BudgetBar({
               flexShrink: 0,
               borderTopRightRadius: remainingPct <= 0 ? height / 2 : 0,
               borderBottomRightRadius: remainingPct <= 0 ? height / 2 : 0,
+            }}
+          />
+        )}
+        {/* Remaining budget */}
+        {remainingPct > 0 && (
+          <div
+            title="Remaining budget"
+            style={{
+              width: `${remainingPct}%`,
+              height: '100%',
+              backgroundColor: 'rgba(158,158,158,0.15)',
+              flexShrink: 0,
+              borderTopRightRadius: height / 2,
+              borderBottomRightRadius: height / 2,
             }}
           />
         )}
