@@ -281,11 +281,8 @@ export default function Expenses() {
     return [...receiptItems, ...ticketItems].sort((a, b) => new Date(b._date).getTime() - new Date(a._date).getTime());
   }, [expenses, ticketReimbExpenses, employees]);
 
-  // Admin does not approve their own receipts; Expense Approvals shows everyone except admin
-  const mergedAdminExpensesForApproval = useMemo(() => {
-    if (!user?.id) return mergedAdminExpenses;
-    return mergedAdminExpenses.filter((e: any) => e._userId !== user.id);
-  }, [mergedAdminExpenses, user?.id]);
+  // Expense Approvals shows everyone's expenses (admin's own are auto-approved)
+  const mergedAdminExpensesForApproval = mergedAdminExpenses;
 
   const adminFilteredExpenses = mergedAdminExpensesForApproval.filter((exp: any) => {
     if (adminStatusFilter === 'all') return true;
@@ -370,7 +367,7 @@ export default function Expenses() {
         gst: parseFloat(receiptForm.gst) || 0,
         is_billable: receiptForm.is_billable,
         notes: receiptForm.notes.trim() || undefined,
-        status: 'pending',
+        status: isAdmin ? 'approved' : 'pending',
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
