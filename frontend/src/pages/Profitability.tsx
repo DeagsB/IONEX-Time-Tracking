@@ -493,7 +493,7 @@ export default function Profitability() {
                   color: 'var(--text-secondary)',
                 }}
               >
-                \u2715
+                {'\u2715'}
               </button>
             </div>
 
