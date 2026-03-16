@@ -272,7 +272,7 @@ export default function ServiceTickets() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [receiptForm, setReceiptForm] = useState({ description: '', amount: '', gst: '', is_billable: false });
+  const [receiptForm, setReceiptForm] = useState({ description: '', amount: '', gst: '', markupType: 'dollar' as 'dollar' | 'percent', markupValue: '', is_billable: false });
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
   const receiptDropRef = useRef<HTMLDivElement>(null);
@@ -285,6 +285,14 @@ export default function ServiceTickets() {
       amount: String(parseFloat(receipt.amount)),
       gst: String(parseFloat(receipt.gst || 0)),
     });
+    setEditReceiptPreviewUrl(null);
+    if (receipt.receipt_url) {
+      const isPdf = (receipt.receipt_url || '').toLowerCase().endsWith('.pdf');
+      setEditReceiptPreviewIsPdf(isPdf);
+      userExpensesService.getReceiptSignedUrl(receipt.receipt_url)
+        .then((url) => setEditReceiptPreviewUrl(url))
+        .catch(() => setEditReceiptPreviewUrl(null));
+    }
   };
 
   const handleSaveReceiptEdit = async () => {
@@ -497,6 +505,10 @@ export default function ServiceTickets() {
       // Apply pending expense deletes (expenses marked for removal)
       const hadPendingExpenseChanges = pendingDeleteExpenseIds.size > 0 || pendingAddExpenses.length > 0;
       for (const expenseId of pendingDeleteExpenseIds) {
+        const expense = expenses.find((e) => e.id === expenseId);
+        if (expense && recordId) {
+          await userExpensesService.unlinkReceiptsForDeletedExpense(recordId, expense.description);
+        }
         await serviceTicketExpensesService.delete(expenseId);
       }
       if (pendingDeleteExpenseIds.size > 0) setPendingDeleteExpenseIds(new Set());
@@ -519,6 +531,8 @@ export default function ServiceTickets() {
       if (recordId && hadPendingExpenseChanges) {
         await loadExpenses(recordId);
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+        queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+        queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       }
       setIsTicketEdited(false);
       justSavedRef.current = true;
@@ -2224,6 +2238,8 @@ export default function ServiceTickets() {
   const [editingReceipt, setEditingReceipt] = useState<any>(null);
   const [editReceiptForm, setEditReceiptForm] = useState({ description: '', amount: '', gst: '' });
   const [isSavingReceipt, setIsSavingReceipt] = useState(false);
+  const [editReceiptPreviewUrl, setEditReceiptPreviewUrl] = useState<string | null>(null);
+  const [editReceiptPreviewIsPdf, setEditReceiptPreviewIsPdf] = useState(false);
 
   // Live expense total for the selected ticket (panel open: includes unsaved adds, excludes pending deletes)
   const liveExpenseTotalForSelected = useMemo(() => {
@@ -5539,7 +5555,7 @@ export default function ServiceTickets() {
                               if (!file) return;
                               if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                               setReceiptFile(file);
-                              setReceiptForm({ description: '', amount: '', gst: '', is_billable: false });
+                              setReceiptForm({ description: '', amount: '', gst: '', markupType: 'dollar', markupValue: '', is_billable: false });
                               setReceiptUploadError(null);
                               setReceiptPreviewUrl(URL.createObjectURL(file));
                               setShowReceiptModal(true);
@@ -5557,7 +5573,7 @@ export default function ServiceTickets() {
                               if (!file) return;
                               if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                               setReceiptFile(file);
-                              setReceiptForm({ description: '', amount: '', gst: '', is_billable: false });
+                              setReceiptForm({ description: '', amount: '', gst: '', markupType: 'dollar', markupValue: '', is_billable: false });
                               setReceiptUploadError(null);
                               setReceiptPreviewUrl(URL.createObjectURL(file));
                               setShowReceiptModal(true);
@@ -5595,12 +5611,31 @@ export default function ServiceTickets() {
                                     {parseFloat(r.gst || 0) > 0 && <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px', fontSize: '11px' }}>GST: ${parseFloat(r.gst).toFixed(2)}</span>}
                                   </div>
                                   {!isLockedForEditing && (
-                                    <button
-                                      onClick={() => handleStartReceiptEdit(r)}
-                                      style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                                    >
-                                      Edit
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                      <button
+                                        onClick={() => handleStartReceiptEdit(r)}
+                                        style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        onClick={async () => {
+                                          if (!confirm('Unlink this receipt from the ticket? The expense line will be removed.')) return;
+                                          try {
+                                            await userExpensesService.unapplyFromTicket(r.id);
+                                            queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+                                            queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+                                            queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+                                            if (currentTicketRecordId) await loadExpenses(currentTicketRecordId);
+                                          } catch (err: any) {
+                                            alert('Failed to unlink: ' + (err?.message || 'Unknown error'));
+                                          }
+                                        }}
+                                        style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 83, 80, 0.1)', color: '#ef5350', border: '1px solid rgba(239, 83, 80, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                      >
+                                        Unlink
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               ))}
@@ -5678,6 +5713,29 @@ export default function ServiceTickets() {
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
                         <input type="number" step="0.01" value={receiptForm.gst} onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
                       </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Markup</label>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <input type="number" step="0.01" min="0" value={receiptForm.markupValue} onChange={(e) => setReceiptForm({ ...receiptForm, markupValue: e.target.value })} placeholder="0" style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                          <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                            <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'dollar' })} style={{ padding: '8px 12px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'dollar' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'dollar' ? 'white' : 'var(--text-secondary)' }}>$</button>
+                            <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'percent' })} style={{ padding: '8px 12px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
+                          </div>
+                        </div>
+                        {(() => {
+                          const amt = parseFloat(receiptForm.amount) || 0;
+                          const val = parseFloat(reiptForm.markupValue) || 0;
+                          const markup = receiptForm.markupType === 'percent' ? (amt * val) / 100 : val;
+                          const total = amt + markup;
+                          if (markup > 0) return (
+                            <div style={{ marginTop: '6px', padding: '8px 10px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Markup: </span><span style={{ fontWeight: '600', color: '#2196F3' }}>${markup.toFixed(2)}</span>
+                              <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>Total on ticket: </span><span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>${total.toFixed(2)}</span>
+                            </div>
+                          );
+                          return null;
+                        })()}
+                      </div>
                       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
                         <button onClick={() => { setShowReceiptModal(false); if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl); setReceiptPreviewUrl(null); setReceiptFile(null); }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
                         <button
@@ -5688,6 +5746,10 @@ export default function ServiceTickets() {
                             setIsUploadingReceipt(true);
                             setReceiptUploadError(null);
                             try {
+                              const amt = parseFloat(receiptForm.amount);
+                              const markupVal = parseFloat(receiptForm.markupValue) || 0;
+                              const markup = receiptForm.markupType === 'percent' ? (amt * markupVal) / 100 : markupVal;
+                              const totalWithMarkup = amt + markup;
                               let storagePath: string | undefined;
                               if (receiptFile) {
                                 const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
@@ -5695,23 +5757,23 @@ export default function ServiceTickets() {
                               }
                               await userExpensesService.create({
                                 description: receiptForm.description.trim(),
-                                amount: parseFloat(receiptForm.amount),
+                                amount: amt,
                                 expense_date: new Date().toISOString().split('T')[0],
                                 receipt_url: storagePath,
                                 gst: parseFloat(receiptForm.gst) || 0,
                                 is_billable: true,
                                 service_ticket_id: currentTicketRecordId || undefined,
+                                markup_amount: markup > 0 ? markup : undefined,
                               });
-                              // If billable AND attached to this ticket, also add to the billable expenses list on the ticket
+                              // If billable AND attached to this ticket, also add to the billable expenses list on the ticket (rate = amount + markup)
                               if (currentTicketRecordId) {
-                                const amt = parseFloat(receiptForm.amount);
                                 setPendingAddExpenses((prev) => [
                                   ...prev,
                                   {
                                     expense_type: 'Expenses' as const,
                                     description: receiptForm.description.trim(),
                                     quantity: 1,
-                                    rate: amt,
+                                    rate: totalWithMarkup,
                                     unit: '',
                                     tempId: `receipt-${Date.now()}`,
                                   },
@@ -7007,39 +7069,61 @@ export default function ServiceTickets() {
         <div style={{
           position: 'fixed', inset: 0, zIndex: 10010, backgroundColor: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setEditingReceipt(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{
-            backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px',
-            maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }} onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingReceipt(null); }}>
+          <div onMouseDown={(e) => e.stopPropagation()} style={{
+            backgroundColor: 'var(--bg-primary)', borderRadius: '12px',
+            width: editingReceipt.receipt_url ? '90%' : undefined,
+            maxWidth: editingReceipt.receipt_url ? '800px' : '420px',
+            padding: editingReceipt.receipt_url ? 0 : '24px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            display: editingReceipt.receipt_url ? 'flex' : 'block',
+            flexDirection: 'row',
+            overflow: 'hidden',
+            maxHeight: editingReceipt.receipt_url ? '85vh' : undefined,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Edit Receipt</h3>
-              <button onClick={() => setEditingReceipt(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
-            </div>
-            <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3' }}>
-              Changes will sync to this service ticket's expense line and the Expenses page.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Description</label>
-                <input type="text" value={editReceiptForm.description} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, description: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+            {editingReceipt.receipt_url && (
+              <div style={{ flex: 1, backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', padding: '16px', minHeight: '300px', minWidth: '200px' }}>
+                {editReceiptPreviewUrl ? (
+                  editReceiptPreviewIsPdf ? (
+                    <iframe src={editReceiptPreviewUrl} title="Receipt preview" style={{ width: '100%', height: '100%', minHeight: '320px', border: 'none', borderRadius: '4px' }} />
+                  ) : (
+                    <img src={editReceiptPreviewUrl} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '4px' }} />
+                  )
+                ) : (
+                  <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>Loading receipt...</div>
+                )}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            )}
+            <div style={{ flex: editingReceipt.receipt_url ? 1 : undefined, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Edit Receipt</h3>
+                <button onClick={() => setEditingReceipt(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
+              </div>
+              <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3' }}>
+                Changes will sync to this service ticket's expense line and the Expenses page.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
-                  <input type="number" step="0.01" min="0" value={editReceiptForm.amount} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, amount: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Description</label>
+                  <input type="text" value={editReceiptForm.description} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, description: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
                 </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
-                  <input type="number" step="0.01" min="0" value={editReceiptForm.gst} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, gst: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
+                    <input type="number" step="0.01" min="0" value={editReceiptForm.amount} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, amount: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
+                    <input type="number" step="0.01" min="0" value={editReceiptForm.gst} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, gst: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                  </div>
                 </div>
               </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
-              <button onClick={() => setEditingReceipt(null)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handleSaveReceiptEdit} disabled={isSavingReceipt} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: '600', cursor: isSavingReceipt ? 'not-allowed' : 'pointer', opacity: isSavingReceipt ? 0.7 : 1 }}>
-                {isSavingReceipt ? 'Saving...' : 'Save Changes'}
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
+                <button onClick={() => setEditingReceipt(null)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+                <button onClick={handleSaveReceiptEdit} disabled={isSavingReceipt} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: '600', cursor: isSavingReceipt ? 'not-allowed' : 'pointer', opacity: isSavingReceipt ? 0.7 : 1 }}>
+                  {isSavingReceipt ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

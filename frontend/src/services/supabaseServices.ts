@@ -2462,6 +2462,22 @@ export const userExpensesService = {
     }
   },
 
+  /** Unlink user_expenses (receipts) when their linked service_ticket_expense is deleted */
+  async unlinkReceiptsForDeletedExpense(serviceTicketId: string, description: string) {
+    const { data: receipts } = await supabase
+      .from('user_expenses')
+      .select('id')
+      .eq('service_ticket_id', serviceTicketId)
+      .ilike('description', description);
+
+    if (receipts && receipts.length > 0) {
+      await supabase
+        .from('user_expenses')
+        .update({ service_ticket_id: null, markup_amount: null })
+        .in('id', receipts.map((r) => r.id));
+    }
+  },
+
   async uploadReceipt(file: File): Promise<string> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
