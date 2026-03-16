@@ -234,6 +234,33 @@ export default function Payroll() {
     },
   });
 
+  // YTD time entries (Jan 1 to day before current period) for CPP/EI annual cap calculations
+  const ytdStartDate = startDate.slice(0, 4) + '-01-01';
+  const ytdEndDate = useMemo(() => {
+    const d = new Date(startDate + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  }, [startDate]);
+
+  const { data: ytdTimeEntries } = useQuery({
+    queryKey: ['payrollYtdEntries', ytdStartDate, ytdEndDate, isDemoMode, isAdmin, user?.id],
+    queryFn: async () => {
+      if (ytdEndDate < ytdStartDate) return [];
+      let query = supabase
+        .from('time_entries')
+        .select('user_id, hours, rate_type, billable')
+        .gte('date', ytdStartDate)
+        .lte('date', ytdEndDate)
+        .eq('is_demo', isDemoMode);
+      if (!isAdmin && user?.id) {
+        query = query.eq('user_id', user.id);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Group entries by employee and calculate totals by rate type
   // Payroll is based ONLY on time entries (calendar hours) - not service tickets
   // For admins: include all employees (from employees list) so new hires with no time show with 0 hours
@@ -634,6 +661,12 @@ export default function Payroll() {
     healthAllowance: number;
     benefitsTotal: number;
     gst: number;
+    ei: number;
+    eiMaxed: boolean;
+    cpp: number;
+    cppMaxed: boolean;
+    incomeTax: number;
+    netPay: number;
     reimbursements: number;
     grossPay: number;
     totalPayout: number;
@@ -642,6 +675,61 @@ export default function Payroll() {
     statPct: number;
     vacationPct: number;
   }
+
+  // 2026 annual maximums (employee portion)
+  const CPP_ANNUAL_MAX = 4034;
+  const EI_ANNUAL_MAX = 1077;
+  const CPP_RATE = 0.0595;
+  const EI_RATE = 0.0166;
+
+  const ytdGrossPayByUser = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!ytdTimeEntries || !allEmployees) return map;
+
+    const empByUserId = new Map<string, any>();
+    for (const e of allEmployees as any[]) {
+      if (e.user_id) empByUserId.set(e.user_id, e);
+    }
+
+    const hoursByUser = new Map<string, { shop: number; shopOt: number; travel: number; field: number; fieldOt: number; internal: number }>();
+    for (const entry of ytdTimeEntries as any[]) {
+      const uid = entry.user_id;
+      if (!hoursByUser.has(uid)) hoursByUser.set(uid, { shop: 0, shopOt: 0, travel: 0, field: 0, fieldOt: 0, internal: 0 });
+      const h = hoursByUser.get(uid)!;
+      const hours = Number(entry.hours) || 0;
+      const rt = entry.rate_type || 'Shop Time';
+      const isInternal = !entry.billable;
+      if (isInternal) { h.internal += hours; }
+      else if (rt === 'Shop Time') { h.shop += hours; }
+      else if (rt === 'Shop Overtime') { h.shopOt += hours; }
+      else if (rt === 'Travel Time') { h.travel += hours; }
+      else if (rt === 'Field Time') { h.field += hours; }
+      else if (rt === 'Field Overtime') { h.fieldOt += hours; }
+      else { h.shop += hours; }
+    }
+
+    for (const [uid, h] of hoursByUser) {
+      const employee = empByUserId.get(uid);
+      if (!employee || (employee.employment_type || 'Employee') === 'Contractor') continue;
+      const shopRate = Number(employee.shop_pay_rate) || 0;
+      const shopOtRate = Number(employee.shop_ot_pay_rate) || shopRate * 1.5;
+      const fieldRate = Number(employee.field_pay_rate) || shopRate;
+      const fieldOtRate = Number(employee.field_ot_pay_rate) || fieldRate * 1.5;
+      const isPanelShop = employee.department === 'Panel Shop';
+      const ftRate = isPanelShop ? (fieldRate || shopRate) : fieldRate;
+      const foRate = isPanelShop ? (fieldOtRate || shopOtRate) : fieldOtRate;
+
+      const basePay = h.internal * shopRate + h.shop * shopRate + h.shopOt * shopOtRate + h.travel * shopRate + h.field * ftRate + h.fieldOt * foRate;
+      const sickPct = Number(employee.sick_pay_pct) || 0;
+      const statPct = Number(employee.stat_holiday_pay_pct) || 0;
+      const vacPct = Number(employee.vacation_pay_pct) || 0;
+      const benefits = basePay * (sickPct + statPct + vacPct) / 100
+        + (Number(employee.cell_phone_allowance) || 0)
+        + (Number(employee.health_allowance) || 0);
+      map.set(uid, basePay + benefits);
+    }
+    return map;
+  }, [ytdTimeEntries, allEmployees]);
 
   const payrollBreakdownByUser = useMemo(() => {
     const map = new Map<string, PayrollBreakdown>();
@@ -689,8 +777,19 @@ export default function Payroll() {
 
       const benefitsTotal = sickPay + statHolidayPay + vacationPay + cellPhone + health;
       const grossPay = basePay + benefitsTotal + gst;
+
+      let ei = 0, cpp = 0;
+      if (!isContractor) {
+        const ytdGross = ytdGrossPayByUser.get(emp.userId) || 0;
+        const ytdEi = Math.min(ytdGross * EI_RATE, EI_ANNUAL_MAX);
+        const ytdCpp = Math.min(ytdGross * CPP_RATE, CPP_ANNUAL_MAX);
+        ei = Math.max(0, Math.min(grossPay * EI_RATE, EI_ANNUAL_MAX - ytdEi));
+        cpp = Math.max(0, Math.min(grossPay * CPP_RATE, CPP_ANNUAL_MAX - ytdCpp));
+      }
+      const incomeTax = isContractor ? 0 : grossPay * 0.15;
+      const netPay = grossPay - ei - cpp - incomeTax;
       const reimb = reimbursementsByUser.get(emp.userId)?.total || 0;
-      const totalPayout = grossPay + reimb;
+      const totalPayout = netPay + reimb;
 
       map.set(emp.userId, {
         basePay,
@@ -701,6 +800,12 @@ export default function Payroll() {
         healthAllowance: health,
         benefitsTotal,
         gst,
+        ei,
+        eiMaxed: !isContractor && (ei < grossPay * EI_RATE - 0.01),
+        cpp,
+        cppMaxed: !isContractor && (cpp < grossPay * CPP_RATE - 0.01),
+        incomeTax,
+        netPay,
         reimbursements: reimb,
         grossPay,
         totalPayout,
@@ -712,7 +817,7 @@ export default function Payroll() {
     }
 
     return map;
-  }, [allEmployees, employeeHours, reimbursementsByUser]);
+  }, [allEmployees, employeeHours, reimbursementsByUser, ytdGrossPayByUser]);
 
   // Which preset (if any) matches the current date range — used to highlight the active button
   const activePreset = useMemo(() => {
@@ -1078,6 +1183,32 @@ export default function Payroll() {
                                 <td style={{ padding: '6px 8px', fontWeight: '600', color: 'var(--text-primary)' }}>Gross Pay</td>
                                 <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>${breakdown.grossPay.toFixed(2)}</td>
                               </tr>
+                              {!breakdown.isContractor && (
+                                <>
+                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                      EI (1.66% est.){breakdown.eiMaxed && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#ff9800', fontWeight: '600' }}>MAXED</span>}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>-${breakdown.ei.toFixed(2)}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                      CPP (5.95% est.){breakdown.cppMaxed && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#ff9800', fontWeight: '600' }}>MAXED</span>}
+                                    </td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>-${breakdown.cpp.toFixed(2)}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                      Income Tax (15% est.)
+                                    </td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>-${breakdown.incomeTax.toFixed(2)}</td>
+                                  </tr>
+                                  <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                                    <td style={{ padding: '6px 8px', fontWeight: '600', color: 'var(--text-primary)' }}>Net Pay</td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>${breakdown.netPay.toFixed(2)}</td>
+                                  </tr>
+                                </>
+                              )}
                               {breakdown.reimbursements > 0 && (
                                 <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                                   <td style={{ padding: '6px 8px', color: '#00897b' }}>Reimbursements</td>
@@ -1088,6 +1219,13 @@ export default function Payroll() {
                                 <td style={{ padding: '8px', fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>Total Payout</td>
                                 <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>${breakdown.totalPayout.toFixed(2)}</td>
                               </tr>
+                              {!breakdown.isContractor && (
+                                <tr>
+                                  <td colSpan={2} style={{ padding: '6px 8px', fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'right' }}>
+                                    * EI, CPP &amp; Income Tax are estimates only
+                                  </td>
+                                </tr>
+                              )}
                             </tbody>
                           </table>
                         </div>
