@@ -177,18 +177,20 @@ export default function Dashboard() {
     for (const exp of ticketExpensesRaw as any[]) {
       const tid = exp.service_ticket_id;
       const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      const emp = empByUserId.get(exp.service_tickets?.user_id);
+      const desc = (exp.description || exp.expense_type || '').toLowerCase();
       let cost = 0;
-      if (exp.actual_cost != null) {
+      // Mileage, Per Diem, Hotel: always use reimb rate (ignore actual_cost which may be 0)
+      if (desc.includes('mileage')) {
+        cost = amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+      } else if (desc.includes('per diem')) {
+        cost = amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
+      } else if (desc.includes('hotel')) {
+        cost = amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+      } else if (exp.actual_cost != null) {
         cost = Number(exp.actual_cost);
       } else if (exp.needs_reimbursement) {
-        const emp = empByUserId.get(exp.service_tickets?.user_id);
-        const expType = (exp.expense_type || '').toLowerCase();
-        const desc = (exp.description || '').toLowerCase();
-        let reimbRate = 1.00;
-        if (expType === 'subsistence' && desc.includes('per diem')) reimbRate = Number(emp?.per_diem_reimb_rate) || 1.00;
-        else if (expType === 'travel' && desc.includes('mileage')) reimbRate = Number(emp?.mileage_reimb_rate) || 0.90;
-        else if (desc.includes('hotel')) reimbRate = Number(emp?.hotel_reimb_rate) || 1.00;
-        cost = amt * reimbRate;
+        cost = amt;
       }
       map.set(tid, (map.get(tid) || 0) + cost);
     }

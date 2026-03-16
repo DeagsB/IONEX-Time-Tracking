@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, employeesService, timeEntriesService, payRateHistoryService } from '../services/supabaseServices';
@@ -35,6 +35,30 @@ export default function Profitability() {
   const [sortBy, setSortBy] = useState<'project_number' | 'name' | 'revenue' | 'profit' | 'margin' | 'budget_usage'>('project_number');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [showInactive, setShowInactive] = useState(false);
+  const [editingBudgetProjectId, setEditingBudgetProjectId] = useState<string | null>(null);
+  const [budgetInputValue, setBudgetInputValue] = useState('');
+  const budgetInputRef = useRef<HTMLInputElement>(null);
+
+  const queryClient = useQueryClient();
+  const budgetMutation = useMutation({
+    mutationFn: async ({ projectId, budget }: { projectId: string; budget: number }) => {
+      return projectsService.update(projectId, { budget });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setEditingBudgetProjectId(null);
+      setBudgetInputValue('');
+    },
+    onError: (err) => {
+      alert(`Failed to save budget: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    },
+  });
+
+  useEffect(() => {
+    if (editingBudgetProjectId && budgetInputRef.current) {
+      budgetInputRef.current.focus();
+    }
+  }, [editingBudgetProjectId]);
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects', showInactive],
@@ -175,15 +199,14 @@ export default function Profitability() {
 
     const getExpenseCost = (exp: any) => {
       const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-      if (exp.actual_cost != null) return Number(exp.actual_cost);
       const emp = empByUserId.get(exp.service_tickets?.user_id);
-      const expType = (exp.expense_type || '').toLowerCase();
       const desc = (exp.description || exp.expense_type || '').toLowerCase();
-      // Per Diem, Mileage, Hotel are inherently reimbursable; use reimb rate regardless of needs_reimbursement.
+      // Mileage, Per Diem, Hotel: always use reimb rate (ignore actual_cost which may be 0 from migration)
       if (desc.includes('mileage')) return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
       if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
       if (desc.includes('hotel')) return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
-      // Other/Parts: only reimbursable if needs_reimbursement is set
+      // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
+      if (exp.actual_cost != null) return Number(exp.actual_cost);
       if (!exp.needs_reimbursement) return 0;
       return amt;
     };
@@ -388,15 +411,14 @@ export default function Profitability() {
 
   const getExpenseCostForDisplay = (exp: any) => {
     const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-    if (exp.actual_cost != null) return Number(exp.actual_cost);
     const emp = empByUserId.get(exp.service_tickets?.user_id);
-    const expType = (exp.expense_type || '').toLowerCase();
     const desc = (exp.description || exp.expense_type || '').toLowerCase();
-    // Per Diem, Mileage, Hotel are inherently reimbursable; use reimb rate regardless of needs_reimbursement.
+    // Mileage, Per Diem, Hotel: always use reimb rate (ignore actual_cost which may be 0 from migration)
     if (desc.includes('mileage')) return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
     if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
     if (desc.includes('hotel')) return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
-    // Other/Parts: only reimbursable if needs_reimbursement is set
+    // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
+    if (exp.actual_cost != null) return Number(exp.actual_cost);
     if (!exp.needs_reimbursement) return 0;
     return amt;
   };
@@ -565,7 +587,7 @@ export default function Profitability() {
                       <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{p.customerName}</div>
                     </div>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'center', minWidth: '180px' }}>
+                  <td style={{ ...tdStyle, textAlign: 'center', minWidth: '180px' }} onClick={(e) => e.stopPropagation()}>
                     {p.budget ? (
                       <BudgetBar
                         pct={budgetPct!}
@@ -575,8 +597,72 @@ export default function Profitability() {
                         revenueApproved={p.revenueApproved}
                         revenueAllTickets={p.revenueAllTickets}
                       />
+                    ) : editingBudgetProjectId === p.projectId ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>$</span>
+                        <input
+                          ref={budgetInputRef}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={budgetInputValue}
+                          onChange={(e) => setBudgetInputValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const val = parseFloat(budgetInputValue);
+                              if (!isNaN(val) && val > 0) {
+                                budgetMutation.mutate({ projectId: p.projectId, budget: val });
+                              } else {
+                                setEditingBudgetProjectId(null);
+                                setBudgetInputValue('');
+                              }
+                            } else if (e.key === 'Escape') {
+                              setEditingBudgetProjectId(null);
+                              setBudgetInputValue('');
+                            }
+                          }}
+                          onBlur={() => {
+                            const val = parseFloat(budgetInputValue);
+                            if (!isNaN(val) && val > 0) {
+                              budgetMutation.mutate({ projectId: p.projectId, budget: val });
+                            } else {
+                              setEditingBudgetProjectId(null);
+                              setBudgetInputValue('');
+                            }
+                          }}
+                          placeholder="0"
+                          style={{
+                            width: '90px',
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            fontFamily: 'monospace',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            backgroundColor: 'var(--bg-primary)',
+                            color: 'var(--text-primary)',
+                          }}
+                        />
+                      </div>
                     ) : (
-                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No budget</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingBudgetProjectId(p.projectId);
+                          setBudgetInputValue('');
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          color: 'var(--primary-color, #2196F3)',
+                          textDecoration: 'underline',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        + Add budget
+                      </button>
                     )}
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
