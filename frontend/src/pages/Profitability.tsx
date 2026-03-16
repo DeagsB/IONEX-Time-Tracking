@@ -206,44 +206,55 @@ export default function Profitability() {
 
   const expandedTickets = useMemo(() => {
     if (!expandedProjectId) return [];
-    return (serviceTickets as any[])
-      .filter((t: any) => t.project_id === expandedProjectId)
+
+    const projectTickets = (serviceTickets as any[]).filter((t: any) => t.project_id === expandedProjectId);
+
+    const getLoadedRate = (emp: any, rateType: string) => {
+      let payRate = 0;
+      if (rateType === 'Shop Time') payRate = Number(emp.shop_pay_rate) || 0;
+      else if (rateType === 'Field Time') payRate = Number(emp.field_pay_rate) || 0;
+      else if (rateType === 'Travel Time') payRate = Number(emp.shop_pay_rate) || 0;
+      else if (rateType === 'Shop Overtime') payRate = Number(emp.shop_ot_pay_rate) || 0;
+      else if (rateType === 'Field Overtime') payRate = Number(emp.field_ot_pay_rate) || 0;
+      const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
+      return payRate * (1 + (isContractor ? 0.05 : 0.30));
+    };
+
+    // Pre-compute blended loaded rate per user from their time entries on this project
+    const blendedRateByUser = new Map<string, number>();
+    const hoursByUser = new Map<string, number>();
+    for (const e of allTimeEntries as any[]) {
+      if (e.project_id !== expandedProjectId || !e.hours) continue;
+      const h = Number(e.hours) || 0;
+      const emp = empByUserId.get(e.user_id);
+      if (!emp) continue;
+      const cost = h * getLoadedRate(emp, e.rate_type || 'Shop Time');
+      blendedRateByUser.set(e.user_id, (blendedRateByUser.get(e.user_id) || 0) + cost);
+      hoursByUser.set(e.user_id, (hoursByUser.get(e.user_id) || 0) + h);
+    }
+
+    return projectTickets
       .map((t: any) => {
         let payrollCost = 0;
         const emp = empByUserId.get(t.user_id);
-        if (emp) {
-          const getRate = (rateType: string) => {
-            let payRate = 0;
-            if (rateType === 'Shop Time') payRate = Number(emp.shop_pay_rate) || 0;
-            else if (rateType === 'Field Time') payRate = Number(emp.field_pay_rate) || 0;
-            else if (rateType === 'Travel Time') payRate = Number(emp.shop_pay_rate) || 0;
-            else if (rateType === 'Shop Overtime') payRate = Number(emp.shop_ot_pay_rate) || 0;
-            else if (rateType === 'Field Overtime') payRate = Number(emp.field_ot_pay_rate) || 0;
+        const ticketHours = Number(t.total_hours) || 0;
 
-            const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
-            const burden = isContractor ? 0.05 : 0.30;
-            return payRate * (1 + burden);
-          };
-
+        if (emp && ticketHours > 0) {
           if (t.is_edited && t.edited_hours) {
             const editedHours = typeof t.edited_hours === 'string' ? JSON.parse(t.edited_hours) : t.edited_hours;
             Object.entries(editedHours).forEach(([rateType, hours]) => {
               const h = Array.isArray(hours) ? (hours as number[]).reduce((a: number, b: number) => a + b, 0) : Number(hours) || 0;
-              payrollCost += h * getRate(rateType);
+              payrollCost += h * getLoadedRate(emp, rateType);
             });
           } else {
-            // Find matching time entries
-            const matchingEntries = (allTimeEntries as any[]).filter((e: any) => 
-              e.user_id === t.user_id && 
-              e.date === t.date && 
-              e.project_id === t.project_id
-            );
-            matchingEntries.forEach((e: any) => {
-              const h = Number(e.hours) || 0;
-              payrollCost += h * getRate(e.rate_type || 'Shop Time');
-            });
+            // Use ticket's own hours × blended loaded rate for this user on this project
+            const totalCostForUser = blendedRateByUser.get(t.user_id) || 0;
+            const totalHoursForUser = hoursByUser.get(t.user_id) || 0;
+            const avgRate = totalHoursForUser > 0 ? totalCostForUser / totalHoursForUser : 0;
+            payrollCost = ticketHours * avgRate;
           }
         }
+
         return {
           ...t,
           payrollCost,
