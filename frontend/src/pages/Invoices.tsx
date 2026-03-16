@@ -361,15 +361,15 @@ export default function Invoices() {
     [dateRangeGroupingByCustomer, customers]
   );
 
-  /** Grouping for a ticket: if a project is selected and has a custom group-by, use it; else use customer grouping */
+  /** Grouping for a ticket: if the project has a custom group-by, use it; else use customer grouping */
   const getGroupingForTicket = useCallback(
     (customerId: string, projectId: string) => {
-      if (selectedProjectId && projectId === selectedProjectId && dateRangeGroupingByProject[selectedProjectId]) {
-        return dateRangeGroupingByProject[selectedProjectId];
+      if (projectId && dateRangeGroupingByProject[projectId]) {
+        return dateRangeGroupingByProject[projectId];
       }
       return getGroupingForCustomer(customerId);
     },
-    [selectedProjectId, dateRangeGroupingByProject, getGroupingForCustomer]
+    [dateRangeGroupingByProject, getGroupingForCustomer]
   );
 
   const { data: employees } = useQuery({
