@@ -436,39 +436,8 @@ export default function Payroll() {
     );
   }, [employeeHours]);
 
-  // Grand total costs (admin only) - labor cost using employee pay rates
-  const grandTotalsCosts = useMemo(() => {
-    if (!isAdmin || !allEmployees || allEmployees.length === 0) return null;
-    const empByUserId = new Map<string, any>();
-    for (const e of allEmployees as any[]) {
-      if (e.user_id) empByUserId.set(e.user_id, e);
-    }
-    let totalCost = 0;
-    let internalCost = 0;
-    let shopTimeCost = 0;
-    let shopOvertimeCost = 0;
-    let travelTimeCost = 0;
-    let fieldTimeCost = 0;
-    let fieldOvertimeCost = 0;
-    for (const emp of employeeHours) {
-      const employee = empByUserId.get(emp.userId);
-      const shopRate = Number(employee?.shop_pay_rate) || 0;
-      const shopOtRate = Number(employee?.shop_ot_pay_rate) || shopRate * 1.5;
-      const fieldRate = Number(employee?.field_pay_rate) || shopRate;
-      const fieldOtRate = Number(employee?.field_ot_pay_rate) || fieldRate * 1.5;
-      const isPanelShop = employee?.department === 'Panel Shop';
-      const ftRate = isPanelShop ? (fieldRate || shopRate) : fieldRate;
-      const foRate = isPanelShop ? (fieldOtRate || shopOtRate) : fieldOtRate;
-      internalCost += emp.internalHours * shopRate;
-      shopTimeCost += emp.shopTime * shopRate;
-      shopOvertimeCost += emp.shopOvertime * shopOtRate;
-      travelTimeCost += emp.travelTime * shopRate;
-      fieldTimeCost += emp.fieldTime * ftRate;
-      fieldOvertimeCost += emp.fieldOvertime * foRate;
-    }
-    totalCost = internalCost + shopTimeCost + shopOvertimeCost + travelTimeCost + fieldTimeCost + fieldOvertimeCost;
-    return { totalCost, internalCost, shopTimeCost, shopOvertimeCost, travelTimeCost, fieldTimeCost, fieldOvertimeCost };
-  }, [isAdmin, allEmployees, employeeHours]);
+  // Placeholder for totalCost — computed after payrollBreakdownByUser
+  const grandTotalsCosts = { totalCost: 0 };
 
   // --- Reimbursement Data ---
   const { data: ticketExpenses = [] } = useQuery({
@@ -819,6 +788,20 @@ export default function Payroll() {
     return map;
   }, [allEmployees, employeeHours, reimbursementsByUser, ytdGrossPayByUser]);
 
+  // Total Cost = Gross Pay + Employer CPP (matches employee) + Employer EI (1.4x employee) + Reimbursements
+  const EMPLOYER_EI_MULTIPLIER = 1.4;
+  const totalPayrollCost = useMemo(() => {
+    if (!isAdmin) return 0;
+    let total = 0;
+    payrollBreakdownByUser.forEach((b) => {
+      const employerCpp = b.cpp;
+      const employerEi = b.ei * EMPLOYER_EI_MULTIPLIER;
+      total += b.grossPay + employerCpp + employerEi + b.reimbursements;
+    });
+    return total;
+  }, [isAdmin, payrollBreakdownByUser]);
+  grandTotalsCosts.totalCost = totalPayrollCost;
+
   // Which preset (if any) matches the current date range — used to highlight the active button
   const activePreset = useMemo(() => {
     for (const key of PRESET_KEYS) {
@@ -990,11 +973,16 @@ export default function Payroll() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
             <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>
-                {isAdmin && grandTotalsCosts ? 'Total Cost' : 'Total Hours'}
+                {isAdmin ? 'Total Cost' : 'Total Hours'}
               </div>
               <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                {isAdmin && grandTotalsCosts ? `$${grandTotalsCosts.totalCost.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
+                {isAdmin ? `$${grandTotalsCosts.totalCost.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
               </div>
+              {isAdmin && (
+                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px', fontStyle: 'italic' }}>
+                  Gross + employer CPP/EI + reimbursements
+                </div>
+              )}
             </div>
             <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Reimbursements</div>
