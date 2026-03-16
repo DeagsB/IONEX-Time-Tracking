@@ -20,6 +20,7 @@ import EmployeeReports from './pages/EmployeeReports';
 import UserManagement from './pages/UserManagement';
 import Changelog from './pages/Changelog';
 import Expenses from './pages/Expenses';
+import Profitability from './pages/Profitability';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 import Maintenance from './pages/Maintenance';
@@ -168,6 +169,14 @@ function AppRoutes() {
           element={
             <AdminRoute>
               <EmployeeReports />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="profitability"
+          element={
+            <AdminRoute>
+              <Profitability />
             </AdminRoute>
           }
         />

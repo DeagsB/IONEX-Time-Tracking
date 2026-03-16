@@ -269,6 +269,11 @@ export default function Sidebar() {
               Employee Reports
             </SidebarLink>
           )}
+          {isAdmin && (
+            <SidebarLink to="/profitability" active={isActive('/profitability')}>
+              Profitability
+            </SidebarLink>
+          )}
         </div>
 
         {!isAdmin && !isDemoMode && (

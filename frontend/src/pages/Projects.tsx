@@ -30,6 +30,7 @@ export default function Projects() {
     poAfe: '',
     cc: '',
     other: '',
+    budget: '',
     shop_junior_rate: '',
     shop_senior_rate: '',
     ft_junior_rate: '',
@@ -179,12 +180,13 @@ export default function Projects() {
         po_afe: data.poAfe?.trim() || null,
         cc: data.cc?.trim() || null,
         other: data.other || null,
+        budget: data.budget ? parseFloat(data.budget) : null,
         shop_junior_rate: data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null,
         shop_senior_rate: data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null,
         ft_junior_rate: data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null,
         ft_senior_rate: data.ft_senior_rate ? parseFloat(data.ft_senior_rate) : null,
         travel_rate: data.travel_rate ? parseFloat(data.travel_rate) : null,
-        is_demo: isDemoMode, // Mark as demo project if in demo mode
+        is_demo: isDemoMode,
       };
       if (!user?.id) throw new Error('User not authenticated.');
       return await projectsService.create(projectData, user.id);
@@ -214,6 +216,7 @@ export default function Projects() {
         projectData.cc = (data.cc ?? '').trim() || null;
       }
       if (data.other !== undefined) projectData.other = data.other || null;
+      if (data.budget !== undefined) projectData.budget = data.budget ? parseFloat(data.budget) : null;
       if (data.shop_junior_rate !== undefined) projectData.shop_junior_rate = data.shop_junior_rate ? parseFloat(data.shop_junior_rate) : null;
       if (data.shop_senior_rate !== undefined) projectData.shop_senior_rate = data.shop_senior_rate ? parseFloat(data.shop_senior_rate) : null;
       if (data.ft_junior_rate !== undefined) projectData.ft_junior_rate = data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null;
@@ -271,6 +274,7 @@ export default function Projects() {
       poAfe: '',
       cc: '',
       other: '',
+      budget: '',
       shop_junior_rate: '',
       shop_senior_rate: '',
       ft_junior_rate: '',
@@ -293,6 +297,7 @@ export default function Projects() {
       poAfe: project.po_afe || '',
       cc: project.cc || '',
       other: project.other || '',
+      budget: project.budget != null ? String(project.budget) : '',
       shop_junior_rate: project.shop_junior_rate?.toString() || '',
       shop_senior_rate: project.shop_senior_rate?.toString() || '',
       ft_junior_rate: project.ft_junior_rate?.toString() || '',
@@ -581,6 +586,24 @@ export default function Projects() {
                 />
               </div>
             </div>
+
+            {/* Budget */}
+            {isAdmin && (
+              <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+                <div className="form-group">
+                  <label className="label">Project Budget ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    value={formData.budget}
+                    onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                    placeholder="Leave empty if no budget set"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Project-Specific Rate Overrides */}
             <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
@@ -939,6 +962,24 @@ export default function Projects() {
                 />
               </div>
             </div>
+
+            {/* Budget */}
+            {isAdmin && (
+              <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+                <div className="form-group">
+                  <label className="label">Project Budget ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    value={formData.budget}
+                    onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                    placeholder="Leave empty if no budget set"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Project-Specific Rate Overrides */}
             <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
