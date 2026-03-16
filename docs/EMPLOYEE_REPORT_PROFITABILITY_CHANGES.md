@@ -60,9 +60,7 @@ This document describes the changes between the previous Employee Report and the
 - Service ticket expenses (travel, subsistence, equipment, etc.) were not included in employee cost.
 
 ### After
-- **Expense cost** = sum of (quantity × rate) for all service ticket expenses on that employee’s tickets.
-- This is added to labor cost to get **total cost**.
-
+- **Expense cost** = only reimbursable expenses, using payback percentages. Billed expenses (needs_reimbursement=false) = 0. Reimbursable: amount × reimb_rate (mileage 90%, per diem 100%, etc.). Parts/other billed but not reimbursed do not affect profitability; markup counts as profit.
 ### Why Profitability Drops
 - Expenses reduce profit. Previously they were not counted in the employee report.
 
@@ -73,7 +71,7 @@ This document describes the changes between the previous Employee Report and the
 **Total Cost** = **Labor Cost** + **Expense Cost**
 
 - **Labor Cost** = Internal time cost + Shop time cost + Field time cost + Travel time cost + Overtime costs (all with burden applied).
-- **Expense Cost** = Sum of ticket expenses for that employee.
+- **Expense Cost** = Sum of (amount × reimb_rate) for reimbursable expenses only; billed-only expenses = 0.
 
 ---
 

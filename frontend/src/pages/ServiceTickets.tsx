@@ -280,6 +280,16 @@ export default function ServiceTickets() {
   const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
   const receiptDropRef = useRef<HTMLDivElement>(null);
   const receiptFileInputRef = useRef<HTMLInputElement>(null);
+  // When user adds expense with Needs Reimbursement, we prompt for receipt before adding
+  const [pendingReimbursementExpense, setPendingReimbursementExpense] = useState<{
+    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    description: string;
+    quantity: number;
+    rate: number;
+    actual_cost?: number;
+    unit?: string;
+  } | null>(null);
+  const receiptModalFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleStartReceiptEdit = (receipt: any) => {
     setEditingReceipt(receipt);
@@ -5412,6 +5422,33 @@ export default function ServiceTickets() {
                                   alert('Cannot add expense: ticket record not ready. Please close and reopen the ticket.');
                                   return;
                                 }
+                                // When Needs Reimbursement is checked, prompt for receipt first
+                                if (!editingExpense.id && editingExpense.needs_reimbursement) {
+                                  const amt = (Number(editingExpense.quantity) || 0) * (Number(editingExpense.rate) || 0);
+                                  setPendingReimbursementExpense({
+                                    expense_type: editingExpense.expense_type,
+                                    description: editingExpense.description.trim(),
+                                    quantity: Number(editingExpense.quantity) || 0,
+                                    rate: Number(editingExpense.rate) || 0,
+                                    actual_cost: Number(editingExpense.actual_cost) || 0,
+                                    unit: editingExpense.unit?.trim() || undefined,
+                                  });
+                                  setReceiptForm({
+                                    description: editingExpense.description.trim(),
+                                    amount: amt > 0 ? String(amt) : '',
+                                    gst: '',
+                                    markupType: 'dollar',
+                                    markupValue: '',
+                                    is_billable: true,
+                                  });
+                                  setReceiptFile(null);
+                                  if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+                                  setReceiptPreviewUrl(null);
+                                  setReceiptUploadError(null);
+                                  setShowReceiptModal(true);
+                                  setEditingExpense(null);
+                                  return;
+                                }
                                 try {
                                   if (editingExpense.id) {
                                     await updateExpenseMutation.mutateAsync({
@@ -5713,27 +5750,68 @@ export default function ServiceTickets() {
               })()}
 
               {/* Receipt Split-View Modal */}
-              {showReceiptModal && receiptPreviewUrl && (
+              {showReceiptModal && (receiptPreviewUrl || pendingReimbursementExpense) && (
                 <div style={{
                   position: 'fixed', inset: 0, zIndex: 10002, backgroundColor: 'rgba(0,0,0,0.6)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }} onClick={() => setShowReceiptModal(false)}>
+                }} onClick={() => { setShowReceiptModal(false); setPendingReimbursementExpense(null); if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl); setReceiptPreviewUrl(null); setReceiptFile(null); }}>
                   <div onClick={(e) => e.stopPropagation()} style={{
                     backgroundColor: 'var(--bg-primary)', borderRadius: '10px', width: '90%', maxWidth: '800px',
                     maxHeight: '85vh', display: 'flex', flexDirection: 'row', overflow: 'hidden',
                     boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
                   }}>
-                    {/* Left: Receipt preview */}
+                    {/* Left: Receipt preview or drop zone */}
                     <div style={{ flex: 1, backgroundColor: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'auto', padding: '16px', minHeight: '400px' }}>
-                      {receiptFile?.type === 'application/pdf' ? (
-                        <iframe src={receiptPreviewUrl!} title="PDF receipt preview" style={{ width: '100%', height: '100%', minHeight: '380px', border: 'none', borderRadius: '4px' }} />
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        ref={receiptModalFileInputRef}
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+                          setReceiptFile(file);
+                          setReceiptPreviewUrl(URL.createObjectURL(file));
+                          e.target.value = '';
+                        }}
+                      />
+                      {receiptPreviewUrl ? (
+                        receiptFile?.type === 'application/pdf' ? (
+                          <iframe src={receiptPreviewUrl} title="PDF receipt preview" style={{ width: '100%', height: '100%', minHeight: '380px', border: 'none', borderRadius: '4px' }} />
+                        ) : (
+                          <img src={receiptPreviewUrl} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '4px' }} />
+                        )
                       ) : (
-                        <img src={receiptPreviewUrl!} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: '4px' }} />
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
+                          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+                          onDrop={(e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            e.currentTarget.style.borderColor = 'var(--border-color)';
+                            const file = e.dataTransfer.files?.[0];
+                            if (!file || (!file.type.startsWith('image/') && file.type !== 'application/pdf')) return;
+                            setReceiptFile(file);
+                            setReceiptPreviewUrl(URL.createObjectURL(file));
+                          }}
+                          onClick={() => receiptModalFileInputRef.current?.click()}
+                          style={{
+                            width: '100%', height: '100%', minHeight: '360px',
+                            border: '2px dashed var(--border-color)', borderRadius: '8px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: 'var(--text-tertiary)', fontSize: '14px', cursor: 'pointer',
+                            transition: 'border-color 0.2s',
+                          }}
+                        >
+                          {pendingReimbursementExpense ? 'Drop receipt image or PDF here, or click to upload' : 'Drop receipt here'}
+                        </div>
                       )}
                     </div>
                     {/* Right: Inputs */}
                     <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>New Receipt Expense</h3>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                        {pendingReimbursementExpense ? 'Upload Receipt for Reimbursement' : 'New Receipt Expense'}
+                      </h3>
                       {receiptUploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{receiptUploadError}</div>}
                       <div>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Name / Description</label>
@@ -5773,12 +5851,13 @@ export default function ServiceTickets() {
                         })()}
                       </div>
                       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
-                        <button onClick={() => { setShowReceiptModal(false); if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl); setReceiptPreviewUrl(null); setReceiptFile(null); }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
+                        <button onClick={() => { setShowReceiptModal(false); setPendingReimbursementExpense(null); if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl); setReceiptPreviewUrl(null); setReceiptFile(null); }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
                         <button
                           disabled={isUploadingReceipt}
                           onClick={async () => {
                             if (!receiptForm.description.trim()) { setReceiptUploadError('Name is required'); return; }
                             if (!receiptForm.amount || parseFloat(receiptForm.amount) <= 0) { setReceiptUploadError('Amount is required'); return; }
+                            if (pendingReimbursementExpense && !receiptFile) { setReceiptUploadError('Receipt image or PDF is required for reimbursement'); return; }
                             setIsUploadingReceipt(true);
                             setReceiptUploadError(null);
                             try {
@@ -5805,20 +5884,25 @@ export default function ServiceTickets() {
                               });
                               // If billable AND attached to this ticket, also add to the billable expenses list on the ticket (rate = amount + markup)
                               if (currentTicketRecordId) {
+                                const expenseType = pendingReimbursementExpense?.expense_type ?? 'Expenses';
+                                const unit = pendingReimbursementExpense?.unit;
                                 setPendingAddExpenses((prev) => [
                                   ...prev,
                                   {
-                                    expense_type: 'Expenses' as const,
+                                    expense_type: expenseType,
                                     description: receiptForm.description.trim(),
                                     quantity: 1,
                                     rate: totalWithMarkup,
-                                    unit: '',
+                                    actual_cost: pendingReimbursementExpense ? expTotal : undefined,
+                                    unit: unit ?? '',
                                     tempId: `receipt-${Date.now()}`,
+                                    needs_reimbursement: !!pendingReimbursementExpense,
                                   },
                                 ]);
                               }
                               queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
                               setShowReceiptModal(false);
+                              setPendingReimbursementExpense(null);
                               if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                               setReceiptPreviewUrl(null);
                               setReceiptFile(null);
