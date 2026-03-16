@@ -441,19 +441,28 @@ export default function Payroll() {
 
   // --- Reimbursement Data ---
   const { data: ticketExpenses = [] } = useQuery({
-    queryKey: ['payrollTicketExpenses', startDate, endDate],
-    queryFn: () => serviceTicketExpensesService.getReimbursableByDateRange(startDate, endDate),
+    queryKey: ['payrollTicketExpenses', startDate, endDate, isAdmin, user?.id],
+    queryFn: () =>
+      serviceTicketExpensesService.getReimbursableByDateRange(
+        startDate,
+        endDate,
+        !isAdmin && user?.id ? user.id : undefined
+      ),
   });
 
   const { data: receiptExpenses = [] } = useQuery({
-    queryKey: ['payrollReceiptExpenses', startDate, endDate],
+    queryKey: ['payrollReceiptExpenses', startDate, endDate, isAdmin, user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('user_expenses')
         .select('*')
         .gte('expense_date', startDate)
         .lte('expense_date', endDate)
         .in('status', ['approved', 'paid']);
+      if (!isAdmin && user?.id) {
+        query = query.eq('user_id', user.id);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
@@ -468,8 +477,12 @@ export default function Payroll() {
   const isCurrentPeriod = endDate >= todayStr;
 
   const { data: catchUpReceiptsRaw = [] } = useQuery({
-    queryKey: ['payrollCatchUpReceipts', startDate],
-    queryFn: () => userExpensesService.getCatchUpReceipts(startDate),
+    queryKey: ['payrollCatchUpReceipts', startDate, isAdmin, user?.id],
+    queryFn: () =>
+      userExpensesService.getCatchUpReceipts(
+        startDate,
+        !isAdmin && user?.id ? user.id : undefined
+      ),
     enabled: isCurrentPeriod,
   });
 

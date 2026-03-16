@@ -1985,8 +1985,8 @@ export const serviceTicketExpensesService = {
     return totals;
   },
 
-  async getReimbursableByDateRange(startDate: string, endDate: string) {
-    const { data, error } = await supabase
+  async getReimbursableByDateRange(startDate: string, endDate: string, userId?: string) {
+    let query = supabase
       .from('service_ticket_expenses')
       .select(`
         *,
@@ -1998,6 +1998,11 @@ export const serviceTicketExpensesService = {
       .gte('service_tickets.date', startDate)
       .lte('service_tickets.date', endDate);
 
+    if (userId) {
+      query = query.eq('service_tickets.user_id', userId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     // Filter out discarded tickets client-side (nested or filter can be unreliable)
     return (data || []).filter((r: any) => !r.service_tickets?.is_discarded);
@@ -2345,13 +2350,17 @@ export const userExpensesService = {
    * Fetch approved (unpaid) receipt expenses with expense_date before the given date.
    * Used to find catch-up expenses for the current pay period (re-approved after their period ended).
    */
-  async getCatchUpReceipts(expenseDateBefore: string) {
-    const { data, error } = await supabase
+  async getCatchUpReceipts(expenseDateBefore: string, userId?: string) {
+    let query = supabase
       .from('user_expenses')
       .select('*')
       .eq('status', 'approved')
       .lt('expense_date', expenseDateBefore)
       .order('expense_date', { ascending: false });
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     return data || [];
   },

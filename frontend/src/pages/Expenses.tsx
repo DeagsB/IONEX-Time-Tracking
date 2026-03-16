@@ -289,11 +289,11 @@ export default function Expenses() {
     return exp._status === adminStatusFilter;
   });
 
-  // Admin's own expenses (for the Internal Expenses table)
+  // Expense table: admin sees own only; non-admin sees own only (filtered for defense in depth)
   const myExpenses = useMemo(() => {
-    if (!isAdmin || !user?.id) return expenses;
+    if (!user?.id) return expenses;
     return expenses.filter((e: any) => e.user_id === user.id);
-  }, [expenses, isAdmin, user?.id]);
+  }, [expenses, user?.id]);
 
   // Admin employee overview: per-employee counts (pending, approved, rejected, paid)
   const expenseEmployeeSummary = useMemo(() => {

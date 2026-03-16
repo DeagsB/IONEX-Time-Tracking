@@ -24,8 +24,14 @@ export default function EmployeeReports() {
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
   const [expensesSectionExpanded, setExpensesSectionExpanded] = useState(true);
+  const [expandedExpenseDateKeys, setExpandedExpenseDateKeys] = useState<Set<string>>(new Set());
+  const [expandedExpenseTicketKeys, setExpandedExpenseTicketKeys] = useState<Set<string>>(new Set());
   useEffect(() => {
-    if (expandedEmployee) setExpensesSectionExpanded(true);
+    if (expandedEmployee) {
+      setExpensesSectionExpanded(true);
+      setExpandedExpenseDateKeys(new Set());
+      setExpandedExpenseTicketKeys(new Set());
+    }
   }, [expandedEmployee]);
   const [sortField, setSortField] = useState<keyof EmployeeMetrics>('totalHours');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -646,6 +652,7 @@ export default function EmployeeReports() {
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                               <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <th style={{ ...detailThStyle, width: '32px' }} />
                                 <th style={detailThStyle}>Date</th>
                                 <th style={detailThStyle}>Description</th>
                                 <th style={detailThStyle}>Ticket</th>
@@ -654,33 +661,181 @@ export default function EmployeeReports() {
                               </tr>
                             </thead>
                             <tbody>
-                              {empExpenses
-                                .sort((a: any, b: any) => (b.service_tickets?.date || b.service_ticket?.date || '').localeCompare(a.service_tickets?.date || a.service_ticket?.date || ''))
-                                .map((exp: any) => {
-                                  const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+                              {(() => {
+                                const sorted = [...empExpenses].sort((a: any, b: any) => {
+                                  const da = a.service_tickets?.date || a.service_ticket?.date || '';
+                                  const db = b.service_tickets?.date || b.service_ticket?.date || '';
+                                  if (da !== db) return db.localeCompare(da);
+                                  const ta = (a.service_tickets ?? a.service_ticket)?.ticket_number || '';
+                                  const tb = (b.service_tickets ?? b.service_ticket)?.ticket_number || '';
+                                  return tb.localeCompare(ta);
+                                });
+                                // Group by date first
+                                const byDate = new Map<string, any[]>();
+                                for (const exp of sorted) {
                                   const ticket = exp.service_tickets ?? exp.service_ticket;
-                                  const projLabel = ticket?.projects?.project_number
-                                    ? `${ticket.projects.project_number}`
-                                    : (ticket?.projects?.name || '');
-                                  const ticketLabel = ticket?.ticket_number || projLabel || '—';
+                                  const date = ticket?.date || '';
+                                  if (!byDate.has(date)) byDate.set(date, []);
+                                  byDate.get(date)!.push(exp);
+                                }
+                                const dateEntries = Array.from(byDate.entries()).sort(([da], [db]) => db.localeCompare(da));
+
+                                const renderExpenseRows = (items: any[], ticketLabel: string, ticket: any, indent = 0) =>
+                                  items.map((exp: any) => {
+                                    const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+                                    return (
+                                      <tr key={exp.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                                        <td style={{ width: '32px' }} />
+                                        <td style={{ ...detailTdStyle, fontFamily: 'monospace', whiteSpace: 'nowrap', fontSize: '12px', paddingLeft: `${12 + indent}px` }}>{ticket?.date || '—'}</td>
+                                        <td style={{ ...detailTdStyle, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: `${12 + indent}px` }}>
+                                          {exp.description || exp.expense_type || 'Expense'}
+                                        </td>
+                                        <td style={{ ...detailTdStyle, fontSize: '12px', color: 'var(--text-secondary)' }}>{ticketLabel}</td>
+                                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>{formatCurrency(amt)}</td>
+                                        <td style={{ ...detailTdStyle, textAlign: 'center' }}>
+                                          {exp.needs_reimbursement ? statusBadge(exp.reimbursement_status) : <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Billed</span>}
+                                        </td>
+                                      </tr>
+                                    );
+                                  });
+
+                                return dateEntries.map(([date, dateItems]) => {
+                                  // Within date, group by ticket
+                                  const byTicket = new Map<string, any[]>();
+                                  for (const exp of dateItems) {
+                                    const ticket = exp.service_tickets ?? exp.service_ticket;
+                                    const ticketId = ticket?.id || exp.service_ticket_id || '';
+                                    const key = ticketId || 'unknown';
+                                    if (!byTicket.has(key)) byTicket.set(key, []);
+                                    byTicket.get(key)!.push(exp);
+                                  }
+                                  const ticketEntries = Array.from(byTicket.entries());
+                                  const hasMultipleTickets = ticketEntries.length > 1;
+                                  const dateTotal = dateItems.reduce((s, e) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
+                                  // Collapsed keys: empty set = all expanded by default
+                                  const isDateExpanded = !expandedExpenseDateKeys.has(date);
+
+                                  const toggleDate = () => setExpandedExpenseDateKeys(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(date)) next.delete(date);
+                                    else next.add(date);
+                                    return next;
+                                  });
+
+                                  const toggleTicket = (ticketKey: string) => setExpandedExpenseTicketKeys(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(ticketKey)) next.delete(ticketKey);
+                                    else next.add(ticketKey);
+                                    return next;
+                                  });
+
                                   return (
-                                    <tr key={exp.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                      <td style={{ ...detailTdStyle, fontFamily: 'monospace', whiteSpace: 'nowrap', fontSize: '12px' }}>{ticket?.date || '—'}</td>
-                                      <td style={{ ...detailTdStyle, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {exp.description || exp.expense_type || 'Expense'}
-                                      </td>
-                                      <td style={{ ...detailTdStyle, fontSize: '12px', color: 'var(--text-secondary)' }}>{ticketLabel}</td>
-                                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>{formatCurrency(amt)}</td>
-                                      <td style={{ ...detailTdStyle, textAlign: 'center' }}>
-                                        {exp.needs_reimbursement ? statusBadge(exp.reimbursement_status) : <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Billed</span>}
+                                    <tr key={date}>
+                                      <td colSpan={6} style={{ padding: 0, borderBottom: '1px solid var(--border-color)', verticalAlign: 'top' }}>
+                                        <div>
+                                          <button
+                                            type="button"
+                                            onClick={toggleDate}
+                                            style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '8px',
+                                              width: '100%',
+                                              padding: '10px 12px',
+                                              background: 'none',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              textAlign: 'left',
+                                              fontSize: '13px',
+                                              color: 'var(--text-primary)',
+                                            }}
+                                          >
+                                            <span style={{
+                                              display: 'inline-block',
+                                              fontSize: '10px',
+                                              color: 'var(--text-tertiary)',
+                                              transition: 'transform 0.2s ease',
+                                              transform: isDateExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                            }}>&#9654;</span>
+                                            <span style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', minWidth: '100px' }}>{date || '—'}</span>
+                                            <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{dateItems.length} item{dateItems.length !== 1 ? 's' : ''}{hasMultipleTickets ? ` · ${ticketEntries.length} ticket${ticketEntries.length !== 1 ? 's' : ''}` : ''}</span>
+                                            <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>{formatCurrency(dateTotal)}</span>
+                                          </button>
+                                          {isDateExpanded && (
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'var(--bg-secondary)' }}>
+                                              <tbody>
+                                                {hasMultipleTickets ? (
+                                                  ticketEntries.map(([ticketId, items]) => {
+                                                    const first = items[0];
+                                                    const ticket = first.service_tickets ?? first.service_ticket;
+                                                    const projLabel = ticket?.projects?.project_number ? `${ticket.projects.project_number}` : (ticket?.projects?.name || '');
+                                                    const ticketLabel = ticket?.ticket_number || projLabel || '—';
+                                                    const ticketKey = `${date}-${ticketId}`;
+                                                    const ticketTotal = items.reduce((s, e) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
+                                                    const isTicketExpanded = !expandedExpenseTicketKeys.has(ticketKey);
+                                                    return (
+                                                      <tr key={ticketKey}>
+                                                        <td colSpan={6} style={{ padding: 0, borderTop: '1px solid var(--border-color)', verticalAlign: 'top' }}>
+                                                          <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); toggleTicket(ticketKey); }}
+                                                            style={{
+                                                              display: 'flex',
+                                                              alignItems: 'center',
+                                                              gap: '8px',
+                                                              width: '100%',
+                                                              padding: '8px 12px 8px 24px',
+                                                              background: 'none',
+                                                              border: 'none',
+                                                              cursor: 'pointer',
+                                                              textAlign: 'left',
+                                                              fontSize: '12px',
+                                                              color: 'var(--text-secondary)',
+                                                            }}
+                                                          >
+                                                            <span style={{
+                                                              display: 'inline-block',
+                                                              fontSize: '10px',
+                                                              color: 'var(--text-tertiary)',
+                                                              transition: 'transform 0.2s ease',
+                                                              transform: isTicketExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                                            }}>&#9654;</span>
+                                                            <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{ticketLabel}</span>
+                                                            <span style={{ fontFamily: 'monospace', fontWeight: '600', marginLeft: 'auto' }}>{formatCurrency(ticketTotal)}</span>
+                                                            <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{items.length} item{items.length !== 1 ? 's' : ''}</span>
+                                                          </button>
+                                                          {isTicketExpanded && (
+                                                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                              <tbody>
+                                                                {renderExpenseRows(items, ticketLabel, ticket, 24)}
+                                                              </tbody>
+                                                            </table>
+                                                          )}
+                                                        </td>
+                                                      </tr>
+                                                    );
+                                                  })
+                                                ) : (
+                                                  (() => {
+                                                    const firstItem = ticketEntries[0]?.[1]?.[0];
+                                                    const t = firstItem?.service_tickets ?? firstItem?.service_ticket;
+                                                    const label = t?.ticket_number || t?.projects?.project_number || t?.projects?.name || '—';
+                                                    return renderExpenseRows(dateItems, label, t);
+                                                  })()
+                                                )}
+                                              </tbody>
+                                            </table>
+                                          )}
+                                        </div>
                                       </td>
                                     </tr>
                                   );
-                                })}
+                                });
+                              })()}
                             </tbody>
                             <tfoot>
                               <tr style={{ borderTop: '2px solid var(--border-color)' }}>
-                                <td style={{ ...detailTdStyle, fontWeight: '700' }} colSpan={3}>Total</td>
+                                <td style={{ ...detailTdStyle, fontWeight: '700' }} colSpan={4}>Total</td>
                                 <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>{formatCurrency(totalExpAmt)}</td>
                                 <td style={detailTdStyle} />
                               </tr>
