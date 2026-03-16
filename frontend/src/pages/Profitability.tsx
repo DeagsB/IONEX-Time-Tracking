@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, employeesService, timeEntriesService, payRateHistoryService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
+import { calculateBurden } from '../utils/employeeReports';
 
 interface ProjectFinancials {
   projectId: string;
@@ -157,9 +158,7 @@ export default function Profitability() {
         else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
         else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
 
-        const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
-        const burden = isContractor ? 0.05 : 0.30;
-        payRate = payRate * (1 + burden);
+        payRate = payRate * (1 + calculateBurden(emp));
       }
       laborByProject.set(entry.project_id, (laborByProject.get(entry.project_id) || 0) + hours * payRate);
     }
@@ -255,8 +254,7 @@ export default function Profitability() {
       else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
       else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
       else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
-      const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
-      return payRate * (1 + (isContractor ? 0.05 : 0.30));
+      return payRate * (1 + calculateBurden(emp));
     };
 
     // Pre-compute blended loaded rate per user from their time entries on this project
@@ -376,9 +374,7 @@ export default function Profitability() {
         else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
         else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
 
-        const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
-        const burden = isContractor ? 0.05 : 0.30;
-        payRate = payRate * (1 + burden);
+        payRate = payRate * (1 + calculateBurden(emp));
       }
 
       const existing = map.get(entry.user_id) || { name: empName, hours: 0, cost: 0 };
@@ -695,7 +691,7 @@ export default function Profitability() {
                 </table>
               )}
               <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic', marginTop: '8px', marginBottom: 0 }}>
-                * Labor costs include estimated burden (30% for employees, 5% GST for contractors)
+                * Labor costs include burden from actual employee data (benefits, CPP, EI, allowances; 5% GST for contractors)
               </p>
             </DetailSection>
 

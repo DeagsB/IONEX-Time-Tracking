@@ -187,6 +187,42 @@ function getRatesForDate(emp: EmployeeWithRates, historyMap: Map<string, PayRate
   return match;
 }
 
+/** Employer CPP rate (matches employee portion) */
+const CPP_RATE = 0.0595;
+/** Employer EI: 1.4 × employee EI (1.66%) */
+const EMPLOYER_EI_RATE = 1.4 * 0.0166;
+/** Typical bi-weekly hours for flat allowance burden calculation */
+const HOURS_PER_PAY_PERIOD = 80;
+
+/**
+ * Calculate burden rate from actual employee data (benefits, CPP, EI, allowances).
+ * Contractors: 5% GST. Employees: sick + stat + vacation % + employer CPP + employer EI + flat allowances as % of base.
+ */
+export function calculateBurden(employee?: EmployeeWithRates): number {
+  if (!employee) return 0;
+  const isContractor = (employee.employment_type || 'Employee') === 'Contractor';
+  if (isContractor) return 0.05;
+
+  const sickPct = (Number(employee.sick_pay_pct) || 0) / 100;
+  const statPct = (Number(employee.stat_holiday_pay_pct) || 0) / 100;
+  const vacPct = (Number(employee.vacation_pay_pct) || 0) / 100;
+  const benefitPct = sickPct + statPct + vacPct;
+
+  // Employer CPP and EI are % of gross; gross = base × (1 + benefitPct)
+  const payrollTaxPct = (CPP_RATE + EMPLOYER_EI_RATE) * (1 + benefitPct);
+
+  // Flat allowances as % of typical bi-weekly base (80 hrs × rate)
+  const baseRate = Number(employee.shop_pay_rate) || Number(employee.internal_rate) || 0;
+  const cellPhone = Number(employee.cell_phone_allowance) || 0;
+  const health = Number(employee.health_allowance) || 0;
+  const flatAllowancePct =
+    baseRate > 0 && (cellPhone > 0 || health > 0)
+      ? (cellPhone + health) / (HOURS_PER_PAY_PERIOD * baseRate)
+      : 0;
+
+  return benefitPct + payrollTaxPct + flatAllowancePct;
+}
+
 /** Coerce billable: DB may return boolean or string; only true/'true' is billable. */
 function isBillable(entry: TimeEntry): boolean {
   const b = entry.billable as unknown;
@@ -383,7 +419,7 @@ export function aggregateEmployeeMetrics(
   
   // Calculate the COST of unbilled work (hours worked but not billed still have a cost)
   // Use the employee's loaded pay rates (with burden) to determine the cost of unbilled hours
-  const unbilledBurden = 1 + ((employee?.employment_type || 'Employee') === 'Contractor' ? 0.05 : 0.30);
+  const unbilledBurden = 1 + calculateBurden(employee);
   const getPayRateForUnbilled = (rateType: 'shop' | 'field' | 'travel' | 'shopOT' | 'fieldOT'): number => {
     if (!employee) return 0;
     const panelShop = employee.department === 'Panel Shop';
@@ -570,8 +606,7 @@ export function calculateRateTypeBreakdown(
 
   const userId = entries[0]?.user_id || employee?.user_id || '';
   const isPanelShop = employee?.department === 'Panel Shop';
-  const isContractorEmp = (employee?.employment_type || 'Employee') === 'Contractor';
-  const burdenMult = 1 + (isContractorEmp ? 0.05 : 0.30);
+  const burdenMult = 1 + calculateBurden(employee);
 
   // Helper function to get loaded pay rate for a rate type using historical rates (base pay × burden)
   const getPayRate = (rateType: string, date: string): number => {
