@@ -2563,6 +2563,347 @@ export default function ServiceTickets() {
     }
   };
 
+  const openTicketPanel = async (ticket: ServiceTicket & { displayTicketNumber?: string }) => {
+    const existingRecord = findMatchingTicketRecord(ticket);
+    const isAdminApproved = !!existingRecord?.ticket_number;
+    const ws = (existingRecord as { workflow_status?: string })?.workflow_status;
+    const isFrozen = isAdminApproved || (ws && !['draft', 'rejected'].includes(ws));
+    const isDiscardedTicket = !!(existingRecord as any)?.is_discarded;
+    const isUserSubmitted = !isAdminApproved && ws === 'approved';
+    setIsLockedForEditing(isDiscardedTicket || (isAdminApproved && !isAdmin) || (isUserSubmitted && !isAdmin));
+
+    setCurrentTicketRecordId(existingRecord?.id || null);
+
+    setSelectedTicket(ticket);
+    setPendingDeleteExpenseIds(new Set());
+    setPendingAddExpenses([]);
+    if (!existingRecord && ticket.entries?.length > 0) {
+      addOpenedNewTicketId(ticket.id);
+    }
+    const initialEditable = {
+      customerName: ticket.customerInfo.name || '',
+      address: ticket.customerInfo.address || '',
+      cityState: ticket.customerInfo.city && ticket.customerInfo.state
+        ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
+        : ticket.customerInfo.city || ticket.customerInfo.state || '',
+      zipCode: ticket.customerInfo.zip_code || '',
+      phone: ticket.customerInfo.phone || '',
+      email: ticket.customerInfo.email || '',
+      contactName: ticket.customerInfo.contact_name || '',
+      serviceLocation: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
+      locationCode: ticket.customerInfo.location_code || '',
+      poNumber: ticket.customerInfo.po_number || '',
+      ...((): { approver: string; poAfe: string; cc: string; other: string } => {
+        const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc || ticket.entryOther;
+        if (fromEntry) {
+          return {
+            approver: ticket.entryApprover || '',
+            poAfe: ticket.entryPoAfe || ticket.customerInfo.po_number || '',
+            cc: ticket.entryCc || '',
+            other: ticket.entryOther ?? ticket.projectOther ?? '',
+          };
+        }
+        const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
+        if (fromProject) {
+          return {
+            approver: ticket.projectApprover || '',
+            poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
+            cc: ticket.projectCc || '',
+            other: ticket.projectOther || '',
+          };
+        }
+        return {
+          approver: '',
+          poAfe: ticket.customerInfo.po_number || '',
+          cc: '',
+          other: ticket.projectOther || '',
+        };
+      })(),
+      techName: ticket.userName || '',
+      projectNumber: ticket.projectNumber || '',
+      date: ticket.date || '',
+      approverNotes: ticket.approverNotes || '',
+    };
+    {
+      const ov = (existingRecord?.header_overrides as Record<string, string | number> | null) ?? {};
+      const useOverride = (ovVal: string | number | undefined, fallback: string) => {
+        const s = (ovVal != null ? String(ovVal).trim() : '');
+        return (s !== '' && s !== '_') ? s : fallback;
+      };
+      const isPlaceholder = (v: string) => !v || v === '_';
+      const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
+      const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
+      const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
+      const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
+      const emptyIfUnderscore = (v: string) => (v === '_' ? '' : v);
+      const [finalApprover, finalPoAfe, finalCc, finalOther] = (isFrozen || Object.keys(ov).length > 0)
+        ? [
+            emptyIfUnderscore(isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover),
+            emptyIfUnderscore(isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe),
+            emptyIfUnderscore(isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc),
+            emptyIfUnderscore(isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther),
+          ]
+        : [
+            emptyIfUnderscore(initialEditable.approver),
+            emptyIfUnderscore(initialEditable.poAfe),
+            emptyIfUnderscore(initialEditable.cc),
+            emptyIfUnderscore(initialEditable.other),
+          ];
+      const initialToShow = (isFrozen || Object.keys(ov).length > 0)
+        ? {
+            ...initialEditable,
+            customerName: useOverride(ov.customer_name, initialEditable.customerName),
+            address: useOverride(ov.address, initialEditable.address),
+            cityState: useOverride(ov.city_state, initialEditable.cityState),
+            zipCode: useOverride(ov.zip_code, initialEditable.zipCode),
+            phone: useOverride(ov.phone, initialEditable.phone),
+            email: useOverride(ov.email, initialEditable.email),
+            contactName: useOverride(ov.contact_name, initialEditable.contactName),
+            serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
+            locationCode: useOverride(ov.location_code, initialEditable.locationCode),
+            poNumber: useOverride(ov.po_number, initialEditable.poNumber),
+            approver: finalApprover,
+            poAfe: finalPoAfe,
+            cc: finalCc,
+            other: finalOther,
+            techName: useOverride(ov.tech_name, initialEditable.techName),
+            projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
+            date: useOverride(ov.date, initialEditable.date),
+          }
+        : initialEditable;
+      setEditableTicket(initialToShow);
+      initialEditableTicketRef.current = { ...initialToShow };
+    }
+
+    setDisplayTicketNumber(ticket.displayTicketNumber || '');
+
+    const initialRows = entriesToServiceRows(ticket.entries);
+    originalTimeEntryRowsRef.current = initialRows.map(r => ({ ...r }));
+    setServiceRows(initialRows);
+    initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
+    setEditedEntryOverrides({});
+
+    try {
+      const hadNoRecord = !findMatchingTicketRecord(ticket);
+      const ticketRecordId = await getOrCreateTicketRecord(ticket);
+      setCurrentTicketRecordId(ticketRecordId);
+      if (hadNoRecord) {
+        queryClient.invalidateQueries({
+          queryKey: ['existingServiceTickets', isDemoMode],
+          refetchType: 'none',
+        });
+      }
+      const rec = findMatchingTicketRecord(ticket);
+      if ((rec as any)?.restored_at) {
+        const tbl = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+        supabase.from(tbl).update({ restored_at: null }).eq('id', ticketRecordId).then(() => {
+          queryClient.invalidateQueries({
+            queryKey: ['existingServiceTickets', isDemoMode],
+            refetchType: 'none',
+          });
+        });
+      }
+      const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+      const [_, ticketRecordResult] = await Promise.all([
+        loadExpenses(ticketRecordId),
+        (async () => {
+          const { data: dataWithOverrides, error: selectError } = await supabase
+            .from(tableName)
+            .select('is_edited, edited_descriptions, edited_hours, edited_entry_overrides, header_overrides, updated_at')
+            .eq('id', ticketRecordId)
+            .single();
+          if (selectError) {
+            const { data: dataWithout } = await supabase
+              .from(tableName)
+              .select('is_edited, edited_descriptions, edited_hours, updated_at')
+              .eq('id', ticketRecordId)
+              .single();
+            return dataWithout ? { ...dataWithout, header_overrides: null, edited_entry_overrides: null } : null;
+          }
+          return dataWithOverrides;
+        })(),
+      ]);
+      const ticketRecord = ticketRecordResult;
+
+      const ov = (ticketRecord?.header_overrides as Record<string, string | number> | null) ?? {};
+      const hasApprovedTicketNumber = !!existingRecord?.ticket_number;
+      const entryMaxUpdated = ticket.entries?.length
+        ? Math.max(...ticket.entries.map((e) => e.updated_at ? new Date(e.updated_at).getTime() : 0))
+        : 0;
+      const ticketUpdated = ticketRecord?.updated_at ? new Date(ticketRecord.updated_at).getTime() : 0;
+      const useEntryValues = !hasApprovedTicketNumber && (entryMaxUpdated > ticketUpdated);
+
+      const useOverride = (ovVal: string | number | undefined, fallback: string) => {
+        const s = (ovVal != null ? String(ovVal).trim() : '');
+        return (s !== '' && s !== '_') ? s : fallback;
+      };
+      let merged: typeof initialEditable;
+      if (isFrozen || Object.keys(ov).length > 0) {
+        const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
+        const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
+        const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
+        const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
+        const isPlaceholder = (v: string) => !v || v === '_';
+        const emptyIfUnderscore = (v: string) => (v === '_' ? '' : v);
+        const [finalApprover, finalPoAfe, finalCc, finalOther] = useEntryValues
+          ? [
+              emptyIfUnderscore(initialEditable.approver),
+              emptyIfUnderscore(initialEditable.poAfe),
+              emptyIfUnderscore(initialEditable.cc),
+              emptyIfUnderscore(initialEditable.other),
+            ]
+          : [
+              emptyIfUnderscore(isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover),
+              emptyIfUnderscore(isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe),
+              emptyIfUnderscore(isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc),
+              emptyIfUnderscore(isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther),
+            ];
+        merged = {
+          customerName: useOverride(ov.customer_name, initialEditable.customerName),
+          address: useOverride(ov.address, initialEditable.address),
+          cityState: useOverride(ov.city_state, initialEditable.cityState),
+          zipCode: useOverride(ov.zip_code, initialEditable.zipCode),
+          phone: useOverride(ov.phone, initialEditable.phone),
+          email: useOverride(ov.email, initialEditable.email),
+          contactName: useOverride(ov.contact_name, initialEditable.contactName),
+          serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
+          locationCode: useOverride(ov.location_code, initialEditable.locationCode),
+          poNumber: useOverride(ov.po_number, initialEditable.poNumber),
+          approver: finalApprover,
+          poAfe: finalPoAfe,
+          cc: finalCc,
+          other: finalOther,
+          techName: useOverride(ov.tech_name, initialEditable.techName),
+          projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
+          date: useOverride(ov.date, initialEditable.date),
+          approverNotes: initialEditable.approverNotes,
+        };
+      } else {
+        merged = initialEditable;
+      }
+      setEditableTicket(merged);
+      initialEditableTicketRef.current = { ...merged };
+
+      if (isFrozen && ov && (typeof ov.rate_rt === 'number' || typeof ov.rate_tt === 'number' || typeof ov.rate_ft === 'number')) {
+        const displayTicket = applyHeaderOverridesToTicket(ticket, ov);
+        setSelectedTicket(displayTicket);
+      }
+
+      const savedOverrides = (ticketRecord?.edited_entry_overrides as Record<string, EntryOverride> | null) ?? {};
+      const ticketEntryIds = new Set(ticket.entries.map(e => e.id));
+      const relevantOverrides: Record<string, EntryOverride> = {};
+      Object.entries(savedOverrides).forEach(([id, ov]) => {
+        if (ticketEntryIds.has(id) || id.startsWith('new-')) {
+          relevantOverrides[id] = ov;
+        }
+      });
+      const hasPerEntryOverrides = Object.keys(relevantOverrides).length > 0;
+
+      if (hasPerEntryOverrides && !hasApprovedTicketNumber) {
+        const mergedRows = buildRowsWithOverrides(ticket.entries, relevantOverrides);
+        setServiceRows(mergedRows);
+        initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
+        setEditedEntryOverrides(relevantOverrides);
+        setIsTicketEdited(true);
+        const legacy = serviceRowsToLegacyFormat(mergedRows);
+        setEditedDescriptions(legacy.descriptions);
+        setEditedHours(legacy.hours);
+      } else {
+        const loadedDescriptions = (ticketRecord?.edited_descriptions as Record<string, string[]>) || {};
+        const loadedHours = (ticketRecord?.edited_hours as Record<string, number | number[]>) || {};
+        const hasLegacyData = Object.keys(loadedDescriptions).length > 0 || Object.keys(loadedHours).length > 0;
+        const shouldUseSnapshot = hasLegacyData && (ticketRecord?.is_edited || isFrozen);
+
+        if (shouldUseSnapshot) {
+          const rowMap = new Map<string, ServiceRow>();
+          let rowIndex = 0;
+          if (Object.keys(loadedDescriptions).length > 0) {
+            Object.keys(loadedDescriptions).forEach(rateType => {
+              const descs = loadedDescriptions[rateType] || [];
+              const hrs = loadedHours[rateType];
+              const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
+              descs.forEach((desc, i) => {
+                const hours = hoursArray[i] || 0;
+                const key = `${desc}-${rowIndex++}`;
+                const row: ServiceRow = {
+                  id: key, description: desc,
+                  st: rateType === 'Shop Time' ? hours : 0,
+                  tt: rateType === 'Travel Time' ? hours : 0,
+                  ft: rateType === 'Field Time' ? hours : 0,
+                  so: rateType === 'Shop Overtime' ? hours : 0,
+                  fo: rateType === 'Field Overtime' ? hours : 0,
+                };
+                rowMap.set(key, row);
+              });
+            });
+          } else {
+            Object.keys(loadedHours).forEach(rateType => {
+              const hrs = loadedHours[rateType];
+              const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
+              hoursArray.forEach((hours, i) => {
+                if (hours > 0) {
+                  const key = `${rateType}-${rowIndex++}`;
+                  const row: ServiceRow = {
+                    id: key, description: '',
+                    st: rateType === 'Shop Time' ? hours : 0,
+                    tt: rateType === 'Travel Time' ? hours : 0,
+                    ft: rateType === 'Field Time' ? hours : 0,
+                    so: rateType === 'Shop Overtime' ? hours : 0,
+                    fo: rateType === 'Field Overtime' ? hours : 0,
+                  };
+                  rowMap.set(key, row);
+                }
+              });
+            });
+          }
+          const loadedRows = Array.from(rowMap.values());
+          if (loadedRows.length > 0) {
+            setServiceRows(loadedRows);
+            initialServiceRowsRef.current = loadedRows.map(r => ({ ...r }));
+            if (!ticketRecord?.is_edited) {
+              originalTimeEntryRowsRef.current = loadedRows.map(r => ({ ...r }));
+            }
+            setIsTicketEdited(!!ticketRecord?.is_edited);
+            setEditedDescriptions(loadedDescriptions);
+            setEditedHours(
+              Object.keys(loadedHours).reduce((acc, rateType) => {
+                const hrs = loadedHours[rateType];
+                acc[rateType] = Array.isArray(hrs) ? hrs : [hrs as number];
+                return acc;
+              }, {} as Record<string, number[]>)
+            );
+          } else {
+            setIsTicketEdited(false);
+            const rows = entriesToServiceRows(ticket.entries);
+            setServiceRows(rows);
+            initialServiceRowsRef.current = rows.map(r => ({ ...r }));
+            setEditedDescriptions({});
+            setEditedHours({});
+            setEditedEntryOverrides({});
+          }
+        } else {
+          setIsTicketEdited(false);
+          const rows = entriesToServiceRows(ticket.entries);
+          setServiceRows(rows);
+          initialServiceRowsRef.current = rows.map(r => ({ ...r }));
+          setEditedDescriptions({});
+          setEditedHours({});
+          setEditedEntryOverrides({});
+        }
+      }
+    } catch (error) {
+      console.error('Error loading ticket data:', error);
+      setExpenses([]);
+      setIsTicketEdited(false);
+      const fallbackRows = entriesToServiceRows(ticket.entries);
+      setServiceRows(fallbackRows);
+      initialServiceRowsRef.current = fallbackRows.map(r => ({ ...r }));
+      setEditedDescriptions({});
+      setEditedHours({});
+      setEditedEntryOverrides({});
+    }
+  };
+
   return (
     <div>
       {/* Bulk delete permanently confirm modal - top level so it shows when no panel open */}
@@ -2922,7 +3263,7 @@ export default function ServiceTickets() {
                                             return (
                                               <div
                                                 key={t.date + t.userId + t.customerId + t.projectId}
-                                                onClick={(e) => { e.stopPropagation(); setSelectedTicket(t); }}
+                                                onClick={(e) => { e.stopPropagation(); openTicketPanel(t); }}
                                                 style={{
                                                   display: 'grid',
                                                   gridTemplateColumns: '140px 100px 1fr 70px',
@@ -3267,391 +3608,7 @@ export default function ServiceTickets() {
             </thead>
             <tbody>
               {filteredTickets.map((ticket) => {
-                const handleRowClick = async () => {
-                  // Check if ticket is frozen (admin approved OR user submitted - must not overwrite with live customer)
-                  const existingRecord = findMatchingTicketRecord(ticket);
-                  const isAdminApproved = !!existingRecord?.ticket_number;
-                  const ws = (existingRecord as { workflow_status?: string })?.workflow_status;
-                  const isFrozen = isAdminApproved || (ws && !['draft', 'rejected'].includes(ws));
-                  const isDiscarded = !!(existingRecord as any)?.is_discarded;
-                  // Non-admins: lock when discarded, admin-approved, or user-submitted (workflow='approved' without ticket_number)
-                  const isUserSubmitted = !isAdminApproved && ws === 'approved';
-                  setIsLockedForEditing(isDiscarded || (isAdminApproved && !isAdmin) || (isUserSubmitted && !isAdmin));
-                  
-                  // Reset current ticket record ID synchronously to prevent cross-ticket state leaks during async load
-                  setCurrentTicketRecordId(existingRecord?.id || null);
-                  
-                  setSelectedTicket(ticket);
-                  setPendingDeleteExpenseIds(new Set());
-                  setPendingAddExpenses([]);
-                  // Remove New badge once ticket is opened - persist so it stays gone across page visits
-                  if (!existingRecord && ticket.entries?.length > 0) {
-                    addOpenedNewTicketId(ticket.id);
-                  }
-                  const initialEditable = {
-                    customerName: ticket.customerInfo.name || '',
-                    address: ticket.customerInfo.address || '',
-                    cityState: ticket.customerInfo.city && ticket.customerInfo.state 
-                      ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
-                      : ticket.customerInfo.city || ticket.customerInfo.state || '',
-                    zipCode: ticket.customerInfo.zip_code || '',
-                    phone: ticket.customerInfo.phone || '',
-                    email: ticket.customerInfo.email || '',
-                    contactName: ticket.customerInfo.contact_name || '',
-                    serviceLocation: ticket.entryLocation || ticket.projectLocation || ticket.customerInfo.service_location || '',
-                    locationCode: ticket.customerInfo.location_code || '',
-                    poNumber: ticket.customerInfo.po_number || '',
-                    ...((): { approver: string; poAfe: string; cc: string; other: string } => {
-                      // Prioritize time entry values over project - NO PARSING, each field stays in its own field
-                      const fromEntry = ticket.entryApprover || ticket.entryPoAfe || ticket.entryCc || ticket.entryOther;
-                      if (fromEntry) {
-                        return {
-                          approver: ticket.entryApprover || '',
-                          poAfe: ticket.entryPoAfe || ticket.customerInfo.po_number || '',
-                          cc: ticket.entryCc || '',
-                          other: ticket.entryOther ?? ticket.projectOther ?? '',
-                        };
-                      }
-                      const fromProject = ticket.projectApprover || ticket.projectPoAfe || ticket.projectCc;
-                      if (fromProject) {
-                        return {
-                          approver: ticket.projectApprover || '',
-                          poAfe: ticket.projectPoAfe || ticket.customerInfo.po_number || '',
-                          cc: ticket.projectCc || '',
-                          other: ticket.projectOther || '',
-                        };
-                      }
-                      return {
-                        approver: '',
-                        poAfe: ticket.customerInfo.po_number || '',
-                        cc: '',
-                        other: ticket.projectOther || '',
-                      };
-                    })(),
-                    techName: ticket.userName || '',
-                    projectNumber: ticket.projectNumber || '',
-                    date: ticket.date || '',
-                    approverNotes: ticket.approverNotes || '',
-                  };
-                  // Apply header_overrides from existingRecord immediately to avoid flash of default before override
-                  const ov = (existingRecord?.header_overrides as Record<string, string | number> | null) ?? {};
-                  const useOverride = (ovVal: string | number | undefined, fallback: string) => {
-                    const s = (ovVal != null ? String(ovVal).trim() : '');
-                    return (s !== '' && s !== '_') ? s : fallback;
-                  };
-                  const isPlaceholder = (v: string) => !v || v === '_';
-                  const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
-                  const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
-                  const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
-                  const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
-                  const emptyIfUnderscore = (v: string) => (v === '_' ? '' : v);
-                  const [finalApprover, finalPoAfe, finalCc, finalOther] = (isFrozen || Object.keys(ov).length > 0)
-                    ? [
-                        emptyIfUnderscore(isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover),
-                        emptyIfUnderscore(isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe),
-                        emptyIfUnderscore(isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc),
-                        emptyIfUnderscore(isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther),
-                      ]
-                    : [
-                        emptyIfUnderscore(initialEditable.approver),
-                        emptyIfUnderscore(initialEditable.poAfe),
-                        emptyIfUnderscore(initialEditable.cc),
-                        emptyIfUnderscore(initialEditable.other),
-                      ];
-                  const initialToShow = (isFrozen || Object.keys(ov).length > 0)
-                    ? {
-                        ...initialEditable,
-                        customerName: useOverride(ov.customer_name, initialEditable.customerName),
-                        address: useOverride(ov.address, initialEditable.address),
-                        cityState: useOverride(ov.city_state, initialEditable.cityState),
-                        zipCode: useOverride(ov.zip_code, initialEditable.zipCode),
-                        phone: useOverride(ov.phone, initialEditable.phone),
-                        email: useOverride(ov.email, initialEditable.email),
-                        contactName: useOverride(ov.contact_name, initialEditable.contactName),
-                        serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
-                        locationCode: useOverride(ov.location_code, initialEditable.locationCode),
-                        poNumber: useOverride(ov.po_number, initialEditable.poNumber),
-                        approver: finalApprover,
-                        poAfe: finalPoAfe,
-                        cc: finalCc,
-                        other: finalOther,
-                        techName: useOverride(ov.tech_name, initialEditable.techName),
-                        projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
-                        date: useOverride(ov.date, initialEditable.date),
-                      }
-                    : initialEditable;
-                  setEditableTicket(initialToShow);
-                  initialEditableTicketRef.current = { ...initialToShow };
-                  
-                  // Set display ticket number (will be XXX until exported)
-                  setDisplayTicketNumber(ticket.displayTicketNumber);
-
-                  // Show initial service rows immediately from entries (refined when edited data loads)
-                  const initialRows = entriesToServiceRows(ticket.entries);
-                  // Store the original time entry rows for per-entry edit comparison
-                  originalTimeEntryRowsRef.current = initialRows.map(r => ({ ...r }));
-                  setServiceRows(initialRows);
-                  initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
-                  setEditedEntryOverrides({});
-
-                  // Load expenses and edited data for this ticket
-                  try {
-                    const hadNoRecord = !findMatchingTicketRecord(ticket);
-                    const ticketRecordId = await getOrCreateTicketRecord(ticket);
-                    setCurrentTicketRecordId(ticketRecordId);
-                    // Don't refetch when opening a new ticket - it can cause the panel to auto-close.
-                    // Mark as stale so data refreshes on next navigation or user action.
-                    if (hadNoRecord) {
-                      queryClient.invalidateQueries({
-                        queryKey: ['existingServiceTickets', isDemoMode],
-                        refetchType: 'none',
-                      });
-                    }
-                    // Clear restored_at when user interacts (opens ticket) so green indicator goes away
-                    const rec = findMatchingTicketRecord(ticket);
-                    if ((rec as any)?.restored_at) {
-                      const tbl = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                      supabase.from(tbl).update({ restored_at: null }).eq('id', ticketRecordId).then(() => {
-                        queryClient.invalidateQueries({
-                          queryKey: ['existingServiceTickets', isDemoMode],
-                          refetchType: 'none',
-                        });
-                      });
-                    }
-                    // Load expenses and ticket record in parallel for faster panel open
-                    const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-                    const [_, ticketRecordResult] = await Promise.all([
-                      loadExpenses(ticketRecordId),
-                      (async () => {
-                        const { data: dataWithOverrides, error: selectError } = await supabase
-                          .from(tableName)
-                          .select('is_edited, edited_descriptions, edited_hours, edited_entry_overrides, header_overrides, updated_at')
-                          .eq('id', ticketRecordId)
-                          .single();
-                        if (selectError) {
-                          const { data: dataWithout } = await supabase
-                            .from(tableName)
-                            .select('is_edited, edited_descriptions, edited_hours, updated_at')
-                            .eq('id', ticketRecordId)
-                            .single();
-                          return dataWithout ? { ...dataWithout, header_overrides: null, edited_entry_overrides: null } : null;
-                        }
-                        return dataWithOverrides;
-                      })(),
-                    ]);
-                    const ticketRecord = ticketRecordResult;
-                    
-                    // Use whichever was last saved: time entry or service ticket header_overrides
-                    // Approved tickets: always use header_overrides (we never push to entries, so entries are stale)
-                    const ov = (ticketRecord?.header_overrides as Record<string, string | number> | null) ?? {};
-                    const hasApprovedTicketNumber = !!existingRecord?.ticket_number;
-                    const entryMaxUpdated = ticket.entries?.length
-                      ? Math.max(...ticket.entries.map((e) => e.updated_at ? new Date(e.updated_at).getTime() : 0))
-                      : 0;
-                    const ticketUpdated = ticketRecord?.updated_at ? new Date(ticketRecord.updated_at).getTime() : 0;
-                    // Draft/rejected: use entry values when entries were updated more recently than the ticket record.
-                    // When the user saves header overrides, ticket record is updated -> use header_overrides.
-                    // Approved: always use header_overrides.
-                    const useEntryValues = !hasApprovedTicketNumber && (entryMaxUpdated > ticketUpdated);
-                    
-                    const useOverride = (ovVal: string | number | undefined, fallback: string) => {
-                      const s = (ovVal != null ? String(ovVal).trim() : '');
-                      return (s !== '' && s !== '_') ? s : fallback;
-                    };
-                    let merged: typeof initialEditable;
-                    if (isFrozen || Object.keys(ov).length > 0) {
-                      // For approver/po_afe/cc/other: approved tickets always use header_overrides; draft/rejected use last-saved
-                      // NO PARSING - each field stays in its own field
-                      const ovApprover = ('approver' in ov) ? String(ov.approver ?? '').trim() : initialEditable.approver;
-                      const ovPoAfe = ('po_afe' in ov) ? String(ov.po_afe ?? '').trim() : initialEditable.poAfe;
-                      const ovCc = ('cc' in ov) ? String(ov.cc ?? '').trim() : initialEditable.cc;
-                      const ovOther = ('other' in ov) ? String(ov.other ?? '').trim() : initialEditable.other;
-                      // When header_overrides has placeholders (_ or empty) but entries have real values, prefer entries (fixes records created with billingKey-only data)
-                      const isPlaceholder = (v: string) => !v || v === '_';
-                      const emptyIfUnderscore = (v: string) => (v === '_' ? '' : v);
-                      const [finalApprover, finalPoAfe, finalCc, finalOther] = useEntryValues
-                        ? [
-                            emptyIfUnderscore(initialEditable.approver),
-                            emptyIfUnderscore(initialEditable.poAfe),
-                            emptyIfUnderscore(initialEditable.cc),
-                            emptyIfUnderscore(initialEditable.other),
-                          ]
-                        : [
-                            emptyIfUnderscore(isPlaceholder(ovApprover) && initialEditable.approver ? initialEditable.approver : ovApprover),
-                            emptyIfUnderscore(isPlaceholder(ovPoAfe) && initialEditable.poAfe ? initialEditable.poAfe : ovPoAfe),
-                            emptyIfUnderscore(isPlaceholder(ovCc) && initialEditable.cc ? initialEditable.cc : ovCc),
-                            emptyIfUnderscore(isPlaceholder(ovOther) && initialEditable.other ? initialEditable.other : ovOther),
-                          ];
-                      merged = {
-                        customerName: useOverride(ov.customer_name, initialEditable.customerName),
-                        address: useOverride(ov.address, initialEditable.address),
-                        cityState: useOverride(ov.city_state, initialEditable.cityState),
-                        zipCode: useOverride(ov.zip_code, initialEditable.zipCode),
-                        phone: useOverride(ov.phone, initialEditable.phone),
-                        email: useOverride(ov.email, initialEditable.email),
-                        contactName: useOverride(ov.contact_name, initialEditable.contactName),
-                        serviceLocation: useOverride(ov.service_location, initialEditable.serviceLocation),
-                        locationCode: useOverride(ov.location_code, initialEditable.locationCode),
-                        poNumber: useOverride(ov.po_number, initialEditable.poNumber),
-                        approver: finalApprover,
-                        poAfe: finalPoAfe,
-                        cc: finalCc,
-                        other: finalOther,
-                        techName: useOverride(ov.tech_name, initialEditable.techName),
-                        projectNumber: useOverride(ov.project_number, initialEditable.projectNumber),
-                        date: useOverride(ov.date, initialEditable.date),
-                        approverNotes: initialEditable.approverNotes,
-                      };
-                    } else {
-                      merged = initialEditable;
-                    }
-                    setEditableTicket(merged);
-                    initialEditableTicketRef.current = { ...merged };
-
-                    // Frozen tickets: apply frozen rates from header_overrides so amounts use snapshot, not live rates
-                    if (isFrozen && ov && (typeof ov.rate_rt === 'number' || typeof ov.rate_tt === 'number' || typeof ov.rate_ft === 'number')) {
-                      const displayTicket = applyHeaderOverridesToTicket(ticket, ov);
-                      setSelectedTicket(displayTicket);
-                    }
-                    
-                    // Per-entry overrides: merge live time entries with saved edits
-                    const savedOverrides = (ticketRecord?.edited_entry_overrides as Record<string, EntryOverride> | null) ?? {};
-                    
-                    // Filter overrides to only include entries in THIS ticket, plus manual rows (new-*)
-                    // This prevents stale overrides from entries that moved to a different ticket
-                    const ticketEntryIds = new Set(ticket.entries.map(e => e.id));
-                    const relevantOverrides: Record<string, EntryOverride> = {};
-                    Object.entries(savedOverrides).forEach(([id, ov]) => {
-                      if (ticketEntryIds.has(id) || id.startsWith('new-')) {
-                        relevantOverrides[id] = ov;
-                      }
-                    });
-                    
-                    const hasPerEntryOverrides = Object.keys(relevantOverrides).length > 0;
-                    
-                    // For approved tickets (with ticket_number), always use saved snapshot data
-                    // instead of merging with live entries - entries may have been deleted after approval
-                    if (hasPerEntryOverrides && !hasApprovedTicketNumber) {
-                      // Build rows from live entries + per-entry overrides (draft tickets only)
-                      const mergedRows = buildRowsWithOverrides(ticket.entries, relevantOverrides);
-                      setServiceRows(mergedRows);
-                      initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
-                      setEditedEntryOverrides(relevantOverrides);
-                      setIsTicketEdited(true);
-                      // Update legacy format for backward compat
-                      const legacy = serviceRowsToLegacyFormat(mergedRows);
-                      setEditedDescriptions(legacy.descriptions);
-                      setEditedHours(legacy.hours);
-                    } else {
-                      // Load rows from edited_descriptions/edited_hours if available
-                      // This covers: (a) is_edited=true legacy tickets, (b) locked tickets with snapshot data
-                      // (e.g. approved tickets from before per-entry tracking that have edited_hours but is_edited=false)
-                      const loadedDescriptions = (ticketRecord?.edited_descriptions as Record<string, string[]>) || {};
-                      const loadedHours = (ticketRecord?.edited_hours as Record<string, number | number[]>) || {};
-                      const hasLegacyData = Object.keys(loadedDescriptions).length > 0 || Object.keys(loadedHours).length > 0;
-                      
-                      // Only use the saved snapshot if the user manually edited the hours (is_edited=true) 
-                      // OR if the ticket is locked/frozen (submitted/approved).
-                      // Otherwise, for unedited drafts, always rebuild from live time entries so we don't 
-                      // get stuck with a stale auto-saved snapshot when new time entries are added.
-                      const shouldUseSnapshot = hasLegacyData && (ticketRecord?.is_edited || isFrozen);
-                      
-                      if (shouldUseSnapshot) {
-                        const rowMap = new Map<string, ServiceRow>();
-                        let rowIndex = 0;
-                        // Build rows from descriptions if available
-                        if (Object.keys(loadedDescriptions).length > 0) {
-                          Object.keys(loadedDescriptions).forEach(rateType => {
-                            const descs = loadedDescriptions[rateType] || [];
-                            const hrs = loadedHours[rateType];
-                            const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
-                            descs.forEach((desc, i) => {
-                              const hours = hoursArray[i] || 0;
-                              const key = `${desc}-${rowIndex++}`;
-                              const row: ServiceRow = {
-                                id: key, description: desc,
-                                st: rateType === 'Shop Time' ? hours : 0,
-                                tt: rateType === 'Travel Time' ? hours : 0,
-                                ft: rateType === 'Field Time' ? hours : 0,
-                                so: rateType === 'Shop Overtime' ? hours : 0,
-                                fo: rateType === 'Field Overtime' ? hours : 0,
-                              };
-                              rowMap.set(key, row);
-                            });
-                          });
-                        } else {
-                          // No descriptions but has hours - build rows from hours only
-                          Object.keys(loadedHours).forEach(rateType => {
-                            const hrs = loadedHours[rateType];
-                            const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
-                            hoursArray.forEach((hours, i) => {
-                              if (hours > 0) {
-                                const key = `${rateType}-${rowIndex++}`;
-                                const row: ServiceRow = {
-                                  id: key, description: '',
-                                  st: rateType === 'Shop Time' ? hours : 0,
-                                  tt: rateType === 'Travel Time' ? hours : 0,
-                                  ft: rateType === 'Field Time' ? hours : 0,
-                                  so: rateType === 'Shop Overtime' ? hours : 0,
-                                  fo: rateType === 'Field Overtime' ? hours : 0,
-                                };
-                                rowMap.set(key, row);
-                              }
-                            });
-                          });
-                        }
-                        const loadedRows = Array.from(rowMap.values());
-                        if (loadedRows.length > 0) {
-                          setServiceRows(loadedRows);
-                          initialServiceRowsRef.current = loadedRows.map(r => ({ ...r }));
-                          // If ticket is NOT marked as edited (is_edited=false), the legacy data is just a
-                          // snapshot from a previous save, not actual user edits. Update the baseline so
-                          // saving header-only changes doesn't incorrectly mark entries as "manually edited".
-                          if (!ticketRecord?.is_edited) {
-                            originalTimeEntryRowsRef.current = loadedRows.map(r => ({ ...r }));
-                          }
-                          setIsTicketEdited(!!ticketRecord?.is_edited);
-                          setEditedDescriptions(loadedDescriptions);
-                          setEditedHours(
-                            Object.keys(loadedHours).reduce((acc, rateType) => {
-                              const hrs = loadedHours[rateType];
-                              acc[rateType] = Array.isArray(hrs) ? hrs : [hrs as number];
-                              return acc;
-                            }, {} as Record<string, number[]>)
-                          );
-                        } else {
-                          // Legacy data exists but produced no rows - use entries
-                          setIsTicketEdited(false);
-                          const initialRows = entriesToServiceRows(ticket.entries);
-                          setServiceRows(initialRows);
-                          initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
-                          setEditedDescriptions({});
-                          setEditedHours({});
-                          setEditedEntryOverrides({});
-                        }
-                      } else {
-                        // No saved data at all - use live time entries
-                        setIsTicketEdited(false);
-                        const initialRows = entriesToServiceRows(ticket.entries);
-                        setServiceRows(initialRows);
-                        initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
-                        setEditedDescriptions({});
-                        setEditedHours({});
-                        setEditedEntryOverrides({});
-                      }
-                    }
-                  } catch (error) {
-                    console.error('Error loading ticket data:', error);
-                    setExpenses([]);
-                    setIsTicketEdited(false);
-                    const fallbackRows = entriesToServiceRows(ticket.entries);
-                    setServiceRows(fallbackRows);
-                    initialServiceRowsRef.current = fallbackRows.map(r => ({ ...r }));
-                    setEditedDescriptions({});
-                    setEditedHours({});
-                    setEditedEntryOverrides({});
-                  }
-                };
+                const handleRowClick = () => openTicketPanel(ticket);
 
                 const rowExisting = findMatchingTicketRecord(ticket);
                 const isRejected = !showDiscarded && rowExisting?.workflow_status === 'rejected';
