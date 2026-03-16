@@ -1,8 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
-import { reportsService, payRateHistoryService } from '../services/supabaseServices';
-import { supabase } from '../lib/supabaseClient';
+import { reportsService, payRateHistoryService, serviceTicketExpensesService } from '../services/supabaseServices';
 import {
   aggregateAllEmployees,
   aggregateEmployeeMetrics,
@@ -90,36 +89,11 @@ export default function EmployeeReports() {
     enabled: isAdmin,
   });
 
-  const { data: ticketExpensesRaw = [] } = useQuery({
-    queryKey: ['employee-report-expenses'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('service_ticket_expenses')
-        .select(`
-          id, service_ticket_id, expense_type, description, quantity, rate, unit,
-          needs_reimbursement, reimbursement_status,
-          service_tickets!inner(
-            id, user_id, project_id, date, workflow_status, is_discarded, ticket_number,
-            customers(name),
-            projects(name, project_number)
-          )
-        `)
-        .or('service_tickets.is_discarded.is.null,service_tickets.is_discarded.eq.false', { referencedTable: 'service_tickets' });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: isAdmin,
+  const { data: ticketExpenses = [] } = useQuery({
+    queryKey: ['employee-report-expenses', startDate, endDate],
+    queryFn: () => serviceTicketExpensesService.getReimbursableByDateRange(startDate, endDate),
+    enabled: isAdmin && !!startDate && !!endDate,
   });
-
-  // Filter by date range client-side (Supabase nested filters on service_tickets.date are unreliable)
-  const ticketExpenses = useMemo(() => {
-    if (!ticketExpensesRaw.length || !startDate || !endDate) return ticketExpensesRaw;
-    return (ticketExpensesRaw as any[]).filter((exp: any) => {
-      const d = exp.service_tickets?.date;
-      if (!d) return false;
-      return d >= startDate && d <= endDate;
-    });
-  }, [ticketExpensesRaw, startDate, endDate]);
 
   const employeeMetrics = useMemo(() => {
     if (!employees) return [];
@@ -594,7 +568,7 @@ export default function EmployeeReports() {
 
             {/* Expenses & Reimbursements — collapsible dropdown, shows ALL expenses (billed + reimbursed) */}
             {(() => {
-              const empExpenses = (ticketExpensesRaw as any[]).filter((exp: any) => {
+              const empExpenses = (ticketExpenses as any[]).filter((exp: any) => {
                 const uid = exp.service_tickets?.user_id ?? exp.service_ticket?.user_id;
                 return uid === expandedMetrics.userId;
               });

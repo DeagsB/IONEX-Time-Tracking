@@ -276,20 +276,6 @@ export default function Profitability() {
       return payRate * (1 + calculateBurden(emp));
     };
 
-    // Pre-compute blended loaded rate per user from their time entries on this project
-    const blendedRateByUser = new Map<string, number>();
-    const hoursByUser = new Map<string, number>();
-    for (const e of allTimeEntries as any[]) {
-      if (e.project_id !== expandedProjectId || !e.hours) continue;
-      const h = Number(e.hours) || 0;
-      const emp = empByUserId.get(e.user_id);
-      if (!emp) continue;
-      const rates = getRatesForDate(emp, e.date);
-      const cost = h * getLoadedRate(emp, rates, e.rate_type || 'Shop Time');
-      blendedRateByUser.set(e.user_id, (blendedRateByUser.get(e.user_id) || 0) + cost);
-      hoursByUser.set(e.user_id, (hoursByUser.get(e.user_id) || 0) + h);
-    }
-
     const getBillableRate = (emp: any, rateType: string) => {
       if (!emp) return 0;
       const rt = rateType.toLowerCase();
@@ -317,38 +303,16 @@ export default function Profitability() {
         const entryHours = matchingEntries.reduce((sum: number, e: any) => sum + (Number(e.hours) || 0), 0);
         const effectiveHours = ticketHours > 0 ? ticketHours : entryHours;
 
-        if (emp && effectiveHours > 0) {
-          if (t.is_edited && t.edited_hours) {
-            const rates = getRatesForDate(emp, t.date);
-            const editedHours = typeof t.edited_hours === 'string' ? JSON.parse(t.edited_hours) : t.edited_hours;
-            Object.entries(editedHours).forEach(([rateType, hours]) => {
-              const h = Array.isArray(hours) ? (hours as number[]).reduce((a: number, b: number) => a + b, 0) : Number(hours) || 0;
-              payrollCost += h * getLoadedRate(emp, rates, rateType);
-              if (isDraftOrSubmitted && savedAmount === 0) {
-                estimatedRevenue += h * getBillableRate(emp, rateType);
-              }
-            });
-          } else if (ticketHours > 0) {
-            const totalCostForUser = blendedRateByUser.get(t.user_id) || 0;
-            const totalHoursForUser = hoursByUser.get(t.user_id) || 0;
-            const avgRate = totalHoursForUser > 0 ? totalCostForUser / totalHoursForUser : 0;
-            payrollCost = ticketHours * avgRate;
+        // Payroll cost is ALWAYS based on actual time entries (hours worked), not billed hours.
+        // This correctly handles cases like OPI where 4 hours billed but only 3 hours payroll cost.
+        if (emp && matchingEntries.length > 0) {
+          const rates = getRatesForDate(emp, t.date);
+          for (const e of matchingEntries) {
+            const h = Number(e.hours) || 0;
+            const rt = e.rate_type || 'Shop Time';
+            payrollCost += h * getLoadedRate(emp, rates, rt);
             if (isDraftOrSubmitted && savedAmount === 0) {
-              for (const e of matchingEntries) {
-                const h = Number(e.hours) || 0;
-                estimatedRevenue += h * getBillableRate(emp, e.rate_type || 'Shop Time');
-              }
-            }
-          } else {
-            // Draft/submitted/rejected with 0 saved hours — use time entries
-            const rates = getRatesForDate(emp, t.date);
-            for (const e of matchingEntries) {
-              const h = Number(e.hours) || 0;
-              const rt = e.rate_type || 'Shop Time';
-              payrollCost += h * getLoadedRate(emp, rates, rt);
-              if (isDraftOrSubmitted && savedAmount === 0) {
-                estimatedRevenue += h * getBillableRate(emp, rt);
-              }
+              estimatedRevenue += h * getBillableRate(emp, rt);
             }
           }
         }

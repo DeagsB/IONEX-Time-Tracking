@@ -1991,14 +1991,16 @@ export const serviceTicketExpensesService = {
       .select(`
         *,
         service_tickets!inner (
-          id, user_id, date, ticket_number
+          id, user_id, date, ticket_number, is_discarded,
+          projects(name, project_number)
         )
       `)
       .gte('service_tickets.date', startDate)
       .lte('service_tickets.date', endDate);
 
     if (error) throw error;
-    return data || [];
+    // Filter out discarded tickets client-side (nested or filter can be unreliable)
+    return (data || []).filter((r: any) => !r.service_tickets?.is_discarded);
   },
 
   async getNeedsReimbursement() {
