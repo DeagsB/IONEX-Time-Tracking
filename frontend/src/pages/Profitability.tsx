@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, employeesService, timeEntriesService } from '../services/supabaseServices';
-import supabase from '../config/supabaseClient';
+import { supabase } from '../lib/supabaseClient';
 
 interface ProjectFinancials {
   projectId: string;
