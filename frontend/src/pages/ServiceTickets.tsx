@@ -5724,7 +5724,7 @@ export default function ServiceTickets() {
                         </div>
                         {(() => {
                           const amt = parseFloat(receiptForm.amount) || 0;
-                          const val = parseFloat(reiptForm.markupValue) || 0;
+                          const val = parseFloat(receiptForm.markupValue) || 0;
                           const markup = receiptForm.markupType === 'percent' ? (amt * val) / 100 : val;
                           const total = amt + markup;
                           if (markup > 0) return (
