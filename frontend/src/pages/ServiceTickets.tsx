@@ -1998,11 +1998,20 @@ export default function ServiceTickets() {
     for (const t of pool) {
       grouped[classifyTicketStatus(t)].push(t);
     }
-    grouped.draft.sort((a: any, b: any) => b.date.localeCompare(a.date));
-    grouped.submitted.sort((a: any, b: any) => b.date.localeCompare(a.date));
-    grouped.approved.sort((a: any, b: any) => b.date.localeCompare(a.date));
+    const getTicketSortKey = (t: any) => {
+      const rec = findMatchingTicketRecord(t);
+      const seq = (rec as { sequence_number?: number })?.sequence_number;
+      if (seq != null) return seq;
+      const ticket = t.displayTicketNumber || t.ticketNumber || '';
+      const m = (ticket || '').match(/(\d+)$/);
+      return m ? parseInt(m[1], 10) : 0;
+    };
+    const sortByTicketNumberDesc = (a: any, b: any) => getTicketSortKey(b) - getTicketSortKey(a);
+    grouped.draft.sort(sortByTicketNumberDesc);
+    grouped.submitted.sort(sortByTicketNumberDesc);
+    grouped.approved.sort(sortByTicketNumberDesc);
     return grouped;
-  }, [expandedEmployeeId, isAdmin, ticketsWithNumbers, startDate, endDate, selectedCustomerId]);
+  }, [expandedEmployeeId, isAdmin, ticketsWithNumbers, startDate, endDate, selectedCustomerId, existingTickets]);
 
   // Filter and sort tickets
   const filteredTickets = useMemo(() => {
