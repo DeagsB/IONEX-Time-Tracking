@@ -100,8 +100,8 @@ export default function EmployeeReports() {
             projects(name, project_number)
           )
         `)
-        .gte('service_tickets.date', startDate)
-        .lte('service_tickets.date', endDate)
+        .filter('service_tickets.date', 'gte', startDate)
+        .filter('service_tickets.date', 'lte', endDate)
         .or('service_tickets.is_discarded.is.null,service_tickets.is_discarded.eq.false', { referencedTable: 'service_tickets' });
       if (error) throw error;
       return data || [];
