@@ -26,11 +26,13 @@ export default function EmployeeReports() {
   const [expensesSectionExpanded, setExpensesSectionExpanded] = useState(false);
   const [expandedExpenseDateKeys, setExpandedExpenseDateKeys] = useState<Set<string>>(new Set());
   const [expandedExpenseTicketKeys, setExpandedExpenseTicketKeys] = useState<Set<string>>(new Set());
+  const [expenseBreakdownExpanded, setExpenseBreakdownExpanded] = useState(false);
   useEffect(() => {
     if (expandedEmployee) {
       setExpensesSectionExpanded(true);
       setExpandedExpenseDateKeys(new Set());
       setExpandedExpenseTicketKeys(new Set());
+      setExpenseBreakdownExpanded(false);
     }
   }, [expandedEmployee]);
   const [sortField, setSortField] = useState<keyof EmployeeMetrics>('totalHours');
@@ -542,19 +544,58 @@ export default function EmployeeReports() {
                     return (
                       <>
                         {hasExpenses && (
-                          <tr style={{ borderTop: '1px solid var(--border-color)' }}>
-                            <td style={{ ...detailTdStyle, fontWeight: '600', color: '#e91e63' }}>Expenses</td>
-                            <td style={detailTdStyle} />
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
-                              {formatCurrency(expandedMetrics.expenseBilled || 0)}
-                            </td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: '#e91e63' }}>
-                              {formatCurrency(expandedMetrics.expenseCost)}
-                            </td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: expenseMargin >= 0 ? '#4caf50' : '#e53935' }}>
-                              {formatCurrency(expenseMargin)}
-                            </td>
-                          </tr>
+                          <>
+                            <tr style={{ borderTop: '1px solid var(--border-color)' }}>
+                              <td style={{ ...detailTdStyle, fontWeight: '600', color: '#e91e63', verticalAlign: 'top' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpenseBreakdownExpanded(v => !v)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                    fontSize: 'inherit',
+                                    fontWeight: 'inherit',
+                                    color: 'inherit',
+                                  }}
+                                >
+                                  <span style={{
+                                    display: 'inline-block',
+                                    fontSize: '10px',
+                                    color: 'var(--text-tertiary)',
+                                    transition: 'transform 0.2s ease',
+                                    transform: expenseBreakdownExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                  }}>&#9654;</span>
+                                  Expenses
+                                </button>
+                              </td>
+                              <td style={detailTdStyle} />
+                              <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
+                                {formatCurrency(expandedMetrics.expenseBilled || 0)}
+                              </td>
+                              <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: '#e91e63' }}>
+                                {formatCurrency(expandedMetrics.expenseCost)}
+                              </td>
+                              <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: expenseMargin >= 0 ? '#4caf50' : '#e53935' }}>
+                                {formatCurrency(expenseMargin)}
+                              </td>
+                            </tr>
+                            {expenseBreakdownExpanded && (expandedMetrics.expenseBreakdown || []).length > 0 && (
+                              (expandedMetrics.expenseBreakdown || []).map((row) => (
+                                <tr key={row.category} style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                                  <td style={{ ...detailTdStyle, paddingLeft: '28px', fontSize: '13px', color: 'var(--text-secondary)' }}>{row.category}</td>
+                                  <td style={detailTdStyle} />
+                                  <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px' }}>{formatCurrency(row.billed)}</td>
+                                  <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: row.cost > 0 ? '#e91e63' : undefined }}>{formatCurrency(row.cost)}</td>
+                                  <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: (row.billed - row.cost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(row.billed - row.cost)}</td>
+                                </tr>
+                              ))
+                            )}
+                          </>
                         )}
                         <tr style={{ borderTop: '2px solid var(--border-color)' }}>
                           <td style={{ ...detailTdStyle, fontWeight: '700' }}>Total</td>

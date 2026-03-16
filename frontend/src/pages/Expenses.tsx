@@ -416,6 +416,8 @@ export default function Expenses() {
         quantity: 1,
         rate: totalWithMarkup,
         unit: '',
+        needs_reimbursement: true,
+        reimbursement_status: 'pending',
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
@@ -1002,6 +1004,14 @@ export default function Expenses() {
                         {exp._ticketNumber || '-'}
                       </td>
                       <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {source === 'receipt' && (
+                          <button
+                            onClick={() => handleStartEdit(exp)}
+                            style={{ padding: '3px 8px', marginRight: '4px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                          >
+                            Edit
+                          </button>
+                        )}
                         {status === 'pending' && (
                           <>
                             <button

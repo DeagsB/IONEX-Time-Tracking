@@ -104,6 +104,8 @@ export interface EmployeeMetrics {
   expenseCost: number;
   /** Amount billed to customer for expenses (all ticket expenses: quantity × rate) */
   expenseBilled: number;
+  /** Breakdown by category: Per Diem, Mileage, Other/Parts */
+  expenseBreakdown: { category: string; billed: number; cost: number }[];
   totalCost: number; // laborCost + expenseCost
   netProfit: number; // Revenue - Total Cost
   profitMargin: number; // (Net Profit / Revenue) * 100
@@ -319,6 +321,7 @@ export function aggregateEmployeeMetrics(
       laborCost: 0,
       expenseCost: 0,
       expenseBilled: 0,
+      expenseBreakdown: [],
       totalCost: 0,
       netProfit: 0,
       profitMargin: 0,
@@ -592,7 +595,14 @@ export function aggregateEmployeeMetrics(
 
   // Calculate expense cost and billed amount from service ticket expenses for this employee.
   // expenseBilled = total amount billed to customer (all expenses: quantity × rate).
-  // expenseCost = reimbursement cost: billed-only (needs_reimbursement=false) = 0; reimbursable = amount × reimb_rate.
+  // expenseCost = reimbursement cost: what we pay the employee = amount × reimb_rate for reimbursable items.
+  // Billed-only (needs_reimbursement=false): cost = 0. Reimbursable: cost = amount × reimb_rate.
+  const expenseBreakdownMap = new Map<string, { billed: number; cost: number }>();
+  const getOrCreate = (cat: string) => {
+    if (!expenseBreakdownMap.has(cat)) expenseBreakdownMap.set(cat, { billed: 0, cost: 0 });
+    return expenseBreakdownMap.get(cat)!;
+  };
+
   let expenseCost = 0;
   let expenseBilled = 0;
   if (ticketExpenses) {
@@ -600,21 +610,38 @@ export function aggregateEmployeeMetrics(
       if (exp.service_tickets?.user_id !== userId) return;
       const amount = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
       expenseBilled += amount;
-      if (!exp.needs_reimbursement) return; // Billed to client only — no cost to employee
-      if (!employee) return;
+
       const expType = (exp.expense_type || '').toLowerCase();
       const desc = (exp.description || '').toLowerCase();
-      let reimbRate = 1.00;
-      if (expType === 'travel' && desc.includes('mileage')) {
-        reimbRate = Number(employee.mileage_reimb_rate) ?? 0.90;
-      } else if (expType === 'subsistence' && desc.includes('per diem')) {
-        reimbRate = Number(employee.per_diem_reimb_rate) ?? 1.00;
-      } else if (expType === 'equipment' && desc.includes('truck')) {
-        reimbRate = Number(employee.truck_reimb_rate) ?? 1.00;
+
+      let category: string;
+      let reimbRate = 0;
+
+      if (expType === 'subsistence' && desc.includes('per diem')) {
+        category = 'Per Diem';
+        reimbRate = exp.needs_reimbursement ? (Number(employee?.per_diem_reimb_rate) ?? 1.00) : 0;
+      } else if (expType === 'travel' && desc.includes('mileage')) {
+        category = 'Mileage';
+        reimbRate = exp.needs_reimbursement ? (Number(employee?.mileage_reimb_rate) ?? 0.90) : 0;
+      } else {
+        category = 'Other/Parts';
+        reimbRate = exp.needs_reimbursement ? 1.00 : 0;
       }
+
+      const entry = getOrCreate(category);
+      entry.billed += amount;
+      entry.cost += amount * reimbRate;
       expenseCost += amount * reimbRate;
     });
   }
+
+  const expenseBreakdown = Array.from(expenseBreakdownMap.entries())
+    .filter(([, v]) => v.billed > 0)
+    .map(([category, v]) => ({ category, billed: v.billed, cost: v.cost }))
+    .sort((a, b) => {
+      const order = ['Per Diem', 'Mileage', 'Other/Parts'];
+      return order.indexOf(a.category) - order.indexOf(b.category);
+    });
 
   const totalCost = laborCost + expenseCost;
 
@@ -657,6 +684,7 @@ export function aggregateEmployeeMetrics(
     laborCost,
     expenseCost,
     expenseBilled,
+    expenseBreakdown,
     totalCost,
     netProfit,
     profitMargin,
