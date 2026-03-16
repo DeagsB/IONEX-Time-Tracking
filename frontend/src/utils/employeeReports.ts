@@ -289,6 +289,30 @@ export function aggregateEmployeeMetrics(
       });
   }
 
+  // Update rate type breakdown revenue to use actual total_amount (proportionally distributed)
+  // This ensures the breakdown rows sum to the actual revenue
+  const estimatedRevenue = rateTypeBreakdown.shopTime.revenue +
+                           rateTypeBreakdown.fieldTime.revenue +
+                           rateTypeBreakdown.travelTime.revenue +
+                           rateTypeBreakdown.shopOvertime.revenue +
+                           rateTypeBreakdown.fieldOvertime.revenue;
+  if (estimatedRevenue > 0 && totalRevenue > 0) {
+    const scale = totalRevenue / estimatedRevenue;
+    rateTypeBreakdown.shopTime.revenue *= scale;
+    rateTypeBreakdown.fieldTime.revenue *= scale;
+    rateTypeBreakdown.travelTime.revenue *= scale;
+    rateTypeBreakdown.shopOvertime.revenue *= scale;
+    rateTypeBreakdown.fieldOvertime.revenue *= scale;
+    rateTypeBreakdown.shopTime.profit = rateTypeBreakdown.shopTime.revenue - rateTypeBreakdown.shopTime.cost;
+    rateTypeBreakdown.fieldTime.profit = rateTypeBreakdown.fieldTime.revenue - rateTypeBreakdown.fieldTime.cost;
+    rateTypeBreakdown.travelTime.profit = rateTypeBreakdown.travelTime.revenue - rateTypeBreakdown.travelTime.cost;
+    rateTypeBreakdown.shopOvertime.profit = rateTypeBreakdown.shopOvertime.revenue - rateTypeBreakdown.shopOvertime.cost;
+    rateTypeBreakdown.fieldOvertime.profit = rateTypeBreakdown.fieldOvertime.revenue - rateTypeBreakdown.fieldOvertime.cost;
+  } else if (totalRevenue > 0 && estimatedRevenue === 0) {
+    rateTypeBreakdown.shopTime.revenue = totalRevenue;
+    rateTypeBreakdown.shopTime.profit = totalRevenue - rateTypeBreakdown.shopTime.cost;
+  }
+
   // Helper function to round up to nearest 0.25 (quarter hour) for payroll hours calculation
   const roundToQuarterHourForPayroll = (hours: number): number => {
     return Math.ceil(hours * 4) / 4;
@@ -456,37 +480,13 @@ export function aggregateEmployeeMetrics(
       }).length
     : 0;
 
-  // Calculate labor cost per entry using historical pay rates (matching Profitability page)
-  let laborCost = 0;
-
-  if (employee) {
-    const isContractor = (employee.employment_type || 'Employee') === 'Contractor';
-    const burden = isContractor ? 0.05 : 0.30;
-
-    entries.forEach(entry => {
-      const hours = Number(entry.hours) || 0;
-      if (hours === 0) return;
-      const rates = rateHistoryMap.size > 0
-        ? getRatesForDate(employee, rateHistoryMap, entry.date)
-        : employee;
-      const rateType = entry.rate_type || 'Shop Time';
-      let payRate = 0;
-      if (!isBillable(entry) || rateType === 'Internal') {
-        payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
-      } else if (rateType === 'Shop Time') {
-        payRate = Number(rates.shop_pay_rate) || 0;
-      } else if (rateType === 'Field Time') {
-        payRate = Number(rates.field_pay_rate) || 0;
-      } else if (rateType === 'Travel Time') {
-        payRate = Number(rates.shop_pay_rate) || 0;
-      } else if (rateType === 'Shop Overtime') {
-        payRate = Number(rates.shop_ot_pay_rate) || 0;
-      } else if (rateType === 'Field Overtime') {
-        payRate = Number(rates.field_ot_pay_rate) || 0;
-      }
-      laborCost += hours * payRate * (1 + burden);
-    });
-  }
+  // Labor cost: derive from the rate type breakdown (single source of truth)
+  const laborCost = rateTypeBreakdown.internalTime.cost +
+                    rateTypeBreakdown.shopTime.cost +
+                    rateTypeBreakdown.fieldTime.cost +
+                    rateTypeBreakdown.travelTime.cost +
+                    rateTypeBreakdown.shopOvertime.cost +
+                    rateTypeBreakdown.fieldOvertime.cost;
 
   // Calculate expense cost from service ticket expenses for this employee
   let expenseCost = 0;
