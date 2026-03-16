@@ -718,6 +718,32 @@ export default function Profitability() {
                         </td>
                       </tr>
                     ); })}
+                    {(() => {
+                      const ticketHours = expandedTickets.reduce((sum: number, t: any) => sum + (Number(t.total_hours) || 0), 0);
+                      const ticketCost = expandedTickets.reduce((sum: number, t: any) => sum + (t.payrollCost || 0), 0);
+                      const totalProjectHours = expandedProject?.totalHours || 0;
+                      const totalProjectCost = expandedProject?.laborCost || 0;
+                      const unbilledHours = totalProjectHours - ticketHours;
+                      const unbilledCost = totalProjectCost - ticketCost;
+                      if (unbilledHours <= 0.05) return null;
+                      return (
+                        <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(229, 57, 53, 0.05)' }}>
+                          <td style={detailTdStyle}></td>
+                          <td style={detailTdStyle}>
+                            <span style={{ color: '#e53935', fontStyle: 'italic', fontSize: '12px' }}>Unbilled labor</span>
+                          </td>
+                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>{unbilledHours.toFixed(1)}</td>
+                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-tertiary)' }}>—</td>
+                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>${fmt(unbilledCost)}</td>
+                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>
+                            -${fmt(unbilledCost)}
+                          </td>
+                          <td style={{ ...detailTdStyle, textAlign: 'center' }}>
+                            <span style={{ fontSize: '11px', color: '#e53935', fontStyle: 'italic' }}>No ticket</span>
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
               )}
