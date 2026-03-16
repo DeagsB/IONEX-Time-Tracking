@@ -80,6 +80,16 @@ export default function Sidebar() {
       </div>
 
       <div style={{ padding: '0 15px', flex: 1, overflowY: 'auto' }}>
+        {isAdmin && (
+          <div style={{ marginBottom: '30px' }}>
+            <SidebarLink to="/dashboard" active={isActive('/dashboard')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isActive('/dashboard') ? 'var(--logo-red)' : 'inherit' }}>
+                Dashboard
+              </span>
+            </SidebarLink>
+          </div>
+        )}
+
         <div style={{ marginBottom: '30px' }}>
           <div style={{ 
             fontSize: '11px', 

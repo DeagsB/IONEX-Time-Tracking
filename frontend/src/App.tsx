@@ -21,6 +21,7 @@ import UserManagement from './pages/UserManagement';
 import Changelog from './pages/Changelog';
 import Expenses from './pages/Expenses';
 import Profitability from './pages/Profitability';
+import Dashboard from './pages/Dashboard';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 import Maintenance from './pages/Maintenance';
@@ -115,6 +116,11 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminHome() {
+  const { isAdmin } = useAuth();
+  return <Navigate to={isAdmin ? '/dashboard' : '/calendar'} replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -129,7 +135,15 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/calendar" />} />
+        <Route index element={<AdminHome />} />
+        <Route
+          path="dashboard"
+          element={
+            <AdminRoute>
+              <Dashboard />
+            </AdminRoute>
+          }
+        />
         <Route path="calendar" element={<WeekView />} />
         <Route path="calendar/:date" element={<DayDetail />} />
         <Route path="time-entries" element={<TimeEntries />} />
