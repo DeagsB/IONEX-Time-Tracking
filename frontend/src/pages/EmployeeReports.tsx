@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { reportsService, payRateHistoryService } from '../services/supabaseServices';
@@ -24,6 +24,10 @@ export default function EmployeeReports() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
+  const [expensesSectionExpanded, setExpensesSectionExpanded] = useState(true);
+  useEffect(() => {
+    if (expandedEmployee) setExpensesSectionExpanded(true);
+  }, [expandedEmployee]);
   const [sortField, setSortField] = useState<keyof EmployeeMetrics>('totalHours');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [customStartDate, setCustomStartDate] = useState<string>('');
@@ -588,11 +592,16 @@ export default function EmployeeReports() {
               </table>
             </DetailSection>
 
-            {/* Expenses & Reimbursements */}
+            {/* Expenses & Reimbursements — collapsible dropdown, shows ALL expenses (billed + reimbursed) */}
             {(() => {
-              const empExpenses = (ticketExpenses as any[]).filter((exp: any) => exp.service_tickets?.user_id === expandedMetrics.userId);
+              const empExpenses = (ticketExpensesRaw as any[]).filter((exp: any) => {
+                const uid = exp.service_tickets?.user_id ?? exp.service_ticket?.user_id;
+                return uid === expandedMetrics.userId;
+              });
               const totalExpAmt = empExpenses.reduce((s: number, e: any) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
+              const billed = empExpenses.filter((e: any) => !e.needs_reimbursement);
               const reimbursable = empExpenses.filter((e: any) => e.needs_reimbursement);
+              const billedTotal = billed.reduce((s: number, e: any) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
               const reimbTotal = reimbursable.reduce((s: number, e: any) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
               const reimbPaid = reimbursable.filter((e: any) => e.reimbursement_status === 'paid').reduce((s: number, e: any) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
               const reimbApproved = reimbursable.filter((e: any) => e.reimbursement_status === 'approved').reduce((s: number, e: any) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
@@ -613,79 +622,101 @@ export default function EmployeeReports() {
               };
 
               return (
-                <DetailSection title={`Expenses & Reimbursements \u2014 $${fmt(totalExpAmt)}`}>
-                  {empExpenses.length === 0 ? (
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No expenses recorded</p>
-                  ) : (
-                    <>
-                      {reimbTotal > 0 && (
-                        <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            Reimbursable: <strong style={{ color: '#e91e63' }}>${fmt(reimbTotal)}</strong>
+                <div style={{ marginBottom: '24px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setExpensesSectionExpanded((v) => !v)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      width: '100%',
+                      padding: '0 0 12px 0',
+                      background: 'none',
+                      border: 'none',
+                      borderBottom: '1px solid var(--border-color)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <span style={{
+                      display: 'inline-block',
+                      fontSize: '10px',
+                      color: 'var(--text-tertiary)',
+                      transition: 'transform 0.2s ease',
+                      transform: expensesSectionExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                    }}>&#9654;</span>
+                    <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>
+                      Expenses & Reimbursements — ${fmt(totalExpAmt)}
+                    </h3>
+                  </button>
+                  {expensesSectionExpanded && (
+                    <div style={{ marginTop: '12px' }}>
+                      {empExpenses.length === 0 ? (
+                        <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No expenses recorded</p>
+                      ) : (
+                        <>
+                          <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            {billedTotal > 0 && (
+                              <span>Billed to customer: <strong style={{ color: 'var(--text-primary)' }}>${fmt(billedTotal)}</strong></span>
+                            )}
+                            {reimbTotal > 0 && (
+                              <>
+                                <span>Reimbursed to employee: <strong style={{ color: '#e91e63' }}>${fmt(reimbTotal)}</strong></span>
+                                {reimbPaid > 0 && <span style={{ color: '#4caf50' }}>Paid: ${fmt(reimbPaid)}</span>}
+                                {reimbApproved > 0 && <span style={{ color: '#2196F3' }}>Approved: ${fmt(reimbApproved)}</span>}
+                                {reimbPending > 0 && <span style={{ color: '#ff9800' }}>Pending: ${fmt(reimbPending)}</span>}
+                              </>
+                            )}
                           </div>
-                          {reimbPaid > 0 && (
-                            <div style={{ fontSize: '12px', color: '#4caf50' }}>
-                              Paid: <strong>${fmt(reimbPaid)}</strong>
-                            </div>
-                          )}
-                          {reimbApproved > 0 && (
-                            <div style={{ fontSize: '12px', color: '#2196F3' }}>
-                              Approved: <strong>${fmt(reimbApproved)}</strong>
-                            </div>
-                          )}
-                          {reimbPending > 0 && (
-                            <div style={{ fontSize: '12px', color: '#ff9800' }}>
-                              Pending: <strong>${fmt(reimbPending)}</strong>
-                            </div>
-                          )}
-                        </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <th style={detailThStyle}>Date</th>
+                                <th style={detailThStyle}>Description</th>
+                                <th style={detailThStyle}>Ticket</th>
+                                <th style={{ ...detailThStyle, textAlign: 'right' }}>Amount</th>
+                                <th style={{ ...detailThStyle, textAlign: 'center' }}>Type</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {empExpenses
+                                .sort((a: any, b: any) => (b.service_tickets?.date || b.service_ticket?.date || '').localeCompare(a.service_tickets?.date || a.service_ticket?.date || ''))
+                                .map((exp: any) => {
+                                  const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+                                  const ticket = exp.service_tickets ?? exp.service_ticket;
+                                  const projLabel = ticket?.projects?.project_number
+                                    ? `${ticket.projects.project_number}`
+                                    : (ticket?.projects?.name || '');
+                                  const ticketLabel = ticket?.ticket_number || projLabel || '—';
+                                  return (
+                                    <tr key={exp.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                      <td style={{ ...detailTdStyle, fontFamily: 'monospace', whiteSpace: 'nowrap', fontSize: '12px' }}>{ticket?.date || '—'}</td>
+                                      <td style={{ ...detailTdStyle, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {exp.description || exp.expense_type || 'Expense'}
+                                      </td>
+                                      <td style={{ ...detailTdStyle, fontSize: '12px', color: 'var(--text-secondary)' }}>{ticketLabel}</td>
+                                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>{formatCurrency(amt)}</td>
+                                      <td style={{ ...detailTdStyle, textAlign: 'center' }}>
+                                        {exp.needs_reimbursement ? statusBadge(exp.reimbursement_status) : <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Billed</span>}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ borderTop: '2px solid var(--border-color)' }}>
+                                <td style={{ ...detailTdStyle, fontWeight: '700' }} colSpan={3}>Total</td>
+                                <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>{formatCurrency(totalExpAmt)}</td>
+                                <td style={detailTdStyle} />
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </>
                       )}
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                            <th style={detailThStyle}>Date</th>
-                            <th style={detailThStyle}>Description</th>
-                            <th style={detailThStyle}>Ticket</th>
-                            <th style={{ ...detailThStyle, textAlign: 'right' }}>Amount</th>
-                            <th style={{ ...detailThStyle, textAlign: 'center' }}>Reimb.</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {empExpenses
-                            .sort((a: any, b: any) => (b.service_tickets?.date || '').localeCompare(a.service_tickets?.date || ''))
-                            .map((exp: any) => {
-                              const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-                              const ticket = exp.service_tickets;
-                              const projLabel = ticket?.projects?.project_number
-                                ? `${ticket.projects.project_number}`
-                                : (ticket?.projects?.name || '');
-                              const ticketLabel = ticket?.ticket_number || projLabel || '—';
-                              return (
-                                <tr key={exp.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                  <td style={{ ...detailTdStyle, fontFamily: 'monospace', whiteSpace: 'nowrap', fontSize: '12px' }}>{ticket?.date || '—'}</td>
-                                  <td style={{ ...detailTdStyle, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {exp.description || exp.expense_type || 'Expense'}
-                                  </td>
-                                  <td style={{ ...detailTdStyle, fontSize: '12px', color: 'var(--text-secondary)' }}>{ticketLabel}</td>
-                                  <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>{formatCurrency(amt)}</td>
-                                  <td style={{ ...detailTdStyle, textAlign: 'center' }}>
-                                    {exp.needs_reimbursement ? statusBadge(exp.reimbursement_status) : <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>—</span>}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                        <tfoot>
-                          <tr style={{ borderTop: '2px solid var(--border-color)' }}>
-                            <td style={{ ...detailTdStyle, fontWeight: '700' }} colSpan={3}>Total</td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>{formatCurrency(totalExpAmt)}</td>
-                            <td style={detailTdStyle} />
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </>
+                    </div>
                   )}
-                </DetailSection>
+                </div>
               );
             })()}
 
