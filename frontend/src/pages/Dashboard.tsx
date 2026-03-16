@@ -213,7 +213,7 @@ export default function Dashboard() {
     { label: 'Tickets Awaiting Review', count: awaitingReviewCount, path: '/service-tickets?overview=open&tab=submitted', color: '#3b82f6' },
     { label: 'Resubmitted Tickets', count: resubmittedCount, path: '/service-tickets?overview=open&tab=submitted', color: '#eab308' },
     { label: 'Pending Expense Approvals', count: pendingExpenseCount, path: '/expenses?overview=open&tab=pending', color: '#f59e0b' },
-    { label: 'Add project # to projects', count: missingNumberCount, path: '/projects?overview=open&missing=1', color: '#10b981' },
+    { label: 'Projects Missing Numbers', count: missingNumberCount, path: '/projects?overview=open&missing=1', color: '#10b981' },
     { label: 'Open Bug Reports', count: openBugCount, path: '/service-tickets?overview=open&tab=submitted', color: '#ef4444' },
   ];
 
@@ -253,10 +253,10 @@ export default function Dashboard() {
           Action Items
         </h2>
         {totalActionItems === 0 ? (
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>All caught up — nothing requires attention.</p>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
-            {actionItems.filter(i => i.count > 0).map((item) => (
+          <p style={{ color: 'var(--text-secondary)', margin: '0 0 16px 0' }}>All caught up — nothing requires attention.</p>
+        ) : null}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
+            {actionItems.map((item) => (
               <div
                 key={item.label}
                 onClick={() => navigate(item.path)}
@@ -277,7 +277,7 @@ export default function Dashboard() {
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   minWidth: '36px', height: '36px', borderRadius: '10px',
-                  backgroundColor: item.color + '18', color: item.color,
+                  backgroundColor: item.color + '18', color: item.count > 0 ? item.color : 'var(--text-tertiary)',
                   fontSize: '16px', fontWeight: '700',
                 }}>
                   {item.count}
@@ -287,8 +287,7 @@ export default function Dashboard() {
                 </span>
               </div>
             ))}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* ── Charts Row ── */}
