@@ -277,7 +277,7 @@ export default function Dashboard() {
                 <XAxis dataKey="week" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                 <YAxis tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                 <Tooltip
-                  formatter={(value: number) => [fmt(value), 'Revenue']}
+                  formatter={(value: unknown) => [fmt(Number(value ?? 0)), 'Revenue']}
                   contentStyle={{
                     backgroundColor: 'var(--bg-primary)',
                     border: '1px solid var(--border-color)',
@@ -321,7 +321,7 @@ export default function Dashboard() {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number) => fmt(value)}
+                  formatter={(value: unknown) => fmt(Number(value ?? 0))}
                   contentStyle={{
                     backgroundColor: 'var(--bg-primary)',
                     border: '1px solid var(--border-color)',
