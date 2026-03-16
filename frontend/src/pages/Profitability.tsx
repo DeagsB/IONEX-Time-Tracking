@@ -373,7 +373,7 @@ export default function Profitability() {
     if (!expandedProjectId) return [];
     return (ticketExpenses as any[])
       .filter((exp: any) => exp.service_tickets?.project_id === expandedProjectId)
-      .map((exp: any) => ({
+      .map((exp: any) => {
         const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
         const actualCost = exp.actual_cost != null ? Number(exp.actual_cost) : (exp.needs_reimbursement ? amt : 0);
         return {
