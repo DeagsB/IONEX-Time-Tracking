@@ -33,7 +33,7 @@ export default function Profitability() {
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'project_number' | 'name' | 'revenue' | 'profit' | 'margin' | 'budget_usage'>('project_number');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [showInactive, setShowInactive] = useState(false);
 
   const { data: projects = [] } = useQuery({
@@ -225,10 +225,11 @@ export default function Profitability() {
         const numB = parseInt(b.projectNumber, 10);
         const hasNumA = !isNaN(numA);
         const hasNumB = !isNaN(numB);
-        if (hasNumA && hasNumB) cmp = numA - numB;
-        else if (hasNumA && !hasNumB) cmp = -1;
-        else if (!hasNumA && hasNumB) cmp = 1;
-        else cmp = a.name.localeCompare(b.name);
+        // Default (desc): named projects first A–Z, then numeric by project number descending
+        if (!hasNumA && hasNumB) cmp = -1;   // name before numeric
+        else if (hasNumA && !hasNumB) cmp = 1;
+        else if (!hasNumA && !hasNumB) cmp = a.name.localeCompare(b.name);
+        else cmp = numB - numA;   // both numeric: higher number first
       } else if (sortBy === 'name') cmp = a.name.localeCompare(b.name);
       else if (sortBy === 'revenue') cmp = a.revenue - b.revenue;
       else if (sortBy === 'profit') cmp = a.profit - b.profit;
@@ -421,7 +422,7 @@ export default function Profitability() {
 
   const handleSort = (field: typeof sortBy) => {
     if (sortBy === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortBy(field); setSortDir(field === 'project_number' ? 'asc' : 'desc'); }
+    else { setSortBy(field); setSortDir(field === 'project_number' ? 'desc' : 'desc'); }
   };
 
   const sortArrow = (field: typeof sortBy) =>

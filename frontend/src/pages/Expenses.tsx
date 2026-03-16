@@ -1078,7 +1078,7 @@ export default function Expenses() {
             </div>
             {editingExpense.service_ticket_id && (
               <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Applied to ticket {editingExpense.service_tickets?.ticket_number || editingExpense.service_ticket_id}. Changes will sync to the service ticket.</span>
+                <span>Applied to ticket {editingExpense.service_tickets?.ticket_number ?? 'Pending'}. Changes will sync to the service ticket.</span>
                 <button
                   onClick={async () => {
                     if (!confirm('Remove this expense from the service ticket? The ticket expense line will be deleted.')) return;

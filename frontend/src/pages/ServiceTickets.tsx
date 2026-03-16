@@ -46,6 +46,7 @@ export default function ServiceTickets() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
   // Filter tabs: 'draft' (Not Submitted), 'submitted' (Pending Approval), 'approved' (Finalized), 'all'
   // Admin defaults to Submitted tab on first open; non-admin to Drafts
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -2046,6 +2047,20 @@ export default function ServiceTickets() {
       result = result.filter(t => t.customerId === selectedCustomerId);
     }
 
+    // Search filter (admin only) - matches ticket ID, customer, project, employee, date, work description
+    if (isAdmin && searchTerm.trim()) {
+      const term = searchTerm.trim().toLowerCase();
+      result = result.filter((t) => {
+        const ticketId = (t.displayTicketNumber || t.ticketNumber || '').toLowerCase();
+        const customer = (t.customerName || '').toLowerCase();
+        const project = ((t.projectName || '') + ' ' + (t.projectNumber || '')).toLowerCase();
+        const employee = (t.userName || '').toLowerCase();
+        const dateStr = formatDateOnlyLocal(t.date).toLowerCase();
+        const workDesc = (t.entries || []).map((e: any) => (e.description || '').toLowerCase()).join(' ');
+        return ticketId.includes(term) || customer.includes(term) || project.includes(term) || employee.includes(term) || dateStr.includes(term) || workDesc.includes(term);
+      });
+    }
+
     // Filter by employee (admin only)
     // When employee overview is expanded to a specific employee, use that; otherwise use dropdown
     if (isAdmin && expandedEmployeeId) {
@@ -2173,7 +2188,7 @@ export default function ServiceTickets() {
     });
     
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate, expandedEmployeeId]);
+  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate, expandedEmployeeId, searchTerm]);
 
   // Ticket record IDs for expense totals query (only tickets that have a DB record)
   const ticketRecordIdsForExpenseTotals = useMemo(() => {
@@ -2832,48 +2847,92 @@ export default function ServiceTickets() {
         const shouldUseSnapshot = hasLegacyData && (ticketRecord?.is_edited || isFrozen);
 
         if (shouldUseSnapshot) {
-          const rowMap = new Map<string, ServiceRow>();
-          let rowIndex = 0;
-          if (Object.keys(loadedDescriptions).length > 0) {
+          // Reconstruct rows preserving ticket.entries order (created_at) so "Travel" stays above "Project"
+          // Legacy format stores by rate type; we consume in entry order to preserve layout
+          const loadedRows: ServiceRow[] = [];
+          if (ticket.entries.length > 0 && Object.keys(loadedDescriptions).length > 0) {
+            const descQueues: Record<string, string[]> = {};
+            const hoursQueues: Record<string, number[]> = {};
+            for (const rt of ['Shop Time', 'Travel Time', 'Field Time', 'Shop Overtime', 'Field Overtime']) {
+              const descs = loadedDescriptions[rt] || [];
+              const hrs = loadedHours[rt];
+              descQueues[rt] = [...descs];
+              hoursQueues[rt] = Array.isArray(hrs) ? [...hrs] : (hrs !== undefined ? [hrs as number] : []);
+            }
+            for (let i = 0; i < ticket.entries.length; i++) {
+              const entry = ticket.entries[i];
+              const rateType = (entry.rate_type || 'Shop Time') as keyof typeof descQueues;
+              const desc = descQueues[rateType]?.shift() ?? '';
+              const hours = hoursQueues[rateType]?.shift() ?? 0;
+              const id = entry.id || `entry-${i}`;
+              loadedRows.push({
+                id,
+                description: desc,
+                st: rateType === 'Shop Time' ? hours : 0,
+                tt: rateType === 'Travel Time' ? hours : 0,
+                ft: rateType === 'Field Time' ? hours : 0,
+                so: rateType === 'Shop Overtime' ? hours : 0,
+                fo: rateType === 'Field Overtime' ? hours : 0,
+              });
+            }
+            // Append any leftover rows (manual adds, or legacy entries not in ticket.entries)
+            for (const rt of ['Shop Time', 'Travel Time', 'Field Time', 'Shop Overtime', 'Field Overtime']) {
+              const descs = descQueues[rt];
+              const hrs = hoursQueues[rt];
+              if (descs && hrs) {
+                for (let j = 0; j < descs.length; j++) {
+                  const hours = hrs[j] ?? 0;
+                  loadedRows.push({
+                    id: `legacy-${rt}-${j}`,
+                    description: descs[j] ?? '',
+                    st: rt === 'Shop Time' ? hours : 0,
+                    tt: rt === 'Travel Time' ? hours : 0,
+                    ft: rt === 'Field Time' ? hours : 0,
+                    so: rt === 'Shop Overtime' ? hours : 0,
+                    fo: rt === 'Field Overtime' ? hours : 0,
+                  });
+                }
+              }
+            }
+          } else if (Object.keys(loadedDescriptions).length > 0) {
+            let rowIndex = 0;
             Object.keys(loadedDescriptions).forEach(rateType => {
               const descs = loadedDescriptions[rateType] || [];
               const hrs = loadedHours[rateType];
               const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
               descs.forEach((desc, i) => {
                 const hours = hoursArray[i] || 0;
-                const key = `${desc}-${rowIndex++}`;
-                const row: ServiceRow = {
-                  id: key, description: desc,
+                loadedRows.push({
+                  id: `legacy-${rowIndex++}`,
+                  description: desc,
                   st: rateType === 'Shop Time' ? hours : 0,
                   tt: rateType === 'Travel Time' ? hours : 0,
                   ft: rateType === 'Field Time' ? hours : 0,
                   so: rateType === 'Shop Overtime' ? hours : 0,
                   fo: rateType === 'Field Overtime' ? hours : 0,
-                };
-                rowMap.set(key, row);
+                });
               });
             });
-          } else {
+          } else if (Object.keys(loadedHours).length > 0) {
+            let rowIndex = 0;
             Object.keys(loadedHours).forEach(rateType => {
               const hrs = loadedHours[rateType];
               const hoursArray = Array.isArray(hrs) ? hrs : (hrs !== undefined ? [hrs as number] : []);
-              hoursArray.forEach((hours, i) => {
+              hoursArray.forEach((hours) => {
                 if (hours > 0) {
-                  const key = `${rateType}-${rowIndex++}`;
-                  const row: ServiceRow = {
-                    id: key, description: '',
+                  loadedRows.push({
+                    id: `legacy-${rateType}-${rowIndex++}`,
+                    description: '',
                     st: rateType === 'Shop Time' ? hours : 0,
                     tt: rateType === 'Travel Time' ? hours : 0,
                     ft: rateType === 'Field Time' ? hours : 0,
                     so: rateType === 'Shop Overtime' ? hours : 0,
                     fo: rateType === 'Field Overtime' ? hours : 0,
-                  };
-                  rowMap.set(key, row);
+                  });
                 }
               });
             });
           }
-          const loadedRows = Array.from(rowMap.values());
           if (loadedRows.length > 0) {
             setServiceRows(loadedRows);
             initialServiceRowsRef.current = loadedRows.map(r => ({ ...r }));
@@ -3038,6 +3097,26 @@ export default function ServiceTickets() {
               emptyOption={{ value: '', label: 'All Customers' }}
             />
           </div>
+          {isAdmin && (
+            <div>
+              <label className="label">Search</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="Ticket, customer, project, employee..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                }}
+              />
+            </div>
+          )}
           
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 'auto', marginBottom: '9px' }}>
