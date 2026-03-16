@@ -628,6 +628,10 @@ export default function Expenses() {
                                           {section.items.map((exp: any) => (
                                             <div
                                               key={`${exp._source}-${exp.id}`}
+                                              role={exp._source === 'receipt' ? 'button' : undefined}
+                                              tabIndex={exp._source === 'receipt' ? 0 : undefined}
+                                              onClick={exp._source === 'receipt' ? () => handleStartEdit(exp) : undefined}
+                                              onKeyDown={exp._source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
                                               style={{
                                                 padding: '8px 16px 8px 48px',
                                                 fontSize: '13px',
@@ -636,7 +640,10 @@ export default function Expenses() {
                                                 justifyContent: 'space-between',
                                                 alignItems: 'center',
                                                 borderBottom: '1px solid var(--border-color)',
+                                                cursor: exp._source === 'receipt' ? 'pointer' : 'default',
                                               }}
+                                              onMouseEnter={exp._source === 'receipt' ? (e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'; } : undefined}
+                                              onMouseLeave={exp._source === 'receipt' ? (e) => { e.currentTarget.style.backgroundColor = 'transparent'; } : undefined}
                                             >
                                               <span>{exp.description} {exp._ticketNumber ? `(${exp._ticketNumber})` : ''}</span>
                                               <span style={{ fontWeight: '600' }}>${exp._amount.toFixed(2)}</span>
@@ -971,11 +978,21 @@ export default function Expenses() {
                         {source === 'ticket' && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Ticket Expense</div>}
                       </td>
                       <td style={{ padding: '10px 14px', fontSize: '13px' }}>{exp._date ? new Date(exp._date + 'T12:00:00').toLocaleDateString() : '-'}</td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px' }}>
+                      <td
+                        style={{
+                          padding: '10px 14px',
+                          fontSize: '13px',
+                          cursor: source === 'receipt' ? 'pointer' : undefined,
+                        }}
+                        onClick={source === 'receipt' ? () => handleStartEdit(exp) : undefined}
+                        role={source === 'receipt' ? 'button' : undefined}
+                        tabIndex={source === 'receipt' ? 0 : undefined}
+                        onKeyDown={source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
+                      >
                         <div style={{ fontWeight: '500' }}>{exp.description}</div>
                         {source === 'receipt' && exp.receipt_url && (
                           <button
-                            onClick={() => handleViewReceipt(exp)}
+                            onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
                             style={{ fontSize: '11px', color: 'var(--primary-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '2px' }}
                           >
                             {loadingReceiptId === exp.id ? 'Loading...' : 'View Receipt'}
