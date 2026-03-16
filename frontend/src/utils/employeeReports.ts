@@ -57,6 +57,7 @@ export interface EmployeeWithRates {
   // Reimbursement rate multipliers (0.90 = 90% of billed amount paid to employee)
   mileage_reimb_rate?: number;
   per_diem_reimb_rate?: number;
+  hotel_reimb_rate?: number;
   truck_reimb_rate?: number;
   user?: {
     id: string;
@@ -104,7 +105,7 @@ export interface EmployeeMetrics {
   expenseCost: number;
   /** Amount billed to customer for expenses (all ticket expenses: quantity × rate) */
   expenseBilled: number;
-  /** Breakdown by category: Per Diem, Mileage, Other/Parts */
+  /** Breakdown by category: Per Diem, Mileage, Hotel, Other/Parts */
   expenseBreakdown: { category: string; billed: number; cost: number }[];
   totalCost: number; // laborCost + expenseCost
   netProfit: number; // Revenue - Total Cost
@@ -617,12 +618,17 @@ export function aggregateEmployeeMetrics(
       let category: string;
       let reimbRate = 0;
 
+      // Per Diem, Mileage, Hotel are inherently reimbursable; use reimb rate regardless of needs_reimbursement flag.
+      // Other/Parts: only when needs_reimbursement is set (parts may be billed-only).
       if (expType === 'subsistence' && desc.includes('per diem')) {
         category = 'Per Diem';
-        reimbRate = exp.needs_reimbursement ? (Number(employee?.per_diem_reimb_rate) ?? 1.00) : 0;
+        reimbRate = Number(employee?.per_diem_reimb_rate) ?? 1.00;
       } else if (expType === 'travel' && desc.includes('mileage')) {
         category = 'Mileage';
-        reimbRate = exp.needs_reimbursement ? (Number(employee?.mileage_reimb_rate) ?? 0.90) : 0;
+        reimbRate = Number(employee?.mileage_reimb_rate) ?? 0.90;
+      } else if (desc.includes('hotel')) {
+        category = 'Hotel';
+        reimbRate = Number(employee?.hotel_reimb_rate) ?? 1.00;
       } else {
         category = 'Other/Parts';
         reimbRate = exp.needs_reimbursement ? 1.00 : 0;
@@ -639,7 +645,7 @@ export function aggregateEmployeeMetrics(
     .filter(([, v]) => v.billed > 0)
     .map(([category, v]) => ({ category, billed: v.billed, cost: v.cost }))
     .sort((a, b) => {
-      const order = ['Per Diem', 'Mileage', 'Other/Parts'];
+      const order = ['Per Diem', 'Mileage', 'Hotel', 'Other/Parts'];
       return order.indexOf(a.category) - order.indexOf(b.category);
     });
 
