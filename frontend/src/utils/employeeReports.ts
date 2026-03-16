@@ -622,13 +622,13 @@ export function aggregateEmployeeMetrics(
       // Other/Parts: only when needs_reimbursement is set (parts may be billed-only).
       if (expType === 'subsistence' && desc.includes('per diem')) {
         category = 'Per Diem';
-        reimbRate = Number(employee?.per_diem_reimb_rate) ?? 1.00;
+        reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
       } else if (expType === 'travel' && desc.includes('mileage')) {
         category = 'Mileage';
-        reimbRate = Number(employee?.mileage_reimb_rate) ?? 0.90;
+        reimbRate = Number(employee?.mileage_reimb_rate) || 0.90;
       } else if (desc.includes('hotel')) {
         category = 'Hotel';
-        reimbRate = Number(employee?.hotel_reimb_rate) ?? 1.00;
+        reimbRate = Number(employee?.hotel_reimb_rate) || 1.00;
       } else {
         category = 'Other/Parts';
         reimbRate = exp.needs_reimbursement ? 1.00 : 0;
