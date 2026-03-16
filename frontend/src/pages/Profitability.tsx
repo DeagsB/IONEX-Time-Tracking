@@ -38,6 +38,7 @@ export default function Profitability() {
   const [editingBudgetProjectId, setEditingBudgetProjectId] = useState<string | null>(null);
   const [budgetInputValue, setBudgetInputValue] = useState('');
   const budgetInputRef = useRef<HTMLInputElement>(null);
+  const [expenseMarkupExpanded, setExpenseMarkupExpanded] = useState(true);
 
   const queryClient = useQueryClient();
   const budgetMutation = useMutation({
@@ -656,7 +657,7 @@ export default function Profitability() {
                           padding: 0,
                           cursor: 'pointer',
                           fontSize: '11px',
-                          color: 'var(--primary-color, #2196F3)',
+                          color: 'var(--text-secondary, #6b7280)',
                           textDecoration: 'underline',
                           fontStyle: 'italic',
                         }}
@@ -814,39 +815,67 @@ export default function Profitability() {
             </DetailSection>
 
             {/* Expenses with Markup (only items where billed > cost, e.g. mileage at 90% reimb) */}
-            <DetailSection title={`Expense Markup \u2014 $${fmt(expandedExpenses.reduce((s, e) => s + e.profit, 0))}`}>
-              {expandedExpenses.length === 0 ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No expenses with markup (items where we charged more than we paid)</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <th style={detailThStyle}>Description</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Qty</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Rate</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Total</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Company Cost</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Markup</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expandedExpenses.map((exp: any, i: number) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={detailTdStyle}>
-                          <span style={{ fontWeight: '500' }}>{exp.description}</span>
-                          {exp.type && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>({exp.type})</span>}
-                        </td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{exp.quantity}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.rate)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.total)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e91e63' }}>${fmt(exp.cost)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: exp.profit >= 0 ? '#4caf50' : '#e53935' }}>${fmt(exp.profit)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div style={{ marginBottom: '24px' }}>
+              <button
+                type="button"
+                onClick={() => setExpenseMarkupExpanded((v) => !v)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: 0,
+                  margin: 0,
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  color: 'var(--text-primary)',
+                  paddingBottom: '8px',
+                  borderBottom: '1px solid var(--border-color)',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ fontSize: '10px', opacity: 0.8 }}>{expenseMarkupExpanded ? '▼' : '▶'}</span>
+                Expense Markup — ${fmt(expandedExpenses.reduce((s, e) => s + e.profit, 0))}
+              </button>
+              {expenseMarkupExpanded && (
+                <div style={{ marginTop: '12px' }}>
+                  {expandedExpenses.length === 0 ? (
+                    <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No expenses with markup (items where we charged more than we paid)</p>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <th style={detailThStyle}>Description</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Qty</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Rate</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Total</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Company Cost</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Markup</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {expandedExpenses.map((exp: any, i: number) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <td style={detailTdStyle}>
+                              <span style={{ fontWeight: '500' }}>{exp.description}</span>
+                              {exp.type && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>({exp.type})</span>}
+                            </td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{exp.quantity}</td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.rate)}</td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.total)}</td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e91e63' }}>${fmt(exp.cost)}</td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: exp.profit >= 0 ? '#4caf50' : '#e53935' }}>${fmt(exp.profit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               )}
-            </DetailSection>
+            </div>
 
             {/* Revenue (Tickets) Breakdown */}
             <DetailSection title={`Revenue \u2014 ${expandedTickets.length} ticket${expandedTickets.length !== 1 ? 's' : ''}`}>
@@ -1062,7 +1091,7 @@ function BudgetBar({
             }}
           />
         )}
-        {large && (
+        {(large || overBudget) && (
           <div
             style={{
               position: 'absolute',
@@ -1073,14 +1102,14 @@ function BudgetBar({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '11px',
+              fontSize: overBudget ? '10px' : '11px',
               fontWeight: '700',
-              color: pct > 50 ? '#fff' : 'var(--text-primary)',
-              textShadow: pct > 50 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+              color: overBudget ? '#fff' : pct > 50 ? '#fff' : 'var(--text-primary)',
+              textShadow: (overBudget || pct > 50) ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
               pointerEvents: 'none',
             }}
           >
-            {pct.toFixed(0)}%
+            {overBudget ? 'Overbudget' : `${pct.toFixed(0)}%`}
           </div>
         )}
       </div>
