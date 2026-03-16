@@ -78,6 +78,9 @@ export default function WeekView() {
     other: '', // From project
   });
 
+  // Internal rate confirmation modal
+  const [internalRateConfirm, setInternalRateConfirm] = useState<{ action: () => void } | null>(null);
+
   // Edit existing entry modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<any>(null);
@@ -809,10 +812,8 @@ export default function WeekView() {
       const cust = customers?.find((c: any) => c.id === proj?.customer_id);
       const isIonex = cust?.name?.trim().toLowerCase() === 'ionex systems';
       if (!isIonex) {
-        const confirmed = window.confirm(
-          'You have a project selected but the rate type is set to Internal. Internal time is non-billable.\n\nDid you mean to select Internal?'
-        );
-        if (!confirmed) return;
+        setInternalRateConfirm({ action: () => createTimeEntryMutation.mutate(timeEntryData) });
+        return;
       }
     }
 
@@ -1064,10 +1065,16 @@ export default function WeekView() {
       const cust = customers?.find((c: any) => c.id === proj?.customer_id);
       const isIonex = cust?.name?.trim().toLowerCase() === 'ionex systems';
       if (!isIonex) {
-        const confirmed = window.confirm(
-          'You have a project selected but the rate type is set to Internal. Internal time is non-billable.\n\nDid you mean to select Internal?'
-        );
-        if (!confirmed) return;
+        const doSave = () => {
+          const og = projectChanged && oldCustomerId ? {
+            date: dateStr, userId: editingEntry.user_id, customerId: oldCustomerId, projectId: oldProjectId,
+            location: editingEntry.location ?? null, approver: editingEntry.approver ?? null,
+            po_afe: editingEntry.po_afe ?? null, cc: (editingEntry as any).cc ?? null,
+          } : undefined;
+          updateTimeEntryMutation.mutate({ id: editingEntry.id, data: updateData, oldGroup: og });
+        };
+        setInternalRateConfirm({ action: doSave });
+        return;
       }
     }
 
@@ -3895,6 +3902,76 @@ export default function WeekView() {
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Internal Rate Confirmation Modal */}
+      {internalRateConfirm && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+          }}
+          onClick={() => setInternalRateConfirm(null)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '12px',
+              padding: '28px 32px',
+              maxWidth: '420px',
+              width: '90%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              border: '1px solid var(--border-color)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{
+                width: '40px', height: '40px', borderRadius: '10px',
+                backgroundColor: 'rgba(255, 152, 0, 0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '20px',
+              }}>&#9888;</div>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                Internal Rate Selected
+              </h3>
+            </div>
+            <p style={{ margin: '0 0 8px', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+              You have a project selected but the rate type is set to <strong style={{ color: '#ff9800' }}>Internal</strong>.
+            </p>
+            <p style={{ margin: '0 0 24px', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+              Internal time is <strong>non-billable</strong> and will not generate revenue on service tickets. Did you mean to select Internal?
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setInternalRateConfirm(null)}
+                style={{
+                  padding: '8px 20px', fontSize: '13px', fontWeight: '600',
+                  border: '1px solid var(--border-color)', borderRadius: '8px',
+                  backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                }}
+              >
+                Go Back
+              </button>
+              <button
+                onClick={() => {
+                  const action = internalRateConfirm.action;
+                  setInternalRateConfirm(null);
+                  action();
+                }}
+                style={{
+                  padding: '8px 20px', fontSize: '13px', fontWeight: '600',
+                  border: 'none', borderRadius: '8px',
+                  backgroundColor: '#ff9800', color: 'white',
+                  cursor: 'pointer',
+                }}
+              >
+                Yes, Use Internal
+              </button>
             </div>
           </div>
         </div>

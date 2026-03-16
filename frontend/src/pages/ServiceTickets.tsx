@@ -68,6 +68,15 @@ export default function ServiceTickets() {
   // Admin employee overview panel
   const [showEmployeeOverview, setShowEmployeeOverview] = useState(true);
   const [expandedEmployeeId, setExpandedEmployeeId] = useState<string | null>(null);
+  const [expandedStatusSections, setExpandedStatusSections] = useState<Record<string, Set<string>>>({});
+  const toggleStatusSection = (userId: string, status: string) => {
+    setExpandedStatusSections(prev => {
+      const sections = new Set(prev[userId] || []);
+      if (sections.has(status)) sections.delete(status);
+      else sections.add(status);
+      return { ...prev, [userId]: sections };
+    });
+  };
 
   // Refetch sidebar notification counts when opening Service Tickets so they stay in sync (e.g. after a ticket was removed elsewhere)
   useEffect(() => {
@@ -1971,8 +1980,9 @@ export default function ServiceTickets() {
   }, [isAdmin, ticketsWithNumbers, startDate, endDate, selectedCustomerId, employees, showDiscarded]);
 
   // Tickets for the expanded employee's inline view
-  const expandedEmployeeTickets = useMemo(() => {
-    if (!expandedEmployeeId || !isAdmin) return [];
+  const expandedEmployeeTicketsByStatus = useMemo(() => {
+    const empty = { draft: [] as any[], submitted: [] as any[], approved: [] as any[] };
+    if (!expandedEmployeeId || !isAdmin) return empty;
     let pool = ticketsWithNumbers;
     if (startDate) pool = pool.filter(t => t.date >= startDate);
     if (endDate) pool = pool.filter(t => t.date <= endDate);
@@ -1984,14 +1994,14 @@ export default function ServiceTickets() {
     pool = pool.filter(t => t.userId === expandedEmployeeId);
     pool = pool.filter(t => (t.totalHours ?? 0) > 0 || classifyTicketStatus(t) !== 'draft');
 
-    // Sort: submitted first, then drafts, then approved; within each group by date desc
-    const statusOrder: Record<string, number> = { submitted: 0, draft: 1, approved: 2 };
-    return [...pool].sort((a, b) => {
-      const aStatus = classifyTicketStatus(a);
-      const bStatus = classifyTicketStatus(b);
-      if (statusOrder[aStatus] !== statusOrder[bStatus]) return statusOrder[aStatus] - statusOrder[bStatus];
-      return b.date.localeCompare(a.date);
-    });
+    const grouped = { draft: [] as any[], submitted: [] as any[], approved: [] as any[] };
+    for (const t of pool) {
+      grouped[classifyTicketStatus(t)].push(t);
+    }
+    grouped.draft.sort((a: any, b: any) => b.date.localeCompare(a.date));
+    grouped.submitted.sort((a: any, b: any) => b.date.localeCompare(a.date));
+    grouped.approved.sort((a: any, b: any) => b.date.localeCompare(a.date));
+    return grouped;
   }, [expandedEmployeeId, isAdmin, ticketsWithNumbers, startDate, endDate, selectedCustomerId]);
 
   // Filter and sort tickets
@@ -2856,69 +2866,100 @@ export default function ServiceTickets() {
                             <span style={{ color: emp.approvedCount > 0 ? '#4caf50' : 'var(--text-tertiary)' }}>{emp.approvedCount}</span>
                           </td>
                         </tr>
-                        {isExpanded && expandedEmployeeTickets.length > 0 && (
+                        {isExpanded && (
                           <tr>
                             <td colSpan={4} style={{ padding: '0' }}>
-                              <div style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-color)' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                  <thead>
-                                    <tr>
-                                      <th style={{ padding: '6px 16px 6px 40px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Ticket ID</th>
-                                      <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Date</th>
-                                      <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Customer</th>
-                                      <th style={{ padding: '6px 12px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Hours</th>
-                                      <th style={{ padding: '6px 16px', textAlign: 'center', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Status</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {expandedEmployeeTickets.map((t: any) => {
-                                      const status = classifyTicketStatus(t);
-                                      const existing = findMatchingTicketRecord(t);
-                                      const wfStatus = existing?.workflow_status || 'draft';
-                                      const statusColors: Record<string, string> = { draft: '#6b7280', submitted: '#ff9800', approved: '#4caf50' };
-                                      const statusLabels: Record<string, string> = { draft: 'Draft', submitted: 'Submitted', approved: 'Approved' };
-                                      if (wfStatus === 'rejected') {
-                                        statusLabels.draft = 'Rejected';
-                                        statusColors.draft = '#ef5350';
-                                      }
-                                      return (
-                                        <tr key={t.date + t.userId + t.customerId + t.projectId}
-                                          style={{ borderTop: '1px solid var(--border-color)', cursor: 'pointer' }}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedTicket(t);
-                                          }}
-                                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.04)'; }}
-                                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                                        >
-                                          <td style={{ padding: '6px 16px 6px 40px', fontSize: '13px', fontFamily: 'monospace', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                                            {t.displayTicketNumber || '—'}
-                                          </td>
-                                          <td style={{ padding: '6px 12px', fontSize: '13px', color: 'var(--text-primary)' }}>
-                                            {t.date}
-                                          </td>
-                                          <td style={{ padding: '6px 12px', fontSize: '13px', color: 'var(--text-primary)' }}>
-                                            {t.customerName || '—'}
-                                          </td>
-                                          <td style={{ padding: '6px 12px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace', color: 'var(--text-primary)' }}>
-                                            {(t.totalHours ?? 0).toFixed(1)}
-                                          </td>
-                                          <td style={{ padding: '6px 16px', textAlign: 'center' }}>
-                                            <span style={{
-                                              display: 'inline-block',
-                                              padding: '2px 8px',
-                                              borderRadius: '10px',
-                                              fontSize: '11px',
-                                              fontWeight: '600',
-                                              backgroundColor: `${statusColors[status]}18`,
-                                              color: statusColors[status],
-                                            }}>{statusLabels[status]}</span>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
+                              <div style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-color)', padding: '4px 0' }}>
+                                {([
+                                  { key: 'draft', label: 'Drafts', color: '#6b7280', tickets: expandedEmployeeTicketsByStatus.draft },
+                                  { key: 'submitted', label: 'Submitted', color: '#ff9800', tickets: expandedEmployeeTicketsByStatus.submitted },
+                                  { key: 'approved', label: 'Approved', color: '#4caf50', tickets: expandedEmployeeTicketsByStatus.approved },
+                                ] as const).map(section => {
+                                  const sectionOpen = expandedStatusSections[emp.userId]?.has(section.key) || false;
+                                  return (
+                                    <div key={section.key}>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleStatusSection(emp.userId, section.key); }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          width: '100%',
+                                          padding: '8px 16px 8px 32px',
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          fontSize: '13px',
+                                          fontWeight: '600',
+                                          color: section.color,
+                                          textAlign: 'left',
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.03)'; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                      >
+                                        <span style={{
+                                          display: 'inline-block',
+                                          fontSize: '9px',
+                                          transition: 'transform 0.2s ease',
+                                          transform: sectionOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                                        }}>&#9654;</span>
+                                        {section.label}
+                                        <span style={{
+                                          padding: '1px 7px',
+                                          borderRadius: '8px',
+                                          fontSize: '11px',
+                                          fontWeight: '700',
+                                          backgroundColor: section.tickets.length > 0 ? `${section.color}18` : 'transparent',
+                                          color: section.tickets.length > 0 ? section.color : 'var(--text-tertiary)',
+                                        }}>{section.tickets.length}</span>
+                                      </button>
+                                      {sectionOpen && section.tickets.length > 0 && (
+                                        <div style={{ paddingBottom: '4px' }}>
+                                          {section.tickets.map((t: any) => {
+                                            const existing = findMatchingTicketRecord(t);
+                                            const wfStatus = existing?.workflow_status || 'draft';
+                                            const isRejected = wfStatus === 'rejected';
+                                            return (
+                                              <div
+                                                key={t.date + t.userId + t.customerId + t.projectId}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedTicket(t); }}
+                                                style={{
+                                                  display: 'grid',
+                                                  gridTemplateColumns: '140px 100px 1fr 70px',
+                                                  gap: '8px',
+                                                  padding: '5px 16px 5px 52px',
+                                                  cursor: 'pointer',
+                                                  fontSize: '13px',
+                                                  alignItems: 'center',
+                                                  borderTop: '1px solid var(--border-color)',
+                                                }}
+                                                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.04)'; }}
+                                                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                              >
+                                                <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                                                  {t.displayTicketNumber || '—'}
+                                                  {isRejected && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#ef5350', fontWeight: '600' }}>Rejected</span>}
+                                                </span>
+                                                <span style={{ color: 'var(--text-primary)' }}>{t.date}</span>
+                                                <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                  {t.customerName || '—'}
+                                                </span>
+                                                <span style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                                                  {(t.totalHours ?? 0).toFixed(1)}h
+                                                </span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                      {sectionOpen && section.tickets.length === 0 && (
+                                        <div style={{ padding: '4px 16px 8px 52px', fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                                          No {section.label.toLowerCase()} tickets
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </td>
                           </tr>

@@ -699,21 +699,45 @@ export default function Profitability() {
                       const rev = Number(t.total_amount) || 0;
                       const emp = empByUserId.get(t.user_id);
                       const empName = emp?.user ? [emp.user.first_name, emp.user.last_name].filter(Boolean).join(' ') : null;
-                      const isInternal = rev === 0 && (t.payrollCost || 0) > 0;
-                      const ticketLabel = isInternal && empName ? `${empName} - internal` : (t.ticket_number || t.id.substring(0, 8));
+                      const isDraft = t.workflow_status === 'draft' || t.workflow_status === 'submitted';
+                      const isInternal = rev === 0 && (t.payrollCost || 0) > 0 && !isDraft;
+                      const ticketId = t.ticket_number || t.id.substring(0, 8);
                       return (
-                      <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: isDraft ? 0.7 : 1 }}>
                         <td style={detailTdStyle}>{t.date}</td>
                         <td style={detailTdStyle}>
-                          <span style={{ fontFamily: isInternal ? 'inherit' : 'monospace', color: 'var(--text-secondary)' }}>
-                            {ticketLabel}
-                          </span>
+                          <div>
+                            <span style={{ fontFamily: isInternal ? 'inherit' : 'monospace', color: 'var(--text-secondary)' }}>
+                              {isInternal && empName ? `${empName} - internal` : ticketId}
+                            </span>
+                            {empName && !isInternal && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>{empName}</div>
+                            )}
+                          </div>
                         </td>
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{Number(t.total_hours || 0).toFixed(1)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(Number(t.total_amount || 0))}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>${fmt(t.payrollCost || 0)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: (t.profit || 0) >= 0 ? '#4caf50' : '#e53935' }}>
-                          ${fmt(t.profit || 0)}
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>
+                          {isDraft ? (
+                            <span style={{ color: '#ff9800', fontStyle: 'italic' }} title="Draft — not included in totals">
+                              ${fmt(rev)} *
+                            </span>
+                          ) : (
+                            `$${fmt(rev)}`
+                          )}
+                        </td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: isDraft ? '#ff9800' : 'var(--text-secondary)' }}>
+                          {isDraft ? (
+                            <span style={{ fontStyle: 'italic' }} title="Draft — not included in totals">${fmt(t.payrollCost || 0)} *</span>
+                          ) : (
+                            `$${fmt(t.payrollCost || 0)}`
+                          )}
+                        </td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: isDraft ? '#ff9800' : ((t.profit || 0) >= 0 ? '#4caf50' : '#e53935') }}>
+                          {isDraft ? (
+                            <span style={{ fontStyle: 'italic' }} title="Draft — not included in totals">${fmt(t.profit || 0)} *</span>
+                          ) : (
+                            `$${fmt(t.profit || 0)}`
+                          )}
                         </td>
                         <td style={{ ...detailTdStyle, textAlign: 'center' }}>
                           <StatusBadge status={t.workflow_status} />
@@ -748,6 +772,11 @@ export default function Profitability() {
                     })()}
                   </tbody>
                 </table>
+                {expandedTickets.some((t: any) => t.workflow_status === 'draft' || t.workflow_status === 'submitted') && (
+                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#ff9800', fontStyle: 'italic' }}>
+                    * Draft/submitted amounts are shown for reference but not included in revenue or profit totals
+                  </p>
+                )}
               )}
             </DetailSection>
           </div>
