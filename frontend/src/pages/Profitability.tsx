@@ -416,7 +416,8 @@ export default function Profitability() {
           profit: amt - cost,
         };
       })
-      .sort((a: any, b: any) => b.total - a.total);
+      .filter((exp: any) => exp.profit > 0) // Only show expenses with markup (billed > cost)
+      .sort((a: any, b: any) => b.profit - a.profit);
   }, [expandedProjectId, ticketExpenses, empByUserId]);
 
   const fmt = (n: number) => n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -724,10 +725,10 @@ export default function Profitability() {
               </p>
             </DetailSection>
 
-            {/* Expenses Breakdown */}
-            <DetailSection title={`Expenses \u2014 $${fmt(expandedProject.expenseCost)}`}>
+            {/* Expenses with Markup (only items where billed > cost, e.g. mileage at 90% reimb) */}
+            <DetailSection title={`Expense Markup \u2014 $${fmt(expandedExpenses.reduce((s, e) => s + e.profit, 0))}`}>
               {expandedExpenses.length === 0 ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No expenses recorded</p>
+                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No expenses with markup (items where we charged more than we paid)</p>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
