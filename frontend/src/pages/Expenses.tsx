@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, Fragment } from 'react';
+import React, { useState, useRef, useMemo, Fragment, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userExpensesService, serviceTicketExpensesService, employeesService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
@@ -78,6 +78,23 @@ export default function Expenses() {
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const [editForm, setEditForm] = useState({ description: '', amount: '', gst: '', is_billable: false, expense_date: '', notes: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editReceiptPreviewUrl, setEditReceiptPreviewUrl] = useState<string | null>(null);
+  const [editReceiptIsPdf, setEditReceiptIsPdf] = useState(false);
+  const [loadingEditReceipt, setLoadingEditReceipt] = useState(false);
+
+  useEffect(() => {
+    if (!editingExpense?.receipt_url) {
+      setEditReceiptPreviewUrl(null);
+      return;
+    }
+    setLoadingEditReceipt(true);
+    const isPdf = (editingExpense.receipt_url || '').toLowerCase().endsWith('.pdf');
+    setEditReceiptIsPdf(isPdf);
+    userExpensesService.getReceiptSignedUrl(editingExpense.receipt_url)
+      .then((url) => { setEditReceiptPreviewUrl(url); })
+      .catch(() => { setEditReceiptPreviewUrl(editingExpense.receipt_url); })
+      .finally(() => { setLoadingEditReceipt(false); });
+  }, [editingExpense?.id, editingExpense?.receipt_url]);
 
   // Ticket details popup (inside picker)
   const [detailsTicketId, setDetailsTicketId] = useState<string | null>(null);
@@ -1375,70 +1392,103 @@ export default function Expenses() {
         <div style={{
           position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setEditingExpense(null)}>
+        }} onClick={() => { setEditingExpense(null); setEditReceiptPreviewUrl(null); }}>
           <div onClick={(e) => e.stopPropagation()} style={{
-            backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px',
-            maxWidth: '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            backgroundColor: 'var(--bg-primary)', borderRadius: '12px', overflow: 'hidden',
+            maxWidth: editingExpense.receipt_url ? '800px' : '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            display: 'flex', flexDirection: editingExpense.receipt_url ? 'row' : 'column', minHeight: editingExpense.receipt_url ? '450px' : undefined,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Edit Expense</h3>
-              <button onClick={() => setEditingExpense(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
-            </div>
-            {editingExpense.service_ticket_id && (
-              <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Applied to ticket {editingExpense.service_tickets?.ticket_number ?? 'Pending'}. Changes will sync to the service ticket.</span>
-                <button
-                  onClick={async () => {
-                    if (!confirm('Remove this expense from the service ticket? The ticket expense line will be deleted.')) return;
-                    try {
-                      await userExpensesService.unapplyFromTicket(editingExpense.id);
-                      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
-                      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
-                      queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
-                      setEditingExpense({ ...editingExpense, service_ticket_id: null, service_tickets: null, markup_amount: null });
-                    } catch (err: any) {
-                      alert('Failed to unapply: ' + (err.message || 'Unknown error'));
-                    }
-                  }}
-                  style={{ marginLeft: '8px', padding: '4px 10px', backgroundColor: 'rgba(244, 67, 54, 0.1)', color: '#f44336', border: '1px solid rgba(244, 67, 54, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                >
-                  Unapply
-                </button>
+            {editingExpense.receipt_url && (
+              <div style={{
+                flex: 1,
+                backgroundColor: 'var(--bg-tertiary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '16px',
+                overflow: 'auto',
+                minWidth: 0,
+              }}>
+                {loadingEditReceipt ? (
+                  <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>Loading receipt...</div>
+                ) : editReceiptPreviewUrl ? (
+                  editReceiptIsPdf ? (
+                    <iframe
+                      src={editReceiptPreviewUrl}
+                      title="Receipt preview"
+                      style={{ width: '100%', height: '100%', minHeight: '380px', border: 'none', borderRadius: '4px' }}
+                    />
+                  ) : (
+                    <img
+                      src={editReceiptPreviewUrl}
+                      alt="Receipt preview"
+                      style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '4px' }}
+                    />
+                  )
+                ) : null}
               </div>
             )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Description</label>
-                <input type="text" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} style={inputStyle} />
+            <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Edit Expense</h3>
+                <button onClick={() => { setEditingExpense(null); setEditReceiptPreviewUrl(null); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {editingExpense.service_ticket_id && (
+                <div style={{ marginBottom: '16px', padding: '8px 12px', backgroundColor: 'rgba(33, 150, 243, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#2196F3', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Applied to ticket {editingExpense.service_tickets?.ticket_number ?? 'Pending'}. Changes will sync to the service ticket.</span>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Remove this expense from the service ticket? The ticket expense line will be deleted.')) return;
+                      try {
+                        await userExpensesService.unapplyFromTicket(editingExpense.id);
+                        queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+                        queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+                        queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+                        setEditingExpense({ ...editingExpense, service_ticket_id: null, service_tickets: null, markup_amount: null });
+                      } catch (err: any) {
+                        alert('Failed to unapply: ' + (err.message || 'Unknown error'));
+                      }
+                    }}
+                    style={{ marginLeft: '8px', padding: '4px 10px', backgroundColor: 'rgba(244, 67, 54, 0.1)', color: '#f44336', border: '1px solid rgba(244, 67, 54, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    Unapply
+                  </button>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
-                  <input type="number" step="0.01" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} style={inputStyle} />
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Description</label>
+                  <input type="text" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} style={inputStyle} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
+                    <input type="number" step="0.01" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
+                    <input type="number" step="0.01" min="0" value={editForm.gst} onChange={(e) => setEditForm({ ...editForm, gst: e.target.value })} style={inputStyle} />
+                  </div>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
-                  <input type="number" step="0.01" min="0" value={editForm.gst} onChange={(e) => setEditForm({ ...editForm, gst: e.target.value })} style={inputStyle} />
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Date</label>
+                  <input type="date" value={editForm.expense_date} onChange={(e) => setEditForm({ ...editForm, expense_date: e.target.value })} style={inputStyle} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input type="checkbox" id="edit-billable" checked={editForm.is_billable} onChange={(e) => setEditForm({ ...editForm, is_billable: e.target.checked })} />
+                  <label htmlFor="edit-billable" style={{ fontSize: '13px', cursor: 'pointer' }}>Billable</label>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Notes</label>
+                  <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
                 </div>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Date</label>
-                <input type="date" value={editForm.expense_date} onChange={(e) => setEditForm({ ...editForm, expense_date: e.target.value })} style={inputStyle} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: 'auto', paddingTop: '20px' }}>
+                <button onClick={() => { setEditingExpense(null); setEditReceiptPreviewUrl(null); }} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+                <button onClick={handleSaveEdit} disabled={isSavingEdit} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: '600', cursor: isSavingEdit ? 'not-allowed' : 'pointer', opacity: isSavingEdit ? 0.7 : 1 }}>
+                  {isSavingEdit ? 'Saving...' : 'Save Changes'}
+                </button>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input type="checkbox" id="edit-billable" checked={editForm.is_billable} onChange={(e) => setEditForm({ ...editForm, is_billable: e.target.checked })} />
-                <label htmlFor="edit-billable" style={{ fontSize: '13px', cursor: 'pointer' }}>Billable</label>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Notes</label>
-                <textarea value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
-              <button onClick={() => setEditingExpense(null)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handleSaveEdit} disabled={isSavingEdit} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: '600', cursor: isSavingEdit ? 'not-allowed' : 'pointer', opacity: isSavingEdit ? 0.7 : 1 }}>
-                {isSavingEdit ? 'Saving...' : 'Save Changes'}
-              </button>
             </div>
           </div>
         </div>
