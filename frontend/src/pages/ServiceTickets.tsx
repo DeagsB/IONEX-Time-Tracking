@@ -1357,14 +1357,14 @@ export default function ServiceTickets() {
   };
 
   // Fetch billable entries (filtered by demo mode)
-  // Non-admins only see their own entries; admins can filter by selectedUserId
+  // Non-admins only see their own entries; admins get all (employee filter applied in UI only, so overview stays unfiltered)
   const { data: billableEntries, isLoading: isLoadingEntries, error: entriesError } = useQuery({
-    queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, selectedUserId, isDemoMode, isAdmin, user?.id],
+    queryKey: ['billableEntries', startDate, endDate, selectedCustomerId, isDemoMode, isAdmin, user?.id],
     queryFn: () => serviceTicketsService.getBillableEntries({
       startDate,
       endDate,
       customerId: selectedCustomerId || undefined,
-      userId: isAdmin ? (selectedUserId || undefined) : (user?.id ?? undefined),
+      userId: isAdmin ? undefined : (user?.id ?? undefined),
       isDemoMode, // Only show demo entries in demo mode, real entries otherwise
     }),
   });
@@ -2083,8 +2083,8 @@ export default function ServiceTickets() {
       result = result.filter(t => t.userId === selectedUserId);
     }
     
-    // Filter by Tab (Status Group) - skip when viewing trash, or when admin has an employee expanded from overview
-    if (!showDiscarded && !(isAdmin && expandedEmployeeId) && activeTab && activeTab !== 'all') {
+    // Filter by Tab (Status Group) - skip when viewing trash
+    if (!showDiscarded && activeTab && activeTab !== 'all') {
       result = result.filter(t => {
         const existing = findMatchingTicketRecord(t);
         const hasTicketNumber = !!existing?.ticket_number;
@@ -3115,6 +3115,21 @@ export default function ServiceTickets() {
           </div>
           {isAdmin && (
             <div>
+              <label className="label">Employee</label>
+              <SearchableSelect
+                options={employees?.map((emp: any) => ({
+                  value: emp.user_id,
+                  label: [emp.user?.first_name, emp.user?.last_name].filter(Boolean).join(' ') || emp.user?.email || emp.user_id || 'Unknown',
+                })) || []}
+                value={selectedUserId}
+                onChange={(value) => setSelectedUserId(value)}
+                placeholder="Search employees..."
+                emptyOption={{ value: '', label: 'All Employees' }}
+              />
+            </div>
+          )}
+          {isAdmin && (
+            <div>
               <label className="label">Search</label>
               <input
                 type="text"
@@ -3158,56 +3173,6 @@ export default function ServiceTickets() {
           </div>
         </div>
       </div>
-
-      {/* Status Tabs — non-admin only */}
-      {!isAdmin && (
-      <div
-        ref={tabsContainerRef}
-        style={{ position: 'relative', display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}
-      >
-        {[
-          { id: 'draft', label: 'Drafts' },
-          { id: 'submitted', label: 'Submitted' },
-          { id: 'approved', label: 'Approved' },
-          { id: 'all', label: 'All Tickets' }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            ref={(el) => { tabRefsMap.current[tab.id] = el; }}
-            onClick={() => {
-              setActiveTab(tab.id as any);
-              if (showDiscarded) setShowDiscarded(false);
-            }}
-            style={{
-              padding: '10px 20px',
-              border: 'none',
-              backgroundColor: 'transparent',
-              color: activeTab === tab.id ? 'var(--primary-color)' : 'var(--text-secondary)',
-              fontWeight: activeTab === tab.id ? '600' : '500',
-              cursor: 'pointer',
-              borderBottom: '2px solid transparent',
-              marginBottom: '-1px',
-              transition: 'color 0.2s ease, font-weight 0.2s ease',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-        {tabIndicatorStyle && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '-1px',
-              left: tabIndicatorStyle.left,
-              width: tabIndicatorStyle.width,
-              height: '2px',
-              backgroundColor: 'var(--primary-color)',
-              transition: 'left 0.3s ease, width 0.3s ease',
-            }}
-          />
-        )}
-      </div>
-      )}
 
       {/* Admin Employee Overview Panel */}
       {isAdmin && !showDiscarded && (
@@ -3448,6 +3413,54 @@ export default function ServiceTickets() {
           )}
         </div>
       )}
+
+      {/* Status Tabs — under Employee Overview for admin, standalone for non-admin */}
+      <div
+        ref={tabsContainerRef}
+        style={{ position: 'relative', display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}
+      >
+        {[
+          { id: 'draft', label: 'Drafts' },
+          { id: 'submitted', label: 'Submitted' },
+          { id: 'approved', label: 'Approved' },
+          { id: 'all', label: 'All Tickets' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            ref={(el) => { tabRefsMap.current[tab.id] = el; }}
+            onClick={() => {
+              setActiveTab(tab.id as any);
+              if (showDiscarded) setShowDiscarded(false);
+            }}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: activeTab === tab.id ? 'var(--primary-color)' : 'var(--text-secondary)',
+              fontWeight: activeTab === tab.id ? '600' : '500',
+              cursor: 'pointer',
+              borderBottom: '2px solid transparent',
+              marginBottom: '-1px',
+              transition: 'color 0.2s ease, font-weight 0.2s ease',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+        {tabIndicatorStyle && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '-1px',
+              left: tabIndicatorStyle.left,
+              width: tabIndicatorStyle.width,
+              height: '2px',
+              backgroundColor: 'var(--primary-color)',
+              transition: 'left 0.3s ease, width 0.3s ease',
+            }}
+          />
+        )}
+      </div>
 
       {/* Trashed banner */}
       {showDiscarded && (
