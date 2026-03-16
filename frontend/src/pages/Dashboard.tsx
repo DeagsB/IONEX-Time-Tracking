@@ -74,7 +74,7 @@ export default function Dashboard() {
       const { data, error } = await supabase
         .from('projects')
         .select('id, project_number')
-        .eq('is_active', true);
+        .or('active.eq.true,active.is.null');
       if (error) return 0;
       return (data || []).filter((p: any) => !p.project_number || String(p.project_number).trim() === '').length;
     },
@@ -253,10 +253,10 @@ export default function Dashboard() {
           Action Items
         </h2>
         {totalActionItems === 0 ? (
-          <p style={{ color: 'var(--text-secondary)', margin: '0 0 16px 0' }}>All caught up — nothing requires attention.</p>
-        ) : null}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
-            {actionItems.map((item) => (
+          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>All caught up — nothing requires attention.</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
+            {actionItems.filter(i => i.count > 0).map((item) => (
               <div
                 key={item.label}
                 onClick={() => navigate(item.path)}
@@ -277,7 +277,7 @@ export default function Dashboard() {
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   minWidth: '36px', height: '36px', borderRadius: '10px',
-                  backgroundColor: item.color + '18', color: item.count > 0 ? item.color : 'var(--text-tertiary)',
+                  backgroundColor: item.color + '18', color: item.color,
                   fontSize: '16px', fontWeight: '700',
                 }}>
                   {item.count}
@@ -287,7 +287,8 @@ export default function Dashboard() {
                 </span>
               </div>
             ))}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ── Charts Row ── */}
