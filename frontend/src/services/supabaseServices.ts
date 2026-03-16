@@ -892,7 +892,8 @@ export const serviceTicketsService = {
       `)
       .eq('billable', true)
       .not('project_id', 'is', null) // Only entries with a project can be service tickets
-      .order('date', { ascending: false });
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: true }); // Within same date: first-entered first (input order)
 
     if (filters?.startDate) {
       query = query.gte('date', filters.startDate);
