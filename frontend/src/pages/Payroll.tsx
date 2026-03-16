@@ -616,10 +616,13 @@ export default function Payroll() {
   }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees]);
 
   const grandTotalReimbursements = useMemo(() => {
+    const employeeIds = new Set(employeeHours.map((e) => e.userId));
     let total = 0;
-    reimbursementsByUser.forEach((v) => { total += v.total; });
+    reimbursementsByUser.forEach((v, userId) => {
+      if (employeeIds.has(userId)) total += v.total;
+    });
     return total;
-  }, [reimbursementsByUser]);
+  }, [reimbursementsByUser, employeeHours]);
 
   // --- Payroll Breakdown (base pay, benefits, GST, allowances, total payout) ---
   interface PayrollBreakdown {
