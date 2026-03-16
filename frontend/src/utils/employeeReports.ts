@@ -137,6 +137,8 @@ export interface ProjectBreakdown {
   hours: number;
   revenue: number;
   billableHours: number;
+  expenseBilled: number;
+  expenseCost: number;
 }
 
 export interface CustomerBreakdown {
@@ -305,6 +307,11 @@ export function aggregateEmployeeMetrics(
       : employee?.user_id || 'Unknown';
     
     console.log('No entries for employee:', { userId, employeeName, employee });
+
+    // Still compute project breakdown for expenses-only (employee may have expenses without time entries)
+    const projectBreakdown = calculateProjectBreakdown([], employee, undefined, ticketExpenses);
+    const expenseBilled = projectBreakdown.reduce((s, p) => s + p.expenseBilled, 0);
+    const expenseCost = projectBreakdown.reduce((s, p) => s + p.expenseCost, 0);
     
     return {
       userId,
@@ -320,9 +327,9 @@ export function aggregateEmployeeMetrics(
       billableRatio: 0,
       totalRevenue: 0,
       laborCost: 0,
-      expenseCost: 0,
-      expenseBilled: 0,
-      expenseBreakdown: [],
+      expenseCost,
+      expenseBilled,
+      expenseBreakdown: [], // Category breakdown requires full aggregation; project breakdown has expenses
       totalCost: 0,
       netProfit: 0,
       profitMargin: 0,
@@ -340,7 +347,7 @@ export function aggregateEmployeeMetrics(
         shopOvertime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
         fieldOvertime: { hours: 0, revenue: 0, cost: 0, profit: 0 },
       },
-      projectBreakdown: [],
+      projectBreakdown,
       customerBreakdown: [],
       trends: [],
     };
@@ -658,8 +665,8 @@ export function aggregateEmployeeMetrics(
   const revenuePerHour = totalHours > 0 ? totalRevenue / totalHours : 0;
   const profitPerHour = totalHours > 0 ? netProfit / totalHours : 0;
 
-  // Project breakdown
-  const projectBreakdown = calculateProjectBreakdown(entries, employee, serviceTicketHours);
+  // Project breakdown (includes expenses allocated to each project)
+  const projectBreakdown = calculateProjectBreakdown(entries, employee, serviceTicketHours, ticketExpenses);
 
   // Customer breakdown
   const customerBreakdown = calculateCustomerBreakdown(entries, employee, serviceTicketHours);
@@ -1049,9 +1056,15 @@ export function calculateRateTypeBreakdown(
 // Calculate breakdown by project
 // Hours: billable = service ticket hours
 // Revenue: total_amount from approved/exported tickets (matching Profitability)
-export function calculateProjectBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): ProjectBreakdown[] {
-  const projectMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
-  const userId = entries[0]?.user_id || '';
+// Expenses: allocated to project via ticket.project_id (billed + reimbursement cost)
+export function calculateProjectBreakdown(
+  entries: TimeEntry[],
+  employee?: EmployeeWithRates,
+  serviceTicketHours?: ServiceTicketHours[],
+  ticketExpenses?: TicketExpense[]
+): ProjectBreakdown[] {
+  const projectMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number; expenseBilled: number; expenseCost: number }>();
+  const userId = entries[0]?.user_id || employee?.user_id || '';
 
   // Create a map of service ticket hours and revenue by project
   // Revenue: use total_amount for approved/exported tickets (matching Profitability)
@@ -1121,12 +1134,51 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
         billableHours: 0,
         nonBillableHours: 0,
         revenue: 0,
+        expenseBilled: 0,
+        expenseCost: 0,
       });
     }
 
     // Just ensure the project is in the map - billable hours come from service tickets
     projectMap.get(projectId);
   });
+
+  // Allocate expenses to projects (via ticket.project_id)
+  if (ticketExpenses) {
+    ticketExpenses.forEach(exp => {
+      if (exp.service_tickets?.user_id !== userId) return;
+      const projectId = exp.service_tickets?.project_id;
+      if (!projectId) return;
+
+      const amount = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      const expType = (exp.expense_type || '').toLowerCase();
+      const desc = (exp.description || '').toLowerCase();
+
+      let reimbRate = 0;
+      if (expType === 'subsistence' && desc.includes('per diem')) {
+        reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
+      } else if (expType === 'travel' && desc.includes('mileage')) {
+        reimbRate = Number(employee?.mileage_reimb_rate) || 0.90;
+      } else if (desc.includes('hotel')) {
+        reimbRate = Number(employee?.hotel_reimb_rate) || 1.00;
+      } else {
+        reimbRate = exp.needs_reimbursement ? 1.00 : 0;
+      }
+
+      if (!projectMap.has(projectId)) {
+        projectMap.set(projectId, {
+          billableHours: 0,
+          nonBillableHours: 0,
+          revenue: 0,
+          expenseBilled: 0,
+          expenseCost: 0,
+        });
+      }
+      const data = projectMap.get(projectId)!;
+      data.expenseBilled += amount;
+      data.expenseCost += amount * reimbRate;
+    });
+  }
 
   // Second pass: set billable hours from service tickets and calculate revenue (billable only)
   projectMap.forEach((data, projectId) => {
@@ -1139,22 +1191,41 @@ export function calculateProjectBreakdown(entries: TimeEntry[], employee?: Emplo
     data.revenue = ticketRevenue;
   });
 
-  // Convert to ProjectBreakdown format - only include projects with hours
+  // Build project name lookup: from entries first, then from ticketExpenses (service_tickets.projects)
+  const projectNameById = new Map<string, string>();
+  entries.forEach(e => {
+    if (e.project_id && e.project && !projectNameById.has(e.project_id)) {
+      const p = e.project as any;
+      projectNameById.set(e.project_id, p.project_number ? `${p.project_number} - ${p.name || ''}` : (p.name || '(Unknown Project)'));
+    }
+  });
+  if (ticketExpenses) {
+    ticketExpenses.forEach(exp => {
+      const tid = exp.service_tickets?.project_id;
+      if (tid && !projectNameById.has(tid)) {
+        const proj = (exp.service_tickets as any)?.project;
+        if (proj) {
+          projectNameById.set(tid, proj.project_number ? `${proj.project_number} - ${proj.name || ''}` : (proj.name || '(Unknown Project)'));
+        } else {
+          projectNameById.set(tid, '(Unknown Project)');
+        }
+      }
+    });
+  }
+
+  // Convert to ProjectBreakdown format - include projects with hours or expenses
   const result: ProjectBreakdown[] = Array.from(projectMap.entries())
-    .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0) // Only include projects with activity
+    .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0 || data.expenseBilled > 0) // Include projects with activity or expenses
     .map(([projectId, data]) => {
-      const project = entries.find(e => e.project_id === projectId)?.project;
-      const name = project?.name || '(Unknown Project)';
-      const projectName = project?.project_number
-        ? `${project.project_number} - ${name}`
-        : name;
-      // Hours displayed = billable hours from service tickets only
+      const projectName = projectNameById.get(projectId) || '(Unknown Project)';
       return {
         projectId,
         projectName,
         hours: data.billableHours,
         revenue: data.revenue,
         billableHours: data.billableHours,
+        expenseBilled: data.expenseBilled,
+        expenseCost: data.expenseCost,
       };
     });
 

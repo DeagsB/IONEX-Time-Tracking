@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { reportsService, payRateHistoryService, serviceTicketExpensesService } from '../services/supabaseServices';
@@ -27,12 +27,14 @@ export default function EmployeeReports() {
   const [expandedExpenseDateKeys, setExpandedExpenseDateKeys] = useState<Set<string>>(new Set());
   const [expandedExpenseTicketKeys, setExpandedExpenseTicketKeys] = useState<Set<string>>(new Set());
   const [expenseBreakdownExpanded, setExpenseBreakdownExpanded] = useState(false);
+  const [otherPartsExpanded, setOtherPartsExpanded] = useState(false);
   useEffect(() => {
     if (expandedEmployee) {
       setExpensesSectionExpanded(true);
       setExpandedExpenseDateKeys(new Set());
       setExpandedExpenseTicketKeys(new Set());
       setExpenseBreakdownExpanded(false);
+      setOtherPartsExpanded(false);
     }
   }, [expandedEmployee]);
   const [sortField, setSortField] = useState<keyof EmployeeMetrics>('totalHours');
@@ -585,15 +587,68 @@ export default function EmployeeReports() {
                               </td>
                             </tr>
                             {expenseBreakdownExpanded && (expandedMetrics.expenseBreakdown || []).length > 0 && (
-                              (expandedMetrics.expenseBreakdown || []).map((row) => (
-                                <tr key={row.category} style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                                  <td style={{ ...detailTdStyle, paddingLeft: '28px', fontSize: '13px', color: 'var(--text-secondary)' }}>{row.category}</td>
-                                  <td style={detailTdStyle} />
-                                  <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px' }}>{formatCurrency(row.billed)}</td>
-                                  <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: row.cost > 0 ? '#e91e63' : undefined }}>{formatCurrency(row.cost)}</td>
-                                  <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: (row.billed - row.cost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(row.billed - row.cost)}</td>
-                                </tr>
-                              ))
+                              (expandedMetrics.expenseBreakdown || []).map((row) => {
+                                const isOtherParts = row.category === 'Other/Parts';
+                                const otherPartsItems = isOtherParts ? (ticketExpenses as any[]).filter((exp: any) => {
+                                  const uid = exp.service_tickets?.user_id ?? exp.service_ticket?.user_id;
+                                  if (uid !== expandedMetrics.userId) return false;
+                                  const expType = (exp.expense_type || '').toLowerCase();
+                                  const desc = (exp.description || '').toLowerCase();
+                                  if (expType === 'subsistence' && desc.includes('per diem')) return false;
+                                  if (expType === 'travel' && desc.includes('mileage')) return false;
+                                  if (desc.includes('hotel')) return false;
+                                  return true;
+                                }) : [];
+                                const hasOtherPartsItems = otherPartsItems.length > 0;
+                                return (
+                                  <Fragment key={row.category}>
+                                    <tr style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                                      <td style={{ ...detailTdStyle, paddingLeft: '28px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                        {isOtherParts && hasOtherPartsItems ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setOtherPartsExpanded(v => !v)}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'inherit', color: 'inherit' }}
+                                          >
+                                            <span style={{
+                                              display: 'inline-block',
+                                              fontSize: '10px',
+                                              color: 'var(--text-tertiary)',
+                                              transition: 'transform 0.2s ease',
+                                              transform: otherPartsExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                            }}>&#9654;</span>
+                                            {row.category}
+                                          </button>
+                                        ) : (
+                                          row.category
+                                        )}
+                                      </td>
+                                      <td style={detailTdStyle} />
+                                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px' }}>{formatCurrency(row.billed)}</td>
+                                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: row.cost > 0 ? '#e91e63' : undefined }}>{formatCurrency(row.cost)}</td>
+                                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: (row.billed - row.cost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(row.billed - row.cost)}</td>
+                                    </tr>
+                                    {isOtherParts && hasOtherPartsItems && otherPartsExpanded && otherPartsItems.map((exp: any) => {
+                                      const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+                                      const ticket = exp.service_tickets ?? exp.service_ticket;
+                                      const lineCost = exp.needs_reimbursement ? amt : 0;
+                                      const ticketLabel = ticket?.ticket_number ? `#${ticket.ticket_number}` : '—';
+                                      return (
+                                        <tr key={exp.id} style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                                          <td style={{ ...detailTdStyle, paddingLeft: '44px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                                            {exp.description || exp.expense_type || 'Expense'}
+                                            {ticketLabel !== '—' && <span style={{ marginLeft: '6px', color: 'var(--text-tertiary)', fontSize: '11px' }}>({ticketLabel})</span>}
+                                          </td>
+                                          <td style={detailTdStyle} />
+                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px' }}>{formatCurrency(amt)}</td>
+                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px', color: lineCost > 0 ? '#e91e63' : undefined }}>{formatCurrency(lineCost)}</td>
+                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px', color: (amt - lineCost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(amt - lineCost)}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </Fragment>
+                                );
+                              })
                             )}
                           </>
                         )}
@@ -912,6 +967,8 @@ export default function EmployeeReports() {
                       <th style={detailThStyle}>Project</th>
                       <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
                       <th style={{ ...detailThStyle, textAlign: 'right' }}>Revenue</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Expenses Billed</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Expense Cost</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -920,6 +977,8 @@ export default function EmployeeReports() {
                         <td style={detailTdStyle}>{proj.projectName}</td>
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatHoursDecimal(proj.hours)}</td>
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(proj.revenue)}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(proj.expenseBilled ?? 0)}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: (proj.expenseCost ?? 0) > 0 ? '#e91e63' : undefined }}>{formatCurrency(proj.expenseCost ?? 0)}</td>
                       </tr>
                     ))}
                   </tbody>

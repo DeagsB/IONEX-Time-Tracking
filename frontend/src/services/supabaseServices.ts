@@ -1991,8 +1991,8 @@ export const serviceTicketExpensesService = {
       .select(`
         *,
         service_tickets!inner (
-          id, user_id, date, ticket_number, is_discarded,
-          projects(name, project_number)
+          id, user_id, date, ticket_number, is_discarded, project_id,
+          project:projects(id, name, project_number)
         )
       `)
       .gte('service_tickets.date', startDate)

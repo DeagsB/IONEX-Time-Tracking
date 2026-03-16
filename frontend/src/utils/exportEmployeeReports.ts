@@ -174,11 +174,11 @@ export async function exportEmployeeReportsToExcel(
   // Project Breakdown Sheet
   const projectSheet = workbook.addWorksheet('Project Breakdown');
   
-  projectSheet.mergeCells('A1:D1');
-  projectSheet.getCell('A1').value = 'Hours by Project';
+  projectSheet.mergeCells('A1:F1');
+  projectSheet.getCell('A1').value = 'Hours & Expenses by Project';
   projectSheet.getCell('A1').font = { bold: true, size: 14 };
 
-  const projectHeaders = ['Employee', 'Project', 'Hours', 'Revenue'];
+  const projectHeaders = ['Employee', 'Project', 'Hours', 'Revenue', 'Expenses Billed', 'Expense Cost'];
   projectHeaders.forEach((header, index) => {
     const cell = projectSheet.getCell(3, index + 1);
     cell.value = header;
@@ -189,13 +189,17 @@ export async function exportEmployeeReportsToExcel(
 
   let projectRowNum = 4;
   employees.forEach((emp) => {
-    emp.projectBreakdown.forEach((proj) => {
+    emp.projectBreakdown.forEach((proj: any) => {
       projectSheet.getCell(projectRowNum, 1).value = emp.employeeName;
       projectSheet.getCell(projectRowNum, 2).value = proj.projectName;
       projectSheet.getCell(projectRowNum, 3).value = proj.hours;
       projectSheet.getCell(projectRowNum, 3).numFmt = '0.00';
       projectSheet.getCell(projectRowNum, 4).value = proj.revenue;
       projectSheet.getCell(projectRowNum, 4).numFmt = '"$"#,##0.00';
+      projectSheet.getCell(projectRowNum, 5).value = proj.expenseBilled ?? 0;
+      projectSheet.getCell(projectRowNum, 5).numFmt = '"$"#,##0.00';
+      projectSheet.getCell(projectRowNum, 6).value = proj.expenseCost ?? 0;
+      projectSheet.getCell(projectRowNum, 6).numFmt = '"$"#,##0.00';
       projectRowNum++;
     });
   });
