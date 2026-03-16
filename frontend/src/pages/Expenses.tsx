@@ -1,6 +1,6 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { userExpensesService, serviceTicketExpensesService } from '../services/supabaseServices';
+import { userExpensesService, serviceTicketExpensesService, employeesService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { useAuth } from '../context/AuthContext';
@@ -57,6 +57,22 @@ export default function Expenses() {
   // Admin approval
   const [adminStatusFilter, setAdminStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'paid' | 'all'>('pending');
   const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
+
+  // Admin employee overview (like Service Tickets)
+  const [showExpenseEmployeeOverview, setShowExpenseEmployeeOverview] = useState(true);
+  const [expandedExpenseEmployeeId, setExpandedExpenseEmployeeId] = useState<string | null>(null);
+  const [expandedExpenseStatusSections, setExpandedExpenseStatusSections] = useState<Record<string, Set<string>>>({});
+
+  const toggleExpenseStatusSection = (empId: string, key: string) => {
+    setExpandedExpenseStatusSections(prev => {
+      const next = { ...prev };
+      const set = new Set(next[empId] || []);
+      if (set.has(key)) set.delete(key);
+      else set.add(key);
+      next[empId] = set;
+      return next;
+    });
+  };
 
   // Edit receipt
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -201,6 +217,13 @@ export default function Expenses() {
     enabled: isAdmin,
   });
 
+  // Fetch employees for admin employee overview and ticket expense names
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeesService.getAll(),
+    enabled: isAdmin,
+  });
+
   const handleAdminStatusChange = async (itemId: string, newStatus: 'approved' | 'rejected' | 'paid', source: 'receipt' | 'ticket') => {
     setUpdatingExpenseId(itemId);
     try {
@@ -234,27 +257,88 @@ export default function Expenses() {
       ...exp,
       _source: 'receipt' as const,
       _status: exp.status,
+      _userId: exp.user_id,
       _employeeName: exp.users ? `${exp.users.first_name || ''} ${exp.users.last_name || ''}`.trim() || exp.users.email : 'Unknown',
       _ticketNumber: exp.service_tickets?.ticket_number || null,
       _amount: parseFloat(exp.amount),
       _date: exp.expense_date,
     }));
-    const ticketItems = ticketReimbExpenses.map((exp: any) => ({
-      ...exp,
-      _source: 'ticket' as const,
-      _status: exp.reimbursement_status || 'pending',
-      _employeeName: '', // Will be populated from service_tickets.user_id join if available
-      _ticketNumber: exp.service_tickets?.ticket_number || null,
-      _amount: (Number(exp.quantity) || 0) * (Number(exp.rate) || 0),
-      _date: exp.service_tickets?.date || exp.created_at?.split('T')[0],
-    }));
+    const ticketItems = ticketReimbExpenses.map((exp: any) => {
+      const uid = exp.service_tickets?.user_id;
+      const emp = employees?.find((e: any) => e.user_id === uid);
+      const empName = emp?.user ? `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim() : 'Unknown';
+      return {
+        ...exp,
+        _source: 'ticket' as const,
+        _status: exp.reimbursement_status || 'pending',
+        _userId: uid,
+        _employeeName: empName,
+        _ticketNumber: exp.service_tickets?.ticket_number || null,
+        _amount: (Number(exp.quantity) || 0) * (Number(exp.rate) || 0),
+        _date: exp.service_tickets?.date || exp.created_at?.split('T')[0],
+      };
+    });
     return [...receiptItems, ...ticketItems].sort((a, b) => new Date(b._date).getTime() - new Date(a._date).getTime());
-  }, [expenses, ticketReimbExpenses]);
+  }, [expenses, ticketReimbExpenses, employees]);
 
-  const adminFilteredExpenses = mergedAdminExpenses.filter((exp: any) => {
+  // Admin does not approve their own receipts; Expense Approvals shows everyone except admin
+  const mergedAdminExpensesForApproval = useMemo(() => {
+    if (!user?.id) return mergedAdminExpenses;
+    return mergedAdminExpenses.filter((e: any) => e._userId !== user.id);
+  }, [mergedAdminExpenses, user?.id]);
+
+  const adminFilteredExpenses = mergedAdminExpensesForApproval.filter((exp: any) => {
     if (adminStatusFilter === 'all') return true;
     return exp._status === adminStatusFilter;
   });
+
+  // Admin's own expenses (for the Internal Expenses table)
+  const myExpenses = useMemo(() => {
+    if (!isAdmin || !user?.id) return expenses;
+    return expenses.filter((e: any) => e.user_id === user.id);
+  }, [expenses, isAdmin, user?.id]);
+
+  // Admin employee overview: per-employee counts (pending, approved, rejected, paid)
+  const expenseEmployeeSummary = useMemo(() => {
+    if (!isAdmin || !employees?.length) return [];
+    const map = new Map<string, { userId: string; name: string; pending: number; approved: number; rejected: number; paid: number }>();
+    for (const e of mergedAdminExpenses) {
+      const uid = e._userId;
+      if (!uid) continue;
+      if (!map.has(uid)) {
+        const emp = employees.find((em: any) => em.user_id === uid);
+        const name = emp?.user ? `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim() : e._employeeName || 'Unknown';
+        map.set(uid, { userId: uid, name, pending: 0, approved: 0, rejected: 0, paid: 0 });
+      }
+      const entry = map.get(uid)!;
+      const s = e._status;
+      if (s === 'pending') entry.pending++;
+      else if (s === 'approved') entry.approved++;
+      else if (s === 'rejected') entry.rejected++;
+      else if (s === 'paid') entry.paid++;
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.pending > 0 && b.pending === 0) return -1;
+      if (a.pending === 0 && b.pending > 0) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [isAdmin, mergedAdminExpenses, employees]);
+
+  // Expenses for expanded employee in overview (grouped by status)
+  const expandedExpenseEmployeeByStatus = useMemo(() => {
+    const empty = { pending: [] as any[], approved: [] as any[], rejected: [] as any[], paid: [] as any[] };
+    if (!expandedExpenseEmployeeId || !isAdmin) return empty;
+    const pool = mergedAdminExpenses.filter((e: any) => e._userId === expandedExpenseEmployeeId);
+    const grouped = { pending: [] as any[], approved: [] as any[], rejected: [] as any[], paid: [] as any[] };
+    for (const e of pool) {
+      const s = e._status;
+      if (s === 'pending') grouped.pending.push(e);
+      else if (s === 'approved') grouped.approved.push(e);
+      else if (s === 'rejected') grouped.rejected.push(e);
+      else if (s === 'paid') grouped.paid.push(e);
+    }
+    return grouped;
+  }, [expandedExpenseEmployeeId, isAdmin, mergedAdminExpenses]);
 
   const handleFileDrop = (file: File) => {
     setReceiptFile(file);
@@ -394,6 +478,206 @@ export default function Expenses() {
       <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 24px', color: 'var(--text-primary)' }}>
         Internal Expenses & Receipts
       </h1>
+
+      {/* Admin: Employee Overview (like Service Tickets) */}
+      {isAdmin && expenseEmployeeSummary.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <button
+            onClick={() => setShowExpenseEmployeeOverview(!showExpenseEmployeeOverview)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              color: 'var(--text-primary)',
+              padding: '8px 0',
+            }}
+          >
+            <span style={{
+              display: 'inline-block',
+              transition: 'transform 0.2s ease',
+              transform: showExpenseEmployeeOverview ? 'rotate(90deg)' : 'rotate(0deg)',
+              fontSize: '12px',
+            }}>&#9654;</span>
+            Employee Overview
+            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontWeight: '400' }}>
+              ({expenseEmployeeSummary.length} employee{expenseEmployeeSummary.length !== 1 ? 's' : ''})
+            </span>
+            {(() => {
+              const totalPending = expenseEmployeeSummary.reduce((s, e) => s + e.pending, 0);
+              if (totalPending === 0) return null;
+              return (
+                <span style={{
+                  marginLeft: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  backgroundColor: '#ff9800',
+                  color: 'white',
+                }}>{totalPending} pending</span>
+              );
+            })()}
+          </button>
+
+          {showExpenseEmployeeOverview && (
+            <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                    <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '100px' }}>Pending</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase', width: '100px' }}>Approved</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ef4444', textTransform: 'uppercase', width: '100px' }}>Rejected</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#3b82f6', textTransform: 'uppercase', width: '100px' }}>Paid</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expenseEmployeeSummary.map((emp) => {
+                    const isExpanded = expandedExpenseEmployeeId === emp.userId;
+                    return (
+                      <Fragment key={emp.userId}>
+                        <tr
+                          onClick={() => setExpandedExpenseEmployeeId(isExpanded ? null : emp.userId)}
+                          style={{
+                            borderBottom: '1px solid var(--border-color)',
+                            cursor: 'pointer',
+                            backgroundColor: isExpanded ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
+                            transition: 'background-color 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; }}
+                          onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        >
+                          <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              marginRight: '8px',
+                              fontSize: '10px',
+                              color: 'var(--text-tertiary)',
+                              transition: 'transform 0.2s ease',
+                              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                            }}>&#9654;</span>
+                            {emp.name}
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                            <span style={{ color: emp.pending > 0 ? '#ff9800' : 'var(--text-tertiary)', fontWeight: emp.pending > 0 ? '700' : '400' }}>{emp.pending}</span>
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                            <span style={{ color: emp.approved > 0 ? '#4caf50' : 'var(--text-tertiary)' }}>{emp.approved}</span>
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                            <span style={{ color: emp.rejected > 0 ? '#ef4444' : 'var(--text-tertiary)' }}>{emp.rejected}</span>
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                            <span style={{ color: emp.paid > 0 ? '#3b82f6' : 'var(--text-tertiary)' }}>{emp.paid}</span>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '0' }}>
+                              <div style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-color)', padding: '4px 0' }}>
+                                {([
+                                  { key: 'pending', label: 'Pending', color: '#ff9800', items: expandedExpenseEmployeeByStatus.pending },
+                                  { key: 'approved', label: 'Approved', color: '#4caf50', items: expandedExpenseEmployeeByStatus.approved },
+                                  { key: 'rejected', label: 'Rejected', color: '#ef4444', items: expandedExpenseEmployeeByStatus.rejected },
+                                  { key: 'paid', label: 'Paid', color: '#3b82f6', items: expandedExpenseEmployeeByStatus.paid },
+                                ] as const).map(section => {
+                                  const sectionOpen = expandedExpenseStatusSections[emp.userId]?.has(section.key) || false;
+                                  return (
+                                    <div key={section.key}>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); toggleExpenseStatusSection(emp.userId, section.key); }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          width: '100%',
+                                          padding: '8px 16px 8px 32px',
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          fontSize: '13px',
+                                          fontWeight: '600',
+                                          color: section.color,
+                                          textAlign: 'left',
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.03)'; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                      >
+                                        <span style={{
+                                          display: 'inline-block',
+                                          fontSize: '9px',
+                                          transition: 'transform 0.2s ease',
+                                          transform: sectionOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                                        }}>&#9654;</span>
+                                        {section.label}
+                                        <span style={{
+                                          padding: '1px 7px',
+                                          borderRadius: '8px',
+                                          fontSize: '11px',
+                                          fontWeight: '700',
+                                          backgroundColor: section.items.length > 0 ? `${section.color}18` : 'transparent',
+                                          color: section.items.length > 0 ? section.color : 'var(--text-tertiary)',
+                                        }}>{section.items.length}</span>
+                                      </button>
+                                      {sectionOpen && section.items.length > 0 && (
+                                        <div style={{ paddingBottom: '4px' }}>
+                                          {section.items.map((exp: any) => (
+                                            <div
+                                              key={`${exp._source}-${exp.id}`}
+                                              style={{
+                                                padding: '8px 16px 8px 48px',
+                                                fontSize: '13px',
+                                                color: 'var(--text-secondary)',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                borderBottom: '1px solid var(--border-color)',
+                                              }}
+                                            >
+                                              <span>{exp.description} {exp._ticketNumber ? `(${exp._ticketNumber})` : ''}</span>
+                                              <span style={{ fontWeight: '600' }}>${exp._amount.toFixed(2)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', fontWeight: '700' }}>
+                    <td style={{ padding: '14px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>Total</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#ff9800' }}>
+                      {expenseEmployeeSummary.reduce((s, e) => s + e.pending, 0)}
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#4caf50' }}>
+                      {expenseEmployeeSummary.reduce((s, e) => s + e.approved, 0)}
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#ef4444' }}>
+                      {expenseEmployeeSummary.reduce((s, e) => s + e.rejected, 0)}
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#3b82f6' }}>
+                      {expenseEmployeeSummary.reduce((s, e) => s + e.paid, 0)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Drag and Drop Zone */}
       <input
@@ -548,7 +832,7 @@ export default function Expenses() {
               </tr>
             </thead>
             <tbody>
-              {expenses.map((exp: any) => (
+              {myExpenses.map((exp: any) => (
                 <tr
                   key={exp.id}
                   onClick={() => handleStartEdit(exp)}
@@ -619,7 +903,7 @@ export default function Expenses() {
                   </td>
                 </tr>
               ))}
-              {expenses.length === 0 && (
+              {myExpenses.length === 0 && (
                 <tr>
                   <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
                     No expenses found. Drop a receipt above to get started.
@@ -656,7 +940,7 @@ export default function Expenses() {
                   textTransform: 'capitalize',
                 }}
               >
-                {status}{status !== 'all' ? ` (${mergedAdminExpenses.filter((e: any) => e._status === status).length})` : ` (${mergedAdminExpenses.length})`}
+                {status}{status !== 'all' ? ` (${mergedAdminExpensesForApproval.filter((e: any) => e._status === status).length})` : ` (${mergedAdminExpensesForApproval.length})`}
               </button>
             ))}
           </div>
