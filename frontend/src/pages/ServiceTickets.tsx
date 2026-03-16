@@ -3151,10 +3151,10 @@ export default function ServiceTickets() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', width: '100px' }}>Drafts</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '120px' }}>Submitted</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase', width: '100px' }}>Approved</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', width: '100px' }}>Drafts</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '120px' }}>Submitted</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase', width: '100px' }}>Approved</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3173,7 +3173,7 @@ export default function ServiceTickets() {
                           onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; }}
                           onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'transparent'; }}
                         >
-                          <td style={{ padding: '10px 16px', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                          <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
                             <span style={{
                               display: 'inline-block',
                               marginRight: '8px',
@@ -3184,10 +3184,10 @@ export default function ServiceTickets() {
                             }}>&#9654;</span>
                             {emp.name}
                           </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
                             <span style={{ color: emp.draftCount > 0 ? '#6b7280' : 'var(--text-tertiary)' }}>{emp.draftCount}</span>
                           </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
                             <span style={{ color: emp.submittedCount > 0 ? '#ff9800' : 'var(--text-tertiary)', fontWeight: emp.submittedCount > 0 ? '700' : '400' }}>
                               {emp.submittedCount}
                             </span>
@@ -3203,7 +3203,7 @@ export default function ServiceTickets() {
                               }}>{emp.submittedNewCount} resubmitted</span>
                             )}
                           </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
                             <span style={{ color: emp.approvedCount > 0 ? '#4caf50' : 'var(--text-tertiary)' }}>{emp.approvedCount}</span>
                           </td>
                         </tr>
@@ -3311,14 +3311,14 @@ export default function ServiceTickets() {
                 </tbody>
                 <tfoot>
                   <tr style={{ borderTop: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                    <td style={{ padding: '10px 16px', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>Totals</td>
-                    <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#6b7280' }}>
+                    <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>Totals</td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#6b7280' }}>
                       {employeeSummary.reduce((s, e) => s + e.draftCount, 0)}
                     </td>
-                    <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#ff9800' }}>
+                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#ff9800' }}>
                       {employeeSummary.reduce((s, e) => s + e.submittedCount, 0)}
                     </td>
-                    <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#4caf50' }}>
+                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#4caf50' }}>
                       {employeeSummary.reduce((s, e) => s + e.approvedCount, 0)}
                     </td>
                   </tr>

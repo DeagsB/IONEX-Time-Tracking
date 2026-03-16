@@ -56,7 +56,6 @@ export default function Profitability() {
       const { data, error } = await supabase
         .from(tableName)
         .select('id, ticket_number, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours, workflow_status')
-        .neq('workflow_status', 'rejected')
         .or('is_discarded.is.null,is_discarded.eq.false');
       if (error) throw error;
       return data || [];
@@ -126,7 +125,7 @@ export default function Profitability() {
 
     const revenueByProject = new Map<string, number>();
     const ticketCountByProject = new Map<string, number>();
-    const NON_REVENUE_STATUSES = new Set(['draft', 'submitted']);
+    const NON_REVENUE_STATUSES = new Set(['draft', 'submitted', 'rejected']);
     for (const t of serviceTickets as any[]) {
       if (!t.project_id) continue;
       ticketCountByProject.set(t.project_id, (ticketCountByProject.get(t.project_id) || 0) + 1);
@@ -286,11 +285,18 @@ export default function Profitability() {
         const emp = empByUserId.get(t.user_id);
         const ticketHours = Number(t.total_hours) || 0;
         const savedAmount = Number(t.total_amount) || 0;
-        const isDraftOrSubmitted = t.workflow_status === 'draft' || t.workflow_status === 'submitted';
+        const isDraftOrSubmitted = t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected';
 
         let estimatedRevenue = savedAmount;
 
-        if (emp && ticketHours > 0) {
+        // Find matching time entries for this ticket (needed for drafts with 0 saved hours)
+        const matchingEntries = (allTimeEntries as any[]).filter((e: any) =>
+          e.user_id === t.user_id && e.project_id === t.project_id && e.date === t.date
+        );
+        const entryHours = matchingEntries.reduce((sum: number, e: any) => sum + (Number(e.hours) || 0), 0);
+        const effectiveHours = ticketHours > 0 ? ticketHours : entryHours;
+
+        if (emp && effectiveHours > 0) {
           if (t.is_edited && t.edited_hours) {
             const rates = getRatesForDate(emp, t.date);
             const editedHours = typeof t.edited_hours === 'string' ? JSON.parse(t.edited_hours) : t.edited_hours;
@@ -301,19 +307,26 @@ export default function Profitability() {
                 estimatedRevenue += h * getBillableRate(emp, rateType);
               }
             });
-          } else {
+          } else if (ticketHours > 0) {
             const totalCostForUser = blendedRateByUser.get(t.user_id) || 0;
             const totalHoursForUser = hoursByUser.get(t.user_id) || 0;
             const avgRate = totalHoursForUser > 0 ? totalCostForUser / totalHoursForUser : 0;
             payrollCost = ticketHours * avgRate;
             if (isDraftOrSubmitted && savedAmount === 0) {
-              // Estimate from time entries matching this ticket's date and project
-              const matchingEntries = (allTimeEntries as any[]).filter((e: any) =>
-                e.user_id === t.user_id && e.project_id === t.project_id && e.date === t.date
-              );
               for (const e of matchingEntries) {
                 const h = Number(e.hours) || 0;
                 estimatedRevenue += h * getBillableRate(emp, e.rate_type || 'Shop Time');
+              }
+            }
+          } else {
+            // Draft/submitted/rejected with 0 saved hours — use time entries
+            const rates = getRatesForDate(emp, t.date);
+            for (const e of matchingEntries) {
+              const h = Number(e.hours) || 0;
+              const rt = e.rate_type || 'Shop Time';
+              payrollCost += h * getLoadedRate(emp, rates, rt);
+              if (isDraftOrSubmitted && savedAmount === 0) {
+                estimatedRevenue += h * getBillableRate(emp, rt);
               }
             }
           }
@@ -322,6 +335,7 @@ export default function Profitability() {
         return {
           ...t,
           payrollCost,
+          total_hours: effectiveHours > 0 && ticketHours === 0 ? effectiveHours : ticketHours,
           total_amount: isDraftOrSubmitted && savedAmount === 0 ? estimatedRevenue : savedAmount,
           profit: estimatedRevenue - payrollCost,
         };
@@ -728,7 +742,7 @@ export default function Profitability() {
                       const rev = Number(t.total_amount) || 0;
                       const emp = empByUserId.get(t.user_id);
                       const empName = emp?.user ? [emp.user.first_name, emp.user.last_name].filter(Boolean).join(' ') : null;
-                      const isDraft = t.workflow_status === 'draft' || t.workflow_status === 'submitted';
+                      const isDraft = t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected';
                       const isInternal = rev === 0 && (t.payrollCost || 0) > 0 && !isDraft;
                       const ticketId = t.ticket_number || t.id.substring(0, 8);
                       return (
@@ -801,9 +815,9 @@ export default function Profitability() {
                     })()}
                   </tbody>
                 </table>
-                {expandedTickets.some((t: any) => t.workflow_status === 'draft' || t.workflow_status === 'submitted') && (
+                {expandedTickets.some((t: any) => t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected') && (
                   <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#ff9800', fontStyle: 'italic' }}>
-                    * Draft/submitted amounts are shown for reference but not included in revenue or profit totals
+                    * Draft/submitted/rejected amounts are shown for reference but not included in revenue or profit totals
                   </p>
                 )}
                 </>
