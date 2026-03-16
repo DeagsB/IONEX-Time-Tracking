@@ -442,8 +442,9 @@ export default function Invoices() {
           const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
           const descByRateType = new Map<string, string>();
           for (const e of match.entries) {
-            if (e.description && !descByRateType.has(e.rate_type)) {
-              descByRateType.set(e.rate_type, e.description);
+            const rt = e.rate_type;
+            if (rt && e.description && !descByRateType.has(rt)) {
+              descByRateType.set(rt, e.description);
             }
           }
           const syntheticEntries = Object.entries(hoursByRateType)
