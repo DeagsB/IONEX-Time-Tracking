@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
-import { reportsService } from '../services/supabaseServices';
+import { reportsService, payRateHistoryService } from '../services/supabaseServices';
+import { supabase } from '../lib/supabaseClient';
 import {
   aggregateAllEmployees,
   aggregateEmployeeMetrics,
@@ -79,13 +80,37 @@ export default function EmployeeReports() {
     retry: 1,
   });
 
+  const { data: rateHistory } = useQuery({
+    queryKey: ['payRateHistory'],
+    queryFn: () => payRateHistoryService.getAll(),
+    enabled: isAdmin,
+  });
+
+  const { data: ticketExpenses = [] } = useQuery({
+    queryKey: ['employee-report-expenses', startDate, endDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('service_ticket_expenses')
+        .select(`
+          id, service_ticket_id, expense_type, description, quantity, rate,
+          service_tickets!inner(id, user_id, project_id, date, workflow_status, is_discarded)
+        `)
+        .gte('service_tickets.date', startDate)
+        .lte('service_tickets.date', endDate)
+        .or('service_tickets.is_discarded.is.null,service_tickets.is_discarded.eq.false', { referencedTable: 'service_tickets' });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: isAdmin && !!startDate && !!endDate,
+  });
+
   const employeeMetrics = useMemo(() => {
     if (!employees) return [];
     if (loadingEntries || !timeEntries || loadingTicketHours) {
       return employees.map((emp: any) => aggregateEmployeeMetrics([], emp, []));
     }
-    return aggregateAllEmployees(timeEntries, employees, serviceTicketHours || []);
-  }, [timeEntries, employees, loadingEntries, serviceTicketHours, loadingTicketHours]);
+    return aggregateAllEmployees(timeEntries, employees, serviceTicketHours || [], rateHistory || [], ticketExpenses as any);
+  }, [timeEntries, employees, loadingEntries, serviceTicketHours, loadingTicketHours, rateHistory, ticketExpenses]);
 
   const departments = useMemo(() => {
     const depts = new Set<string>();
@@ -439,6 +464,10 @@ export default function EmployeeReports() {
             {/* KPI Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '28px' }}>
               <KpiCard label="Revenue" value={`$${fmt(expandedMetrics.totalRevenue)}`} color="#2196F3" />
+              <KpiCard label="Labor Cost" value={`$${fmt(expandedMetrics.laborCost)}`} color="#ff9800" />
+              {expandedMetrics.expenseCost > 0 && (
+                <KpiCard label="Expenses" value={`$${fmt(expandedMetrics.expenseCost)}`} color="#e91e63" />
+              )}
               <KpiCard label="Total Cost" value={`$${fmt(expandedMetrics.totalCost)}`} color="#ff9800" />
               <KpiCard label="Profit" value={`$${fmt(expandedMetrics.netProfit)}`} color={expandedMetrics.netProfit >= 0 ? '#4caf50' : '#e53935'} />
               <KpiCard label="Margin" value={`${expandedMetrics.profitMargin.toFixed(1)}%`} color={expandedMetrics.profitMargin >= 20 ? '#4caf50' : expandedMetrics.profitMargin >= 0 ? '#ff9800' : '#e53935'} />
@@ -491,6 +520,17 @@ export default function EmployeeReports() {
                     ))}
                 </tbody>
                 <tfoot>
+                  {expandedMetrics.expenseCost > 0 && (
+                    <tr style={{ borderTop: '1px solid var(--border-color)' }}>
+                      <td style={{ ...detailTdStyle, fontWeight: '600', color: '#e91e63' }}>Expenses</td>
+                      <td style={detailTdStyle} />
+                      <td style={detailTdStyle} />
+                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: '#e91e63' }}>
+                        {formatCurrency(expandedMetrics.expenseCost)}
+                      </td>
+                      <td style={detailTdStyle} />
+                    </tr>
+                  )}
                   <tr style={{ borderTop: '2px solid var(--border-color)' }}>
                     <td style={{ ...detailTdStyle, fontWeight: '700' }}>Total</td>
                     <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>

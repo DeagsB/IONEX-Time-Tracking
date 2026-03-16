@@ -128,6 +128,10 @@ export default function Profitability() {
     const NON_REVENUE_STATUSES = new Set(['draft', 'submitted', 'rejected']);
     for (const t of serviceTickets as any[]) {
       if (!t.project_id) continue;
+      // Skip empty placeholder records (auto-created drafts with no data)
+      const tHrs = Number(t.total_hours) || 0;
+      const tAmt = Number(t.total_amount) || 0;
+      if (tHrs === 0 && tAmt === 0 && !t.is_edited && t.workflow_status === 'draft') continue;
       ticketCountByProject.set(t.project_id, (ticketCountByProject.get(t.project_id) || 0) + 1);
       if (NON_REVENUE_STATUSES.has(t.workflow_status)) continue;
       const amt = Number(t.total_amount) || 0;
@@ -339,6 +343,13 @@ export default function Profitability() {
           total_amount: isDraftOrSubmitted && savedAmount === 0 ? estimatedRevenue : savedAmount,
           profit: estimatedRevenue - payrollCost,
         };
+      })
+      .filter((t: any) => {
+        const hrs = Number(t.total_hours) || 0;
+        const amt = Number(t.total_amount) || 0;
+        const cost = t.payrollCost || 0;
+        if (hrs === 0 && amt === 0 && cost === 0) return false;
+        return true;
       })
       .sort((a: any, b: any) => b.date.localeCompare(a.date));
   }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId, rateHistoryByEmpId]);
