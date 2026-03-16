@@ -87,6 +87,7 @@ async function main() {
     'migration_add_user_archive.sql',
     'migration_add_active_customers_projects.sql',
     'migration_add_project_budget.sql',
+    'migration_add_pay_rate_history.sql',
   ];
 
   for (const migration of migrations) {

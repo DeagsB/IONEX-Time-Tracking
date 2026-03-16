@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { projectsService, employeesService, timeEntriesService } from '../services/supabaseServices';
+import { projectsService, employeesService, timeEntriesService, payRateHistoryService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 
 interface ProjectFinancials {
@@ -82,6 +82,12 @@ export default function Profitability() {
     enabled: isAdmin,
   });
 
+  const { data: rateHistory = [] } = useQuery({
+    queryKey: ['pay-rate-history'],
+    queryFn: () => payRateHistoryService.getAll(),
+    enabled: isAdmin,
+  });
+
   const empByUserId = useMemo(() => {
     const map = new Map<string, any>();
     for (const emp of employees as any[]) {
@@ -89,6 +95,31 @@ export default function Profitability() {
     }
     return map;
   }, [employees]);
+
+  // Build lookup: employee_id → sorted rate snapshots (ascending by effective_date)
+  const rateHistoryByEmpId = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const r of rateHistory) {
+      const list = map.get(r.employee_id) || [];
+      list.push(r);
+      map.set(r.employee_id, list);
+    }
+    map.forEach((list) => list.sort((a: any, b: any) => a.effective_date.localeCompare(b.effective_date)));
+    return map;
+  }, [rateHistory]);
+
+  // Return the rate snapshot effective on `date` for the given employee record.
+  // Falls back to the employee's current rates if no history exists.
+  const getRatesForDate = (emp: any, date: string) => {
+    const history = rateHistoryByEmpId.get(emp.id);
+    if (!history || history.length === 0) return emp;
+    let match = history[0];
+    for (const h of history) {
+      if (h.effective_date <= date) match = h;
+      else break;
+    }
+    return match;
+  };
 
   const projectFinancials: ProjectFinancials[] = useMemo(() => {
     if (!projects.length) return [];
@@ -113,11 +144,13 @@ export default function Profitability() {
       let payRate = 0;
       const rateType = entry.rate_type || 'Shop Time';
       if (emp) {
-        if (rateType === 'Shop Time') payRate = Number(emp.shop_pay_rate) || 0;
-        else if (rateType === 'Field Time') payRate = Number(emp.field_pay_rate) || 0;
-        else if (rateType === 'Travel Time') payRate = Number(emp.shop_pay_rate) || 0;
-        else if (rateType === 'Shop Overtime') payRate = Number(emp.shop_ot_pay_rate) || 0;
-        else if (rateType === 'Field Overtime') payRate = Number(emp.field_ot_pay_rate) || 0;
+        const rates = getRatesForDate(emp, entry.date);
+        if (rateType === 'Internal') payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Field Time') payRate = Number(rates.field_pay_rate) || 0;
+        else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
+        else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
 
         const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
         const burden = isContractor ? 0.05 : 0.30;
@@ -159,7 +192,7 @@ export default function Profitability() {
         ticketCount: ticketCountByProject.get(p.id) || 0,
       };
     });
-  }, [projects, serviceTickets, allTimeEntries, ticketExpenses, empByUserId]);
+  }, [projects, serviceTickets, allTimeEntries, ticketExpenses, empByUserId, rateHistoryByEmpId]);
 
   const filtered = useMemo(() => {
     let list = projectFinancials;
@@ -209,13 +242,14 @@ export default function Profitability() {
 
     const projectTickets = (serviceTickets as any[]).filter((t: any) => t.project_id === expandedProjectId);
 
-    const getLoadedRate = (emp: any, rateType: string) => {
+    const getLoadedRate = (emp: any, rates: any, rateType: string) => {
       let payRate = 0;
-      if (rateType === 'Shop Time') payRate = Number(emp.shop_pay_rate) || 0;
-      else if (rateType === 'Field Time') payRate = Number(emp.field_pay_rate) || 0;
-      else if (rateType === 'Travel Time') payRate = Number(emp.shop_pay_rate) || 0;
-      else if (rateType === 'Shop Overtime') payRate = Number(emp.shop_ot_pay_rate) || 0;
-      else if (rateType === 'Field Overtime') payRate = Number(emp.field_ot_pay_rate) || 0;
+      if (rateType === 'Internal') payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
+      else if (rateType === 'Shop Time') payRate = Number(rates.shop_pay_rate) || 0;
+      else if (rateType === 'Field Time') payRate = Number(rates.field_pay_rate) || 0;
+      else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
+      else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
+      else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
       const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
       return payRate * (1 + (isContractor ? 0.05 : 0.30));
     };
@@ -228,7 +262,8 @@ export default function Profitability() {
       const h = Number(e.hours) || 0;
       const emp = empByUserId.get(e.user_id);
       if (!emp) continue;
-      const cost = h * getLoadedRate(emp, e.rate_type || 'Shop Time');
+      const rates = getRatesForDate(emp, e.date);
+      const cost = h * getLoadedRate(emp, rates, e.rate_type || 'Shop Time');
       blendedRateByUser.set(e.user_id, (blendedRateByUser.get(e.user_id) || 0) + cost);
       hoursByUser.set(e.user_id, (hoursByUser.get(e.user_id) || 0) + h);
     }
@@ -241,13 +276,13 @@ export default function Profitability() {
 
         if (emp && ticketHours > 0) {
           if (t.is_edited && t.edited_hours) {
+            const rates = getRatesForDate(emp, t.date);
             const editedHours = typeof t.edited_hours === 'string' ? JSON.parse(t.edited_hours) : t.edited_hours;
             Object.entries(editedHours).forEach(([rateType, hours]) => {
               const h = Array.isArray(hours) ? (hours as number[]).reduce((a: number, b: number) => a + b, 0) : Number(hours) || 0;
-              payrollCost += h * getLoadedRate(emp, rateType);
+              payrollCost += h * getLoadedRate(emp, rates, rateType);
             });
           } else {
-            // Use ticket's own hours × blended loaded rate for this user on this project
             const totalCostForUser = blendedRateByUser.get(t.user_id) || 0;
             const totalHoursForUser = hoursByUser.get(t.user_id) || 0;
             const avgRate = totalHoursForUser > 0 ? totalCostForUser / totalHoursForUser : 0;
@@ -262,7 +297,7 @@ export default function Profitability() {
         };
       })
       .sort((a: any, b: any) => b.date.localeCompare(a.date));
-  }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId]);
+  }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId, rateHistoryByEmpId]);
 
   const expandedLaborByEmployee = useMemo(() => {
     if (!expandedProjectId) return [];
@@ -278,11 +313,13 @@ export default function Profitability() {
       let payRate = 0;
       const rateType = entry.rate_type || 'Shop Time';
       if (emp) {
-        if (rateType === 'Shop Time') payRate = Number(emp.shop_pay_rate) || 0;
-        else if (rateType === 'Field Time') payRate = Number(emp.field_pay_rate) || 0;
-        else if (rateType === 'Travel Time') payRate = Number(emp.shop_pay_rate) || 0;
-        else if (rateType === 'Shop Overtime') payRate = Number(emp.shop_ot_pay_rate) || 0;
-        else if (rateType === 'Field Overtime') payRate = Number(emp.field_ot_pay_rate) || 0;
+        const rates = getRatesForDate(emp, entry.date);
+        if (rateType === 'Internal') payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Field Time') payRate = Number(rates.field_pay_rate) || 0;
+        else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
+        else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
 
         const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
         const burden = isContractor ? 0.05 : 0.30;
@@ -295,7 +332,7 @@ export default function Profitability() {
       map.set(entry.user_id, existing);
     }
     return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
-  }, [expandedProjectId, allTimeEntries, empByUserId]);
+  }, [expandedProjectId, allTimeEntries, empByUserId, rateHistoryByEmpId]);
 
   const expandedExpenses = useMemo(() => {
     if (!expandedProjectId) return [];

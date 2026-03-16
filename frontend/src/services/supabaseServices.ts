@@ -389,6 +389,9 @@ export const employeesService = {
   },
 
   async update(id: string, updates: any) {
+    const rateFields = ['shop_pay_rate', 'field_pay_rate', 'shop_ot_pay_rate', 'field_ot_pay_rate', 'internal_rate'];
+    const hasRateChange = rateFields.some((f) => updates[f] !== undefined);
+
     const { data, error } = await supabase
       .from('employees')
       .update(updates)
@@ -397,6 +400,22 @@ export const employeesService = {
       .single();
 
     if (error) throw error;
+
+    if (hasRateChange && data) {
+      await supabase.from('pay_rate_history').upsert(
+        {
+          employee_id: id,
+          effective_date: new Date().toISOString().split('T')[0],
+          shop_pay_rate: data.shop_pay_rate ?? 0,
+          field_pay_rate: data.field_pay_rate ?? 0,
+          shop_ot_pay_rate: data.shop_ot_pay_rate ?? 0,
+          field_ot_pay_rate: data.field_ot_pay_rate ?? 0,
+          internal_rate: data.internal_rate ?? 0,
+        },
+        { onConflict: 'employee_id,effective_date' }
+      );
+    }
+
     return data;
   },
 
@@ -407,6 +426,17 @@ export const employeesService = {
       .eq('id', id);
 
     if (error) throw error;
+  },
+};
+
+export const payRateHistoryService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('pay_rate_history')
+      .select('*')
+      .order('effective_date', { ascending: true });
+    if (error) throw error;
+    return data || [];
   },
 };
 
