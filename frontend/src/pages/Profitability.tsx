@@ -176,15 +176,16 @@ export default function Profitability() {
     const getExpenseCost = (exp: any) => {
       const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
       if (exp.actual_cost != null) return Number(exp.actual_cost);
-      if (!exp.needs_reimbursement) return 0;
       const emp = empByUserId.get(exp.service_tickets?.user_id);
       const expType = (exp.expense_type || '').toLowerCase();
-      const desc = (exp.description || '').toLowerCase();
-      let reimbRate = 1.00;
-      if (expType === 'subsistence' && desc.includes('per diem')) reimbRate = Number(emp?.per_diem_reimb_rate) || 1.00;
-      else if (expType === 'travel' && desc.includes('mileage')) reimbRate = Number(emp?.mileage_reimb_rate) || 0.90;
-      else if (desc.includes('hotel')) reimbRate = Number(emp?.hotel_reimb_rate) || 1.00;
-      return amt * reimbRate;
+      const desc = (exp.description || exp.expense_type || '').toLowerCase();
+      // Per Diem, Mileage, Hotel are inherently reimbursable; use reimb rate regardless of needs_reimbursement.
+      if (desc.includes('mileage')) return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+      if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
+      if (desc.includes('hotel')) return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+      // Other/Parts: only reimbursable if needs_reimbursement is set
+      if (!exp.needs_reimbursement) return 0;
+      return amt;
     };
 
     const expenseByProject = new Map<string, number>();
@@ -388,15 +389,16 @@ export default function Profitability() {
   const getExpenseCostForDisplay = (exp: any) => {
     const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
     if (exp.actual_cost != null) return Number(exp.actual_cost);
-    if (!exp.needs_reimbursement) return 0;
     const emp = empByUserId.get(exp.service_tickets?.user_id);
     const expType = (exp.expense_type || '').toLowerCase();
-    const desc = (exp.description || '').toLowerCase();
-    let reimbRate = 1.00;
-    if (expType === 'subsistence' && desc.includes('per diem')) reimbRate = Number(emp?.per_diem_reimb_rate) || 1.00;
-    else if (expType === 'travel' && desc.includes('mileage')) reimbRate = Number(emp?.mileage_reimb_rate) || 0.90;
-    else if (desc.includes('hotel')) reimbRate = Number(emp?.hotel_reimb_rate) || 1.00;
-    return amt * reimbRate;
+    const desc = (exp.description || exp.expense_type || '').toLowerCase();
+    // Per Diem, Mileage, Hotel are inherently reimbursable; use reimb rate regardless of needs_reimbursement.
+    if (desc.includes('mileage')) return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+    if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
+    if (desc.includes('hotel')) return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+    // Other/Parts: only reimbursable if needs_reimbursement is set
+    if (!exp.needs_reimbursement) return 0;
+    return amt;
   };
 
   const expandedExpenses = useMemo(() => {
