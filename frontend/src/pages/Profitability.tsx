@@ -77,11 +77,15 @@ export default function Profitability() {
         .select(`
           id, service_ticket_id, expense_type, description, quantity, rate, actual_cost, needs_reimbursement,
           service_tickets!inner(id, project_id, workflow_status, is_discarded)
-        `)
-        .not('service_tickets.workflow_status', 'in', '("draft","rejected")')
-        .or('service_tickets.is_discarded.is.null,service_tickets.is_discarded.eq.false', { referencedTable: 'service_tickets' });
+        `);
       if (error) throw error;
-      return data || [];
+      return (data || []).filter((r: any) => {
+        const st = r.service_tickets;
+        if (!st) return false;
+        if (st.is_discarded === true) return false;
+        if (st.workflow_status === 'draft' || st.workflow_status === 'rejected') return false;
+        return true;
+      });
     },
     enabled: isAdmin,
   });
