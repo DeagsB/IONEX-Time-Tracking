@@ -803,6 +803,19 @@ export default function WeekView() {
       timeEntryData.project_id = newEntry.project_id;
     }
 
+    // Warn if a project is selected but rate type is still Internal (likely unintentional)
+    if (newEntry.project_id && timeEntryData.rate_type === 'Internal') {
+      const proj = projects?.find((p: any) => p.id === newEntry.project_id);
+      const cust = customers?.find((c: any) => c.id === proj?.customer_id);
+      const isIonex = cust?.name?.trim().toLowerCase() === 'ionex systems';
+      if (!isIonex) {
+        const confirmed = window.confirm(
+          'You have a project selected but the rate type is set to Internal. Internal time is non-billable.\n\nDid you mean to select Internal?'
+        );
+        if (!confirmed) return;
+      }
+    }
+
     createTimeEntryMutation.mutate(timeEntryData);
   };
 
@@ -1044,6 +1057,19 @@ export default function WeekView() {
     const projectChanged = oldProjectId && newProjectId && oldProjectId !== newProjectId;
     const oldProject = projects?.find((p: any) => p.id === oldProjectId);
     const oldCustomerId = oldProject?.customer_id ?? editingEntry.customer_id ?? editingEntry.project?.customer?.id ?? null;
+
+    // Warn if a project is selected but rate type is still Internal (likely unintentional)
+    if (editedEntry.project_id && updateData.rate_type === 'Internal') {
+      const proj = projects?.find((p: any) => p.id === editedEntry.project_id);
+      const cust = customers?.find((c: any) => c.id === proj?.customer_id);
+      const isIonex = cust?.name?.trim().toLowerCase() === 'ionex systems';
+      if (!isIonex) {
+        const confirmed = window.confirm(
+          'You have a project selected but the rate type is set to Internal. Internal time is non-billable.\n\nDid you mean to select Internal?'
+        );
+        if (!confirmed) return;
+      }
+    }
 
     const oldGroup = projectChanged && oldCustomerId ? {
       date: dateStr,

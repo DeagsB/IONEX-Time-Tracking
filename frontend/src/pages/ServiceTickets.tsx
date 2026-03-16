@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -46,37 +46,28 @@ export default function ServiceTickets() {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  // Default employee filter to current user when admin (so drafts tab shows own drafts first)
-  const hasSetDefaultUserId = useRef(false);
-  useEffect(() => {
-    if (!hasSetDefaultUserId.current && isAdmin && user?.id) {
-      setSelectedUserId(user.id);
-      hasSetDefaultUserId.current = true;
-    }
-  }, [isAdmin, user?.id]);
   // Filter tabs: 'draft' (Not Submitted), 'submitted' (Pending Approval), 'approved' (Finalized), 'all'
   // Admin defaults to Submitted tab on first open; non-admin to Drafts
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const tabRefsMap = useRef<Record<string, HTMLButtonElement | null>>({});
   const [tabIndicatorStyle, setTabIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
   const [activeTab, setActiveTab] = useState<'draft' | 'submitted' | 'approved' | 'all'>(() =>
-    isAdmin ? 'submitted' : 'draft'
+    isAdmin ? 'all' : 'draft'
   );
-  const hasSetAdminDefaultTab = useRef(false);
   const prevIsAdminRef = useRef(isAdmin);
   useEffect(() => {
-    if (isAdmin && !hasSetAdminDefaultTab.current) {
-      hasSetAdminDefaultTab.current = true;
-      setActiveTab('submitted');
-    }
-    // When admin toggle changes (developer switching roles), invalidate queries to refetch with correct permissions
     if (prevIsAdminRef.current !== isAdmin) {
       prevIsAdminRef.current = isAdmin;
+      setActiveTab(isAdmin ? 'all' : 'draft');
       queryClient.invalidateQueries({ queryKey: ['billableEntries'] });
       queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
     }
   }, [isAdmin, queryClient]);
   const [showDiscarded, setShowDiscarded] = useState(false);
+
+  // Admin employee overview panel
+  const [showEmployeeOverview, setShowEmployeeOverview] = useState(true);
+  const [expandedEmployeeId, setExpandedEmployeeId] = useState<string | null>(null);
 
   // Refetch sidebar notification counts when opening Service Tickets so they stay in sync (e.g. after a ticket was removed elsewhere)
   useEffect(() => {
@@ -1920,6 +1911,89 @@ export default function ServiceTickets() {
     });
   }, [tickets, existingTickets, isAdmin]);
 
+  // Helper: classify a ticket into draft/submitted/approved category
+  const classifyTicketStatus = (ticket: any): 'draft' | 'submitted' | 'approved' => {
+    const existing = findMatchingTicketRecord(ticket);
+    const hasTicketNumber = !!existing?.ticket_number;
+    const workflowStatus = existing?.workflow_status || 'draft';
+    if (hasTicketNumber) return 'approved';
+    const approvedStatuses = ['approved', 'pdf_exported', 'qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'];
+    if (existing?.approved_by_admin_id && approvedStatuses.includes(workflowStatus)) return 'approved';
+    if (workflowStatus === 'draft' || workflowStatus === 'rejected') return 'draft';
+    return 'submitted';
+  };
+
+  // Admin employee overview: per-employee counts of draft/submitted/approved
+  const employeeSummary = useMemo(() => {
+    if (!isAdmin) return [];
+
+    // Pre-filter same as filteredTickets but without employee or tab filters
+    let pool = ticketsWithNumbers;
+    if (startDate) pool = pool.filter(t => t.date >= startDate);
+    if (endDate) pool = pool.filter(t => t.date <= endDate);
+    pool = pool.filter(t => {
+      const existing = findMatchingTicketRecord(t);
+      return !(existing as any)?.is_discarded;
+    });
+    if (selectedCustomerId) pool = pool.filter(t => t.customerId === selectedCustomerId);
+    // Hide zero-hour drafts
+    pool = pool.filter(t => (t.totalHours ?? 0) > 0 || classifyTicketStatus(t) !== 'draft');
+
+    const map = new Map<string, { userId: string; name: string; draftCount: number; submittedCount: number; submittedNewCount: number; approvedCount: number }>();
+
+    for (const t of pool) {
+      const uid = t.userId;
+      if (!uid) continue;
+      if (!map.has(uid)) {
+        const emp = employees?.find((e: any) => e.user_id === uid);
+        const name = emp?.user
+          ? `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim()
+          : t.userName || 'Unknown';
+        map.set(uid, { userId: uid, name, draftCount: 0, submittedCount: 0, submittedNewCount: 0, approvedCount: 0 });
+      }
+      const entry = map.get(uid)!;
+      const status = classifyTicketStatus(t);
+      if (status === 'draft') entry.draftCount++;
+      else if (status === 'submitted') {
+        entry.submittedCount++;
+        const existing = findMatchingTicketRecord(t);
+        if (existing?.rejected_at) entry.submittedNewCount++;
+      }
+      else entry.approvedCount++;
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      // Employees with submitted tickets first, then by name
+      if (a.submittedCount > 0 && b.submittedCount === 0) return -1;
+      if (a.submittedCount === 0 && b.submittedCount > 0) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [isAdmin, ticketsWithNumbers, startDate, endDate, selectedCustomerId, employees, showDiscarded]);
+
+  // Tickets for the expanded employee's inline view
+  const expandedEmployeeTickets = useMemo(() => {
+    if (!expandedEmployeeId || !isAdmin) return [];
+    let pool = ticketsWithNumbers;
+    if (startDate) pool = pool.filter(t => t.date >= startDate);
+    if (endDate) pool = pool.filter(t => t.date <= endDate);
+    pool = pool.filter(t => {
+      const existing = findMatchingTicketRecord(t);
+      return !(existing as any)?.is_discarded;
+    });
+    if (selectedCustomerId) pool = pool.filter(t => t.customerId === selectedCustomerId);
+    pool = pool.filter(t => t.userId === expandedEmployeeId);
+    pool = pool.filter(t => (t.totalHours ?? 0) > 0 || classifyTicketStatus(t) !== 'draft');
+
+    // Sort: submitted first, then drafts, then approved; within each group by date desc
+    const statusOrder: Record<string, number> = { submitted: 0, draft: 1, approved: 2 };
+    return [...pool].sort((a, b) => {
+      const aStatus = classifyTicketStatus(a);
+      const bStatus = classifyTicketStatus(b);
+      if (statusOrder[aStatus] !== statusOrder[bStatus]) return statusOrder[aStatus] - statusOrder[bStatus];
+      return b.date.localeCompare(a.date);
+    });
+  }, [expandedEmployeeId, isAdmin, ticketsWithNumbers, startDate, endDate, selectedCustomerId]);
+
   // Filter and sort tickets
   const filteredTickets = useMemo(() => {
     let result = ticketsWithNumbers;
@@ -1954,12 +2028,15 @@ export default function ServiceTickets() {
     }
 
     // Filter by employee (admin only)
-    if (isAdmin && selectedUserId) {
+    // When employee overview is expanded to a specific employee, use that; otherwise use dropdown
+    if (isAdmin && expandedEmployeeId) {
+      result = result.filter(t => t.userId === expandedEmployeeId);
+    } else if (isAdmin && selectedUserId) {
       result = result.filter(t => t.userId === selectedUserId);
     }
     
-    // Filter by Tab (Status Group) - skip when viewing trash (show all trashed from draft/submitted/approved)
-    if (!showDiscarded && activeTab && activeTab !== 'all') {
+    // Filter by Tab (Status Group) - skip when viewing trash, or when admin has an employee expanded from overview
+    if (!showDiscarded && !(isAdmin && expandedEmployeeId) && activeTab && activeTab !== 'all') {
       result = result.filter(t => {
         const existing = findMatchingTicketRecord(t);
         const hasTicketNumber = !!existing?.ticket_number;
@@ -2069,7 +2146,7 @@ export default function ServiceTickets() {
     });
     
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate]);
+  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate, expandedEmployeeId]);
 
   // Ticket record IDs for expense totals query (only tickets that have a DB record)
   const ticketRecordIdsForExpenseTotals = useMemo(() => {
@@ -2593,22 +2670,7 @@ export default function ServiceTickets() {
               emptyOption={{ value: '', label: 'All Customers' }}
             />
           </div>
-          {/* Employee filter - only visible to admins (non-admins only see their own tickets) */}
-          {isAdmin && (
-            <div>
-              <label className="label">Employee</label>
-              <SearchableSelect
-                options={employees?.map((employee: any) => ({
-                  value: employee.user_id,
-                  label: `${employee.user?.first_name || ''} ${employee.user?.last_name || ''}`.trim(),
-                })) || []}
-                value={selectedUserId}
-                onChange={(value) => setSelectedUserId(value)}
-                placeholder="Search employees..."
-                emptyOption={{ value: '', label: 'All Employees' }}
-              />
-            </div>
-          )}
+          
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', marginLeft: 'auto', marginBottom: '9px' }}>
             <button
@@ -2634,7 +2696,8 @@ export default function ServiceTickets() {
         </div>
       </div>
 
-      {/* Status Tabs */}
+      {/* Status Tabs — non-admin only */}
+      {!isAdmin && (
       <div
         ref={tabsContainerRef}
         style={{ position: 'relative', display: 'flex', gap: '4px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}
@@ -2681,6 +2744,208 @@ export default function ServiceTickets() {
           />
         )}
       </div>
+      )}
+
+      {/* Admin Employee Overview Panel */}
+      {isAdmin && !showDiscarded && (
+        <div style={{ marginBottom: '20px' }}>
+          <button
+            onClick={() => {
+              setShowEmployeeOverview(!showEmployeeOverview);
+              if (showEmployeeOverview) setExpandedEmployeeId(null);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 16px',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              color: 'var(--text-primary)',
+              marginBottom: showEmployeeOverview ? '8px' : '0',
+            }}
+          >
+            <span style={{
+              display: 'inline-block',
+              transition: 'transform 0.2s ease',
+              transform: showEmployeeOverview ? 'rotate(90deg)' : 'rotate(0deg)',
+              fontSize: '12px',
+            }}>&#9654;</span>
+            Employee Overview
+            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontWeight: '400' }}>
+              ({employeeSummary.length} employee{employeeSummary.length !== 1 ? 's' : ''})
+            </span>
+            {(() => {
+              const totalSubmitted = employeeSummary.reduce((s, e) => s + e.submittedCount, 0);
+              if (totalSubmitted === 0) return null;
+              return (
+                <span style={{
+                  marginLeft: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  backgroundColor: '#ff9800',
+                  color: 'white',
+                }}>{totalSubmitted} pending</span>
+              );
+            })()}
+          </button>
+
+          {showEmployeeOverview && (
+            <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', width: '100px' }}>Drafts</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '120px' }}>Submitted</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase', width: '100px' }}>Approved</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employeeSummary.map((emp) => {
+                    const isExpanded = expandedEmployeeId === emp.userId;
+                    return (
+                      <Fragment key={emp.userId}>
+                        <tr
+                          onClick={() => setExpandedEmployeeId(isExpanded ? null : emp.userId)}
+                          style={{
+                            borderBottom: '1px solid var(--border-color)',
+                            cursor: 'pointer',
+                            backgroundColor: isExpanded ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
+                            transition: 'background-color 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; }}
+                          onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        >
+                          <td style={{ padding: '10px 16px', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              marginRight: '8px',
+                              fontSize: '10px',
+                              color: 'var(--text-tertiary)',
+                              transition: 'transform 0.2s ease',
+                              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                            }}>&#9654;</span>
+                            {emp.name}
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                            <span style={{ color: emp.draftCount > 0 ? '#6b7280' : 'var(--text-tertiary)' }}>{emp.draftCount}</span>
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                            <span style={{ color: emp.submittedCount > 0 ? '#ff9800' : 'var(--text-tertiary)', fontWeight: emp.submittedCount > 0 ? '700' : '400' }}>
+                              {emp.submittedCount}
+                            </span>
+                            {emp.submittedNewCount > 0 && (
+                              <span style={{
+                                marginLeft: '6px',
+                                padding: '1px 6px',
+                                borderRadius: '8px',
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                backgroundColor: '#ff9800',
+                                color: 'white',
+                              }}>{emp.submittedNewCount} resubmitted</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
+                            <span style={{ color: emp.approvedCount > 0 ? '#4caf50' : 'var(--text-tertiary)' }}>{emp.approvedCount}</span>
+                          </td>
+                        </tr>
+                        {isExpanded && expandedEmployeeTickets.length > 0 && (
+                          <tr>
+                            <td colSpan={4} style={{ padding: '0' }}>
+                              <div style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-color)' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                  <thead>
+                                    <tr>
+                                      <th style={{ padding: '6px 16px 6px 40px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Ticket ID</th>
+                                      <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Date</th>
+                                      <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Customer</th>
+                                      <th style={{ padding: '6px 12px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Hours</th>
+                                      <th style={{ padding: '6px 16px', textAlign: 'center', fontSize: '11px', fontWeight: '600', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {expandedEmployeeTickets.map((t: any) => {
+                                      const status = classifyTicketStatus(t);
+                                      const existing = findMatchingTicketRecord(t);
+                                      const wfStatus = existing?.workflow_status || 'draft';
+                                      const statusColors: Record<string, string> = { draft: '#6b7280', submitted: '#ff9800', approved: '#4caf50' };
+                                      const statusLabels: Record<string, string> = { draft: 'Draft', submitted: 'Submitted', approved: 'Approved' };
+                                      if (wfStatus === 'rejected') {
+                                        statusLabels.draft = 'Rejected';
+                                        statusColors.draft = '#ef5350';
+                                      }
+                                      return (
+                                        <tr key={t.date + t.userId + t.customerId + t.projectId}
+                                          style={{ borderTop: '1px solid var(--border-color)', cursor: 'pointer' }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedTicket(t);
+                                          }}
+                                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.04)'; }}
+                                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                        >
+                                          <td style={{ padding: '6px 16px 6px 40px', fontSize: '13px', fontFamily: 'monospace', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                                            {t.displayTicketNumber || '—'}
+                                          </td>
+                                          <td style={{ padding: '6px 12px', fontSize: '13px', color: 'var(--text-primary)' }}>
+                                            {t.date}
+                                          </td>
+                                          <td style={{ padding: '6px 12px', fontSize: '13px', color: 'var(--text-primary)' }}>
+                                            {t.customerName || '—'}
+                                          </td>
+                                          <td style={{ padding: '6px 12px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                                            {(t.totalHours ?? 0).toFixed(1)}
+                                          </td>
+                                          <td style={{ padding: '6px 16px', textAlign: 'center' }}>
+                                            <span style={{
+                                              display: 'inline-block',
+                                              padding: '2px 8px',
+                                              borderRadius: '10px',
+                                              fontSize: '11px',
+                                              fontWeight: '600',
+                                              backgroundColor: `${statusColors[status]}18`,
+                                              color: statusColors[status],
+                                            }}>{statusLabels[status]}</span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                    <td style={{ padding: '10px 16px', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>Totals</td>
+                    <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#6b7280' }}>
+                      {employeeSummary.reduce((s, e) => s + e.draftCount, 0)}
+                    </td>
+                    <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#ff9800' }}>
+                      {employeeSummary.reduce((s, e) => s + e.submittedCount, 0)}
+                    </td>
+                    <td style={{ padding: '10px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', fontWeight: '700', color: '#4caf50' }}>
+                      {employeeSummary.reduce((s, e) => s + e.approvedCount, 0)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Trashed banner */}
       {showDiscarded && (

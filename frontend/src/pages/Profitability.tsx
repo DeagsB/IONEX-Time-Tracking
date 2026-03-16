@@ -56,7 +56,7 @@ export default function Profitability() {
       const { data, error } = await supabase
         .from(tableName)
         .select('id, ticket_number, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours, workflow_status')
-        .not('workflow_status', 'in', '("draft","rejected")')
+        .neq('workflow_status', 'rejected')
         .or('is_discarded.is.null,is_discarded.eq.false');
       if (error) throw error;
       return data || [];
@@ -126,11 +126,13 @@ export default function Profitability() {
 
     const revenueByProject = new Map<string, number>();
     const ticketCountByProject = new Map<string, number>();
+    const NON_REVENUE_STATUSES = new Set(['draft', 'submitted']);
     for (const t of serviceTickets as any[]) {
       if (!t.project_id) continue;
+      ticketCountByProject.set(t.project_id, (ticketCountByProject.get(t.project_id) || 0) + 1);
+      if (NON_REVENUE_STATUSES.has(t.workflow_status)) continue;
       const amt = Number(t.total_amount) || 0;
       revenueByProject.set(t.project_id, (revenueByProject.get(t.project_id) || 0) + amt);
-      ticketCountByProject.set(t.project_id, (ticketCountByProject.get(t.project_id) || 0) + 1);
     }
 
     const laborByProject = new Map<string, number>();
