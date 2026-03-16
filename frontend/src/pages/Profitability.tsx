@@ -55,7 +55,7 @@ export default function Profitability() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from(tableName)
-        .select('id, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours, workflow_status')
+        .select('id, ticket_number, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours, workflow_status')
         .not('workflow_status', 'in', '("draft","rejected")')
         .or('is_discarded.is.null,is_discarded.eq.false');
       if (error) throw error;
@@ -208,8 +208,50 @@ export default function Profitability() {
     if (!expandedProjectId) return [];
     return (serviceTickets as any[])
       .filter((t: any) => t.project_id === expandedProjectId)
+      .map((t: any) => {
+        let payrollCost = 0;
+        const emp = empByUserId.get(t.user_id);
+        if (emp) {
+          const getRate = (rateType: string) => {
+            let payRate = 0;
+            if (rateType === 'Shop Time') payRate = Number(emp.shop_pay_rate) || 0;
+            else if (rateType === 'Field Time') payRate = Number(emp.field_pay_rate) || 0;
+            else if (rateType === 'Travel Time') payRate = Number(emp.shop_pay_rate) || 0;
+            else if (rateType === 'Shop Overtime') payRate = Number(emp.shop_ot_pay_rate) || 0;
+            else if (rateType === 'Field Overtime') payRate = Number(emp.field_ot_pay_rate) || 0;
+
+            const isContractor = (emp.employment_type || 'Employee') === 'Contractor';
+            const burden = isContractor ? 0.05 : 0.30;
+            return payRate * (1 + burden);
+          };
+
+          if (t.is_edited && t.edited_hours) {
+            const editedHours = typeof t.edited_hours === 'string' ? JSON.parse(t.edited_hours) : t.edited_hours;
+            Object.entries(editedHours).forEach(([rateType, hours]) => {
+              const h = Array.isArray(hours) ? (hours as number[]).reduce((a: number, b: number) => a + b, 0) : Number(hours) || 0;
+              payrollCost += h * getRate(rateType);
+            });
+          } else {
+            // Find matching time entries
+            const matchingEntries = (allTimeEntries as any[]).filter((e: any) => 
+              e.user_id === t.user_id && 
+              e.date === t.date && 
+              e.project_id === t.project_id
+            );
+            matchingEntries.forEach((e: any) => {
+              const h = Number(e.hours) || 0;
+              payrollCost += h * getRate(e.rate_type || 'Shop Time');
+            });
+          }
+        }
+        return {
+          ...t,
+          payrollCost,
+          profit: (Number(t.total_amount) || 0) - payrollCost,
+        };
+      })
       .sort((a: any, b: any) => b.date.localeCompare(a.date));
-  }, [expandedProjectId, serviceTickets]);
+  }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId]);
 
   const expandedLaborByEmployee = useMemo(() => {
     if (!expandedProjectId) return [];
@@ -594,8 +636,11 @@ export default function Profitability() {
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                       <th style={detailThStyle}>Date</th>
+                      <th style={detailThStyle}>Ticket</th>
                       <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Amount</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Revenue</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Payroll Cost</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Net Profit</th>
                       <th style={{ ...detailThStyle, textAlign: 'center' }}>Status</th>
                     </tr>
                   </thead>
@@ -603,8 +648,17 @@ export default function Profitability() {
                     {expandedTickets.map((t: any) => (
                       <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={detailTdStyle}>{t.date}</td>
+                        <td style={detailTdStyle}>
+                          <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                            {t.ticket_number || t.id.substring(0, 8)}
+                          </span>
+                        </td>
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{Number(t.total_hours || 0).toFixed(1)}</td>
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(Number(t.total_amount || 0))}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>${fmt(t.payrollCost || 0)}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: (t.profit || 0) >= 0 ? '#4caf50' : '#e53935' }}>
+                          ${fmt(t.profit || 0)}
+                        </td>
                         <td style={{ ...detailTdStyle, textAlign: 'center' }}>
                           <StatusBadge status={t.workflow_status} />
                         </td>
