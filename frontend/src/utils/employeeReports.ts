@@ -74,6 +74,7 @@ export interface TicketExpense {
   description?: string;
   quantity: number;
   rate: number;
+  actual_cost?: number;
   needs_reimbursement?: boolean;
   reimbursement_status?: string;
   service_tickets: {
@@ -626,7 +627,7 @@ export function aggregateEmployeeMetrics(
       let reimbRate = 0;
 
       // Per Diem, Mileage, Hotel are inherently reimbursable; use reimb rate regardless of needs_reimbursement flag.
-      // Other/Parts: only when needs_reimbursement is set (parts may be billed-only).
+      // Other/Parts: only include if needs_reimbursement is set (company-paid parts are excluded from Employee Reports).
       if (expType === 'subsistence' && desc.includes('per diem')) {
         category = 'Per Diem';
         reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
@@ -637,8 +638,9 @@ export function aggregateEmployeeMetrics(
         category = 'Hotel';
         reimbRate = Number(employee?.hotel_reimb_rate) || 1.00;
       } else {
+        if (!exp.needs_reimbursement) return; // Skip company-paid parts in Employee Reports
         category = 'Other/Parts';
-        reimbRate = exp.needs_reimbursement ? 1.00 : 0;
+        reimbRate = 1.00;
       }
 
       const entry = getOrCreate(category);

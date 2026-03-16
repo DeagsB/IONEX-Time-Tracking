@@ -145,6 +145,7 @@ export default function ServiceTickets() {
     description: string;
     quantity: number;
     rate: number;
+    actual_cost?: number;
     unit?: string;
   }>>([]);
   const [editingExpense, setEditingExpense] = useState<{
@@ -153,6 +154,7 @@ export default function ServiceTickets() {
     description: string;
     quantity: number;
     rate: number;
+    actual_cost?: number;
     unit?: string;
     needs_reimbursement?: boolean;
   } | null>(null);
@@ -162,6 +164,7 @@ export default function ServiceTickets() {
     description: string;
     quantity: number;
     rate: number;
+    actual_cost?: number;
     unit?: string;
     tempId?: string;
     needs_reimbursement?: boolean;
@@ -5342,7 +5345,7 @@ export default function ServiceTickets() {
                               />
                             </div>
                             <div>
-                              <label style={labelStyle}>Rate ($)</label>
+                              <label style={labelStyle}>Billed Rate ($)</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -5354,6 +5357,21 @@ export default function ServiceTickets() {
                                   setEditingExpense({ ...editingExpense, rate: isNaN(val) ? 0 : val });
                                 }}
                                 placeholder="0.00"
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Actual Cost ($)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                style={inputStyle}
+                                value={editingExpense.actual_cost || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                  setEditingExpense({ ...editingExpense, actual_cost: isNaN(val) ? 0 : val });
+                                }}
+                                placeholder="0.00 (optional)"
                               />
                             </div>
                           </div>
@@ -5402,7 +5420,9 @@ export default function ServiceTickets() {
                                       description: editingExpense.description.trim(),
                                       quantity: Number(editingExpense.quantity) || 0,
                                       rate: Number(editingExpense.rate) || 0,
+                                      actual_cost: Number(editingExpense.actual_cost) || 0,
                                       unit: editingExpense.unit?.trim() || undefined,
+                                      needs_reimbursement: editingExpense.needs_reimbursement,
                                     });
                                     setEditingExpense(null);
                                   } else {
@@ -5413,6 +5433,7 @@ export default function ServiceTickets() {
                                         description: editingExpense.description.trim(),
                                         quantity: Number(editingExpense.quantity) || 0,
                                         rate: Number(editingExpense.rate) || 0,
+                                        actual_cost: Number(editingExpense.actual_cost) || 0,
                                         unit: editingExpense.unit?.trim() || undefined,
                                         tempId: `pending-${Date.now()}-${prev.length}`,
                                         needs_reimbursement: editingExpense.needs_reimbursement || false,
@@ -5493,7 +5514,7 @@ export default function ServiceTickets() {
                               onClick={() => {
                                 if (expense.id?.startsWith('pending-')) {
                                   setPendingAddExpenses((prev) => prev.filter((e) => e.tempId !== expense.id));
-                                  setEditingExpense({ expense_type: expense.expense_type, description: expense.description, quantity: expense.quantity, rate: expense.rate, unit: expense.unit });
+                                  setEditingExpense({ expense_type: expense.expense_type, description: expense.description, quantity: expense.quantity, rate: expense.rate, actual_cost: expense.actual_cost, unit: expense.unit });
                                 } else {
                                   setEditingExpense({ ...expense });
                                 }

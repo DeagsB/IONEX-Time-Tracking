@@ -2079,6 +2079,7 @@ export const serviceTicketExpensesService = {
     description: string;
     quantity: number;
     rate: number;
+    actual_cost?: number;
     unit?: string;
     needs_reimbursement?: boolean;
     reimbursement_status?: string;
@@ -2098,6 +2099,7 @@ export const serviceTicketExpensesService = {
     description?: string;
     quantity?: number;
     rate?: number;
+    actual_cost?: number;
     unit?: string;
     needs_reimbursement?: boolean;
     reimbursement_status?: string;

@@ -75,7 +75,7 @@ export default function Profitability() {
       const { data, error } = await supabase
         .from(expTable)
         .select(`
-          id, service_ticket_id, expense_type, description, quantity, rate,
+          id, service_ticket_id, expense_type, description, quantity, rate, actual_cost, needs_reimbursement,
           service_tickets!inner(id, project_id, workflow_status, is_discarded)
         `)
         .not('service_tickets.workflow_status', 'in', '("draft","rejected")')
@@ -174,7 +174,8 @@ export default function Profitability() {
       const ticket = exp.service_tickets;
       if (!ticket?.project_id) continue;
       const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-      expenseByProject.set(ticket.project_id, (expenseByProject.get(ticket.project_id) || 0) + amt);
+      const actualCost = exp.actual_cost != null ? Number(exp.actual_cost) : (exp.needs_reimbursement ? amt : 0);
+      expenseByProject.set(ticket.project_id, (expenseByProject.get(ticket.project_id) || 0) + actualCost);
     }
 
     return (projects as any[]).map((p: any) => {
@@ -373,12 +374,18 @@ export default function Profitability() {
     return (ticketExpenses as any[])
       .filter((exp: any) => exp.service_tickets?.project_id === expandedProjectId)
       .map((exp: any) => ({
-        description: exp.description || exp.expense_type || 'Expense',
-        type: exp.expense_type || '',
-        quantity: Number(exp.quantity) || 0,
-        rate: Number(exp.rate) || 0,
-        total: (Number(exp.quantity) || 0) * (Number(exp.rate) || 0),
-      }))
+        const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+        const actualCost = exp.actual_cost != null ? Number(exp.actual_cost) : (exp.needs_reimbursement ? amt : 0);
+        return {
+          description: exp.description || exp.expense_type || 'Expense',
+          type: exp.expense_type || '',
+          quantity: Number(exp.quantity) || 0,
+          rate: Number(exp.rate) || 0,
+          total: amt,
+          cost: actualCost,
+          profit: amt - actualCost,
+        };
+      })
       .sort((a: any, b: any) => b.total - a.total);
   }, [expandedProjectId, ticketExpenses]);
 
@@ -697,8 +704,10 @@ export default function Profitability() {
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                       <th style={detailThStyle}>Description</th>
                       <th style={{ ...detailThStyle, textAlign: 'right' }}>Qty</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Rate</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Total</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Rate</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Total</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Company Cost</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Markup</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -711,6 +720,8 @@ export default function Profitability() {
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{exp.quantity}</td>
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.rate)}</td>
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.total)}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e91e63' }}>${fmt(exp.cost)}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: exp.profit >= 0 ? '#4caf50' : '#e53935' }}>${fmt(exp.profit)}</td>
                       </tr>
                     ))}
                   </tbody>
