@@ -3277,13 +3277,17 @@ export default function ServiceTickets() {
                                             const existing = findMatchingTicketRecord(t);
                                             const wfStatus = existing?.workflow_status || 'draft';
                                             const isRejected = wfStatus === 'rejected';
+                                            const workDesc = (t.entries || [])
+                                              .map((e: any) => e.description?.trim())
+                                              .filter(Boolean)[0] || '';
+                                            const displayDesc = workDesc.length > 80 ? workDesc.slice(0, 77) + '…' : workDesc;
                                             return (
                                               <div
                                                 key={t.date + t.userId + t.customerId + t.projectId}
                                                 onClick={(e) => { e.stopPropagation(); openTicketPanel(t); }}
                                                 style={{
                                                   display: 'grid',
-                                                  gridTemplateColumns: '140px 100px 1fr 70px',
+                                                  gridTemplateColumns: '140px 100px 1fr minmax(140px, 2fr) 70px',
                                                   gap: '8px',
                                                   padding: '10px 16px 10px 52px',
                                                   cursor: 'pointer',
@@ -3301,6 +3305,9 @@ export default function ServiceTickets() {
                                                 <span style={{ color: 'var(--text-primary)' }}>{t.date}</span>
                                                 <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                   {t.customerName || '—'}
+                                                </span>
+                                                <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px' }} title={workDesc || undefined}>
+                                                  {displayDesc || '—'}
                                                 </span>
                                                 <span style={{ textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-primary)' }}>
                                                   {(t.totalHours ?? 0).toFixed(1)}h
