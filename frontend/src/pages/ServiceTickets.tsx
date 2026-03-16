@@ -3268,7 +3268,7 @@ export default function ServiceTickets() {
                                                   display: 'grid',
                                                   gridTemplateColumns: '140px 100px 1fr 70px',
                                                   gap: '8px',
-                                                  padding: '5px 16px 5px 52px',
+                                                  padding: '10px 16px 10px 52px',
                                                   cursor: 'pointer',
                                                   fontSize: '13px',
                                                   alignItems: 'center',
