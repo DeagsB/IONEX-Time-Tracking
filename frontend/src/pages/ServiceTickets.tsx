@@ -5,7 +5,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService, userExpensesService } from '../services/supabaseServices';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, getTicketBillingKey, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
 import { supabase } from '../lib/supabaseClient';
@@ -40,6 +40,7 @@ export default function ServiceTickets() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   
   // Filters state
   const [startDate, setStartDate] = useState(() => '2026-01-01');
@@ -84,6 +85,21 @@ export default function ServiceTickets() {
     queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
     queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
   }, [queryClient]);
+
+  // Dashboard action items: open Employee Overview and switch tab from URL params
+  useEffect(() => {
+    const overview = searchParams.get('overview');
+    const tab = searchParams.get('tab');
+    if (overview === 'open') {
+      setShowEmployeeOverview(true);
+    }
+    if (tab === 'submitted') {
+      setActiveTab('submitted');
+    }
+    if (overview || tab) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Clear bulk selection when switching tabs or trash view (selection is per tab)
   useEffect(() => {

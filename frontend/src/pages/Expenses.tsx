@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, Fragment, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { userExpensesService, serviceTicketExpensesService, employeesService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 import { optimizeImage } from '../utils/imageOptimizer';
@@ -28,6 +29,7 @@ export default function Expenses() {
   const queryClient = useQueryClient();
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Receipt drag-and-drop + split view state
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -95,6 +97,21 @@ export default function Expenses() {
       .catch(() => { setEditReceiptPreviewUrl(editingExpense.receipt_url); })
       .finally(() => { setLoadingEditReceipt(false); });
   }, [editingExpense?.id, editingExpense?.receipt_url]);
+
+  // Dashboard action items: open Employee Overview and set tab from URL params
+  useEffect(() => {
+    const overview = searchParams.get('overview');
+    const tab = searchParams.get('tab');
+    if (overview === 'open') {
+      setShowExpenseEmployeeOverview(true);
+    }
+    if (tab === 'pending') {
+      setAdminStatusFilter('pending');
+    }
+    if (overview || tab) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Ticket details popup (inside picker)
   const [detailsTicketId, setDetailsTicketId] = useState<string | null>(null);

@@ -112,6 +112,22 @@ export default function Dashboard() {
     enabled: isAdmin,
   });
 
+  // ─── Ticket expenses for cost (actual_cost) by ticket ───
+  const { data: ticketExpensesRaw = [] } = useQuery({
+    queryKey: ['dash-ticket-expenses', ticketsRaw.length, isDemoMode],
+    queryFn: async () => {
+      const ticketIds = (ticketsRaw as any[]).map((t: any) => t.id).filter(Boolean);
+      if (ticketIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('service_ticket_expenses')
+        .select('service_ticket_id, actual_cost, quantity, rate, needs_reimbursement')
+        .in('service_ticket_id', ticketIds);
+      if (error) return [];
+      return data || [];
+    },
+    enabled: isAdmin && (ticketsRaw as any[]).length > 0,
+  });
+
   // ─── Pending expense liability (pending user_expenses sum) ───
   const { data: pendingLiability = 0 } = useQuery({
     queryKey: ['dash-pending-liability'],
@@ -130,14 +146,28 @@ export default function Dashboard() {
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
+  // Cost per ticket from expenses (actual_cost or qty*rate for reimbursable)
+  const costByTicketId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const exp of ticketExpensesRaw as any[]) {
+      const tid = exp.service_ticket_id;
+      const ac = exp.actual_cost;
+      const cost = ac != null ? Number(ac) : (exp.needs_reimbursement ? (Number(exp.quantity) || 0) * (Number(exp.rate) || 0) : 0);
+      map.set(tid, (map.get(tid) || 0) + cost);
+    }
+    return map;
+  }, [ticketExpensesRaw]);
+
   const { mtdRevenue, uninvoicedWip, revenueByWeek, unbilledByCustomer } = useMemo(() => {
     let mtd = 0;
     let wip = 0;
     const weekMap = new Map<string, number>();
+    const weekCostMap = new Map<string, number>();
     const custMap = new Map<string, number>();
 
     for (const t of ticketsRaw as any[]) {
       const amt = Number(t.total_amount) || 0;
+      const cost = costByTicketId.get(t.id) || 0;
 
       if (t.date >= monthStart) mtd += amt;
 
@@ -154,6 +184,7 @@ export default function Dashboard() {
       weekStart.setDate(d.getDate() - d.getDay());
       const weekKey = weekStart.toISOString().slice(0, 10);
       weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + amt);
+      weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + cost);
     }
 
     const weeks = Array.from(weekMap.entries())
@@ -162,7 +193,11 @@ export default function Dashboard() {
       .map(([week, total]) => {
         const d = new Date(week);
         const label = `${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
-        return { week: label, revenue: Math.round(total) };
+        const rev = Math.round(total);
+        const cost = Math.round(weekCostMap.get(week) || 0);
+        const profit = Math.max(0, rev - cost);
+        const costSegment = Math.min(cost, rev);
+        return { week: label, revenue: rev, cost: costSegment, profit };
       });
 
     const customers = Array.from(custMap.entries())
@@ -171,15 +206,15 @@ export default function Dashboard() {
       .map(([name, value]) => ({ name: name.length > 20 ? name.slice(0, 18) + '...' : name, value: Math.round(value) }));
 
     return { mtdRevenue: mtd, uninvoicedWip: wip, revenueByWeek: weeks, unbilledByCustomer: customers };
-  }, [ticketsRaw, monthStart]);
+  }, [ticketsRaw, monthStart, costByTicketId]);
 
-  // ─── Action items ───
+  // ─── Action items (with search params to open Employee Overview on target page) ───
   const actionItems = [
-    { label: 'Tickets Awaiting Review', count: awaitingReviewCount, path: '/service-tickets', color: '#3b82f6' },
-    { label: 'Resubmitted Tickets', count: resubmittedCount, path: '/service-tickets', color: '#eab308' },
-    { label: 'Pending Expense Approvals', count: pendingExpenseCount, path: '/expenses', color: '#f59e0b' },
-    { label: 'Projects Missing Numbers', count: missingNumberCount, path: '/projects', color: '#10b981' },
-    { label: 'Open Bug Reports', count: openBugCount, path: '/service-tickets', color: '#ef4444' },
+    { label: 'Tickets Awaiting Review', count: awaitingReviewCount, path: '/service-tickets?overview=open&tab=submitted', color: '#3b82f6' },
+    { label: 'Resubmitted Tickets', count: resubmittedCount, path: '/service-tickets?overview=open&tab=submitted', color: '#eab308' },
+    { label: 'Pending Expense Approvals', count: pendingExpenseCount, path: '/expenses?overview=open&tab=pending', color: '#f59e0b' },
+    { label: 'Add project # to projects', count: missingNumberCount, path: '/projects?overview=open&missing=1', color: '#10b981' },
+    { label: 'Open Bug Reports', count: openBugCount, path: '/service-tickets?overview=open&tab=submitted', color: '#ef4444' },
   ];
 
   const totalActionItems = actionItems.reduce((s, i) => s + i.count, 0);
@@ -266,7 +301,7 @@ export default function Dashboard() {
           padding: '24px',
         }}>
           <h2 style={{ margin: '0 0 20px', fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)' }}>
-            Weekly Revenue (Last 12 Weeks)
+            Weekly Revenue &amp; Cost (Last 12 Weeks)
           </h2>
           {revenueByWeek.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)' }}>No ticket data yet.</p>
@@ -277,15 +312,28 @@ export default function Dashboard() {
                 <XAxis dataKey="week" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                 <YAxis tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                 <Tooltip
-                  formatter={(value: unknown) => [fmt(Number(value ?? 0)), 'Revenue']}
-                  contentStyle={{
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '8px',
-                    fontSize: '13px',
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const d = payload[0]?.payload;
+                    return (
+                      <div style={{
+                        padding: '10px 14px',
+                        backgroundColor: 'var(--bg-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                      }}>
+                        <div style={{ fontWeight: '600', marginBottom: '6px' }}>{d?.week}</div>
+                        <div>Revenue: {fmt(d?.revenue ?? 0)}</div>
+                        <div style={{ color: '#ef4444' }}>Cost: {fmt(d?.cost ?? 0)}</div>
+                        <div style={{ color: '#10b981' }}>Profit: {fmt(d?.profit ?? 0)}</div>
+                      </div>
+                    );
                   }}
                 />
-                <Bar dataKey="revenue" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="cost" stackId="a" fill="#ef4444" name="Cost" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="profit" stackId="a" fill="#10b981" name="Profit" radius={[4, 4, 0, 0]} />
+                <Legend formatter={(value) => <span style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{value}</span>} />
               </BarChart>
             </ResponsiveContainer>
           )}

@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
@@ -39,6 +40,8 @@ export default function Projects() {
   });
 
   const [showInactive, setShowInactive] = useState(false);
+  const [showMissingOnly, setShowMissingOnly] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: projects } = useQuery({
     queryKey: ['projects', showInactive],
     queryFn: () => projectsService.getAll(isAdmin ? showInactive : false),
@@ -105,11 +108,15 @@ export default function Projects() {
     return `${h}:${m.toString().padStart(2, '0')}`;
   };
 
-  // Sorted projects (active only for main list)
+  // Sorted projects (active only for main list; optionally filtered to missing numbers only)
   const sortedProjects = useMemo(() => {
-    if (!activeProjects.length) return [];
+    let list = activeProjects;
+    if (showMissingOnly && isAdmin) {
+      list = list.filter((p: any) => !p.project_number || String(p.project_number).trim() === '');
+    }
+    if (!list.length) return [];
     
-    return [...activeProjects].sort((a: any, b: any) => {
+    return [...list].sort((a: any, b: any) => {
       let aVal: string | number;
       let bVal: string | number;
       
@@ -142,7 +149,7 @@ export default function Projects() {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [activeProjects, sortField, sortDirection, projectHours]);
+  }, [activeProjects, sortField, sortDirection, projectHours, showMissingOnly, isAdmin]);
 
   const sortedInactiveProjects = useMemo(() => {
     if (!inactiveProjects.length) return [];
@@ -150,6 +157,17 @@ export default function Projects() {
       (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase())
     );
   }, [inactiveProjects]);
+
+  // Dashboard action items: filter to projects missing numbers from URL params
+  useEffect(() => {
+    const missing = searchParams.get('missing');
+    if (missing === '1') {
+      setShowMissingOnly(true);
+    }
+    if (missing) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Toggle sort function - saves to localStorage per user
   const handleSort = (field: typeof sortField) => {
@@ -345,6 +363,17 @@ export default function Projects() {
                 }}
               />
               <span>Show only my hours</span>
+            </label>
+          )}
+          {isAdmin && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px' }}>
+              <input
+                type="checkbox"
+                checked={showMissingOnly}
+                onChange={(e) => setShowMissingOnly(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#10b981' }}
+              />
+              <span>Missing project # only</span>
             </label>
           )}
           {isAdmin && (
