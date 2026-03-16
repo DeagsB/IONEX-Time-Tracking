@@ -2210,14 +2210,14 @@ export const userExpensesService = {
     return data;
   },
 
-  async getUnappliedBillable() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+  async getUnappliedBillable(forUserId?: string) {
+    const uid = forUserId || (await supabase.auth.getUser()).data.user?.id;
+    if (!uid) throw new Error('Not authenticated');
 
     const { data, error } = await supabase
       .from('user_expenses')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', uid)
       .eq('is_billable', true)
       .is('service_ticket_id', null)
       .order('expense_date', { ascending: false });

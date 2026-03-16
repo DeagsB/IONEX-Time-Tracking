@@ -2086,11 +2086,12 @@ export default function ServiceTickets() {
     enabled: ticketRecordIdsForExpenseTotals.length > 0,
   });
 
-  // Unapplied billable receipts (for suggestion list in expense section)
+  // Unapplied billable receipts for the ticket owner (not the viewing admin)
+  const ticketOwnerUserId = selectedTicket?.userId;
   const { data: unappliedBillableReceipts = [] } = useQuery({
-    queryKey: ['unappliedBillableReceipts'],
-    queryFn: () => userExpensesService.getUnappliedBillable(),
-    enabled: !!selectedTicketId,
+    queryKey: ['unappliedBillableReceipts', ticketOwnerUserId],
+    queryFn: () => userExpensesService.getUnappliedBillable(ticketOwnerUserId),
+    enabled: !!selectedTicketId && !!ticketOwnerUserId,
   });
 
   // Receipts attached to the currently open ticket

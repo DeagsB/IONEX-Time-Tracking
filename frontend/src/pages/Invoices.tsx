@@ -440,13 +440,19 @@ export default function Invoices() {
             }
           });
           const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+          const descByRateType = new Map<string, string>();
+          for (const e of match.entries) {
+            if (e.description && !descByRateType.has(e.rate_type)) {
+              descByRateType.set(e.rate_type, e.description);
+            }
+          }
           const syntheticEntries = Object.entries(hoursByRateType)
             .filter(([, h]) => h > 0)
             .map(([rateType, hours]) => ({
               id: `syn-${rateType}`,
               date: match.date,
               hours,
-              description: 'Work performed',
+              description: descByRateType.get(rateType) || match.entries[0]?.description || 'Work performed',
               rate_type: rateType,
               user_id: match.userId,
               user: match.entries[0]?.user,
@@ -937,6 +943,19 @@ export default function Invoices() {
     enabled: showInvoiced && invoicedGroupIdsFromDb.length > 0,
   });
 
+  const markTicketsAsPdfExported = async (groupTickets: ServiceTicket[]) => {
+    const recordIds = groupTickets
+      .map((t) => (t as ServiceTicket & { recordId?: string }).recordId)
+      .filter(Boolean) as string[];
+    for (const id of recordIds) {
+      try {
+        await serviceTicketsService.updateWorkflowStatus(id, 'pdf_exported', isDemoMode);
+      } catch {
+        // best-effort; don't block the download
+      }
+    }
+  };
+
   const handleExportSingleGroup = async (group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }) => {
     const { key, tickets: groupTickets } = group;
     const groupId = getGroupId(group);
@@ -965,6 +984,7 @@ export default function Invoices() {
         const merged = await mergePdfBlobs(blobs);
         const filename = getInvoicePdfFilename(key, groupTickets);
         saveAs(merged, filename);
+        await markTicketsAsPdfExported(groupTickets);
       }
     } catch (err) {
       console.error('Export error:', err);
@@ -1017,6 +1037,7 @@ export default function Invoices() {
       }
       const merged = await mergePdfBlobs(blobs);
       saveAs(merged, downloadFilename);
+      await markTicketsAsPdfExported(groupTickets);
     } catch (err) {
       console.error('Export with invoice error:', err);
       setExportError(err instanceof Error ? err.message : 'Export failed');
@@ -1066,6 +1087,7 @@ export default function Invoices() {
           const merged = await mergePdfBlobs(blobs);
           const filename = getInvoicePdfFilename(key, groupTickets);
           saveAs(merged, filename);
+          await markTicketsAsPdfExported(groupTickets);
         }
       }
 
