@@ -87,6 +87,10 @@ export interface EmployeeMetrics {
   position?: string;
   totalHours: number;
   billableHours: number;
+  /** Billable hours from approved/exported tickets only (revenue-contributing) */
+  billableHoursApproved: number;
+  /** Billable hours from all tickets including draft/submitted/rejected */
+  billableHoursAllTickets: number;
   nonBillableHours: number;
   billableRatio: number;
   totalRevenue: number;
@@ -229,6 +233,49 @@ function isBillable(entry: TimeEntry): boolean {
   return b === true || (typeof b === 'string' && b.toLowerCase() === 'true');
 }
 
+const NON_REVENUE_STATUSES = new Set(['draft', 'submitted', 'rejected']);
+
+/**
+ * Sum billable hours from service tickets, split by approved vs all (including draft/submitted/rejected).
+ */
+function calculateBillableHoursByStatus(
+  userId: string,
+  serviceTicketHours: ServiceTicketHours[],
+  entries: TimeEntry[]
+): { approved: number; all: number } {
+  let approved = 0;
+  let all = 0;
+  const userTickets = serviceTicketHours.filter(t => t.user_id === userId);
+  for (const ticket of userTickets) {
+    let hours = 0;
+    if (ticket.is_edited && ticket.edited_hours) {
+      Object.values(ticket.edited_hours).forEach(h => {
+        if (Array.isArray(h)) hours += (h as number[]).reduce((s, x) => s + (Number(x) || 0), 0);
+        else hours += Number(h) || 0;
+      });
+    } else {
+      hours = Number(ticket.total_hours) || 0;
+      const ws = (ticket.workflow_status || 'draft').toLowerCase();
+      const isDraftRejected = ws === 'draft' || ws === 'rejected' || !!(ticket.rejected_at != null && ticket.rejected_at !== '');
+      if (hours === 0 && isDraftRejected) {
+        const matching = entries.filter(e =>
+          isBillable(e) && e.date === ticket.date &&
+          (e.project?.customer?.id === ticket.customer_id || (!ticket.customer_id && !e.project?.customer?.id)) &&
+          (e.project_id === ticket.project_id || (!ticket.project_id && !e.project_id))
+        );
+        hours = matching.reduce((s, e) => s + (Number(e.hours) || 0), 0);
+      }
+    }
+    if (hours > 0) {
+      all += hours;
+      if (!NON_REVENUE_STATUSES.has(ticket.workflow_status || 'draft')) {
+        approved += hours;
+      }
+    }
+  }
+  return { approved, all };
+}
+
 // Aggregate metrics for a single employee from their time entries
 export function aggregateEmployeeMetrics(
   entries: TimeEntry[],
@@ -256,6 +303,8 @@ export function aggregateEmployeeMetrics(
       position: employee?.position,
       totalHours: 0,
       billableHours: 0,
+      billableHoursApproved: 0,
+      billableHoursAllTickets: 0,
       nonBillableHours: 0,
       billableRatio: 0,
       totalRevenue: 0,
@@ -300,15 +349,23 @@ export function aggregateEmployeeMetrics(
 
   // Billable hours should come from service ticket hours (via rateTypeBreakdown), not time entries
   // This ensures billable hours match what's on the service tickets
-  billableHours = rateTypeBreakdown.shopTime.hours + 
-                  rateTypeBreakdown.fieldTime.hours + 
-                  rateTypeBreakdown.travelTime.hours + 
-                  rateTypeBreakdown.shopOvertime.hours + 
+  billableHours = rateTypeBreakdown.shopTime.hours +
+                  rateTypeBreakdown.fieldTime.hours +
+                  rateTypeBreakdown.travelTime.hours +
+                  rateTypeBreakdown.shopOvertime.hours +
                   rateTypeBreakdown.fieldOvertime.hours;
+
+  // Split billable hours by workflow status (approved vs draft/submitted/rejected)
+  const { approved: approvedFromHelper, all: allFromHelper } = serviceTicketHours
+    ? calculateBillableHoursByStatus(userId, serviceTicketHours, entries)
+    : { approved: billableHours, all: billableHours };
+  const billableHoursAllTickets = billableHours;
+  const billableHoursApproved = allFromHelper > 0
+    ? billableHours * (approvedFromHelper / allFromHelper)
+    : billableHours;
 
   // Revenue: use total_amount from approved/exported service tickets (matching Profitability page)
   // Draft/submitted/rejected tickets do NOT contribute to revenue
-  const NON_REVENUE_STATUSES = new Set(['draft', 'submitted', 'rejected']);
   if (serviceTicketHours) {
     serviceTicketHours
       .filter(t => t.user_id === userId)
@@ -567,6 +624,8 @@ export function aggregateEmployeeMetrics(
     position: employee?.position,
     totalHours,
     billableHours,
+    billableHoursApproved,
+    billableHoursAllTickets,
     nonBillableHours: nonBillableHoursDisplay,
     billableRatio,
     totalRevenue,

@@ -371,7 +371,13 @@ export default function EmployeeReports() {
                         )}
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'center', minWidth: '160px' }}>
-                        <BillableBar pct={eff} billable={m.billableHours} total={m.totalHours} />
+                        <BillableBar
+                          pct={eff}
+                          billable={m.billableHours}
+                          billableApproved={m.billableHoursApproved}
+                          billableAllTickets={m.billableHoursAllTickets}
+                          total={m.totalHours}
+                        />
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
                         ${fmt(m.totalRevenue)}
@@ -485,7 +491,14 @@ export default function EmployeeReports() {
               <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Billable Utilization
               </div>
-              <BillableBar pct={expandedMetrics.efficiency} billable={expandedMetrics.billableHours} total={expandedMetrics.totalHours} large />
+              <BillableBar
+                pct={expandedMetrics.efficiency}
+                billable={expandedMetrics.billableHours}
+                billableApproved={expandedMetrics.billableHoursApproved}
+                billableAllTickets={expandedMetrics.billableHoursAllTickets}
+                total={expandedMetrics.totalHours}
+                large
+              />
             </div>
 
             {/* Hours by Rate Type */}
@@ -726,10 +739,29 @@ export default function EmployeeReports() {
   );
 }
 
-function BillableBar({ pct, billable, total, large }: { pct: number; billable: number; total: number; large?: boolean }) {
+function BillableBar({
+  pct,
+  billable,
+  billableApproved = billable,
+  billableAllTickets = billable,
+  total,
+  large,
+}: {
+  pct: number;
+  billable: number;
+  billableApproved?: number;
+  billableAllTickets?: number;
+  total: number;
+  large?: boolean;
+}) {
   const height = large ? 24 : 16;
   const clampedPct = Math.min(Math.max(pct, 0), 100);
   const barColor = pct >= 80 ? '#4caf50' : pct >= 60 ? '#ff9800' : '#e53935';
+
+  // Three segments: approved (colored), pending draft/submitted/rejected (greyed), non-billable (light grey)
+  const approvedPct = total > 0 ? (billableApproved / total) * 100 : 0;
+  const pendingPct = total > 0 ? (Math.max(0, billableAllTickets - billableApproved) / total) * 100 : 0;
+  const nonBillablePct = total > 0 ? ((total - billableAllTickets) / total) * 100 : 0;
 
   return (
     <div>
@@ -738,28 +770,47 @@ function BillableBar({ pct, billable, total, large }: { pct: number; billable: n
           position: 'relative',
           height,
           borderRadius: height / 2,
-          backgroundColor: 'rgba(158,158,158,0.1)',
+          backgroundColor: 'rgba(158,158,158,0.15)',
           overflow: 'hidden',
+          display: 'flex',
         }}
       >
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            height: '100%',
-            width: `${clampedPct}%`,
-            borderRadius: height / 2,
-            background: `repeating-linear-gradient(
-              -45deg,
-              ${barColor},
-              ${barColor} 6px,
-              ${adjustAlpha(barColor, 0.6)} 6px,
-              ${adjustAlpha(barColor, 0.6)} 12px
-            )`,
-            transition: 'width 0.4s ease',
-          }}
-        />
+        {/* Approved (revenue-contributing) */}
+        {approvedPct > 0 && (
+          <div
+            style={{
+              width: `${approvedPct}%`,
+              height: '100%',
+              borderTopLeftRadius: height / 2,
+              borderBottomLeftRadius: height / 2,
+              borderTopRightRadius: pendingPct <= 0 ? height / 2 : 0,
+              borderBottomRightRadius: pendingPct <= 0 ? height / 2 : 0,
+              background: `repeating-linear-gradient(
+                -45deg,
+                ${barColor},
+                ${barColor} 6px,
+                ${adjustAlpha(barColor, 0.6)} 6px,
+                ${adjustAlpha(barColor, 0.6)} 12px
+              )`,
+              transition: 'width 0.4s ease',
+              flexShrink: 0,
+            }}
+          />
+        )}
+        {/* Pending (draft/submitted/rejected) */}
+        {pendingPct > 0 && (
+          <div
+            title="Draft/submitted/rejected (not yet revenue)"
+            style={{
+              width: `${pendingPct}%`,
+              height: '100%',
+              backgroundColor: 'rgba(158,158,158,0.4)',
+              flexShrink: 0,
+              borderTopRightRadius: nonBillablePct <= 0 ? height / 2 : 0,
+              borderBottomRightRadius: nonBillablePct <= 0 ? height / 2 : 0,
+            }}
+          />
+        )}
         {large && (
           <div
             style={{
@@ -775,6 +826,7 @@ function BillableBar({ pct, billable, total, large }: { pct: number; billable: n
               fontWeight: '700',
               color: clampedPct > 50 ? '#fff' : 'var(--text-primary)',
               textShadow: clampedPct > 50 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+              pointerEvents: 'none',
             }}
           >
             {clampedPct.toFixed(0)}%
