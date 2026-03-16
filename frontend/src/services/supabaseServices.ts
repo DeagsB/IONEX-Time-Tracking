@@ -2364,7 +2364,7 @@ export const userExpensesService = {
   }>) {
     const { data: existing } = await supabase
       .from('user_expenses')
-      .select('service_ticket_id, markup_amount, amount, description')
+      .select('service_ticket_id, markup_amount, amount, gst, description')
       .eq('id', id)
       .single();
 
@@ -2385,9 +2385,11 @@ export const userExpensesService = {
 
     if (existing?.service_ticket_id && updates.is_billable !== false) {
       const newAmount = updates.amount ?? existing.amount;
+      const newGst = updates.gst ?? existing.gst ?? 0;
+      const expTotal = Number(newAmount) + Number(newGst);
       const markupAmount = Number(existing.markup_amount) || 0;
       const newDescription = updates.description ?? existing.description;
-      const totalWithMarkup = Number(newAmount) + markupAmount;
+      const totalWithMarkup = expTotal + markupAmount;
 
       const { data: linkedExpenses } = await supabase
         .from('service_ticket_expenses')

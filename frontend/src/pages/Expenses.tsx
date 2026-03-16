@@ -312,15 +312,15 @@ export default function Expenses() {
     const expense = expenses.find((e: any) => e.id === applyExpenseId);
     if (!expense) return;
 
-    const expAmt = parseFloat(expense.amount);
+    const expTotal = parseFloat(expense.amount) + parseFloat(expense.gst || 0);
     let markup = 0;
     const val = parseFloat(markupValue) || 0;
     if (markupType === 'percent') {
-      markup = (expAmt * val) / 100;
+      markup = (expTotal * val) / 100;
     } else {
       markup = val;
     }
-    const totalWithMarkup = expAmt + markup;
+    const totalWithMarkup = expTotal + markup;
 
     setIsApplyingMarkup(true);
     try {
@@ -951,10 +951,10 @@ export default function Expenses() {
       {markupModalTicket && applyExpenseId && (() => {
         const expense = expenses.find((e: any) => e.id === applyExpenseId);
         if (!expense) return null;
-        const expAmt = parseFloat(expense.amount);
+        const expTotal = parseFloat(expense.amount) + parseFloat(expense.gst || 0);
         const val = parseFloat(markupValue) || 0;
-        const markup = markupType === 'percent' ? (expAmt * val) / 100 : val;
-        const total = expAmt + markup;
+        const markup = markupType === 'percent' ? (expTotal * val) / 100 : val;
+        const total = expTotal + markup;
 
         return (
           <div style={{
@@ -972,7 +972,7 @@ export default function Expenses() {
 
               <div style={{ marginBottom: '16px', padding: '10px 12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '13px' }}>
                 <div><span style={{ color: 'var(--text-secondary)' }}>Expense:</span> <span style={{ fontWeight: '600' }}>{expense.description}</span></div>
-                <div><span style={{ color: 'var(--text-secondary)' }}>Amount:</span> <span style={{ fontWeight: '600' }}>${expAmt.toFixed(2)}</span></div>
+                <div><span style={{ color: 'var(--text-secondary)' }}>Total (incl. GST):</span> <span style={{ fontWeight: '600' }}>${expTotal.toFixed(2)}</span></div>
                 <div><span style={{ color: 'var(--text-secondary)' }}>Ticket:</span> <span style={{ fontWeight: '600' }}>{markupModalTicket.ticketNumber}</span></div>
               </div>
 

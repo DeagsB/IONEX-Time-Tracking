@@ -5208,16 +5208,16 @@ export default function ServiceTickets() {
                               </div>
                               <button
                                 onClick={async () => {
-                                  const markupStr = prompt('Enter markup (e.g. 10 for $10, 10% for percentage, or 0 for none):') || '0';
+                                  const markupStr = prompt('Enter markup on total (e.g. 10 for $10, 10% for percentage, or 0 for none):') || '0';
                                   let markup = 0;
-                                  const expAmt = parseFloat(r.amount);
+                                  const expTotal = parseFloat(r.amount) + parseFloat(r.gst || 0);
                                   if (markupStr.includes('%')) {
                                     const pct = parseFloat(markupStr.replace('%', ''));
-                                    markup = (expAmt * pct) / 100;
+                                    markup = (expTotal * pct) / 100;
                                   } else {
                                     markup = parseFloat(markupStr) || 0;
                                   }
-                                  const totalWithMarkup = expAmt + markup;
+                                  const totalWithMarkup = expTotal + markup;
                                   try {
                                     await userExpensesService.update(r.id, { service_ticket_id: currentTicketRecordId, markup_amount: markup });
                                     setPendingAddExpenses((prev) => [
@@ -5737,9 +5737,11 @@ export default function ServiceTickets() {
                         </div>
                         {(() => {
                           const amt = parseFloat(receiptForm.amount) || 0;
+                          const gst = parseFloat(receiptForm.gst) || 0;
+                          const expTotal = amt + gst;
                           const val = parseFloat(receiptForm.markupValue) || 0;
-                          const markup = receiptForm.markupType === 'percent' ? (amt * val) / 100 : val;
-                          const total = amt + markup;
+                          const markup = receiptForm.markupType === 'percent' ? (expTotal * val) / 100 : val;
+                          const total = expTotal + markup;
                           if (markup > 0) return (
                             <div style={{ marginTop: '6px', padding: '8px 10px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
                               <span style={{ color: 'var(--text-secondary)' }}>Markup: </span><span style={{ fontWeight: '600', color: '#2196F3' }}>${markup.toFixed(2)}</span>
@@ -5760,9 +5762,11 @@ export default function ServiceTickets() {
                             setReceiptUploadError(null);
                             try {
                               const amt = parseFloat(receiptForm.amount);
+                              const gst = parseFloat(receiptForm.gst) || 0;
+                              const expTotal = amt + gst;
                               const markupVal = parseFloat(receiptForm.markupValue) || 0;
-                              const markup = receiptForm.markupType === 'percent' ? (amt * markupVal) / 100 : markupVal;
-                              const totalWithMarkup = amt + markup;
+                              const markup = receiptForm.markupType === 'percent' ? (expTotal * markupVal) / 100 : markupVal;
+                              const totalWithMarkup = expTotal + markup;
                               let storagePath: string | undefined;
                               if (receiptFile) {
                                 const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
