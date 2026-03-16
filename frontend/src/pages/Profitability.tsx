@@ -32,8 +32,8 @@ export default function Profitability() {
   const { isDemoMode } = useDemoMode();
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'revenue' | 'profit' | 'margin' | 'budget_usage'>('revenue');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortBy, setSortBy] = useState<'project_number' | 'name' | 'revenue' | 'profit' | 'margin' | 'budget_usage'>('project_number');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [showInactive, setShowInactive] = useState(false);
 
   const { data: projects = [] } = useQuery({
@@ -220,7 +220,16 @@ export default function Profitability() {
     }
     list.sort((a, b) => {
       let cmp = 0;
-      if (sortBy === 'name') cmp = a.name.localeCompare(b.name);
+      if (sortBy === 'project_number') {
+        const numA = parseInt(a.projectNumber, 10);
+        const numB = parseInt(b.projectNumber, 10);
+        const hasNumA = !isNaN(numA);
+        const hasNumB = !isNaN(numB);
+        if (hasNumA && hasNumB) cmp = numA - numB;
+        else if (hasNumA && !hasNumB) cmp = -1;
+        else if (!hasNumA && hasNumB) cmp = 1;
+        else cmp = a.name.localeCompare(b.name);
+      } else if (sortBy === 'name') cmp = a.name.localeCompare(b.name);
       else if (sortBy === 'revenue') cmp = a.revenue - b.revenue;
       else if (sortBy === 'profit') cmp = a.profit - b.profit;
       else if (sortBy === 'margin') cmp = a.margin - b.margin;
@@ -412,7 +421,7 @@ export default function Profitability() {
 
   const handleSort = (field: typeof sortBy) => {
     if (sortBy === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortBy(field); setSortDir('desc'); }
+    else { setSortBy(field); setSortDir(field === 'project_number' ? 'asc' : 'desc'); }
   };
 
   const sortArrow = (field: typeof sortBy) =>
@@ -499,7 +508,7 @@ export default function Profitability() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-              <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => handleSort('name')}>Project{sortArrow('name')}</th>
+              <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => handleSort('project_number')}>Project{sortArrow('project_number')}</th>
               <th style={{ ...thStyle, textAlign: 'center' }}>Budget Usage</th>
               <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('revenue')}>Revenue{sortArrow('revenue')}</th>
               <th style={{ ...thStyle, textAlign: 'right' }}>Cost</th>

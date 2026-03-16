@@ -2085,6 +2085,14 @@ export default function ServiceTickets() {
       if (aRestored && !bRestored) return -1;
       if (!aRestored && bRestored) return 1;
 
+      // Admin: show admin's own tickets first
+      if (isAdmin && user?.id) {
+        const aIsAdmin = a.userId === user.id;
+        const bIsAdmin = b.userId === user.id;
+        if (aIsAdmin && !bIsAdmin) return -1;
+        if (!aIsAdmin && bIsAdmin) return 1;
+      }
+
       // Draft tab: rejected tickets always at top (after restored)
       if (activeTab === 'draft' && !showDiscarded) {
         const aRej = aRec?.workflow_status === 'rejected';
