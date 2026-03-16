@@ -682,6 +682,7 @@ export default function Profitability() {
               {expandedTickets.length === 0 ? (
                 <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No tickets recorded</p>
               ) : (
+                <>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -777,6 +778,7 @@ export default function Profitability() {
                     * Draft/submitted amounts are shown for reference but not included in revenue or profit totals
                   </p>
                 )}
+                </>
               )}
             </DetailSection>
           </div>

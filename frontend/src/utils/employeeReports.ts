@@ -290,22 +290,25 @@ export function aggregateEmployeeMetrics(
   const nonBillableHours = internalTimeEntryHours + totalUnbilledWork;
   
   // Calculate the COST of unbilled work (hours worked but not billed still have a cost)
-  // Use the employee's pay rates to determine the cost of unbilled hours
+  // Use the employee's loaded pay rates (with burden) to determine the cost of unbilled hours
+  const unbilledBurden = 1 + ((employee?.employment_type || 'Employee') === 'Contractor' ? 0.05 : 0.30);
   const getPayRateForUnbilled = (rateType: 'shop' | 'field' | 'travel' | 'shopOT' | 'fieldOT'): number => {
     if (!employee) return 0;
     const panelShop = employee.department === 'Panel Shop';
+    let baseRate = 0;
     if (panelShop) {
-      // Panel shop uses shop pay rate for most things
-      if (rateType === 'shopOT') return employee.shop_ot_pay_rate || employee.shop_pay_rate || 0;
-      if (rateType === 'fieldOT') return employee.field_ot_pay_rate || employee.shop_pay_rate || 0;
-      if (rateType === 'field') return employee.field_pay_rate || employee.shop_pay_rate || 0;
-      return employee.shop_pay_rate || 0;
+      if (rateType === 'shopOT') baseRate = employee.shop_ot_pay_rate || employee.shop_pay_rate || 0;
+      else if (rateType === 'fieldOT') baseRate = employee.field_ot_pay_rate || employee.shop_pay_rate || 0;
+      else if (rateType === 'field') baseRate = employee.field_pay_rate || employee.shop_pay_rate || 0;
+      else baseRate = employee.shop_pay_rate || 0;
+    } else {
+      if (rateType === 'shopOT') baseRate = employee.shop_ot_pay_rate || 0;
+      else if (rateType === 'fieldOT') baseRate = employee.field_ot_pay_rate || 0;
+      else if (rateType === 'field') baseRate = employee.field_pay_rate || 0;
+      else if (rateType === 'travel') baseRate = employee.shop_pay_rate || 0;
+      else baseRate = employee.shop_pay_rate || 0;
     }
-    if (rateType === 'shopOT') return employee.shop_ot_pay_rate || 0;
-    if (rateType === 'fieldOT') return employee.field_ot_pay_rate || 0;
-    if (rateType === 'field') return employee.field_pay_rate || 0;
-    if (rateType === 'travel') return employee.shop_pay_rate || 0;
-    return employee.shop_pay_rate || 0;
+    return baseRate * unbilledBurden;
   };
   
   const unbilledShopTimeCost = unbilledShopTime * getPayRateForUnbilled('shop');
@@ -374,15 +377,10 @@ export function aggregateEmployeeMetrics(
   const averageRate = totalServiceTicketHours > 0 ? totalRevenue / totalServiceTicketHours : 0;
   const efficiency = billableRatio; // Efficiency is same as billable ratio
 
-  // Calculate service ticket count (unique date+customer combinations for billable entries)
-  const ticketKeys = new Set<string>();
-  entries.forEach(entry => {
-    if (isBillable(entry) && entry.project?.customer) {
-      const key = `${entry.date}-${entry.project.customer.id}`;
-      ticketKeys.add(key);
-    }
-  });
-  const serviceTicketCount = ticketKeys.size;
+  // Count actual service ticket records for this employee (not the heuristic from time entries)
+  const serviceTicketCount = serviceTicketHours
+    ? serviceTicketHours.filter(t => t.user_id === userId).length
+    : 0;
 
   // Helper function to round up to nearest 0.25 (quarter hour, matching Payroll page logic)
   const roundToQuarterHour = (hours: number): number => {
@@ -470,53 +468,59 @@ export function aggregateEmployeeMetrics(
   });
   
   // Calculate cost using payroll hours grouped by rate type
-  // Round each rate type's hours UP to nearest 0.10 (matching Payroll page logic)
+  // Round each rate type's hours UP to nearest 0.25 (matching Payroll page logic)
+  // Apply loaded rate: base pay × (1 + burden) where burden = 30% employee, 5% contractor
   const isPanelShop = employee?.department === 'Panel Shop';
+  const isContractor = (employee?.employment_type || 'Employee') === 'Contractor';
+  const burdenMultiplier = 1 + (isContractor ? 0.05 : 0.30);
   
   // Shop Time cost (rounded)
   if (hoursByRateType['Shop Time'] > 0) {
-    const payRate = Number(employee?.shop_pay_rate) || 0;
+    const payRate = (Number(employee?.shop_pay_rate) || 0) * burdenMultiplier;
     const roundedHours = roundToQuarterHour(hoursByRateType['Shop Time']);
     totalCost += roundedHours * payRate;
   }
   
   // Shop Overtime cost (rounded)
   if (hoursByRateType['Shop Overtime'] > 0) {
-    const payRate = isPanelShop 
+    const baseRate = isPanelShop 
       ? (Number(employee?.shop_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0)
       : (Number(employee?.shop_ot_pay_rate) || 0);
+    const payRate = baseRate * burdenMultiplier;
     const roundedHours = roundToQuarterHour(hoursByRateType['Shop Overtime']);
     totalCost += roundedHours * payRate;
   }
   
   // Travel Time cost (rounded, paid at shop rate)
   if (hoursByRateType['Travel Time'] > 0) {
-    const payRate = Number(employee?.shop_pay_rate) || 0;
+    const payRate = (Number(employee?.shop_pay_rate) || 0) * burdenMultiplier;
     const roundedHours = roundToQuarterHour(hoursByRateType['Travel Time']);
     totalCost += roundedHours * payRate;
   }
   
   // Field Time cost (rounded)
   if (hoursByRateType['Field Time'] > 0) {
-    const payRate = isPanelShop
+    const baseRate = isPanelShop
       ? (Number(employee?.field_pay_rate) || Number(employee?.shop_pay_rate) || 0)
       : (Number(employee?.field_pay_rate) || 0);
+    const payRate = baseRate * burdenMultiplier;
     const roundedHours = roundToQuarterHour(hoursByRateType['Field Time']);
     totalCost += roundedHours * payRate;
   }
   
   // Field Overtime cost (rounded)
   if (hoursByRateType['Field Overtime'] > 0) {
-    const payRate = isPanelShop
+    const baseRate = isPanelShop
       ? (Number(employee?.field_ot_pay_rate) || Number(employee?.shop_pay_rate) || 0)
       : (Number(employee?.field_ot_pay_rate) || 0);
+    const payRate = baseRate * burdenMultiplier;
     const roundedHours = roundToQuarterHour(hoursByRateType['Field Overtime']);
     totalCost += roundedHours * payRate;
   }
   
   // Internal time cost (rounded) - use internal_rate when set, else shop pay rate
   if (hoursByRateType['Internal'] > 0) {
-    const payRate = Number(employee?.internal_rate) || Number(employee?.shop_pay_rate) || 0;
+    const payRate = (Number(employee?.internal_rate) || Number(employee?.shop_pay_rate) || 0) * burdenMultiplier;
     const roundedHours = roundToQuarterHour(hoursByRateType['Internal']);
     totalCost += roundedHours * payRate;
   }
@@ -590,32 +594,36 @@ export function calculateRateTypeBreakdown(
 
   const userId = entries[0]?.user_id || employee?.user_id || '';
   const isPanelShop = employee?.department === 'Panel Shop';
+  const isContractorEmp = (employee?.employment_type || 'Employee') === 'Contractor';
+  const burdenMult = 1 + (isContractorEmp ? 0.05 : 0.30);
 
-  // Helper function to get pay rate for a rate type
+  // Helper function to get loaded pay rate for a rate type (base pay × burden)
   const getPayRate = (rateType: string): number => {
+    let baseRate = 0;
     if (isPanelShop) {
-    if (rateType.includes('shop') && rateType.includes('overtime')) {
-        return employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
-    } else if (rateType.includes('field') && rateType.includes('overtime')) {
-        return employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
-    } else if (rateType.includes('field')) {
-        return employee?.field_pay_rate || employee?.shop_pay_rate || 0;
-    } else if (rateType.includes('travel')) {
-        return employee?.shop_pay_rate || 0;
-    } else {
-        return employee?.shop_pay_rate || 0;
+      if (rateType.includes('shop') && rateType.includes('overtime')) {
+        baseRate = employee?.shop_ot_pay_rate || employee?.shop_pay_rate || 0;
+      } else if (rateType.includes('field') && rateType.includes('overtime')) {
+        baseRate = employee?.field_ot_pay_rate || employee?.shop_pay_rate || 0;
+      } else if (rateType.includes('field')) {
+        baseRate = employee?.field_pay_rate || employee?.shop_pay_rate || 0;
+      } else if (rateType.includes('travel')) {
+        baseRate = employee?.shop_pay_rate || 0;
+      } else {
+        baseRate = employee?.shop_pay_rate || 0;
       }
     } else if (rateType.includes('shop') && rateType.includes('overtime')) {
-      return employee?.shop_ot_pay_rate || 0;
+      baseRate = employee?.shop_ot_pay_rate || 0;
     } else if (rateType.includes('field') && rateType.includes('overtime')) {
-      return employee?.field_ot_pay_rate || 0;
+      baseRate = employee?.field_ot_pay_rate || 0;
     } else if (rateType.includes('field')) {
-      return employee?.field_pay_rate || 0;
+      baseRate = employee?.field_pay_rate || 0;
     } else if (rateType.includes('travel')) {
-      return employee?.shop_pay_rate || 0;
+      baseRate = employee?.shop_pay_rate || 0;
     } else {
-      return employee?.shop_pay_rate || 0;
+      baseRate = employee?.shop_pay_rate || 0;
     }
+    return baseRate * burdenMult;
   };
 
   // Helper function to get billable rate for a rate type
@@ -672,7 +680,8 @@ export function calculateRateTypeBreakdown(
   entries.forEach(entry => {
     if (!isBillable(entry)) {
       const hours = Number(entry.hours) || 0;
-      const payRate = Number(employee?.internal_rate) || getPayRate((entry.rate_type || 'Shop Time').toLowerCase());
+      const internalBase = Number(employee?.internal_rate) || 0;
+      const payRate = internalBase > 0 ? internalBase * burdenMult : getPayRate((entry.rate_type || 'Shop Time').toLowerCase());
       const cost = hours * payRate;
 
       breakdown.internalTime.hours += hours;
@@ -1356,7 +1365,7 @@ export function getTimePeriodPresets(): { label: string; getValue: () => { start
       getValue: () => {
         const today = new Date();
         const todayStr = today.toISOString().split('T')[0];
-        return { startDate: '2026-01-01', endDate: todayStr };
+        return { startDate: '2020-01-01', endDate: todayStr };
       },
     },
     {
