@@ -656,12 +656,18 @@ export default function Profitability() {
                     </tr>
                   </thead>
                   <tbody>
-                    {expandedTickets.map((t: any) => (
+                    {expandedTickets.map((t: any) => {
+                      const rev = Number(t.total_amount) || 0;
+                      const emp = empByUserId.get(t.user_id);
+                      const empName = emp?.user ? [emp.user.first_name, emp.user.last_name].filter(Boolean).join(' ') : null;
+                      const isInternal = rev === 0 && (t.payrollCost || 0) > 0;
+                      const ticketLabel = isInternal && empName ? `${empName} - internal` : (t.ticket_number || t.id.substring(0, 8));
+                      return (
                       <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={detailTdStyle}>{t.date}</td>
                         <td style={detailTdStyle}>
-                          <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                            {t.ticket_number || t.id.substring(0, 8)}
+                          <span style={{ fontFamily: isInternal ? 'inherit' : 'monospace', color: 'var(--text-secondary)' }}>
+                            {ticketLabel}
                           </span>
                         </td>
                         <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{Number(t.total_hours || 0).toFixed(1)}</td>
@@ -674,7 +680,7 @@ export default function Profitability() {
                           <StatusBadge status={t.workflow_status} />
                         </td>
                       </tr>
-                    ))}
+                    ); })}
                   </tbody>
                 </table>
               )}
