@@ -33,7 +33,7 @@ export default function Profitability() {
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'project_number' | 'name' | 'revenue' | 'profit' | 'margin' | 'budget_usage'>('project_number');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [showInactive, setShowInactive] = useState(false);
 
   const { data: projects = [] } = useQuery({

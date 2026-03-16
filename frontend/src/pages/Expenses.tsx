@@ -187,6 +187,7 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+      queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
     },
   });
 

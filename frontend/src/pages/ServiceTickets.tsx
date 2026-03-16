@@ -536,7 +536,7 @@ export default function ServiceTickets() {
             rate: exp.rate,
             unit: exp.unit,
             needs_reimbursement: exp.needs_reimbursement || false,
-            reimbursement_status: exp.needs_reimbursement ? 'pending' : undefined,
+            reimbursement_status: exp.needs_reimbursement ? (isAdmin ? 'approved' : 'pending') : undefined,
           });
         }
         setPendingAddExpenses([]);
@@ -5881,6 +5881,7 @@ export default function ServiceTickets() {
                                 is_billable: true,
                                 service_ticket_id: currentTicketRecordId || undefined,
                                 markup_amount: markup > 0 ? markup : undefined,
+                                status: isAdmin ? 'approved' : 'pending',
                               });
                               // If billable AND attached to this ticket, also add to the billable expenses list on the ticket (rate = amount + markup)
                               if (currentTicketRecordId) {
