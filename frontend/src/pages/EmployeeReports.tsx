@@ -86,8 +86,8 @@ export default function EmployeeReports() {
     enabled: isAdmin,
   });
 
-  const { data: ticketExpenses = [] } = useQuery({
-    queryKey: ['employee-report-expenses', startDate, endDate],
+  const { data: ticketExpensesRaw = [] } = useQuery({
+    queryKey: ['employee-report-expenses'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('service_ticket_expenses')
@@ -100,14 +100,22 @@ export default function EmployeeReports() {
             projects(name, project_number)
           )
         `)
-        .filter('service_tickets.date', 'gte', startDate)
-        .filter('service_tickets.date', 'lte', endDate)
         .or('service_tickets.is_discarded.is.null,service_tickets.is_discarded.eq.false', { referencedTable: 'service_tickets' });
       if (error) throw error;
       return data || [];
     },
-    enabled: isAdmin && !!startDate && !!endDate,
+    enabled: isAdmin,
   });
+
+  // Filter by date range client-side (Supabase nested filters on service_tickets.date are unreliable)
+  const ticketExpenses = useMemo(() => {
+    if (!ticketExpensesRaw.length || !startDate || !endDate) return ticketExpensesRaw;
+    return (ticketExpensesRaw as any[]).filter((exp: any) => {
+      const d = exp.service_tickets?.date;
+      if (!d) return false;
+      return d >= startDate && d <= endDate;
+    });
+  }, [ticketExpensesRaw, startDate, endDate]);
 
   const employeeMetrics = useMemo(() => {
     if (!employees) return [];
