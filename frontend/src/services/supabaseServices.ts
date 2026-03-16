@@ -1793,7 +1793,7 @@ export const serviceTicketsService = {
     let query = supabase
       .from(tableName)
       .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, header_overrides')
-      .eq('workflow_status', 'approved')
+      .not('workflow_status', 'in', '("draft","rejected")')
       .eq('is_discarded', false)
       .not('ticket_number', 'is', null)
       .order('date', { ascending: false });
