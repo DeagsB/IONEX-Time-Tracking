@@ -960,8 +960,8 @@ export default function Expenses() {
           <div style={{
             position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }} onClick={() => { setMarkupModalTicket(null); setApplyExpenseId(null); }}>
-            <div onClick={(e) => e.stopPropagation()} style={{
+          }} onMouseDown={(e) => { if (e.target === e.currentTarget) { setMarkupModalTicket(null); setApplyExpenseId(null); } }}>
+            <div onMouseDown={(e) => e.stopPropagation()} style={{
               backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px',
               maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
             }}>

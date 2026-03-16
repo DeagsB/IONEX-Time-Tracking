@@ -3170,7 +3170,7 @@ export default function ServiceTickets() {
                   <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
                     <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
                     <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', width: '100px' }}>Drafts</th>
-                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '120px' }}>Submitted</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '160px' }}>Submitted</th>
                     <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase', width: '100px' }}>Approved</th>
                   </tr>
                 </thead>
@@ -3217,6 +3217,7 @@ export default function ServiceTickets() {
                                 fontWeight: '700',
                                 backgroundColor: '#ff9800',
                                 color: 'white',
+                                whiteSpace: 'nowrap',
                               }}>{emp.submittedNewCount} resubmitted</span>
                             )}
                           </td>

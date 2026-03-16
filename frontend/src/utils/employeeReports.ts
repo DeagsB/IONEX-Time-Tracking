@@ -681,7 +681,8 @@ export function calculateRateTypeBreakdown(
     } else if (rateType.includes('field')) {
       baseRate = Number(rates.field_pay_rate) || 0;
     } else if (rateType.includes('travel')) {
-      baseRate = Number(rates.shop_pay_rate) || 0;
+      // Travel time always uses shop pay rate (never field). Prefer current employee rate to avoid inflated cost from stale history.
+      baseRate = Number(employee.shop_pay_rate) || Number(rates.shop_pay_rate) || 0;
     } else {
       baseRate = Number(rates.shop_pay_rate) || 0;
     }
