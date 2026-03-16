@@ -786,6 +786,7 @@ export const reportsService = {
       .select('id, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours, workflow_status, rejected_at')
       .gte('date', startDate)
       .lte('date', endDate)
+      .neq('workflow_status', 'rejected')
       .or('is_discarded.is.null,is_discarded.eq.false');
 
     if (userId) {

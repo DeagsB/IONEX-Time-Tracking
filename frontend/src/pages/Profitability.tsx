@@ -270,11 +270,25 @@ export default function Profitability() {
       hoursByUser.set(e.user_id, (hoursByUser.get(e.user_id) || 0) + h);
     }
 
+    const getBillableRate = (emp: any, rateType: string) => {
+      if (!emp) return 0;
+      const rt = rateType.toLowerCase();
+      if (rt.includes('shop') && rt.includes('overtime')) return Number(emp.shop_ot_rate) || 0;
+      if (rt.includes('field') && rt.includes('overtime')) return Number(emp.field_ot_rate) || 0;
+      if (rt.includes('field')) return Number(emp.ft_rate) || 0;
+      if (rt.includes('travel')) return Number(emp.tt_rate) || 0;
+      return Number(emp.rt_rate) || 0;
+    };
+
     return projectTickets
       .map((t: any) => {
         let payrollCost = 0;
         const emp = empByUserId.get(t.user_id);
         const ticketHours = Number(t.total_hours) || 0;
+        const savedAmount = Number(t.total_amount) || 0;
+        const isDraftOrSubmitted = t.workflow_status === 'draft' || t.workflow_status === 'submitted';
+
+        let estimatedRevenue = savedAmount;
 
         if (emp && ticketHours > 0) {
           if (t.is_edited && t.edited_hours) {
@@ -283,19 +297,33 @@ export default function Profitability() {
             Object.entries(editedHours).forEach(([rateType, hours]) => {
               const h = Array.isArray(hours) ? (hours as number[]).reduce((a: number, b: number) => a + b, 0) : Number(hours) || 0;
               payrollCost += h * getLoadedRate(emp, rates, rateType);
+              if (isDraftOrSubmitted && savedAmount === 0) {
+                estimatedRevenue += h * getBillableRate(emp, rateType);
+              }
             });
           } else {
             const totalCostForUser = blendedRateByUser.get(t.user_id) || 0;
             const totalHoursForUser = hoursByUser.get(t.user_id) || 0;
             const avgRate = totalHoursForUser > 0 ? totalCostForUser / totalHoursForUser : 0;
             payrollCost = ticketHours * avgRate;
+            if (isDraftOrSubmitted && savedAmount === 0) {
+              // Estimate from time entries matching this ticket's date and project
+              const matchingEntries = (allTimeEntries as any[]).filter((e: any) =>
+                e.user_id === t.user_id && e.project_id === t.project_id && e.date === t.date
+              );
+              for (const e of matchingEntries) {
+                const h = Number(e.hours) || 0;
+                estimatedRevenue += h * getBillableRate(emp, e.rate_type || 'Shop Time');
+              }
+            }
           }
         }
 
         return {
           ...t,
           payrollCost,
-          profit: (Number(t.total_amount) || 0) - payrollCost,
+          total_amount: isDraftOrSubmitted && savedAmount === 0 ? estimatedRevenue : savedAmount,
+          profit: estimatedRevenue - payrollCost,
         };
       })
       .sort((a: any, b: any) => b.date.localeCompare(a.date));
