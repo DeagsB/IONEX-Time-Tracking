@@ -14,6 +14,10 @@ interface ProjectFinancials {
   color: string;
   budget: number | null;
   revenue: number;
+  /** Revenue from approved/exported tickets only */
+  revenueApproved: number;
+  /** Revenue from all tickets including draft/submitted/rejected */
+  revenueAllTickets: number;
   laborCost: number;
   expenseCost: number;
   totalCost: number;
@@ -125,6 +129,7 @@ export default function Profitability() {
     if (!projects.length) return [];
 
     const revenueByProject = new Map<string, number>();
+    const revenueAllTicketsByProject = new Map<string, number>();
     const ticketCountByProject = new Map<string, number>();
     const NON_REVENUE_STATUSES = new Set(['draft', 'submitted', 'rejected']);
     for (const t of serviceTickets as any[]) {
@@ -134,8 +139,9 @@ export default function Profitability() {
       const tAmt = Number(t.total_amount) || 0;
       if (tHrs === 0 && tAmt === 0 && !t.is_edited && t.workflow_status === 'draft') continue;
       ticketCountByProject.set(t.project_id, (ticketCountByProject.get(t.project_id) || 0) + 1);
-      if (NON_REVENUE_STATUSES.has(t.workflow_status)) continue;
       const amt = Number(t.total_amount) || 0;
+      revenueAllTicketsByProject.set(t.project_id, (revenueAllTicketsByProject.get(t.project_id) || 0) + amt);
+      if (NON_REVENUE_STATUSES.has(t.workflow_status)) continue;
       revenueByProject.set(t.project_id, (revenueByProject.get(t.project_id) || 0) + amt);
     }
 
@@ -173,6 +179,7 @@ export default function Profitability() {
 
     return (projects as any[]).map((p: any) => {
       const revenue = revenueByProject.get(p.id) || 0;
+      const revenueAllTickets = revenueAllTicketsByProject.get(p.id) || 0;
       const laborCost = laborByProject.get(p.id) || 0;
       const expenseCost = expenseByProject.get(p.id) || 0;
       const totalCost = laborCost + expenseCost;
@@ -187,6 +194,8 @@ export default function Profitability() {
         color: p.color || '#4ecdc4',
         budget: p.budget != null && Number(p.budget) > 0 ? Number(p.budget) : null,
         revenue,
+        revenueApproved: revenue,
+        revenueAllTickets,
         laborCost,
         expenseCost,
         totalCost,
@@ -544,7 +553,14 @@ export default function Profitability() {
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'center', minWidth: '180px' }}>
                     {p.budget ? (
-                      <BudgetBar pct={budgetPct!} overBudget={overBudget} budget={p.budget} revenue={p.revenue} />
+                      <BudgetBar
+                        pct={budgetPct!}
+                        overBudget={overBudget}
+                        budget={p.budget}
+                        revenue={p.revenue}
+                        revenueApproved={p.revenueApproved}
+                        revenueAllTickets={p.revenueAllTickets}
+                      />
                     ) : (
                       <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No budget</span>
                     )}
@@ -661,6 +677,8 @@ export default function Profitability() {
                   overBudget={expandedProject.revenue > expandedProject.budget}
                   budget={expandedProject.budget}
                   revenue={expandedProject.revenue}
+                  revenueApproved={expandedProject.revenueApproved}
+                  revenueAllTickets={expandedProject.revenueAllTickets}
                   large
                 />
               </div>
@@ -837,9 +855,30 @@ export default function Profitability() {
   );
 }
 
-function BudgetBar({ pct, overBudget, budget, revenue, large }: { pct: number; overBudget: boolean; budget: number; revenue: number; large?: boolean }) {
+function BudgetBar({
+  pct,
+  overBudget,
+  budget,
+  revenue,
+  revenueApproved = revenue,
+  revenueAllTickets = revenue,
+  large,
+}: {
+  pct: number;
+  overBudget: boolean;
+  budget: number;
+  revenue: number;
+  revenueApproved?: number;
+  revenueAllTickets?: number;
+  large?: boolean;
+}) {
   const height = large ? 24 : 16;
   const barColor = overBudget ? '#e53935' : pct > 80 ? '#ff9800' : '#2196F3';
+
+  // Three segments: approved (colored), pending draft/submitted/rejected (greyed), remaining budget (light grey)
+  const approvedPct = budget > 0 ? Math.min((revenueApproved / budget) * 100, 100) : 0;
+  const pendingPct = budget > 0 ? Math.min(((revenueAllTickets - revenueApproved) / budget) * 100, Math.max(0, 100 - approvedPct)) : 0;
+  const remainingPct = Math.max(0, 100 - approvedPct - pendingPct);
 
   return (
     <div>
@@ -848,28 +887,53 @@ function BudgetBar({ pct, overBudget, budget, revenue, large }: { pct: number; o
           position: 'relative',
           height,
           borderRadius: height / 2,
-          backgroundColor: overBudget ? 'rgba(229,57,53,0.1)' : 'rgba(33,150,243,0.1)',
+          backgroundColor: 'rgba(158,158,158,0.15)',
           overflow: 'hidden',
+          display: 'flex',
         }}
       >
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            height: '100%',
-            width: `${pct}%`,
-            borderRadius: height / 2,
-            background: `repeating-linear-gradient(
-              -45deg,
-              ${barColor},
-              ${barColor} 6px,
-              ${adjustAlpha(barColor, 0.6)} 6px,
-              ${adjustAlpha(barColor, 0.6)} 12px
-            )`,
-            transition: 'width 0.4s ease',
-          }}
-        />
+        {/* Approved (revenue-contributing) */}
+        {approvedPct > 0 && (
+          <div
+            style={{
+              width: `${approvedPct}%`,
+              height: '100%',
+              borderTopLeftRadius: height / 2,
+              borderBottomLeftRadius: height / 2,
+              borderTopRightRadius: pendingPct <= 0 ? height / 2 : 0,
+              borderBottomRightRadius: pendingPct <= 0 ? height / 2 : 0,
+              background: `repeating-linear-gradient(
+                -45deg,
+                ${barColor},
+                ${barColor} 6px,
+                ${adjustAlpha(barColor, 0.6)} 6px,
+                ${adjustAlpha(barColor, 0.6)} 12px
+              )`,
+              transition: 'width 0.4s ease',
+              flexShrink: 0,
+            }}
+          />
+        )}
+        {/* Pending (draft/submitted/rejected) */}
+        {pendingPct > 0 && (
+          <div
+            title="Draft/submitted/rejected (not yet revenue)"
+            style={{
+              width: `${pendingPct}%`,
+              height: '100%',
+              background: `repeating-linear-gradient(
+                -45deg,
+                rgba(158,158,158,0.5),
+                rgba(158,158,158,0.5) 6px,
+                rgba(158,158,158,0.3) 6px,
+                rgba(158,158,158,0.3) 12px
+              )`,
+              flexShrink: 0,
+              borderTopRightRadius: remainingPct <= 0 ? height / 2 : 0,
+              borderBottomRightRadius: remainingPct <= 0 ? height / 2 : 0,
+            }}
+          />
+        )}
         {large && (
           <div
             style={{
@@ -885,6 +949,7 @@ function BudgetBar({ pct, overBudget, budget, revenue, large }: { pct: number; o
               fontWeight: '700',
               color: pct > 50 ? '#fff' : 'var(--text-primary)',
               textShadow: pct > 50 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+              pointerEvents: 'none',
             }}
           >
             {pct.toFixed(0)}%

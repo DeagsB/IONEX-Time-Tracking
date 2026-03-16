@@ -804,7 +804,13 @@ function BillableBar({
             style={{
               width: `${pendingPct}%`,
               height: '100%',
-              backgroundColor: 'rgba(158,158,158,0.4)',
+              background: `repeating-linear-gradient(
+                -45deg,
+                rgba(158,158,158,0.5),
+                rgba(158,158,158,0.5) 6px,
+                rgba(158,158,158,0.3) 6px,
+                rgba(158,158,158,0.3) 12px
+              )`,
               flexShrink: 0,
               borderTopRightRadius: nonBillablePct <= 0 ? height / 2 : 0,
               borderBottomRightRadius: nonBillablePct <= 0 ? height / 2 : 0,
