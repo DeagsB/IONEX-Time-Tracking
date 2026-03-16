@@ -23,7 +23,7 @@ export default function EmployeeReports() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
-  const [expensesSectionExpanded, setExpensesSectionExpanded] = useState(true);
+  const [expensesSectionExpanded, setExpensesSectionExpanded] = useState(false);
   const [expandedExpenseDateKeys, setExpandedExpenseDateKeys] = useState<Set<string>>(new Set());
   const [expandedExpenseTicketKeys, setExpandedExpenseTicketKeys] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -537,17 +537,23 @@ export default function EmployeeReports() {
                     const sumRevenue = visibleRows.reduce((s, r) => s + r.revenue, 0);
                     const sumCost = visibleRows.reduce((s, r) => s + r.cost, 0) + expandedMetrics.expenseCost;
                     const sumProfit = sumRevenue - sumCost;
+                    const expenseMargin = (expandedMetrics.expenseBilled || 0) - expandedMetrics.expenseCost;
+                    const hasExpenses = (expandedMetrics.expenseBilled || 0) > 0 || expandedMetrics.expenseCost > 0;
                     return (
                       <>
-                        {expandedMetrics.expenseCost > 0 && (
+                        {hasExpenses && (
                           <tr style={{ borderTop: '1px solid var(--border-color)' }}>
                             <td style={{ ...detailTdStyle, fontWeight: '600', color: '#e91e63' }}>Expenses</td>
                             <td style={detailTdStyle} />
-                            <td style={detailTdStyle} />
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
+                              {formatCurrency(expandedMetrics.expenseBilled || 0)}
+                            </td>
                             <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: '#e91e63' }}>
                               {formatCurrency(expandedMetrics.expenseCost)}
                             </td>
-                            <td style={detailTdStyle} />
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: expenseMargin >= 0 ? '#4caf50' : '#e53935' }}>
+                              {formatCurrency(expenseMargin)}
+                            </td>
                           </tr>
                         )}
                         <tr style={{ borderTop: '2px solid var(--border-color)' }}>
@@ -712,8 +718,8 @@ export default function EmployeeReports() {
                                   const ticketEntries = Array.from(byTicket.entries());
                                   const hasMultipleTickets = ticketEntries.length > 1;
                                   const dateTotal = dateItems.reduce((s, e) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
-                                  // Collapsed keys: empty set = all expanded by default
-                                  const isDateExpanded = !expandedExpenseDateKeys.has(date);
+                                  // Expanded keys: empty set = all collapsed by default
+                                  const isDateExpanded = expandedExpenseDateKeys.has(date);
 
                                   const toggleDate = () => setExpandedExpenseDateKeys(prev => {
                                     const next = new Set(prev);
@@ -758,7 +764,12 @@ export default function EmployeeReports() {
                                               transform: isDateExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
                                             }}>&#9654;</span>
                                             <span style={{ fontFamily: 'monospace', whiteSpace: 'nowrap', minWidth: '100px' }}>{date || '—'}</span>
-                                            <span style={{ color: 'var(--text-secondary)', flex: 1 }}>{dateItems.length} item{dateItems.length !== 1 ? 's' : ''}{hasMultipleTickets ? ` · ${ticketEntries.length} ticket${ticketEntries.length !== 1 ? 's' : ''}` : ''}</span>
+                                            <span style={{ color: 'var(--text-secondary)', flex: 1 }}>
+                                              {ticketEntries.map(([, items]) => {
+                                                const t = items[0]?.service_tickets ?? items[0]?.service_ticket;
+                                                return t?.ticket_number || t?.projects?.project_number || t?.projects?.name || '—';
+                                              }).join(', ')}
+                                            </span>
                                             <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>{formatCurrency(dateTotal)}</span>
                                           </button>
                                           {isDateExpanded && (
@@ -772,7 +783,7 @@ export default function EmployeeReports() {
                                                     const ticketLabel = ticket?.ticket_number || projLabel || '—';
                                                     const ticketKey = `${date}-${ticketId}`;
                                                     const ticketTotal = items.reduce((s, e) => s + (Number(e.quantity) || 0) * (Number(e.rate) || 0), 0);
-                                                    const isTicketExpanded = !expandedExpenseTicketKeys.has(ticketKey);
+                                                    const isTicketExpanded = expandedExpenseTicketKeys.has(ticketKey);
                                                     return (
                                                       <tr key={ticketKey}>
                                                         <td colSpan={6} style={{ padding: 0, borderTop: '1px solid var(--border-color)', verticalAlign: 'top' }}>

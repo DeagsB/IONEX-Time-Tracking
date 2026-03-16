@@ -54,6 +54,10 @@ export interface EmployeeWithRates {
   vacation_pay_pct?: number;
   cell_phone_allowance?: number;
   health_allowance?: number;
+  // Reimbursement rate multipliers (0.90 = 90% of billed amount paid to employee)
+  mileage_reimb_rate?: number;
+  per_diem_reimb_rate?: number;
+  truck_reimb_rate?: number;
   user?: {
     id: string;
     first_name?: string;
@@ -69,6 +73,8 @@ export interface TicketExpense {
   description?: string;
   quantity: number;
   rate: number;
+  needs_reimbursement?: boolean;
+  reimbursement_status?: string;
   service_tickets: {
     id: string;
     user_id: string;
@@ -96,6 +102,8 @@ export interface EmployeeMetrics {
   totalRevenue: number;
   laborCost: number;
   expenseCost: number;
+  /** Amount billed to customer for expenses (all ticket expenses: quantity × rate) */
+  expenseBilled: number;
   totalCost: number; // laborCost + expenseCost
   netProfit: number; // Revenue - Total Cost
   profitMargin: number; // (Net Profit / Revenue) * 100
@@ -310,6 +318,7 @@ export function aggregateEmployeeMetrics(
       totalRevenue: 0,
       laborCost: 0,
       expenseCost: 0,
+      expenseBilled: 0,
       totalCost: 0,
       netProfit: 0,
       profitMargin: 0,
@@ -581,13 +590,29 @@ export function aggregateEmployeeMetrics(
                     rateTypeBreakdown.shopOvertime.cost +
                     rateTypeBreakdown.fieldOvertime.cost;
 
-  // Calculate expense cost from service ticket expenses for this employee
+  // Calculate expense cost and billed amount from service ticket expenses for this employee.
+  // expenseBilled = total amount billed to customer (all expenses: quantity × rate).
+  // expenseCost = reimbursement cost: billed-only (needs_reimbursement=false) = 0; reimbursable = amount × reimb_rate.
   let expenseCost = 0;
+  let expenseBilled = 0;
   if (ticketExpenses) {
     ticketExpenses.forEach(exp => {
-      if (exp.service_tickets?.user_id === userId) {
-        expenseCost += (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      if (exp.service_tickets?.user_id !== userId) return;
+      const amount = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      expenseBilled += amount;
+      if (!exp.needs_reimbursement) return; // Billed to client only — no cost to employee
+      if (!employee) return;
+      const expType = (exp.expense_type || '').toLowerCase();
+      const desc = (exp.description || '').toLowerCase();
+      let reimbRate = 1.00;
+      if (expType === 'travel' && desc.includes('mileage')) {
+        reimbRate = Number(employee.mileage_reimb_rate) ?? 0.90;
+      } else if (expType === 'subsistence' && desc.includes('per diem')) {
+        reimbRate = Number(employee.per_diem_reimb_rate) ?? 1.00;
+      } else if (expType === 'equipment' && desc.includes('truck')) {
+        reimbRate = Number(employee.truck_reimb_rate) ?? 1.00;
       }
+      expenseCost += amount * reimbRate;
     });
   }
 
@@ -631,6 +656,7 @@ export function aggregateEmployeeMetrics(
     totalRevenue,
     laborCost,
     expenseCost,
+    expenseBilled,
     totalCost,
     netProfit,
     profitMargin,
