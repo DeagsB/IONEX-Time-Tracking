@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
+import { timeEntriesService, employeesService, payRateHistoryService } from '../services/supabaseServices';
+import { calculateBurden } from '../utils/employeeReports';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Legend,
@@ -120,12 +122,31 @@ export default function Dashboard() {
       if (ticketIds.length === 0) return [];
       const { data, error } = await supabase
         .from('service_ticket_expenses')
-        .select('service_ticket_id, actual_cost, quantity, rate, needs_reimbursement')
+        .select('service_ticket_id, actual_cost, quantity, rate, needs_reimbursement, expense_type, description, service_tickets!inner(user_id)')
         .in('service_ticket_id', ticketIds);
       if (error) return [];
       return data || [];
     },
     enabled: isAdmin && (ticketsRaw as any[]).length > 0,
+  });
+
+  // ─── Time entries for labor cost ───
+  const { data: allTimeEntries = [] } = useQuery({
+    queryKey: ['allTimeEntries', isDemoMode],
+    queryFn: () => timeEntriesService.getAll(isDemoMode),
+    enabled: isAdmin,
+  });
+
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeesService.getAll(),
+    enabled: isAdmin,
+  });
+
+  const { data: rateHistory = [] } = useQuery({
+    queryKey: ['pay-rate-history'],
+    queryFn: () => payRateHistoryService.getAll(),
+    enabled: isAdmin,
   });
 
   // ─── Pending expense liability (pending user_expenses sum) ───
@@ -146,17 +167,84 @@ export default function Dashboard() {
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
-  // Cost per ticket from expenses (actual_cost or qty*rate for reimbursable)
+  // Cost per ticket from expenses (actual_cost or billed × reimb rate for reimbursable)
   const costByTicketId = useMemo(() => {
+    const empByUserId = new Map<string, any>();
+    for (const e of employees as any[]) {
+      if (e.user_id) empByUserId.set(e.user_id, e);
+    }
     const map = new Map<string, number>();
     for (const exp of ticketExpensesRaw as any[]) {
       const tid = exp.service_ticket_id;
-      const ac = exp.actual_cost;
-      const cost = ac != null ? Number(ac) : (exp.needs_reimbursement ? (Number(exp.quantity) || 0) * (Number(exp.rate) || 0) : 0);
+      const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      let cost = 0;
+      if (exp.actual_cost != null) {
+        cost = Number(exp.actual_cost);
+      } else if (exp.needs_reimbursement) {
+        const emp = empByUserId.get(exp.service_tickets?.user_id);
+        const expType = (exp.expense_type || '').toLowerCase();
+        const desc = (exp.description || '').toLowerCase();
+        let reimbRate = 1.00;
+        if (expType === 'subsistence' && desc.includes('per diem')) reimbRate = Number(emp?.per_diem_reimb_rate) || 1.00;
+        else if (expType === 'travel' && desc.includes('mileage')) reimbRate = Number(emp?.mileage_reimb_rate) || 0.90;
+        else if (desc.includes('hotel')) reimbRate = Number(emp?.hotel_reimb_rate) || 1.00;
+        cost = amt * reimbRate;
+      }
       map.set(tid, (map.get(tid) || 0) + cost);
     }
     return map;
-  }, [ticketExpensesRaw]);
+  }, [ticketExpensesRaw, employees]);
+
+  // Labor cost by week (from time entries: hours × pay rate × burden)
+  const laborCostByWeek = useMemo(() => {
+    const empByUserId = new Map<string, any>();
+    for (const e of employees as any[]) {
+      if (e.user_id) empByUserId.set(e.user_id, e);
+    }
+    const rateHistoryByEmpId = new Map<string, any[]>();
+    for (const r of rateHistory as any[]) {
+      const list = rateHistoryByEmpId.get(r.employee_id) || [];
+      list.push(r);
+      rateHistoryByEmpId.set(r.employee_id, list);
+    }
+    rateHistoryByEmpId.forEach((list) => list.sort((a: any, b: any) => (a.effective_date || '').localeCompare(b.effective_date || '')));
+
+    const getRatesForDate = (emp: any, date: string) => {
+      const history = rateHistoryByEmpId.get(emp?.id);
+      if (!history?.length) return emp;
+      let match = history[0];
+      for (const h of history) {
+        if ((h.effective_date || '') <= date) match = h;
+        else break;
+      }
+      return match;
+    };
+
+    const weekMap = new Map<string, number>();
+    for (const entry of allTimeEntries as any[]) {
+      if (!entry.project_id || !entry.hours) continue;
+      const hours = Number(entry.hours) || 0;
+      const emp = empByUserId.get(entry.user_id);
+      let payRate = 0;
+      const rateType = entry.rate_type || 'Shop Time';
+      if (emp) {
+        const rates = getRatesForDate(emp, entry.date);
+        if (rateType === 'Internal') payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Field Time') payRate = Number(rates.field_pay_rate) || 0;
+        else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
+        else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
+        payRate = payRate * (1 + calculateBurden(emp));
+      }
+      const d = new Date(entry.date);
+      const weekStart = new Date(d);
+      weekStart.setDate(d.getDate() - d.getDay());
+      const weekKey = weekStart.toISOString().slice(0, 10);
+      weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + hours * payRate);
+    }
+    return weekMap;
+  }, [allTimeEntries, employees, rateHistory]);
 
   const { mtdRevenue, uninvoicedWip, revenueByWeek, unbilledByCustomer } = useMemo(() => {
     let mtd = 0;
@@ -187,6 +275,11 @@ export default function Dashboard() {
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + cost);
     }
 
+    // Add labor cost to each week
+    for (const [weekKey, labor] of laborCostByWeek) {
+      weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + labor);
+    }
+
     const weeks = Array.from(weekMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-12)
@@ -194,9 +287,9 @@ export default function Dashboard() {
         const d = new Date(week);
         const label = `${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
         const rev = Math.round(total);
-        const cost = Math.round(weekCostMap.get(week) || 0);
-        const profit = Math.max(0, rev - cost);
-        const costSegment = Math.min(cost, rev);
+        const totalCost = Math.round(weekCostMap.get(week) || 0);
+        const profit = Math.max(0, rev - totalCost);
+        const costSegment = Math.min(totalCost, rev);
         return { week: label, revenue: rev, cost: costSegment, profit };
       });
 
@@ -206,7 +299,7 @@ export default function Dashboard() {
       .map(([name, value]) => ({ name: name.length > 20 ? name.slice(0, 18) + '...' : name, value: Math.round(value) }));
 
     return { mtdRevenue: mtd, uninvoicedWip: wip, revenueByWeek: weeks, unbilledByCustomer: customers };
-  }, [ticketsRaw, monthStart, costByTicketId]);
+  }, [ticketsRaw, monthStart, costByTicketId, laborCostByWeek]);
 
   // ─── Action items (with search params to open Employee Overview on target page) ───
   const actionItems = [

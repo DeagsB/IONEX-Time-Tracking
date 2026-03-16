@@ -76,7 +76,7 @@ export default function Profitability() {
         .from(expTable)
         .select(`
           id, service_ticket_id, expense_type, description, quantity, rate, actual_cost, needs_reimbursement,
-          service_tickets!inner(id, project_id, workflow_status, is_discarded)
+          service_tickets!inner(id, project_id, user_id, workflow_status, is_discarded)
         `);
       if (error) throw error;
       return (data || []).filter((r: any) => {
@@ -173,13 +173,25 @@ export default function Profitability() {
       laborByProject.set(entry.project_id, (laborByProject.get(entry.project_id) || 0) + hours * payRate);
     }
 
+    const getExpenseCost = (exp: any) => {
+      const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      if (exp.actual_cost != null) return Number(exp.actual_cost);
+      if (!exp.needs_reimbursement) return 0;
+      const emp = empByUserId.get(exp.service_tickets?.user_id);
+      const expType = (exp.expense_type || '').toLowerCase();
+      const desc = (exp.description || '').toLowerCase();
+      let reimbRate = 1.00;
+      if (expType === 'subsistence' && desc.includes('per diem')) reimbRate = Number(emp?.per_diem_reimb_rate) || 1.00;
+      else if (expType === 'travel' && desc.includes('mileage')) reimbRate = Number(emp?.mileage_reimb_rate) || 0.90;
+      else if (desc.includes('hotel')) reimbRate = Number(emp?.hotel_reimb_rate) || 1.00;
+      return amt * reimbRate;
+    };
+
     const expenseByProject = new Map<string, number>();
     for (const exp of ticketExpenses as any[]) {
       const ticket = exp.service_tickets;
       if (!ticket?.project_id) continue;
-      const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-      const actualCost = exp.actual_cost != null ? Number(exp.actual_cost) : (exp.needs_reimbursement ? amt : 0);
-      expenseByProject.set(ticket.project_id, (expenseByProject.get(ticket.project_id) || 0) + actualCost);
+      expenseByProject.set(ticket.project_id, (expenseByProject.get(ticket.project_id) || 0) + getExpenseCost(exp));
     }
 
     return (projects as any[]).map((p: any) => {
@@ -373,25 +385,39 @@ export default function Profitability() {
     return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
   }, [expandedProjectId, allTimeEntries, empByUserId, rateHistoryByEmpId]);
 
+  const getExpenseCostForDisplay = (exp: any) => {
+    const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+    if (exp.actual_cost != null) return Number(exp.actual_cost);
+    if (!exp.needs_reimbursement) return 0;
+    const emp = empByUserId.get(exp.service_tickets?.user_id);
+    const expType = (exp.expense_type || '').toLowerCase();
+    const desc = (exp.description || '').toLowerCase();
+    let reimbRate = 1.00;
+    if (expType === 'subsistence' && desc.includes('per diem')) reimbRate = Number(emp?.per_diem_reimb_rate) || 1.00;
+    else if (expType === 'travel' && desc.includes('mileage')) reimbRate = Number(emp?.mileage_reimb_rate) || 0.90;
+    else if (desc.includes('hotel')) reimbRate = Number(emp?.hotel_reimb_rate) || 1.00;
+    return amt * reimbRate;
+  };
+
   const expandedExpenses = useMemo(() => {
     if (!expandedProjectId) return [];
     return (ticketExpenses as any[])
       .filter((exp: any) => exp.service_tickets?.project_id === expandedProjectId)
       .map((exp: any) => {
         const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-        const actualCost = exp.actual_cost != null ? Number(exp.actual_cost) : (exp.needs_reimbursement ? amt : 0);
+        const cost = getExpenseCostForDisplay(exp);
         return {
           description: exp.description || exp.expense_type || 'Expense',
           type: exp.expense_type || '',
           quantity: Number(exp.quantity) || 0,
           rate: Number(exp.rate) || 0,
           total: amt,
-          cost: actualCost,
-          profit: amt - actualCost,
+          cost,
+          profit: amt - cost,
         };
       })
       .sort((a: any, b: any) => b.total - a.total);
-  }, [expandedProjectId, ticketExpenses]);
+  }, [expandedProjectId, ticketExpenses, empByUserId]);
 
   const fmt = (n: number) => n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -758,14 +784,17 @@ export default function Profitability() {
                       const empName = emp?.user ? [emp.user.first_name, emp.user.last_name].filter(Boolean).join(' ') : null;
                       const isDraft = t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected';
                       const isInternal = rev === 0 && (t.payrollCost || 0) > 0 && !isDraft;
-                      const ticketId = t.ticket_number || t.id.substring(0, 8);
+                      const hasTicketNumber = !!t.ticket_number;
+                      const ticketDisplay = !hasTicketNumber
+                        ? 'Pending Approval'
+                        : (isInternal && empName ? `${empName} - internal` : t.ticket_number);
                       return (
                       <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: isDraft ? 0.7 : 1 }}>
                         <td style={detailTdStyle}>{t.date}</td>
                         <td style={detailTdStyle}>
                           <div>
-                            <span style={{ fontFamily: isInternal ? 'inherit' : 'monospace', color: 'var(--text-secondary)' }}>
-                              {isInternal && empName ? `${empName} - internal` : ticketId}
+                            <span style={{ fontFamily: isInternal && hasTicketNumber ? 'inherit' : 'monospace', color: hasTicketNumber ? 'var(--text-secondary)' : '#ff9800' }}>
+                              {ticketDisplay}
                             </span>
                             {empName && !isInternal && (
                               <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>{empName}</div>
@@ -797,7 +826,13 @@ export default function Profitability() {
                           )}
                         </td>
                         <td style={{ ...detailTdStyle, textAlign: 'center' }}>
-                          <StatusBadge status={t.workflow_status} />
+                          {!hasTicketNumber && (t.workflow_status === 'submitted' || t.workflow_status === 'draft') ? (
+                            <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600', backgroundColor: 'rgba(255,152,0,0.12)', color: '#ff9800', textTransform: 'capitalize' }}>
+                              Pending Approval
+                            </span>
+                          ) : (
+                            <StatusBadge status={t.workflow_status} />
+                          )}
                         </td>
                       </tr>
                     ); })}
