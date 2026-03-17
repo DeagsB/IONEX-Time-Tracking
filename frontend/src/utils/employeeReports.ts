@@ -205,6 +205,14 @@ function getRatesForDate(emp: EmployeeWithRates, historyMap: Map<string, PayRate
   return match;
 }
 
+/** GST rate for billable amounts (Canada) */
+const GST_RATE = 0.05;
+
+/** Apply GST to a billable amount (returns amount inclusive of GST). Exported for use in Profitability. */
+export function applyGst(amount: number): number {
+  return amount * (1 + GST_RATE);
+}
+
 /** Employer CPP rate (matches employee portion) */
 const CPP_RATE = 0.0595;
 /** Employer EI: 1.4 × employee EI (1.66%) */
@@ -403,27 +411,31 @@ export function aggregateEmployeeMetrics(
       });
   }
 
+  // Apply GST to billable revenue (all amounts shown include GST)
+  const totalRevenuePreGst = totalRevenue;
+  totalRevenue = applyGst(totalRevenue);
+
   // Update rate type breakdown revenue to use actual total_amount (proportionally distributed)
-  // This ensures the breakdown rows sum to the actual revenue
+  // This ensures the breakdown rows sum to the actual revenue (GST-inclusive)
   const estimatedRevenue = rateTypeBreakdown.shopTime.revenue +
                            rateTypeBreakdown.fieldTime.revenue +
                            rateTypeBreakdown.travelTime.revenue +
                            rateTypeBreakdown.shopOvertime.revenue +
                            rateTypeBreakdown.fieldOvertime.revenue;
-  if (estimatedRevenue > 0 && totalRevenue > 0) {
-    const scale = totalRevenue / estimatedRevenue;
-    rateTypeBreakdown.shopTime.revenue *= scale;
-    rateTypeBreakdown.fieldTime.revenue *= scale;
-    rateTypeBreakdown.travelTime.revenue *= scale;
-    rateTypeBreakdown.shopOvertime.revenue *= scale;
-    rateTypeBreakdown.fieldOvertime.revenue *= scale;
+  if (estimatedRevenue > 0 && totalRevenuePreGst > 0) {
+    const scale = totalRevenuePreGst / estimatedRevenue;
+    rateTypeBreakdown.shopTime.revenue = applyGst(rateTypeBreakdown.shopTime.revenue * scale);
+    rateTypeBreakdown.fieldTime.revenue = applyGst(rateTypeBreakdown.fieldTime.revenue * scale);
+    rateTypeBreakdown.travelTime.revenue = applyGst(rateTypeBreakdown.travelTime.revenue * scale);
+    rateTypeBreakdown.shopOvertime.revenue = applyGst(rateTypeBreakdown.shopOvertime.revenue * scale);
+    rateTypeBreakdown.fieldOvertime.revenue = applyGst(rateTypeBreakdown.fieldOvertime.revenue * scale);
     rateTypeBreakdown.shopTime.profit = rateTypeBreakdown.shopTime.revenue - rateTypeBreakdown.shopTime.cost;
     rateTypeBreakdown.fieldTime.profit = rateTypeBreakdown.fieldTime.revenue - rateTypeBreakdown.fieldTime.cost;
     rateTypeBreakdown.travelTime.profit = rateTypeBreakdown.travelTime.revenue - rateTypeBreakdown.travelTime.cost;
     rateTypeBreakdown.shopOvertime.profit = rateTypeBreakdown.shopOvertime.revenue - rateTypeBreakdown.shopOvertime.cost;
     rateTypeBreakdown.fieldOvertime.profit = rateTypeBreakdown.fieldOvertime.revenue - rateTypeBreakdown.fieldOvertime.cost;
   } else if (totalRevenue > 0 && estimatedRevenue === 0) {
-    rateTypeBreakdown.shopTime.revenue = totalRevenue;
+    rateTypeBreakdown.shopTime.revenue = totalRevenue; // already GST-inclusive
     rateTypeBreakdown.shopTime.profit = totalRevenue - rateTypeBreakdown.shopTime.cost;
   }
 
@@ -523,36 +535,6 @@ export function aggregateEmployeeMetrics(
   const unbilledShopOTCost = unbilledShopOT * getPayRateForUnbilled('shopOT');
   const unbilledFieldOTCost = unbilledFieldOT * getPayRateForUnbilled('fieldOT');
   const totalUnbilledWorkCost = unbilledShopTimeCost + unbilledFieldTimeCost + unbilledTravelTimeCost + unbilledShopOTCost + unbilledFieldOTCost;
-  
-  console.log('[Non-Billable Calculation]:', {
-    internalTimeEntryHours,
-    rawPayrollHours: payrollHoursByRateType,
-    roundedPayrollHours,
-    serviceTicketHours: {
-      shopTime: rateTypeBreakdown.shopTime.hours,
-      fieldTime: rateTypeBreakdown.fieldTime.hours,
-      travelTime: rateTypeBreakdown.travelTime.hours,
-      shopOvertime: rateTypeBreakdown.shopOvertime.hours,
-      fieldOvertime: rateTypeBreakdown.fieldOvertime.hours,
-    },
-    unbilled: {
-      shopTime: unbilledShopTime,
-      fieldTime: unbilledFieldTime,
-      travelTime: unbilledTravelTime,
-      shopOT: unbilledShopOT,
-      fieldOT: unbilledFieldOT,
-    },
-    unbilledCosts: {
-      shopTime: unbilledShopTimeCost,
-      fieldTime: unbilledFieldTimeCost,
-      travelTime: unbilledTravelTimeCost,
-      shopOT: unbilledShopOTCost,
-      fieldOT: unbilledFieldOTCost,
-      total: totalUnbilledWorkCost,
-    },
-    totalUnbilledWork,
-    nonBillableHours,
-  });
 
   // Update the rate type breakdown to reflect the non-billable hours AND cost (for display)
   rateTypeBreakdown.internalTime.hours = nonBillableHours;
@@ -650,9 +632,12 @@ export function aggregateEmployeeMetrics(
     });
   }
 
+  // Apply GST to billable expense amounts
+  expenseBilled = applyGst(expenseBilled);
+
   const expenseBreakdown = Array.from(expenseBreakdownMap.entries())
     .filter(([, v]) => v.billed > 0)
-    .map(([category, v]) => ({ category, billed: v.billed, cost: v.cost }))
+    .map(([category, v]) => ({ category, billed: applyGst(v.billed), cost: v.cost }))
     .sort((a, b) => {
       const order = ['Per Diem', 'Mileage', 'Hotel', 'Other/Parts'];
       return order.indexOf(a.category) - order.indexOf(b.category);
@@ -1216,6 +1201,7 @@ export function calculateProjectBreakdown(
   }
 
   // Convert to ProjectBreakdown format - include projects with hours or expenses
+  // Apply GST to billable amounts (revenue, expenseBilled)
   const result: ProjectBreakdown[] = Array.from(projectMap.entries())
     .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0 || data.expenseBilled > 0) // Include projects with activity or expenses
     .map(([projectId, data]) => {
@@ -1224,9 +1210,9 @@ export function calculateProjectBreakdown(
         projectId,
         projectName,
         hours: data.billableHours,
-        revenue: data.revenue,
+        revenue: applyGst(data.revenue),
         billableHours: data.billableHours,
-        expenseBilled: data.expenseBilled,
+        expenseBilled: applyGst(data.expenseBilled),
         expenseCost: data.expenseCost,
       };
     });
@@ -1327,6 +1313,7 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
   });
 
   // Convert to CustomerBreakdown format - only include customers with hours
+  // Apply GST to billable revenue
   const result: CustomerBreakdown[] = Array.from(customerMap.entries())
     .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0) // Only include customers with activity
     .map(([customerId, data]) => {
@@ -1336,7 +1323,7 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
         customerId,
         customerName,
         hours: data.billableHours,
-        revenue: data.revenue,
+        revenue: applyGst(data.revenue),
         billableHours: data.billableHours,
       };
     });
@@ -1369,7 +1356,7 @@ export function calculateTrends(entries: TimeEntry[]): TrendData[] {
     const trend = trendMap.get(date)!;
     trend.hours += hours;
     trend.billableHours += billableHours;
-    trend.revenue += revenue;
+    trend.revenue += applyGst(revenue);
   });
 
   return Array.from(trendMap.values()).sort((a, b) => 

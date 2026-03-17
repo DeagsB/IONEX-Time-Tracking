@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, employeesService, timeEntriesService, payRateHistoryService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
-import { calculateBurden } from '../utils/employeeReports';
+import { calculateBurden, applyGst } from '../utils/employeeReports';
 
 interface ProjectFinancials {
   projectId: string;
@@ -220,8 +220,10 @@ export default function Profitability() {
     }
 
     return (projects as any[]).map((p: any) => {
-      const revenue = revenueByProject.get(p.id) || 0;
-      const revenueAllTickets = revenueAllTicketsByProject.get(p.id) || 0;
+      const revenuePreGst = revenueByProject.get(p.id) || 0;
+      const revenueAllTicketsPreGst = revenueAllTicketsByProject.get(p.id) || 0;
+      const revenue = applyGst(revenuePreGst);
+      const revenueAllTickets = applyGst(revenueAllTicketsPreGst);
       const laborCost = laborByProject.get(p.id) || 0;
       const expenseCost = expenseByProject.get(p.id) || 0;
       const totalCost = laborCost + expenseCost;
@@ -359,12 +361,13 @@ export default function Profitability() {
           }
         }
 
+        const ticketRevenue = isDraftOrSubmitted && savedAmount === 0 ? estimatedRevenue : savedAmount;
         return {
           ...t,
           payrollCost,
           total_hours: effectiveHours > 0 && ticketHours === 0 ? effectiveHours : ticketHours,
-          total_amount: isDraftOrSubmitted && savedAmount === 0 ? estimatedRevenue : savedAmount,
-          profit: estimatedRevenue - payrollCost,
+          total_amount: applyGst(ticketRevenue), // Billable amounts include GST
+          profit: applyGst(ticketRevenue) - payrollCost,
         };
       })
       .filter((t: any) => {
