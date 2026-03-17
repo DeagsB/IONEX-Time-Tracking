@@ -213,6 +213,11 @@ export function applyGst(amount: number): number {
   return amount * (1 + GST_RATE);
 }
 
+/** Apply GST to amount if includeGst is true; otherwise return amount unchanged. */
+function maybeApplyGst(amount: number, includeGst: boolean): number {
+  return includeGst ? applyGst(amount) : amount;
+}
+
 /** Employer CPP rate (matches employee portion) */
 const CPP_RATE = 0.0595;
 /** Employer EI: 1.4 × employee EI (1.66%) */
@@ -304,7 +309,8 @@ export function aggregateEmployeeMetrics(
   employee?: EmployeeWithRates,
   serviceTicketHours?: ServiceTicketHours[],
   rateHistory?: PayRateHistory[],
-  ticketExpenses?: TicketExpense[]
+  ticketExpenses?: TicketExpense[],
+  includeGst: boolean = true
 ): EmployeeMetrics {
   const rateHistoryMap = buildRateHistoryMap(rateHistory || []);
   console.log('aggregateEmployeeMetrics called:', { entriesCount: entries?.length || 0, employee: employee?.user_id });
@@ -318,7 +324,7 @@ export function aggregateEmployeeMetrics(
     console.log('No entries for employee:', { userId, employeeName, employee });
 
     // Still compute project breakdown for expenses-only (employee may have expenses without time entries)
-    const projectBreakdown = calculateProjectBreakdown([], employee, undefined, ticketExpenses);
+    const projectBreakdown = calculateProjectBreakdown([], employee, undefined, ticketExpenses, includeGst);
     const expenseBilled = projectBreakdown.reduce((s, p) => s + p.expenseBilled, 0);
     const expenseCost = projectBreakdown.reduce((s, p) => s + p.expenseCost, 0);
     
@@ -411,12 +417,12 @@ export function aggregateEmployeeMetrics(
       });
   }
 
-  // Apply GST to billable revenue (all amounts shown include GST)
+  // Apply GST to billable revenue when includeGst is true
   const totalRevenuePreGst = totalRevenue;
-  totalRevenue = applyGst(totalRevenue);
+  totalRevenue = maybeApplyGst(totalRevenue, includeGst);
 
   // Update rate type breakdown revenue to use actual total_amount (proportionally distributed)
-  // This ensures the breakdown rows sum to the actual revenue (GST-inclusive)
+  // This ensures the breakdown rows sum to the actual revenue (GST-inclusive when includeGst)
   const estimatedRevenue = rateTypeBreakdown.shopTime.revenue +
                            rateTypeBreakdown.fieldTime.revenue +
                            rateTypeBreakdown.travelTime.revenue +
@@ -424,11 +430,11 @@ export function aggregateEmployeeMetrics(
                            rateTypeBreakdown.fieldOvertime.revenue;
   if (estimatedRevenue > 0 && totalRevenuePreGst > 0) {
     const scale = totalRevenuePreGst / estimatedRevenue;
-    rateTypeBreakdown.shopTime.revenue = applyGst(rateTypeBreakdown.shopTime.revenue * scale);
-    rateTypeBreakdown.fieldTime.revenue = applyGst(rateTypeBreakdown.fieldTime.revenue * scale);
-    rateTypeBreakdown.travelTime.revenue = applyGst(rateTypeBreakdown.travelTime.revenue * scale);
-    rateTypeBreakdown.shopOvertime.revenue = applyGst(rateTypeBreakdown.shopOvertime.revenue * scale);
-    rateTypeBreakdown.fieldOvertime.revenue = applyGst(rateTypeBreakdown.fieldOvertime.revenue * scale);
+    rateTypeBreakdown.shopTime.revenue = maybeApplyGst(rateTypeBreakdown.shopTime.revenue * scale, includeGst);
+    rateTypeBreakdown.fieldTime.revenue = maybeApplyGst(rateTypeBreakdown.fieldTime.revenue * scale, includeGst);
+    rateTypeBreakdown.travelTime.revenue = maybeApplyGst(rateTypeBreakdown.travelTime.revenue * scale, includeGst);
+    rateTypeBreakdown.shopOvertime.revenue = maybeApplyGst(rateTypeBreakdown.shopOvertime.revenue * scale, includeGst);
+    rateTypeBreakdown.fieldOvertime.revenue = maybeApplyGst(rateTypeBreakdown.fieldOvertime.revenue * scale, includeGst);
     rateTypeBreakdown.shopTime.profit = rateTypeBreakdown.shopTime.revenue - rateTypeBreakdown.shopTime.cost;
     rateTypeBreakdown.fieldTime.profit = rateTypeBreakdown.fieldTime.revenue - rateTypeBreakdown.fieldTime.cost;
     rateTypeBreakdown.travelTime.profit = rateTypeBreakdown.travelTime.revenue - rateTypeBreakdown.travelTime.cost;
@@ -632,12 +638,12 @@ export function aggregateEmployeeMetrics(
     });
   }
 
-  // Apply GST to billable expense amounts
-  expenseBilled = applyGst(expenseBilled);
+  // Apply GST to billable expense amounts when includeGst is true
+  expenseBilled = maybeApplyGst(expenseBilled, includeGst);
 
   const expenseBreakdown = Array.from(expenseBreakdownMap.entries())
     .filter(([, v]) => v.billed > 0)
-    .map(([category, v]) => ({ category, billed: applyGst(v.billed), cost: v.cost }))
+    .map(([category, v]) => ({ category, billed: maybeApplyGst(v.billed, includeGst), cost: v.cost }))
     .sort((a, b) => {
       const order = ['Per Diem', 'Mileage', 'Hotel', 'Other/Parts'];
       return order.indexOf(a.category) - order.indexOf(b.category);
@@ -653,13 +659,13 @@ export function aggregateEmployeeMetrics(
   const profitPerHour = totalHours > 0 ? netProfit / totalHours : 0;
 
   // Project breakdown (includes expenses allocated to each project)
-  const projectBreakdown = calculateProjectBreakdown(entries, employee, serviceTicketHours, ticketExpenses);
+  const projectBreakdown = calculateProjectBreakdown(entries, employee, serviceTicketHours, ticketExpenses, includeGst);
 
   // Customer breakdown
-  const customerBreakdown = calculateCustomerBreakdown(entries, employee, serviceTicketHours);
+  const customerBreakdown = calculateCustomerBreakdown(entries, employee, serviceTicketHours, includeGst);
 
   // Trends
-  const trends = calculateTrends(entries);
+  const trends = calculateTrends(entries, includeGst);
 
   // Use rate type breakdown as single source of truth for non-billable (keeps summary and breakdown in sync)
   const nonBillableHoursDisplay = rateTypeBreakdown.internalTime.hours;
@@ -1048,7 +1054,8 @@ export function calculateProjectBreakdown(
   entries: TimeEntry[],
   employee?: EmployeeWithRates,
   serviceTicketHours?: ServiceTicketHours[],
-  ticketExpenses?: TicketExpense[]
+  ticketExpenses?: TicketExpense[],
+  includeGst: boolean = true
 ): ProjectBreakdown[] {
   const projectMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number; expenseBilled: number; expenseCost: number }>();
   const userId = entries[0]?.user_id || employee?.user_id || '';
@@ -1201,7 +1208,7 @@ export function calculateProjectBreakdown(
   }
 
   // Convert to ProjectBreakdown format - include projects with hours or expenses
-  // Apply GST to billable amounts (revenue, expenseBilled)
+  // Apply GST to billable amounts when includeGst is true
   const result: ProjectBreakdown[] = Array.from(projectMap.entries())
     .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0 || data.expenseBilled > 0) // Include projects with activity or expenses
     .map(([projectId, data]) => {
@@ -1210,9 +1217,9 @@ export function calculateProjectBreakdown(
         projectId,
         projectName,
         hours: data.billableHours,
-        revenue: applyGst(data.revenue),
+        revenue: maybeApplyGst(data.revenue, includeGst),
         billableHours: data.billableHours,
-        expenseBilled: applyGst(data.expenseBilled),
+        expenseBilled: maybeApplyGst(data.expenseBilled, includeGst),
         expenseCost: data.expenseCost,
       };
     });
@@ -1223,7 +1230,7 @@ export function calculateProjectBreakdown(
 // Calculate breakdown by customer
 // Hours: billable = service ticket hours
 // Revenue: total_amount from approved/exported tickets (matching Profitability)
-export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[]): CustomerBreakdown[] {
+export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: EmployeeWithRates, serviceTicketHours?: ServiceTicketHours[], includeGst: boolean = true): CustomerBreakdown[] {
   const customerMap = new Map<string, { billableHours: number; nonBillableHours: number; revenue: number }>();
   const userId = entries[0]?.user_id || '';
 
@@ -1313,7 +1320,7 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
   });
 
   // Convert to CustomerBreakdown format - only include customers with hours
-  // Apply GST to billable revenue
+  // Apply GST to billable revenue when includeGst is true
   const result: CustomerBreakdown[] = Array.from(customerMap.entries())
     .filter(([_, data]) => data.billableHours > 0 || data.nonBillableHours > 0) // Only include customers with activity
     .map(([customerId, data]) => {
@@ -1323,7 +1330,7 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
         customerId,
         customerName,
         hours: data.billableHours,
-        revenue: applyGst(data.revenue),
+        revenue: maybeApplyGst(data.revenue, includeGst),
         billableHours: data.billableHours,
       };
     });
@@ -1332,7 +1339,7 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
 }
 
 // Calculate trends over time (daily aggregation)
-export function calculateTrends(entries: TimeEntry[]): TrendData[] {
+export function calculateTrends(entries: TimeEntry[], includeGst: boolean = true): TrendData[] {
   const trendMap = new Map<string, TrendData>();
 
   entries.forEach(entry => {
@@ -1356,7 +1363,7 @@ export function calculateTrends(entries: TimeEntry[]): TrendData[] {
     const trend = trendMap.get(date)!;
     trend.hours += hours;
     trend.billableHours += billableHours;
-    trend.revenue += applyGst(revenue);
+    trend.revenue += maybeApplyGst(revenue, includeGst);
   });
 
   return Array.from(trendMap.values()).sort((a, b) => 
@@ -1412,7 +1419,8 @@ export function aggregateAllEmployees(
   employees: EmployeeWithRates[],
   serviceTicketHours?: ServiceTicketHours[],
   rateHistory?: PayRateHistory[],
-  ticketExpenses?: TicketExpense[]
+  ticketExpenses?: TicketExpense[],
+  includeGst: boolean = true
 ): EmployeeMetrics[] {
   console.log('aggregateAllEmployees called:', { 
     entriesCount: entries?.length || 0, 
@@ -1427,7 +1435,7 @@ export function aggregateAllEmployees(
   // If no entries, return all employees with zero metrics
   if (!entries || entries.length === 0) {
     console.log('No entries provided, returning metrics for all employees with zero hours');
-    return employees.map(employee => aggregateEmployeeMetrics([], employee, serviceTicketHours || [], rateHistory, ticketExpenses));
+    return employees.map(employee => aggregateEmployeeMetrics([], employee, serviceTicketHours || [], rateHistory, ticketExpenses, includeGst));
   }
   
   // Group entries by user_id
@@ -1460,7 +1468,7 @@ export function aggregateAllEmployees(
     if (employee) {
       // Filter service ticket hours for this user
       const userTicketHours = serviceTicketHours?.filter(t => t.user_id === userId) || [];
-      const metrics = aggregateEmployeeMetrics(userEntries, employee, userTicketHours, rateHistory, ticketExpenses);
+      const metrics = aggregateEmployeeMetrics(userEntries, employee, userTicketHours, rateHistory, ticketExpenses, includeGst);
       employeeMetrics.push(metrics);
     } else {
       console.warn(`No employee found for userId ${userId}, but has ${userEntries.length} entries`);
@@ -1472,7 +1480,7 @@ export function aggregateAllEmployees(
     if (!entriesByUser.has(employee.user_id)) {
       console.log(`Adding employee with no entries: ${employee.user_id} (${employee.user?.first_name} ${employee.user?.last_name})`);
       const userTicketHours = serviceTicketHours?.filter(t => t.user_id === employee.user_id) || [];
-      employeeMetrics.push(aggregateEmployeeMetrics([], employee, userTicketHours, rateHistory, ticketExpenses));
+      employeeMetrics.push(aggregateEmployeeMetrics([], employee, userTicketHours, rateHistory, ticketExpenses, includeGst));
     }
   });
 

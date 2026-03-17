@@ -39,6 +39,7 @@ export default function Profitability() {
   const [budgetInputValue, setBudgetInputValue] = useState('');
   const budgetInputRef = useRef<HTMLInputElement>(null);
   const [expenseMarkupExpanded, setExpenseMarkupExpanded] = useState(true);
+  const [includeGst, setIncludeGst] = useState(true);
 
   const queryClient = useQueryClient();
   const budgetMutation = useMutation({
@@ -222,8 +223,8 @@ export default function Profitability() {
     return (projects as any[]).map((p: any) => {
       const revenuePreGst = revenueByProject.get(p.id) || 0;
       const revenueAllTicketsPreGst = revenueAllTicketsByProject.get(p.id) || 0;
-      const revenue = applyGst(revenuePreGst);
-      const revenueAllTickets = applyGst(revenueAllTicketsPreGst);
+      const revenue = includeGst ? applyGst(revenuePreGst) : revenuePreGst;
+      const revenueAllTickets = includeGst ? applyGst(revenueAllTicketsPreGst) : revenueAllTicketsPreGst;
       const laborCost = laborByProject.get(p.id) || 0;
       const expenseCost = expenseByProject.get(p.id) || 0;
       const totalCost = laborCost + expenseCost;
@@ -249,7 +250,7 @@ export default function Profitability() {
         ticketCount: ticketCountByProject.get(p.id) || 0,
       };
     });
-  }, [projects, serviceTickets, allTimeEntries, ticketExpenses, empByUserId, rateHistoryByEmpId]);
+  }, [projects, serviceTickets, allTimeEntries, ticketExpenses, empByUserId, rateHistoryByEmpId, includeGst]);
 
   const filtered = useMemo(() => {
     let list = projectFinancials;
@@ -362,12 +363,13 @@ export default function Profitability() {
         }
 
         const ticketRevenue = isDraftOrSubmitted && savedAmount === 0 ? estimatedRevenue : savedAmount;
+        const revenueWithGst = includeGst ? applyGst(ticketRevenue) : ticketRevenue;
         return {
           ...t,
           payrollCost,
           total_hours: effectiveHours > 0 && ticketHours === 0 ? effectiveHours : ticketHours,
-          total_amount: applyGst(ticketRevenue), // Billable amounts include GST
-          profit: applyGst(ticketRevenue) - payrollCost,
+          total_amount: revenueWithGst,
+          profit: revenueWithGst - payrollCost,
         };
       })
       .filter((t: any) => {
@@ -378,7 +380,7 @@ export default function Profitability() {
         return true;
       })
       .sort((a: any, b: any) => b.date.localeCompare(a.date));
-  }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId, rateHistoryByEmpId]);
+  }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId, rateHistoryByEmpId, includeGst]);
 
   const expandedLaborByEmployee = useMemo(() => {
     if (!expandedProjectId) return [];
@@ -478,7 +480,7 @@ export default function Profitability() {
             Financial overview across all projects
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
             <input
               type="checkbox"
@@ -486,6 +488,14 @@ export default function Profitability() {
               onChange={(e) => setShowInactive(e.target.checked)}
             />
             Show inactive
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={includeGst}
+              onChange={(e) => setIncludeGst(e.target.checked)}
+            />
+            Include GST (5%) on billable amounts
           </label>
           <input
             type="text"

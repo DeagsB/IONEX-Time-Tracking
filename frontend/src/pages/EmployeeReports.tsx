@@ -41,6 +41,7 @@ export default function EmployeeReports() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [includeGst, setIncludeGst] = useState(true);
 
   const periodPresets = getTimePeriodPresets();
   const currentPeriod = periodPresets.find(p => p.label === selectedPeriod) || periodPresets[0];
@@ -108,10 +109,10 @@ export default function EmployeeReports() {
   const employeeMetrics = useMemo(() => {
     if (!employees) return [];
     if (loadingEntries || !timeEntries || loadingTicketHours) {
-      return employees.map((emp: any) => aggregateEmployeeMetrics([], emp, []));
+      return employees.map((emp: any) => aggregateEmployeeMetrics([], emp, [], undefined, undefined, includeGst));
     }
-    return aggregateAllEmployees(timeEntries, employees, serviceTicketHours || [], rateHistory || [], ticketExpenses as any);
-  }, [timeEntries, employees, loadingEntries, serviceTicketHours, loadingTicketHours, rateHistory, ticketExpenses]);
+    return aggregateAllEmployees(timeEntries, employees, serviceTicketHours || [], rateHistory || [], ticketExpenses as any, includeGst);
+  }, [timeEntries, employees, loadingEntries, serviceTicketHours, loadingTicketHours, rateHistory, ticketExpenses, includeGst]);
 
   const departments = useMemo(() => {
     const depts = new Set<string>();
@@ -278,6 +279,16 @@ export default function EmployeeReports() {
             ))}
           </select>
         </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-secondary)' }}>
+          <input
+            type="checkbox"
+            checked={includeGst}
+            onChange={(e) => setIncludeGst(e.target.checked)}
+            style={{ width: '16px', height: '16px', accentColor: 'var(--primary-color)' }}
+          />
+          Include GST (5%) on billable amounts
+        </label>
       </div>
 
       {/* Summary Cards */}
