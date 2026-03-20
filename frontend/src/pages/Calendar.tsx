@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { projectsService, timeEntriesService } from '../services/supabaseServices';
@@ -31,6 +31,14 @@ export default function Calendar() {
     queryKey: ['projects'],
     queryFn: () => projectsService.getAll(),
   });
+
+  /** Closed projects are hidden from the timer picker unless already selected (e.g. before mark-closed). */
+  const projectsForTimer = useMemo(() => {
+    if (!projects) return [];
+    return projects.filter(
+      (p: any) => !p.is_completed || (timer.projectId && p.id === timer.projectId)
+    );
+  }, [projects, timer.projectId]);
 
   const { data: timeEntries } = useQuery({
     queryKey: ['timeEntries', 'calendar', currentDate.getMonth(), currentDate.getFullYear(), isDemoMode, user?.id],
@@ -173,7 +181,7 @@ export default function Calendar() {
                   onChange={(e) => setTimer((prev) => ({ ...prev, projectId: e.target.value }))}
                 >
                   <option value="">Select Project</option>
-                  {projects?.map((project: any) => (
+                  {projectsForTimer.map((project: any) => (
                     <option key={project.id} value={project.id}>
                       {project.project_number ? `${project.project_number} - ${project.name}` : project.name}
                     </option>
@@ -213,7 +221,7 @@ export default function Calendar() {
         {timer.projectId && (
           <div style={{ marginTop: '10px', color: 'var(--text-secondary)' }}>
             Project: {(() => {
-            const p = projects?.find((p: any) => p.id === timer.projectId);
+            const p = projectsForTimer.find((p: any) => p.id === timer.projectId) ?? projects?.find((p: any) => p.id === timer.projectId);
             return p ? (p.project_number ? `${p.project_number} - ${p.name}` : p.name) : 'Unknown';
           })()}
           </div>

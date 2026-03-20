@@ -3107,7 +3107,11 @@ export default function WeekView() {
                         ref={addProjectSelectRef}
                         key={`new-project-select-${newEntry.customer_id}`}
                         options={projects
-                          ?.filter((project: any) => project.customer_id === newEntry.customer_id)
+                          ?.filter(
+                            (project: any) =>
+                              project.customer_id === newEntry.customer_id &&
+                              (!project.is_completed || project.id === newEntry.project_id)
+                          )
                           .map((project: any) => ({
                             value: project.id,
                             label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,
@@ -3551,7 +3555,11 @@ export default function WeekView() {
                       <SearchableSelect
                         key={`project-select-${editedEntry.customer_id}`}
                         options={projects
-                          ?.filter((project: any) => project.customer_id === editedEntry.customer_id)
+                          ?.filter(
+                            (project: any) =>
+                              project.customer_id === editedEntry.customer_id &&
+                              (!project.is_completed || project.id === editedEntry.project_id)
+                          )
                           .map((project: any) => ({
                             value: project.id,
                             label: project.project_number ? `${project.project_number} - ${project.name}` : project.name,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -76,6 +76,15 @@ export default function DayDetail() {
     queryKey: ['projects'],
     queryFn: () => projectsService.getAll(),
   });
+
+  /** Closed projects are omitted from the picker except the entry being edited (still on that job). */
+  const projectsForTimePicker = useMemo(() => {
+    if (!projects) return [];
+    const keepId = editingEntry?.project_id;
+    return projects.filter(
+      (p: any) => !p.is_completed || (keepId && p.id === keepId)
+    );
+  }, [projects, editingEntry?.project_id]);
 
   const { data: timeEntries } = useQuery({
     queryKey: ['timeEntries', 'day', date, user?.id],
@@ -719,7 +728,7 @@ export default function DayDetail() {
                   onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
                 >
                   <option value="">Select Project</option>
-                  {projects?.map((project: any) => (
+                  {projectsForTimePicker.map((project: any) => (
                     <option key={project.id} value={project.id}>
                       {project.project_number ? `${project.project_number} - ${project.name}` : project.name}
                     </option>
