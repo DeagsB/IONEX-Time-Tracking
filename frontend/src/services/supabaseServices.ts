@@ -2530,28 +2530,43 @@ function sanitizeStoragePathSegment(s: string): string {
   return s.replace(/[/\\?*:|"]/g, '_').slice(0, 200);
 }
 
-/** Strip browser/OS duplicate suffixes e.g. "Invoice 1647 (1).pdf" → "Invoice 1647.pdf" */
-function stripInvoiceUploadDuplicateSuffix(filename: string): string {
-  const trimmed = filename.trim() || 'invoice.pdf';
+/**
+ * Normalize uploaded invoice PDF name for display/DB: "Invoice 1646 (1).pdf" → "Invoice 1646"
+ * Strips duplicate (1), (2)… with optional space before "("; drops .pdf from the label only.
+ */
+function normalizeInvoiceUploadLabel(originalName: string): { label: string; storageFileSegment: string } {
+  const trimmed = (originalName || 'invoice.pdf').trim();
   const lastDot = trimmed.lastIndexOf('.');
-  if (lastDot <= 0) {
-    return trimmed.replace(/\s+\(\d+\)$/u, '');
+  let base = lastDot > 0 ? trimmed.slice(0, lastDot) : trimmed;
+  while (/\s*\(\d+\)$/i.test(base)) {
+    base = base.replace(/\s*\(\d+\)$/i, '').trim();
   }
-  const base = trimmed.slice(0, lastDot);
-  const ext = trimmed.slice(lastDot);
-  let cleaned = base;
-  while (/\s+\(\d+\)$/u.test(cleaned)) {
-    cleaned = cleaned.replace(/\s+\(\d+\)$/u, '');
-  }
-  return (cleaned || 'invoice') + ext;
+  const label = (base || 'invoice').trim();
+  const storageFileSegment = `${label}.pdf`;
+  return { label, storageFileSegment };
+}
+
+/** Normalize any stored invoice_filename for UI (legacy rows may still include .pdf or "(1)") */
+export function displayInvoiceFilename(stored: string | null | undefined): string {
+  if (stored == null || stored === '') return '';
+  let s = stored.trim();
+  if (/\.pdf$/i.test(s)) s = s.slice(0, -4).trim();
+  while (/\s*\(\d+\)$/i.test(s)) s = s.replace(/\s*\(\d+\)$/i, '').trim();
+  return s || stored.trim();
+}
+
+/** saveAs() / file downloads — stem only in DB/UI, always ends with .pdf */
+export function invoiceFilenameForDownload(labelOrLegacy: string | null | undefined): string {
+  const stem = displayInvoiceFilename(labelOrLegacy) || 'invoice';
+  return /\.pdf$/i.test(stem) ? stem : `${stem}.pdf`;
 }
 
 export const invoicedBatchInvoicesService = {
   async uploadInvoice(groupId: string, file: File): Promise<{ storagePath: string; filename: string }> {
     const safeId = sanitizeStoragePathSegment(groupId);
     const timestamp = Date.now();
-    const logicalName = stripInvoiceUploadDuplicateSuffix(file.name || 'invoice.pdf');
-    const safeName = sanitizeStoragePathSegment(logicalName);
+    const { label, storageFileSegment } = normalizeInvoiceUploadLabel(file.name || 'invoice.pdf');
+    const safeName = sanitizeStoragePathSegment(storageFileSegment);
     const storagePath = `${safeId}/${timestamp}_${safeName}`;
 
     const { error: uploadError } = await supabase.storage
@@ -2565,7 +2580,7 @@ export const invoicedBatchInvoicesService = {
       .upsert(
         {
           group_id: groupId,
-          invoice_filename: logicalName,
+          invoice_filename: label,
           storage_path: storagePath,
           updated_at: new Date().toISOString(),
         },
@@ -2573,7 +2588,7 @@ export const invoicedBatchInvoicesService = {
       );
 
     if (upsertError) throw upsertError;
-    return { storagePath, filename: logicalName };
+    return { storagePath, filename: label };
   },
 
   async getAllInvoicedGroupIds(): Promise<string[]> {
@@ -2594,7 +2609,10 @@ export const invoicedBatchInvoicesService = {
     if (error) throw error;
     const out: Record<string, { filename: string; storagePath: string }> = {};
     for (const row of data || []) {
-      out[row.group_id] = { filename: row.invoice_filename, storagePath: row.storage_path };
+      out[row.group_id] = {
+        filename: displayInvoiceFilename(row.invoice_filename),
+        storagePath: row.storage_path,
+      };
     }
     return out;
   },

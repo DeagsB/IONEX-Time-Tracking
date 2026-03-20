@@ -11,6 +11,7 @@ import {
   invoicedBatchInvoicesService,
   invoicedBatchMarksService,
   type InvoicedBatchMarkRow,
+  invoiceFilenameForDownload,
 } from '../services/supabaseServices';
 import {
   groupEntriesIntoTickets,
@@ -1441,10 +1442,10 @@ export default function Invoices() {
     let downloadFilename: string;
     if (invoiceFile) {
       invoiceBlob = invoiceFile;
-      downloadFilename = invoiceFile.name || 'invoice.pdf';
+      downloadFilename = invoiceFilenameForDownload(invoiceFile.name || 'invoice.pdf');
     } else if (saved?.storagePath) {
       invoiceBlob = await invoicedBatchInvoicesService.downloadInvoice(saved.storagePath);
-      downloadFilename = saved.filename || 'invoice.pdf';
+      downloadFilename = invoiceFilenameForDownload(saved.filename || 'invoice.pdf');
     } else return;
 
     const { tickets: groupTickets } = group;
