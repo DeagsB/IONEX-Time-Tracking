@@ -43,6 +43,105 @@ const roundToHalfHour = (hours: number): number => {
   return Math.ceil(hours * 2) / 2;
 };
 
+function sumEntryHours(ticket: ServiceTicket): number {
+  return (ticket.entries ?? []).reduce((s, e) => s + (Number(e.hours) || 0), 0);
+}
+
+function sumHoursByRateType(ticket: ServiceTicket): number {
+  const h = ticket.hoursByRateType;
+  if (!h) return 0;
+  return (
+    (Number(h['Shop Time']) || 0) +
+    (Number(h['Travel Time']) || 0) +
+    (Number(h['Field Time']) || 0) +
+    (Number(h['Shop Overtime']) || 0) +
+    (Number(h['Field Overtime']) || 0)
+  );
+}
+
+/**
+ * Approved / edited tickets store frozen totals in hoursByRateType while entries may still be raw time logs.
+ * Use frozen buckets for PDF when they disagree (same class of bug as invoice batch PDFs).
+ */
+function useFrozenHoursForServiceTicketPdf(ticket: ServiceTicket): boolean {
+  const frozen = sumHoursByRateType(ticket);
+  if (frozen <= 0) return !(ticket.entries && ticket.entries.length > 0);
+  if (!ticket.entries?.length) return true;
+  return Math.abs(sumEntryHours(ticket) - frozen) > 0.02;
+}
+
+type PdfDescriptionLine = { text: string; st: number; tt: number; ft: number; so: number; fo: number };
+
+function buildPdfDescriptionLinesFromEntries(ticket: ServiceTicket): PdfDescriptionLine[] {
+  const lines: PdfDescriptionLine[] = [];
+  [...ticket.entries].reverse().forEach((entry) => {
+    const desc = entry.description || 'Work performed';
+    const rateCode = getRateCode(entry.rate_type);
+    const roundedHours = roundToHalfHour(Number(entry.hours) || 0);
+    lines.push({
+      text: desc,
+      st: rateCode === 'RT' ? roundedHours : 0,
+      tt: rateCode === 'TT' ? roundedHours : 0,
+      ft: rateCode === 'FT' ? roundedHours : 0,
+      so: entry.rate_type === 'Shop Overtime' ? roundedHours : 0,
+      fo: entry.rate_type === 'Field Overtime' ? roundedHours : 0,
+    });
+  });
+  return lines;
+}
+
+/** One table row with non-zero columns (matches standalone ticket PDF layout). */
+function buildPdfDescriptionLinesFromHoursByRateType(ticket: ServiceTicket): PdfDescriptionLine[] {
+  const hbr = ticket.hoursByRateType;
+  const st = roundToHalfHour(Number(hbr['Shop Time']) || 0);
+  const tt = roundToHalfHour(Number(hbr['Travel Time']) || 0);
+  const ft = roundToHalfHour(Number(hbr['Field Time']) || 0);
+  const so = roundToHalfHour(Number(hbr['Shop Overtime']) || 0);
+  const fo = roundToHalfHour(Number(hbr['Field Overtime']) || 0);
+  if (st + tt + ft + so + fo <= 0) return [];
+  const ent = ticket.entries?.find((e) => e.description?.trim());
+  const text = ent?.description?.trim() || ticket.entries?.[0]?.description?.trim() || 'Work performed';
+  return [{ text, st, tt, ft, so, fo }];
+}
+
+function computeServiceTicketPdfHoursAndLines(ticket: ServiceTicket): {
+  rtHours: number;
+  ttHours: number;
+  ftHours: number;
+  shopOtHours: number;
+  fieldOtHours: number;
+  descriptionLines: PdfDescriptionLine[];
+} {
+  const useFrozen = useFrozenHoursForServiceTicketPdf(ticket);
+  const hbr = ticket.hoursByRateType;
+
+  if (useFrozen) {
+    return {
+      rtHours: roundToHalfHour(Number(hbr['Shop Time']) || 0),
+      ttHours: roundToHalfHour(Number(hbr['Travel Time']) || 0),
+      ftHours: roundToHalfHour(Number(hbr['Field Time']) || 0),
+      shopOtHours: roundToHalfHour(Number(hbr['Shop Overtime']) || 0),
+      fieldOtHours: roundToHalfHour(Number(hbr['Field Overtime']) || 0),
+      descriptionLines: buildPdfDescriptionLinesFromHoursByRateType(ticket),
+    };
+  }
+
+  return {
+    rtHours: ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? roundToHalfHour(Number(e.hours) || 0) : 0), 0),
+    ttHours: ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? roundToHalfHour(Number(e.hours) || 0) : 0), 0),
+    ftHours: ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? roundToHalfHour(Number(e.hours) || 0) : 0), 0),
+    shopOtHours: ticket.entries.reduce(
+      (sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(Number(e.hours) || 0) : 0),
+      0
+    ),
+    fieldOtHours: ticket.entries.reduce(
+      (sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(Number(e.hours) || 0) : 0),
+      0
+    ),
+    descriptionLines: buildPdfDescriptionLinesFromEntries(ticket),
+  };
+}
+
 /** Wait for layout and images so html2canvas captures complete content.
  * html2canvas fails to render off-screen elements correctly. */
 async function waitForPdfElementReady(element: HTMLElement | null): Promise<void> {
@@ -69,11 +168,8 @@ export async function downloadPdfFromHtml(
     unit?: string;
   }> = []
 ): Promise<void> {
-  // Calculate totals using mapped rate types (each entry rounded to nearest 0.5)
-  const rtHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? roundToHalfHour(e.hours) : 0), 0);
-  const ttHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? roundToHalfHour(e.hours) : 0), 0);
-  const ftHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? roundToHalfHour(e.hours) : 0), 0);
-  const otHours = ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'OT' ? roundToHalfHour(e.hours) : 0), 0);
+  const { rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, descriptionLines: rawLines } =
+    computeServiceTicketPdfHoursAndLines(ticket);
 
   // Use employee-specific rates from ticket
   const rtRate = ticket.rates.rt;
@@ -82,13 +178,6 @@ export async function downloadPdfFromHtml(
   const shopOtRate = ticket.rates.shop_ot;
   const fieldOtRate = ticket.rates.field_ot;
 
-  // Calculate OT amounts separately (for standalone tickets use hoursByRateType)
-  const shopOtHours = ticket.entries.length > 0
-    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(e.hours) : 0), 0)
-    : roundToHalfHour(ticket.hoursByRateType['Shop Overtime'] || 0);
-  const fieldOtHours = ticket.entries.length > 0
-    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(e.hours) : 0), 0)
-    : roundToHalfHour(ticket.hoursByRateType['Field Overtime'] || 0);
   const shopOtAmount = shopOtHours * shopOtRate;
   const fieldOtAmount = fieldOtHours * fieldOtRate;
 
@@ -99,22 +188,7 @@ export async function downloadPdfFromHtml(
   const expensesTotal = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
   const grandTotal = rtAmount + ttAmount + ftAmount + otAmount + expensesTotal;
 
-  // Group entries by description (notes only; no date in PDF service description)
-  // Reverse order so oldest/first-created entries appear at top (matches service ticket UI)
-  const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
-  [...ticket.entries].reverse().forEach(entry => {
-    const desc = entry.description || 'Work performed';
-    const rateCode = getRateCode(entry.rate_type);
-    const roundedHours = roundToHalfHour(entry.hours);
-    descriptionLines.push({
-      text: desc, // Show full description without truncating
-      st: rateCode === 'RT' ? roundedHours : 0,
-      tt: rateCode === 'TT' ? roundedHours : 0,
-      ft: rateCode === 'FT' ? roundedHours : 0,
-      so: entry.rate_type === 'Shop Overtime' ? roundedHours : 0,
-      fo: entry.rate_type === 'Field Overtime' ? roundedHours : 0,
-    });
-  });
+  const descriptionLines = [...rawLines];
 
   // Pad to 10 rows minimum
   while (descriptionLines.length < 10) {
@@ -468,17 +542,8 @@ export async function generateAndStorePdf(
     downloadLocally?: boolean;
   } = { uploadToStorage: false, downloadLocally: true }
 ): Promise<PdfExportResult> {
-  // Calculate totals using mapped rate types (each entry rounded to nearest 0.5)
-  // For standalone tickets with no entries, use hoursByRateType
-  const rtHours = ticket.entries.length > 0
-    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'RT' ? roundToHalfHour(e.hours) : 0), 0)
-    : roundToHalfHour(ticket.hoursByRateType['Shop Time'] || 0);
-  const ttHours = ticket.entries.length > 0
-    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'TT' ? roundToHalfHour(e.hours) : 0), 0)
-    : roundToHalfHour(ticket.hoursByRateType['Travel Time'] || 0);
-  const ftHours = ticket.entries.length > 0
-    ? ticket.entries.reduce((sum, e) => sum + (getRateCode(e.rate_type) === 'FT' ? roundToHalfHour(e.hours) : 0), 0)
-    : roundToHalfHour(ticket.hoursByRateType['Field Time'] || 0);
+  const { rtHours, ttHours, ftHours, shopOtHours, fieldOtHours, descriptionLines: rawLines } =
+    computeServiceTicketPdfHoursAndLines(ticket);
 
   // Use employee-specific rates from ticket
   const rtRate = ticket.rates.rt;
@@ -487,13 +552,6 @@ export async function generateAndStorePdf(
   const shopOtRate = ticket.rates.shop_ot;
   const fieldOtRate = ticket.rates.field_ot;
 
-  // Calculate OT amounts separately (for standalone tickets use hoursByRateType)
-  const shopOtHours = ticket.entries.length > 0
-    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Shop Overtime' ? roundToHalfHour(e.hours) : 0), 0)
-    : roundToHalfHour(ticket.hoursByRateType['Shop Overtime'] || 0);
-  const fieldOtHours = ticket.entries.length > 0
-    ? ticket.entries.reduce((sum, e) => sum + (e.rate_type === 'Field Overtime' ? roundToHalfHour(e.hours) : 0), 0)
-    : roundToHalfHour(ticket.hoursByRateType['Field Overtime'] || 0);
   const shopOtAmount = shopOtHours * shopOtRate;
   const fieldOtAmount = fieldOtHours * fieldOtRate;
 
@@ -504,34 +562,7 @@ export async function generateAndStorePdf(
   const expensesTotal = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
   const grandTotal = rtAmount + ttAmount + ftAmount + otAmount + expensesTotal;
 
-  // Group entries by description (notes only; no date in PDF service description)
-  // For standalone tickets with no entries, build from hoursByRateType
-  const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
-  if (ticket.entries.length > 0) {
-    [...ticket.entries].reverse().forEach(entry => {
-      const desc = entry.description || 'Work performed';
-      const rateCode = getRateCode(entry.rate_type);
-      const roundedHours = roundToHalfHour(entry.hours);
-      descriptionLines.push({
-        text: desc,
-        st: rateCode === 'RT' ? roundedHours : 0,
-        tt: rateCode === 'TT' ? roundedHours : 0,
-        ft: rateCode === 'FT' ? roundedHours : 0,
-        so: entry.rate_type === 'Shop Overtime' ? roundedHours : 0,
-        fo: entry.rate_type === 'Field Overtime' ? roundedHours : 0,
-      });
-    });
-  } else {
-    // Standalone ticket: build one row from hoursByRateType
-    const st = roundToHalfHour(ticket.hoursByRateType['Shop Time'] || 0);
-    const tt = roundToHalfHour(ticket.hoursByRateType['Travel Time'] || 0);
-    const ft = roundToHalfHour(ticket.hoursByRateType['Field Time'] || 0);
-    const so = roundToHalfHour(ticket.hoursByRateType['Shop Overtime'] || 0);
-    const fo = roundToHalfHour(ticket.hoursByRateType['Field Overtime'] || 0);
-    if (st + tt + ft + so + fo > 0) {
-      descriptionLines.push({ text: 'Work performed', st, tt, ft, so, fo });
-    }
-  }
+  const descriptionLines = [...rawLines];
 
   // Pad to 10 rows minimum
   while (descriptionLines.length < 10) {
