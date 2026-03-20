@@ -620,7 +620,7 @@ function getInvoicePdfFilename(
 /** Single line for non-CNRL period groups (no PO/AFE breakdown); poAfe empty so "PO/AFE/CC:" is not shown */
 function buildSingleLineBreakdown(
   tickets: (ServiceTicket & { recordId?: string })[],
-  expensesByRecordId: Map<string, Array<{ quantity: number; rate: number }>>
+  expensesByRecordId: Map<string, InvoiceExpenseLine[]>
 ): { ticketList: string; poAfe: string; totalAmount: number }[] {
   const nums = tickets.map((t) => t.ticketNumber).filter(Boolean) as string[];
   let totalAmount = 0;
@@ -638,11 +638,48 @@ function buildSingleLineBreakdown(
 
 const NO_PO_AFE_LABEL = '(no PO/AFE/CC)';
 
+/** Expense lines for invoice math: billed amount uses quantity×rate; GST may be stored separately per line. */
+type InvoiceExpenseLine = { quantity: number; rate: number; gst?: number };
+
+const CA_GST_ON_LABOUR_RATE = 0.05;
+
+/** Subtotal (pre-GST), 5% GST on labour/services, receipt GST on expenses, and total including GST — invoiced view only. */
+function computeInvoicedGroupTotalsWithGst(
+  groupTickets: (ServiceTicket & { recordId?: string })[],
+  expensesByRecordId: Map<string, InvoiceExpenseLine[]>
+): {
+  subtotal: number;
+  labourSubtotal: number;
+  gstOnLabour: number;
+  expenseGstTotal: number;
+  totalInclGst: number;
+} {
+  let subtotal = 0;
+  let labourSubtotal = 0;
+  let expenseGstTotal = 0;
+  for (const t of groupTickets) {
+    const recordId = t.recordId;
+    const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
+    subtotal += calculateTicketTotalAmount(t, expenses);
+    labourSubtotal += calculateTicketTotalAmount(t, []);
+    for (const e of expenses) {
+      expenseGstTotal += Number(e.gst) || 0;
+    }
+  }
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  subtotal = r2(subtotal);
+  labourSubtotal = r2(labourSubtotal);
+  expenseGstTotal = r2(expenseGstTotal);
+  const gstOnLabour = r2(labourSubtotal * CA_GST_ON_LABOUR_RATE);
+  const totalInclGst = r2(subtotal + expenseGstTotal + gstOnLabour);
+  return { subtotal, labourSubtotal, gstOnLabour, expenseGstTotal, totalInclGst };
+}
+
 /** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX". Sorted by PO/AFE value (ascending), with (no PO/AFE/CC) last. */
 function buildPoAfeBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
   getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
-  expensesByRecordId: Map<string, Array<{ quantity: number; rate: number }>>
+  expensesByRecordId: Map<string, InvoiceExpenseLine[]>
 ): { ticketList: string; poAfe: string; totalAmount: number }[] {
   const byPoAfe = new Map<string, { nums: string[]; tickets: typeof tickets }>();
   for (const t of tickets) {
@@ -1157,7 +1194,7 @@ export default function Invoices() {
   }, [ticketsForCustomer, selectedCustomerId, isCNRL, dateRangeGroupingByCustomer, dateRangeGroupingByProject, selectedProjectId, getGroupingForTicket, isTicketCnrl]);
 
   // Fetch expenses for all tickets (for CC breakdown totals)
-  const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, Array<{ quantity: number; rate: number }>>>(new Map());
+  const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, InvoiceExpenseLine[]>>(new Map());
   useEffect(() => {
     const recordIds = new Set<string>();
     for (const { tickets: groupTickets } of groupedTickets) {
@@ -1172,12 +1209,21 @@ export default function Invoices() {
     }
     let cancelled = false;
     const fetchAll = async () => {
-      const map = new Map<string, Array<{ quantity: number; rate: number }>>();
+      const map = new Map<string, InvoiceExpenseLine[]>();
       await Promise.all(
         [...recordIds].map(async (rid) => {
           try {
             const exp = await serviceTicketExpensesService.getByTicketId(rid);
-            if (!cancelled) map.set(rid, exp.map((e) => ({ quantity: e.quantity, rate: e.rate })));
+            if (!cancelled) {
+              map.set(
+                rid,
+                exp.map((e) => ({
+                  quantity: e.quantity,
+                  rate: e.rate,
+                  gst: Number((e as { gst?: number }).gst) || 0,
+                }))
+              );
+            }
           } catch {
             if (!cancelled) map.set(rid, []);
           }
@@ -1242,6 +1288,7 @@ export default function Invoices() {
   const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
+  const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const markProjectCompletedMutation = useMutation({
@@ -1384,6 +1431,42 @@ export default function Invoices() {
         },
       }
     );
+  };
+
+  /** Drop a PDF on "Mark as invoiced": upload (prod), mark, then same merged download as the invoiced drop zone. */
+  const handleDropInvoiceOnMarkAsInvoiced = async (
+    group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
+    file: File
+  ) => {
+    const groupId = getGroupId(group);
+    const snapshot: FrozenGroupSnapshot = {
+      key: group.key,
+      ticketIds: group.tickets.map((t) => t.id),
+    };
+    if (file.type !== 'application/pdf') return;
+    setUploadingInvoiceGroupId(groupId);
+    setExportError(null);
+    try {
+      let fileForUi: File;
+      if (isDemoMode) {
+        fileForUi = file;
+        setInvoiceFileForGroup(groupId, file);
+        handleMarkAsInvoiced(group);
+      } else {
+        const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
+        fileForUi = new File([file], storedName, { type: file.type });
+        setInvoiceFileForGroup(groupId, fileForUi);
+        await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+        await markInvoicedMutation.mutateAsync({ groupId, snapshot });
+      }
+      await handleDownloadBatchWithInvoice(group, groupId, fileForUi);
+    } catch (err) {
+      setExportError(
+        err instanceof Error ? err.message : 'Could not attach invoice and mark as invoiced'
+      );
+    } finally {
+      setUploadingInvoiceGroupId(null);
+    }
   };
 
   const handleUnmarkAsInvoiced = (groupId: string) => {
@@ -2156,15 +2239,10 @@ export default function Invoices() {
                       ),
                     expensesByRecordId
                   );
-              const groupTotal = isCnrlPeriodGroup
-                ? Math.round(
-                    groupTickets.reduce((sum, t) => {
-                      const recordId = (t as ServiceTicket & { recordId?: string }).recordId;
-                      const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
-                      return sum + calculateTicketTotalAmount(t as ServiceTicket & { recordId?: string }, expenses);
-                    }, 0) * 100
-                  ) / 100
-                : breakdownLines.reduce((sum, line) => sum + line.totalAmount, 0);
+              const gstTotals = computeInvoicedGroupTotalsWithGst(
+                groupTickets as (ServiceTicket & { recordId?: string })[],
+                expensesByRecordId
+              );
               const hasMissingPoAfe =
                 isCnrlPeriodGroup &&
                 groupTickets.some((t) => {
@@ -2253,9 +2331,32 @@ export default function Invoices() {
                       ) : null}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                      <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary-color)' }}>
-                        Total: ${groupTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+                        <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary-color)' }}>
+                          Total (incl. GST): $
+                          {gstTotals.totalInclGst.toLocaleString('en-CA', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+                          Subtotal ${gstTotals.subtotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {gstTotals.labourSubtotal > 0 && (
+                            <>
+                              {' · '}
+                              GST on labour (5%) $
+                              {gstTotals.gstOnLabour.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </>
+                          )}
+                          {gstTotals.expenseGstTotal > 0 && (
+                            <>
+                              {' · '}
+                              Receipt GST (expenses) $
+                              {gstTotals.expenseGstTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </>
+                          )}
+                        </span>
+                      </div>
                       <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                         <button
                           onClick={() => handleExportSingleGroup(group)}
@@ -2686,20 +2787,64 @@ export default function Invoices() {
                     <button
                       type="button"
                       onClick={() => handleMarkAsInvoiced(group)}
-                      disabled={!!exportProgress || !!qboProgress || markInvoicedMutation.isPending}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.dataTransfer.types?.includes('Files')) setMarkInvoicedDropOverGroupId(groupId);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.dataTransfer.types?.includes('Files')) {
+                          e.dataTransfer.dropEffect = 'copy';
+                          setMarkInvoicedDropOverGroupId(groupId);
+                        }
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
+                        }
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
+                        const file = e.dataTransfer?.files?.[0];
+                        if (!file) return;
+                        await handleDropInvoiceOnMarkAsInvoiced(group, file);
+                      }}
+                      disabled={
+                        !!exportProgress ||
+                        !!qboProgress ||
+                        markInvoicedMutation.isPending ||
+                        uploadingInvoiceGroupId === groupId
+                      }
                       style={{
                         padding: '6px 12px',
-                        backgroundColor: 'var(--bg-tertiary)',
+                        backgroundColor:
+                          markInvoicedDropOverGroupId === groupId ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-tertiary)',
                         color: 'var(--text-secondary)',
-                        border: '1px solid var(--border-color)',
+                        border:
+                          markInvoicedDropOverGroupId === groupId
+                            ? '2px dashed var(--primary-color)'
+                            : '1px solid var(--border-color)',
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: 600,
-                        cursor: exportProgress || qboProgress || markInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
+                        cursor:
+                          exportProgress || qboProgress || markInvoicedMutation.isPending || uploadingInvoiceGroupId === groupId
+                            ? 'not-allowed'
+                            : 'pointer',
                       }}
-                      title="Mark this group as invoiced and hide it (saved to database)"
+                      title="Mark as invoiced, or drop an invoice PDF here to attach, mark, and download the merged batch (invoice + service tickets)"
                     >
-                      {markInvoicedMutation.isPending ? 'Saving…' : 'Mark as invoiced'}
+                      {uploadingInvoiceGroupId === groupId
+                        ? 'Attaching…'
+                        : markInvoicedMutation.isPending
+                          ? 'Saving…'
+                          : 'Mark as invoiced'}
                     </button>
                   </div>
                 </div>
