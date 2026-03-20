@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { customersService, projectsService } from '../services/supabaseServices';
+import { customersService } from '../services/supabaseServices';
 
 export default function Customers() {
   const { user, isAdmin } = useAuth();
@@ -158,14 +158,8 @@ export default function Customers() {
   });
 
   const setActiveMutation = useMutation({
-    mutationFn: async ({ id, active, projectIds }: { id: string; active: boolean; projectIds?: string[] }) => {
-      const customer = await customersService.update(id, { active });
-      if (active === false && projectIds && projectIds.length > 0) {
-        for (const projectId of projectIds) {
-          await projectsService.update(projectId, { active: false });
-        }
-      }
-      return customer;
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      return customersService.update(id, { active });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
@@ -231,16 +225,6 @@ export default function Customers() {
       updateMutation.mutate({ id: editingCustomer.id, data: formData });
     } else {
       createMutation.mutate(formData);
-    }
-  };
-
-  const handleMarkInactive = (customer: any) => {
-    const projectIds = (customer.projects || []).map((p: any) => p.id).filter(Boolean);
-    const message = projectIds.length > 0
-      ? `Mark this customer as inactive? Their ${projectIds.length} project(s) will also be marked inactive. All will be hidden from the main list and only visible to admins.`
-      : 'Mark this customer as inactive? They will be hidden from the main list and only visible to admins.';
-    if (window.confirm(message)) {
-      setActiveMutation.mutate({ id: customer.id, active: false, projectIds });
     }
   };
 
@@ -812,49 +796,45 @@ export default function Customers() {
               <th onClick={() => handleSort('projects')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                 Projects {sortField === 'projects' && (sortDirection === 'asc' ? '▲' : '▼')}
               </th>
-              <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {sortedCustomers.length === 0 && !(isAdmin && showInactive && inactiveCustomers.length > 0) && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '20px' }}>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '20px' }}>
                   No customers found. Create your first customer above.
                 </td>
               </tr>
             )}
-            {sortedCustomers.map((customer: any) => (
-              <tr key={customer.id}>
+            {sortedCustomers.map((customer: any) => {
+              const rowBg = 'transparent';
+              const rowHoverBg = 'var(--hover-bg)';
+              return (
+              <tr
+                key={customer.id}
+                title={user ? 'Click row to edit' : undefined}
+                onClick={() => {
+                  if (user) handleEdit(customer);
+                }}
+                style={{
+                  cursor: user ? 'pointer' : 'default',
+                  backgroundColor: rowBg,
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (user) e.currentTarget.style.backgroundColor = rowHoverBg;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = rowBg;
+                }}
+              >
                 <td>{customer.name}</td>
                 <td>{customer.email || '-'}</td>
                 <td>{customer.phone || '-'}</td>
                 <td>{customer.city || '-'}</td>
                 <td>{customer.projects?.length || 0}</td>
-                <td style={{ textAlign: 'right' }}>
-                  {user && (
-                    <>
-                      <button
-                        className="button button-secondary"
-                        style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleEdit(customer)}
-                      >
-                        Edit
-                      </button>
-                      {isAdmin && (
-                        <button
-                          className="button button-secondary"
-                          style={{ padding: '5px 10px', fontSize: '12px' }}
-                          onClick={() => handleMarkInactive(customer)}
-                          title="Hide from main list (admins can still see in Inactive section)"
-                        >
-                          Mark inactive
-                        </button>
-                      )}
-                    </>
-                  )}
-                </td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
       </div>
@@ -877,31 +857,61 @@ export default function Customers() {
               </tr>
             </thead>
             <tbody>
-              {sortedInactiveCustomers.map((customer: any) => (
-                <tr key={customer.id} style={{ opacity: 0.85 }}>
+              {sortedInactiveCustomers.map((customer: any) => {
+                const inRowBg = 'rgba(0,0,0,0.02)';
+                const inRowHover = 'var(--hover-bg)';
+                return (
+                <tr
+                  key={customer.id}
+                  title="Click row to edit"
+                  onClick={() => handleEdit(customer)}
+                  style={{
+                    opacity: 0.85,
+                    cursor: 'pointer',
+                    backgroundColor: inRowBg,
+                    transition: 'background-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = inRowHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = inRowBg;
+                  }}
+                >
                   <td>{customer.name}</td>
                   <td>{customer.email || '-'}</td>
                   <td>{customer.phone || '-'}</td>
                   <td>{customer.city || '-'}</td>
                   <td>{customer.projects?.length || 0}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ textAlign: 'right', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
                     <button
-                      className="button button-secondary"
-                      style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                      onClick={() => handleEdit(customer)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="button button-primary"
-                      style={{ padding: '5px 10px', fontSize: '12px' }}
+                      type="button"
                       onClick={() => handleReactivate(customer.id)}
+                      style={{
+                        padding: '7px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        letterSpacing: '0.02em',
+                        borderRadius: '999px',
+                        border: 'none',
+                        backgroundColor: 'var(--primary-color)',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                        transition: 'filter 0.1s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.filter = 'brightness(1.08)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.filter = '';
+                      }}
                     >
                       Reactivate
                     </button>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
