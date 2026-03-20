@@ -1267,10 +1267,11 @@ export default function Projects() {
                       disabled={setCompletedMutation.isPending}
                       title={isClosed ? 'Show as active on Profitability' : 'Mark closed — muted on Profitability; stays in lists'}
                       style={{
-                        padding: '7px 16px',
-                        fontSize: '12px',
+                        padding: '2px 10px',
+                        fontSize: '11px',
                         fontWeight: 600,
-                        letterSpacing: '0.02em',
+                        lineHeight: 1.25,
+                        letterSpacing: '0.01em',
                         borderRadius: '999px',
                         border: isClosed ? '1px solid rgba(34, 197, 94, 0.45)' : '1px solid color-mix(in srgb, var(--primary-color) 55%, var(--border-color))',
                         backgroundColor: isClosed ? 'rgba(34, 197, 94, 0.1)' : 'color-mix(in srgb, var(--primary-color) 8%, transparent)',
@@ -1279,6 +1280,7 @@ export default function Projects() {
                         opacity: setCompletedMutation.isPending ? 0.65 : 1,
                         transition: 'background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease',
                         boxShadow: isClosed ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
+                        whiteSpace: 'nowrap',
                       }}
                       onMouseEnter={(e) => {
                         if (setCompletedMutation.isPending) return;
@@ -1380,17 +1382,18 @@ export default function Projects() {
                     {formatHours(projectHours[project.id] || 0)}
                   </td>
                   <td style={{ textAlign: 'right', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
                       <button
                         type="button"
                         onClick={() => handleToggleCompleted(project)}
                         disabled={setCompletedMutation.isPending}
                         title={inClosed ? 'Show as active on Profitability' : 'Mark closed — muted on Profitability'}
                         style={{
-                          padding: '7px 16px',
-                          fontSize: '12px',
+                          padding: '2px 10px',
+                          fontSize: '11px',
                           fontWeight: 600,
-                          letterSpacing: '0.02em',
+                          lineHeight: 1.25,
+                          letterSpacing: '0.01em',
                           borderRadius: '999px',
                           border: inClosed ? '1px solid rgba(34, 197, 94, 0.45)' : '1px solid color-mix(in srgb, var(--primary-color) 55%, var(--border-color))',
                           backgroundColor: inClosed ? 'rgba(34, 197, 94, 0.1)' : 'color-mix(in srgb, var(--primary-color) 8%, transparent)',
@@ -1399,6 +1402,7 @@ export default function Projects() {
                           opacity: setCompletedMutation.isPending ? 0.65 : 1,
                           transition: 'background-color 0.15s ease, filter 0.1s ease',
                           boxShadow: inClosed ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
+                          whiteSpace: 'nowrap',
                         }}
                         onMouseEnter={(e) => {
                           if (!setCompletedMutation.isPending) e.currentTarget.style.filter = 'brightness(1.05)';
@@ -1413,17 +1417,19 @@ export default function Projects() {
                         type="button"
                         onClick={() => handleReactivate(project.id)}
                         style={{
-                          padding: '7px 16px',
-                          fontSize: '12px',
+                          padding: '2px 10px',
+                          fontSize: '11px',
                           fontWeight: 600,
-                          letterSpacing: '0.02em',
+                          lineHeight: 1.25,
+                          letterSpacing: '0.01em',
                           borderRadius: '999px',
                           border: 'none',
                           backgroundColor: 'var(--primary-color)',
                           color: '#fff',
                           cursor: 'pointer',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
                           transition: 'filter 0.1s ease',
+                          whiteSpace: 'nowrap',
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.filter = 'brightness(1.08)';

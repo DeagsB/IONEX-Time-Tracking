@@ -679,8 +679,37 @@ export default function Employees() {
               </tr>
             </thead>
             <tbody>
-              {employees.map((employee: any) => (
-              <tr key={employee.id}>
+              {employees.map((employee: any) => {
+                const rowBg = 'transparent';
+                const rowHoverBg = 'var(--hover-bg)';
+                const pill: React.CSSProperties = {
+                  padding: '2px 10px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  lineHeight: 1.25,
+                  letterSpacing: '0.01em',
+                  borderRadius: '999px',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  transition: 'filter 0.1s ease, background-color 0.15s ease',
+                };
+                return (
+              <tr
+                key={employee.id}
+                title="Click row to edit"
+                onClick={() => handleEdit(employee)}
+                style={{
+                  cursor: 'pointer',
+                  backgroundColor: rowBg,
+                  transition: 'background-color 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = rowHoverBg;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = rowBg;
+                }}
+              >
                 <td>{employee.employee_id}</td>
                 <td>
                   {employee.user ? (
@@ -714,41 +743,56 @@ export default function Employees() {
                 <td>{employee.department}</td>
                 <td>{employee.position}</td>
                 <td>{employee.status}</td>
-                <td style={{ textAlign: 'right' }}>
-                  <button
-                    className="button button-secondary"
-                    style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                    onClick={() => handleEdit(employee)}
-                  >
-                    Edit
-                  </button>
+                <td style={{ textAlign: 'right', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
                   {employee.user && (
                     <button
-                      className="button"
+                      type="button"
                       style={{
-                        marginRight: '5px',
-                        padding: '5px 10px',
-                        fontSize: '12px',
-                        backgroundColor: employee.user.archived ? 'var(--success-color)' : 'var(--warning-color)',
-                        color: 'white',
-                        border: 'none',
+                        ...pill,
+                        border: employee.user.archived
+                          ? '1px solid rgba(34, 197, 94, 0.45)'
+                          : '1px solid color-mix(in srgb, var(--warning-color) 55%, var(--border-color))',
+                        backgroundColor: employee.user.archived ? 'rgba(34, 197, 94, 0.1)' : 'color-mix(in srgb, var(--warning-color) 10%, transparent)',
+                        color: employee.user.archived ? '#16a34a' : 'var(--warning-color)',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                       }}
                       onClick={() => handleToggleArchive(employee.user.id, employee.user.archived)}
                       title={employee.user.archived ? 'Unarchive user' : 'Archive user'}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.filter = 'brightness(1.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.filter = '';
+                      }}
                     >
                       {employee.user.archived ? 'Unarchive' : 'Archive'}
                     </button>
                   )}
                   <button
-                    className="button button-danger"
-                    style={{ padding: '5px 10px', fontSize: '12px' }}
+                    type="button"
+                    style={{
+                      ...pill,
+                      border: '1px solid color-mix(in srgb, var(--error-color, #dc2626) 50%, var(--border-color))',
+                      backgroundColor: 'color-mix(in srgb, var(--error-color, #dc2626) 8%, transparent)',
+                      color: 'var(--error-color, #dc2626)',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                    }}
                     onClick={() => handleDelete(employee.id)}
+                    title="Delete employee record"
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.filter = 'brightness(1.05)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.filter = '';
+                    }}
                   >
                     Delete
                   </button>
+                  </div>
                 </td>
               </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         )}
