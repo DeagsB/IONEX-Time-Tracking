@@ -2603,3 +2603,45 @@ export const invoicedBatchInvoicesService = {
     if (error) throw error;
   },
 };
+
+export type InvoicedBatchMarkRow = {
+  group_id: string;
+  key_snapshot: { key: unknown; ticketIds: string[] } | null;
+  marked_at: string;
+  marked_by: string | null;
+};
+
+/** Persisted "marked as invoiced" groups (same group_id as PDF batch uploads). */
+export const invoicedBatchMarksService = {
+  async getAll(): Promise<InvoicedBatchMarkRow[]> {
+    const { data, error } = await supabase
+      .from('invoiced_batch_marks')
+      .select('group_id, key_snapshot, marked_at, marked_by')
+      .order('marked_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as InvoicedBatchMarkRow[];
+  },
+
+  async upsert(groupId: string, keySnapshot: { key: unknown; ticketIds: string[] }): Promise<void> {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('invoiced_batch_marks').upsert(
+      {
+        group_id: groupId,
+        key_snapshot: keySnapshot,
+        marked_by: user?.id ?? null,
+        marked_at: now,
+        updated_at: now,
+      },
+      { onConflict: 'group_id' }
+    );
+    if (error) throw error;
+  },
+
+  async deleteMark(groupId: string): Promise<void> {
+    const { error } = await supabase.from('invoiced_batch_marks').delete().eq('group_id', groupId);
+    if (error) throw error;
+  },
+};

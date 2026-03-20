@@ -9,6 +9,8 @@ import {
   employeesService,
   projectsService,
   invoicedBatchInvoicesService,
+  invoicedBatchMarksService,
+  type InvoicedBatchMarkRow,
 } from '../services/supabaseServices';
 import {
   groupEntriesIntoTickets,
@@ -292,6 +294,25 @@ function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: st
 const MARKED_INVOICED_STORAGE_KEY = 'ionex-invoices-marked';
 const FROZEN_INVOICED_GROUPS_KEY = 'ionex-invoices-frozen-groups';
 
+function readMarkedInvoiceIdsFromLocalStorage(): Set<string> {
+  try {
+    const raw = localStorage.getItem(MARKED_INVOICED_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistMarkedInvoiceIdsToLocalStorage(ids: Set<string>) {
+  try {
+    localStorage.setItem(MARKED_INVOICED_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // ignore
+  }
+}
+
 export type DateRangeGrouping =
   | 'daily'
   | 'weekly'
@@ -366,6 +387,8 @@ function getPeriodLabel(periodKey: string, grouping: DateRangeGrouping): string 
 }
 
 type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodLabel?: string };
+
+type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[] };
 
 function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string {
   const key = group.key;
@@ -987,16 +1010,10 @@ export default function Invoices() {
 
   const [exportingGroupIdx, setExportingGroupIdx] = useState<string | null>(null);
 
-  const [markedInvoicedIds, setMarkedInvoicedIds] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(MARKED_INVOICED_STORAGE_KEY);
-      if (!raw) return new Set();
-      const arr = JSON.parse(raw) as string[];
-      return new Set(Array.isArray(arr) ? arr : []);
-    } catch {
-      return new Set();
-    }
-  });
+  /** Pre–DB marks only; entries are removed once present in invoiced_batch_marks */
+  const [legacyMarkedInvoicedIds, setLegacyMarkedInvoicedIds] = useState<Set<string>>(() =>
+    readMarkedInvoiceIdsFromLocalStorage()
+  );
 
   // Invoiced group IDs from DB (uploaded PDFs) — syncs across devices
   const { data: invoicedGroupIdsFromDb = [] } = useQuery({
@@ -1004,38 +1021,40 @@ export default function Invoices() {
     queryFn: () => invoicedBatchInvoicesService.getAllInvoicedGroupIds(),
   });
 
-  // Effective "marked as invoiced" = localStorage (this device) ∪ DB (any device)
+  const { data: invoicedMarkRows = [] } = useQuery({
+    queryKey: ['invoicedBatchMarks'],
+    queryFn: () => invoicedBatchMarksService.getAll(),
+    enabled: isAdmin && !!user && !isDemoMode,
+  });
+
+  const dbMarkedIdSet = useMemo(
+    () => new Set(invoicedMarkRows.map((r) => r.group_id)),
+    [invoicedMarkRows]
+  );
+
+  useEffect(() => {
+    setLegacyMarkedInvoicedIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of prev) {
+        if (dbMarkedIdSet.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      if (changed) persistMarkedInvoiceIdsToLocalStorage(next);
+      return changed ? next : prev;
+    });
+  }, [dbMarkedIdSet]);
+
+  // Effective = DB marks ∪ linked PDF rows ∪ legacy localStorage (until migrated off)
   const effectiveMarkedInvoicedIds = useMemo(() => {
-    const set = new Set(markedInvoicedIds);
+    const set = new Set<string>();
+    for (const id of legacyMarkedInvoicedIds) set.add(id);
+    for (const id of dbMarkedIdSet) set.add(id);
     invoicedGroupIdsFromDb.forEach((id) => set.add(id));
     return set;
-  }, [markedInvoicedIds, invoicedGroupIdsFromDb]);
-
-  const handleMarkAsInvoiced = (groupId: string) => {
-    setMarkedInvoicedIds((prev) => {
-      const next = new Set(prev);
-      next.add(groupId);
-      try {
-        localStorage.setItem(MARKED_INVOICED_STORAGE_KEY, JSON.stringify([...next]));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
-
-  const handleUnmarkAsInvoiced = (groupId: string) => {
-    setMarkedInvoicedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(groupId);
-      try {
-        localStorage.setItem(MARKED_INVOICED_STORAGE_KEY, JSON.stringify([...next]));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
+  }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
   const [showInvoiced, setShowInvoiced] = useState(false);
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
@@ -1051,7 +1070,6 @@ export default function Invoices() {
     },
   });
 
-  type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[] };
   const [frozenInvoicedGroups, setFrozenInvoicedGroups] = useState<Record<string, FrozenGroupSnapshot>>(() => {
     try {
       const raw = localStorage.getItem(FROZEN_INVOICED_GROUPS_KEY);
@@ -1073,6 +1091,167 @@ export default function Invoices() {
       return next;
     });
   }, []);
+
+  const markInvoicedMutation = useMutation({
+    mutationFn: async ({ groupId, snapshot }: { groupId: string; snapshot: FrozenGroupSnapshot }) => {
+      await invoicedBatchMarksService.upsert(groupId, snapshot);
+    },
+    onMutate: async ({ groupId, snapshot }) => {
+      await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
+      const previous = queryClient.getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks']);
+      queryClient.setQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks'], () => {
+        const rest = (previous ?? []).filter((r) => r.group_id !== groupId);
+        return [
+          {
+            group_id: groupId,
+            key_snapshot: snapshot as unknown as InvoicedBatchMarkRow['key_snapshot'],
+            marked_at: new Date().toISOString(),
+            marked_by: null,
+          },
+          ...rest,
+        ];
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(['invoicedBatchMarks'], ctx.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+    },
+  });
+
+  const unmarkInvoicedMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      await invoicedBatchMarksService.deleteMark(groupId);
+      try {
+        await invoicedBatchInvoicesService.deleteInvoice(groupId);
+      } catch {
+        // No linked invoice PDF row
+      }
+    },
+    onMutate: async (groupId) => {
+      await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
+      const previous = queryClient.getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks']);
+      queryClient.setQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks'], (prev) =>
+        (prev ?? []).filter((r) => r.group_id !== groupId)
+      );
+      return { previous };
+    },
+    onError: (_err, _groupId, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(['invoicedBatchMarks'], ctx.previous);
+      }
+    },
+    onSuccess: (_data, groupId) => {
+      setLegacyMarkedInvoicedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(groupId);
+        persistMarkedInvoiceIdsToLocalStorage(next);
+        return next;
+      });
+      setFrozenInvoicedGroups((prev) => {
+        if (!prev[groupId]) return prev;
+        const next = { ...prev };
+        delete next[groupId];
+        try {
+          localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+      setInvoiceFileForGroup(groupId, null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+    },
+  });
+
+  const handleMarkAsInvoiced = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+    const groupId = getGroupId(group);
+    const snapshot: FrozenGroupSnapshot = {
+      key: group.key,
+      ticketIds: group.tickets.map((t) => t.id),
+    };
+    if (isDemoMode) {
+      setLegacyMarkedInvoicedIds((prev) => {
+        const next = new Set(prev);
+        next.add(groupId);
+        persistMarkedInvoiceIdsToLocalStorage(next);
+        return next;
+      });
+      setFrozenInvoicedGroups((prev) => {
+        const next = { ...prev, [groupId]: snapshot };
+        try {
+          localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+      return;
+    }
+    markInvoicedMutation.mutate(
+      { groupId, snapshot },
+      {
+        onError: (err) => {
+          setExportError(err instanceof Error ? err.message : 'Could not save marked as invoiced');
+        },
+      }
+    );
+  };
+
+  const handleUnmarkAsInvoiced = (groupId: string) => {
+    if (isDemoMode) {
+      setLegacyMarkedInvoicedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(groupId);
+        persistMarkedInvoiceIdsToLocalStorage(next);
+        return next;
+      });
+      setFrozenInvoicedGroups((prev) => {
+        if (!prev[groupId]) return prev;
+        const next = { ...prev };
+        delete next[groupId];
+        try {
+          localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+      setInvoiceFileForGroup(groupId, null);
+      return;
+    }
+    unmarkInvoicedMutation.mutate(groupId, {
+      onError: (err) => {
+        setExportError(err instanceof Error ? err.message : 'Could not unmark as invoiced');
+      },
+    });
+  };
+
+  useEffect(() => {
+    if (invoicedMarkRows.length === 0) return;
+    setFrozenInvoicedGroups((prev) => {
+      const next = { ...prev };
+      for (const row of invoicedMarkRows) {
+        const raw = row.key_snapshot;
+        if (raw && typeof raw === 'object' && Array.isArray((raw as FrozenGroupSnapshot).ticketIds)) {
+          next[row.group_id] = raw as FrozenGroupSnapshot;
+        }
+      }
+      try {
+        localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, [invoicedMarkRows]);
 
   useEffect(() => {
     let updated = false;
@@ -1457,8 +1636,8 @@ export default function Invoices() {
       <h1 style={{ marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
         {isCNRL
-          ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.'
-          : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, monthly, or one batch per project) for invoicing.'}
+          ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets. Marked-as-invoiced state is stored in the database (admins only).'
+          : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, monthly, or one batch per project) for invoicing. Marked-as-invoiced is saved to the database with a snapshot of the batch so status stays consistent across devices (admins only).'}
       </p>
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
@@ -1884,8 +2063,9 @@ export default function Invoices() {
                           {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleUnmarkAsInvoiced(groupId)}
-                          disabled={!!exportProgress || !!qboProgress}
+                          disabled={!!exportProgress || !!qboProgress || unmarkInvoicedMutation.isPending}
                           style={{
                             padding: '6px 12px',
                             backgroundColor: 'var(--bg-tertiary)',
@@ -1894,11 +2074,11 @@ export default function Invoices() {
                             borderRadius: '6px',
                             fontSize: '12px',
                             fontWeight: 600,
-                            cursor: exportProgress || qboProgress ? 'not-allowed' : 'pointer',
+                            cursor: exportProgress || qboProgress || unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
                           }}
-                          title="Move this group back to pending"
+                          title="Move this group back to pending (removes DB mark and linked invoice file if any)"
                         >
-                          Unmark as invoiced
+                          {unmarkInvoicedMutation.isPending ? 'Updating…' : 'Unmark as invoiced'}
                         </button>
                       </div>
                     </div>
@@ -2265,8 +2445,9 @@ export default function Invoices() {
                       {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
                     </button>
                     <button
-                      onClick={() => handleMarkAsInvoiced(groupId)}
-                      disabled={!!exportProgress || !!qboProgress}
+                      type="button"
+                      onClick={() => handleMarkAsInvoiced(group)}
+                      disabled={!!exportProgress || !!qboProgress || markInvoicedMutation.isPending}
                       style={{
                         padding: '6px 12px',
                         backgroundColor: 'var(--bg-tertiary)',
@@ -2275,11 +2456,11 @@ export default function Invoices() {
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: 600,
-                        cursor: exportProgress || qboProgress ? 'not-allowed' : 'pointer',
+                        cursor: exportProgress || qboProgress || markInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
                       }}
-                      title="Mark this group as invoiced and hide it"
+                      title="Mark this group as invoiced and hide it (saved to database)"
                     >
-                      Mark as invoiced
+                      {markInvoicedMutation.isPending ? 'Saving…' : 'Mark as invoiced'}
                     </button>
                   </div>
                 </div>
