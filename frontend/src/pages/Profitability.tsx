@@ -14,6 +14,10 @@ interface ProjectFinancials {
   color: string;
   budget: number | null;
   revenue: number;
+  /** Labor-only revenue (service ticket total_amount), before expense billouts */
+  laborRevenuePreGst: number;
+  /** Customer-billed expense lines (qty × rate) on included tickets, pre-GST */
+  expenseBilledPreGst: number;
   /** Revenue from approved/exported tickets only */
   revenueApproved: number;
   /** Revenue from all tickets including draft/submitted/rejected */
@@ -214,14 +218,20 @@ export default function Profitability() {
     };
 
     const expenseByProject = new Map<string, number>();
+    /** Customer-billed totals from ticket expense lines (same tickets as ticketExpenses query). */
+    const expenseBilledByProject = new Map<string, number>();
     for (const exp of ticketExpenses as any[]) {
       const ticket = exp.service_tickets;
       if (!ticket?.project_id) continue;
+      const billed = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
       expenseByProject.set(ticket.project_id, (expenseByProject.get(ticket.project_id) || 0) + getExpenseCost(exp));
+      expenseBilledByProject.set(ticket.project_id, (expenseBilledByProject.get(ticket.project_id) || 0) + billed);
     }
 
     return (projects as any[]).map((p: any) => {
-      const revenuePreGst = revenueByProject.get(p.id) || 0;
+      const laborRevenuePreGst = revenueByProject.get(p.id) || 0;
+      const expenseBilledPreGst = expenseBilledByProject.get(p.id) || 0;
+      const revenuePreGst = laborRevenuePreGst + expenseBilledPreGst;
       const revenueAllTicketsPreGst = revenueAllTicketsByProject.get(p.id) || 0;
       const revenue = includeGst ? applyGst(revenuePreGst) : revenuePreGst;
       const revenueAllTickets = includeGst ? applyGst(revenueAllTicketsPreGst) : revenueAllTicketsPreGst;
@@ -239,6 +249,8 @@ export default function Profitability() {
         color: p.color || '#4ecdc4',
         budget: p.budget != null && Number(p.budget) > 0 ? Number(p.budget) : null,
         revenue,
+        laborRevenuePreGst,
+        expenseBilledPreGst,
         revenueApproved: revenue,
         revenueAllTickets,
         laborCost,
@@ -429,26 +441,55 @@ export default function Profitability() {
     return amt;
   };
 
+  /** Equipment / other billout: $0 actual cost usually means "not entered", not zero COGS — don't treat full billed as markup. */
+  const isBilloutActualCostUnset = (exp: any, billedTotal: number): boolean => {
+    if (billedTotal <= 0) return false;
+    const desc = (exp.description || exp.expense_type || '').toLowerCase();
+    if (desc.includes('mileage') || desc.includes('per diem') || desc.includes('hotel')) return false;
+    if (exp.needs_reimbursement) return false;
+    if (exp.actual_cost != null && Number(exp.actual_cost) > 0) return false;
+    return true;
+  };
+
   const expandedExpenses = useMemo(() => {
     if (!expandedProjectId) return [];
     return (ticketExpenses as any[])
       .filter((exp: any) => exp.service_tickets?.project_id === expandedProjectId)
       .map((exp: any) => {
-        const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+        const billedTotal = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
         const cost = getExpenseCostForDisplay(exp);
+        const markupUnknown = isBilloutActualCostUnset(exp, billedTotal);
+        const profitKnown = markupUnknown ? 0 : billedTotal - cost;
         return {
           description: exp.description || exp.expense_type || 'Expense',
           type: exp.expense_type || '',
           quantity: Number(exp.quantity) || 0,
           rate: Number(exp.rate) || 0,
-          total: amt,
+          total: billedTotal,
           cost,
-          profit: amt - cost,
+          profit: profitKnown,
+          markupUnknown,
         };
       })
-      .filter((exp: any) => exp.profit > 0) // Only show expenses with markup (billed > cost)
-      .sort((a: any, b: any) => b.profit - a.profit);
+      .filter((exp: any) => {
+        if (exp.total <= 0) return false;
+        if (exp.markupUnknown) return true;
+        return exp.profit > 0;
+      })
+      .sort((a: any, b: any) => {
+        if (a.markupUnknown !== b.markupUnknown) return a.markupUnknown ? 1 : -1;
+        return b.profit - a.profit;
+      });
   }, [expandedProjectId, ticketExpenses, empByUserId]);
+
+  const expandedExpenseMarkupKnownTotal = useMemo(
+    () => expandedExpenses.reduce((s, e: any) => s + (e.markupUnknown ? 0 : e.profit), 0),
+    [expandedExpenses]
+  );
+  const expandedExpenseMarkupUnknownCount = useMemo(
+    () => expandedExpenses.filter((e: any) => e.markupUnknown).length,
+    [expandedExpenses]
+  );
 
   const fmt = (n: number) => n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -851,12 +892,20 @@ export default function Profitability() {
                 }}
               >
                 <span style={{ fontSize: '10px', opacity: 0.8 }}>{expenseMarkupExpanded ? '▼' : '▶'}</span>
-                Expense Markup — ${fmt(expandedExpenses.reduce((s, e) => s + e.profit, 0))}
+                Expense Markup — ${fmt(expandedExpenseMarkupKnownTotal)}
+                {expandedExpenseMarkupUnknownCount > 0 ? (
+                  <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: '8px', fontSize: '12px' }}>
+                    ({expandedExpenseMarkupUnknownCount} line{expandedExpenseMarkupUnknownCount !== 1 ? 's' : ''} need
+                    Actual Cost)
+                  </span>
+                ) : null}
               </button>
               {expenseMarkupExpanded && (
                 <div style={{ marginTop: '12px' }}>
                   {expandedExpenses.length === 0 ? (
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No expenses with markup (items where we charged more than we paid)</p>
+                    <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
+                      No billout expenses on this project, or no markup where company cost is known.
+                    </p>
                   ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
@@ -879,12 +928,35 @@ export default function Profitability() {
                             <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{exp.quantity}</td>
                             <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.rate)}</td>
                             <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.total)}</td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e91e63' }}>${fmt(exp.cost)}</td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: exp.profit >= 0 ? '#4caf50' : '#e53935' }}>${fmt(exp.profit)}</td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e91e63' }}>
+                              {exp.markupUnknown ? (
+                                <span title="Enter what the company paid in Actual Cost ($) on the service ticket expense">
+                                  ${fmt(exp.cost)}*
+                                </span>
+                              ) : (
+                                `$${fmt(exp.cost)}`
+                              )}
+                            </td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: exp.profit >= 0 ? '#4caf50' : '#e53935' }}>
+                              {exp.markupUnknown ? (
+                                <span style={{ color: 'var(--text-tertiary)' }} title="Markup = billed total − company cost">
+                                  —
+                                </span>
+                              ) : (
+                                `$${fmt(exp.profit)}`
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  )}
+                  {expandedExpenseMarkupUnknownCount > 0 && (
+                    <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '10px', marginBottom: 0 }}>
+                      * Markup is billed total minus <strong>Actual Cost ($)</strong> on the service ticket — not the billed
+                      total alone. Enter your vendor/COGS amount there; top-line profit still includes the full customer
+                      billout and $0 cost until you do.
+                    </p>
                   )}
                 </div>
               )}
