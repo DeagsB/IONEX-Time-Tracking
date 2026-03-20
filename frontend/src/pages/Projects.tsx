@@ -25,6 +25,7 @@ export default function Projects() {
     description: '',
     customer_id: '',
     status: 'active',
+    is_completed: false,
     color: '#4ecdc4',
     location: '',
     approver: '',
@@ -192,6 +193,7 @@ export default function Projects() {
         description: data.description || null,
         customer_id: data.customer_id || null,
         status: data.status,
+        is_completed: !!data.is_completed,
         color: data.color || '#4ecdc4',
         location: data.location || null,
         approver: data.approver?.trim() || null,
@@ -226,6 +228,7 @@ export default function Projects() {
       if (data.description !== undefined) projectData.description = data.description || null;
       if (data.customer_id !== undefined) projectData.customer_id = data.customer_id || null;
       if (data.status !== undefined) projectData.status = data.status;
+      if (data.is_completed !== undefined) projectData.is_completed = !!data.is_completed;
       if (data.color !== undefined) projectData.color = data.color;
       if (data.location !== undefined) projectData.location = data.location || null;
       if (data.approver !== undefined || data.poAfe !== undefined || data.cc !== undefined) {
@@ -260,6 +263,15 @@ export default function Projects() {
     },
   });
 
+  const setCompletedMutation = useMutation({
+    mutationFn: async ({ id, is_completed }: { id: string; is_completed: boolean }) => {
+      return await projectsService.update(id, { is_completed });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
   const createCustomerMutation = useMutation({
     mutationFn: async (data: any) => {
       return await customersService.create({
@@ -286,6 +298,7 @@ export default function Projects() {
       description: '',
       customer_id: '',
       status: 'active',
+      is_completed: false,
       color: '#4ecdc4',
       location: '',
       approver: '',
@@ -309,6 +322,7 @@ export default function Projects() {
       description: project.description || '',
       customer_id: project.customer_id || '',
       status: project.status || 'active',
+      is_completed: project.is_completed === true,
       color: project.color || '#4ecdc4',
       location: project.location || '',
       approver: project.approver || '',
@@ -342,6 +356,16 @@ export default function Projects() {
 
   const handleReactivate = (id: string) => {
     setActiveMutation.mutate({ id, active: true });
+  };
+
+  const handleToggleCompleted = (project: any) => {
+    const next = !project.is_completed;
+    const msg = next
+      ? 'Mark this project as closed? It will appear muted on the Profitability page.'
+      : 'Reopen this project? It will show normally on Profitability again.';
+    if (window.confirm(msg)) {
+      setCompletedMutation.mutate({ id: project.id, is_completed: next });
+    }
   };
 
   return (
@@ -529,6 +553,23 @@ export default function Projects() {
                 <option value="on-hold">On Hold</option>
                 <option value="cancelled">Cancelled</option>
               </select>
+            </div>
+
+            <div className="form-group">
+              <label className="label" style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={formData.is_completed}
+                  onChange={(e) => setFormData({ ...formData, is_completed: e.target.checked })}
+                  style={{ marginTop: '3px', width: '18px', height: '18px', accentColor: '#64748b', flexShrink: 0 }}
+                />
+                <span>
+                  <strong>Project closed</strong>
+                  <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 'normal', marginTop: '4px' }}>
+                    Shows muted on the Profitability page (informational only; does not hide the project).
+                  </span>
+                </span>
+              </label>
             </div>
 
             <div className="form-group">
@@ -908,6 +949,23 @@ export default function Projects() {
             </div>
 
             <div className="form-group">
+              <label className="label" style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={formData.is_completed}
+                  onChange={(e) => setFormData({ ...formData, is_completed: e.target.checked })}
+                  style={{ marginTop: '3px', width: '18px', height: '18px', accentColor: '#64748b', flexShrink: 0 }}
+                />
+                <span>
+                  <strong>Project closed</strong>
+                  <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 'normal', marginTop: '4px' }}>
+                    Shows muted on the Profitability page (informational only; does not hide the project).
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div className="form-group">
               <label className="label">Project Color</label>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <input
@@ -1113,15 +1171,26 @@ export default function Projects() {
             )}
             {sortedProjects.map((project: any) => {
               const missingProjectNumber = isAdmin && (!project.project_number || String(project.project_number).trim() === '');
-              const rowBg = missingProjectNumber ? 'rgba(16, 185, 129, 0.08)' : 'transparent';
-              const rowHoverBg = missingProjectNumber ? 'rgba(16, 185, 129, 0.12)' : 'var(--hover-bg)';
+              const isClosed = project.is_completed === true;
+              const rowBg = missingProjectNumber
+                ? 'rgba(16, 185, 129, 0.08)'
+                : isClosed
+                  ? 'rgba(148, 163, 184, 0.07)'
+                  : 'transparent';
+              const rowHoverBg = missingProjectNumber
+                ? 'rgba(16, 185, 129, 0.12)'
+                : isClosed
+                  ? 'rgba(148, 163, 184, 0.12)'
+                  : 'var(--hover-bg)';
+              const rowBorderLeft = missingProjectNumber ? '4px solid #10b981' : isClosed ? '3px solid #94a3b8' : undefined;
               return (
               <tr
                 key={project.id}
                 style={{
-                  borderLeft: missingProjectNumber ? '4px solid #10b981' : undefined,
+                  borderLeft: rowBorderLeft,
                   transition: 'background-color 0.2s',
                   backgroundColor: rowBg,
+                  opacity: isClosed && !missingProjectNumber ? 0.92 : 1,
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = rowHoverBg;
@@ -1167,19 +1236,49 @@ export default function Projects() {
                   </div>
                 </td>
                 <td>{project.customer?.name || '-'}</td>
-                <td>{project.status}</td>
+                <td>
+                  <span>{project.status}</span>
+                  {isClosed ? (
+                    <span
+                      style={{
+                        marginLeft: '8px',
+                        fontSize: '10px',
+                        fontWeight: '700',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                        color: 'var(--text-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        padding: '2px 6px',
+                        verticalAlign: 'middle',
+                      }}
+                    >
+                      Closed
+                    </span>
+                  ) : null}
+                </td>
                 <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                   {formatHours(projectHours[project.id] || 0)}
                 </td>
                 <td style={{ textAlign: 'right' }}>
                   {user && (
-                    <>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', justifyContent: 'flex-end' }}>
                       <button
                         className="button button-secondary"
-                        style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
+                        style={{ padding: '5px 10px', fontSize: '12px' }}
                         onClick={() => handleEdit(project)}
                       >
                         Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleToggleCompleted(project)}
+                        disabled={setCompletedMutation.isPending}
+                        title={isClosed ? 'Show as active on Profitability' : 'Mute on Profitability (project stays visible)'}
+                      >
+                        {isClosed ? 'Reopen' : 'Mark closed'}
                       </button>
                       {isAdmin && (
                         <button
@@ -1191,7 +1290,7 @@ export default function Projects() {
                           Mark inactive
                         </button>
                       )}
-                    </>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -1218,7 +1317,9 @@ export default function Projects() {
               </tr>
             </thead>
             <tbody>
-              {sortedInactiveProjects.map((project: any) => (
+              {sortedInactiveProjects.map((project: any) => {
+                const inClosed = project.is_completed === true;
+                return (
                 <tr key={project.id} style={{ opacity: 0.85 }}>
                   <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{project.project_number || '-'}</td>
                   <td>
@@ -1237,28 +1338,59 @@ export default function Projects() {
                     </div>
                   </td>
                   <td>{project.customer?.name || '-'}</td>
-                  <td>{project.status}</td>
+                  <td>
+                    <span>{project.status}</span>
+                    {inClosed ? (
+                      <span
+                        style={{
+                          marginLeft: '8px',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          color: 'var(--text-tertiary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '4px',
+                          padding: '2px 6px',
+                          verticalAlign: 'middle',
+                        }}
+                      >
+                        Closed
+                      </span>
+                    ) : null}
+                  </td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                     {formatHours(projectHours[project.id] || 0)}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <button
-                      className="button button-secondary"
-                      style={{ marginRight: '5px', padding: '5px 10px', fontSize: '12px' }}
-                      onClick={() => handleEdit(project)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="button button-primary"
-                      style={{ padding: '5px 10px', fontSize: '12px' }}
-                      onClick={() => handleReactivate(project.id)}
-                    >
-                      Reactivate
-                    </button>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', justifyContent: 'flex-end' }}>
+                      <button
+                        className="button button-secondary"
+                        style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleEdit(project)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleToggleCompleted(project)}
+                        disabled={setCompletedMutation.isPending}
+                      >
+                        {inClosed ? 'Reopen' : 'Mark closed'}
+                      </button>
+                      <button
+                        className="button button-primary"
+                        style={{ padding: '5px 10px', fontSize: '12px' }}
+                        onClick={() => handleReactivate(project.id)}
+                      >
+                        Reactivate
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>

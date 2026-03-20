@@ -17,6 +17,8 @@ interface ProjectFinancials {
   name: string;
   customerName: string;
   color: string;
+  /** Closed on Projects page; row is muted on this screen */
+  isCompleted: boolean;
   budget: number | null;
   revenue: number;
   /** Labor-only revenue (service ticket total_amount), before expense billouts */
@@ -252,6 +254,7 @@ export default function Profitability() {
         name: p.name || '',
         customerName: p.customer?.name || 'No Customer',
         color: p.color || '#4ecdc4',
+        isCompleted: p.is_completed === true,
         budget: p.budget != null && Number(p.budget) > 0 ? Number(p.budget) : null,
         revenue,
         laborRevenuePreGst,
@@ -281,6 +284,7 @@ export default function Profitability() {
       );
     }
     list.sort((a, b) => {
+      if (a.isCompleted !== b.isCompleted) return (a.isCompleted ? 1 : 0) - (b.isCompleted ? 1 : 0);
       let cmp = 0;
       if (sortBy === 'project_number') {
         const numA = parseInt(a.projectNumber, 10);
@@ -628,6 +632,10 @@ export default function Profitability() {
               const isExpanded = expandedProjectId === p.projectId;
               const budgetPct = p.budget ? Math.min((p.revenue / p.budget) * 100, 100) : null;
               const overBudget = p.budget ? p.revenue > p.budget : false;
+              const closedRow = p.isCompleted;
+              const idleBg = closedRow ? 'rgba(148, 163, 184, 0.08)' : 'transparent';
+              const hoverBg = closedRow ? 'rgba(148, 163, 184, 0.14)' : 'var(--bg-secondary)';
+              const expandedBg = closedRow ? 'rgba(148, 163, 184, 0.12)' : 'var(--bg-secondary)';
 
               return (
                 <tr
@@ -636,11 +644,13 @@ export default function Profitability() {
                   style={{
                     borderBottom: '1px solid var(--border-color)',
                     cursor: 'pointer',
-                    backgroundColor: isExpanded ? 'var(--bg-secondary)' : 'transparent',
-                    transition: 'background-color 0.15s',
+                    backgroundColor: isExpanded ? expandedBg : idleBg,
+                    transition: 'background-color 0.15s, opacity 0.15s, filter 0.15s',
+                    opacity: closedRow ? 0.78 : 1,
+                    filter: closedRow ? 'grayscale(0.42)' : undefined,
                   }}
-                  onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; }}
-                  onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = hoverBg; }}
+                  onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = idleBg; }}
                 >
                   <td style={{ ...tdStyle, display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div
@@ -650,11 +660,42 @@ export default function Profitability() {
                         borderRadius: '50%',
                         backgroundColor: p.color,
                         flexShrink: 0,
+                        opacity: closedRow ? 0.65 : 1,
                       }}
                     />
-                    <div>
-                      <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text-primary)' }}>
-                        {p.projectNumber ? `${p.projectNumber} - ` : ''}{p.name}
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: '600',
+                          fontSize: '13px',
+                          color: closedRow ? 'var(--text-secondary)' : 'var(--text-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <span>
+                          {p.projectNumber ? `${p.projectNumber} - ` : ''}
+                          {p.name}
+                        </span>
+                        {closedRow ? (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: '700',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                              color: 'var(--text-tertiary)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              flexShrink: 0,
+                            }}
+                          >
+                            Closed
+                          </span>
+                        ) : null}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{p.customerName}</div>
                     </div>
@@ -804,6 +845,22 @@ export default function Profitability() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px' }}>
               <div>
+                {expandedProject.isCompleted ? (
+                  <div
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      color: 'var(--text-secondary)',
+                      marginBottom: '10px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(148, 163, 184, 0.15)',
+                      border: '1px solid var(--border-color)',
+                    }}
+                  >
+                    Marked closed on the Projects page — totals are unchanged; this is visual only.
+                  </div>
+                ) : null}
                 <h2 style={{ margin: 0, fontSize: '22px', color: 'var(--text-primary)' }}>
                   <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: expandedProject.color, marginRight: '10px', verticalAlign: 'middle' }} />
                   {expandedProject.projectNumber ? `${expandedProject.projectNumber} - ` : ''}{expandedProject.name}
