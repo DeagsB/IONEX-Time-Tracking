@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -63,6 +64,13 @@ const PDF_EXPORT_RATE_ORDER = [
   'Shop Overtime',
   'Field Overtime',
 ] as const;
+
+function serviceTicketEditHref(recordId: string) {
+  const p = new URLSearchParams();
+  p.set('openRecord', recordId);
+  p.set('tab', 'approved');
+  return `/service-tickets?${p.toString()}`;
+}
 
 /** Merge saved per-entry overrides into time-entry rows (same idea as Service Tickets panel). */
 function mergePdfEntryOverridesIntoRows(
@@ -2582,19 +2590,27 @@ export default function Invoices() {
                         ))}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
-                        {groupTickets.map((t) => (
-                          <span
-                            key={t.id}
-                            style={{
-                              padding: '4px 10px',
-                              backgroundColor: 'var(--bg-tertiary)',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                            }}
-                          >
-                            {t.ticketNumber} – {t.userName} ({t.totalHours}h)
-                          </span>
-                        ))}
+                        {groupTickets.map((t) => {
+                          const rid =
+                            (t as ServiceTicket & { recordId?: string }).recordId?.trim() || t.id;
+                          return (
+                            <Link
+                              key={t.id}
+                              to={serviceTicketEditHref(rid)}
+                              style={{
+                                padding: '4px 10px',
+                                backgroundColor: 'var(--bg-tertiary)',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                color: 'inherit',
+                                textDecoration: 'none',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {t.ticketNumber} – {t.userName} ({t.totalHours}h)
+                            </Link>
+                          );
+                        })}
                       </div>
                     </>
                   )}
@@ -2913,19 +2929,27 @@ export default function Invoices() {
                   ))}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {groupTickets.map((t) => (
-                    <span
-                      key={t.id}
-                      style={{
-                        padding: '4px 10px',
-                        backgroundColor: 'var(--bg-tertiary)',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                      }}
-                    >
-                      {t.ticketNumber} – {t.userName} ({t.totalHours}h)
-                    </span>
-                  ))}
+                  {groupTickets.map((t) => {
+                    const rid =
+                      (t as ServiceTicket & { recordId?: string }).recordId?.trim() || t.id;
+                    return (
+                      <Link
+                        key={t.id}
+                        to={serviceTicketEditHref(rid)}
+                        style={{
+                          padding: '4px 10px',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          color: 'inherit',
+                          textDecoration: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t.ticketNumber} – {t.userName} ({t.totalHours}h)
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             );

@@ -298,18 +298,54 @@ export default function ServiceTickets() {
     queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
   }, [queryClient]);
 
-  // Dashboard action items: open Employee Overview and switch tab from URL params
+  /** Deep link from Invoices (and dashboard): consume query params without wiping unrelated keys */
+  const PENDING_OPEN_RECORD_KEY = 'ionex_st_pending_open_record';
   useEffect(() => {
     const overview = searchParams.get('overview');
     const tab = searchParams.get('tab');
+    const openRecord = searchParams.get('openRecord');
+    let shouldStrip = false;
+
     if (overview === 'open') {
       setShowEmployeeOverview(true);
+      shouldStrip = true;
     }
     if (tab === 'submitted') {
       setActiveTab('submitted');
+      shouldStrip = true;
+    } else if (tab === 'approved') {
+      setActiveTab('approved');
+      shouldStrip = true;
+    } else if (tab === 'draft') {
+      setActiveTab('draft');
+      shouldStrip = true;
+    } else if (tab === 'all') {
+      setActiveTab('all');
+      shouldStrip = true;
     }
-    if (overview || tab) {
-      setSearchParams({}, { replace: true });
+
+    const trimmedOpen = openRecord?.trim();
+    if (trimmedOpen) {
+      try {
+        sessionStorage.setItem(PENDING_OPEN_RECORD_KEY, trimmedOpen);
+      } catch {
+        /* ignore quota / private mode */
+      }
+      if (!tab) setActiveTab('approved');
+      shouldStrip = true;
+    }
+
+    if (shouldStrip) {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          if (overview) n.delete('overview');
+          if (tab) n.delete('tab');
+          if (trimmedOpen) n.delete('openRecord');
+          return n;
+        },
+        { replace: true }
+      );
     }
   }, [searchParams, setSearchParams]);
 
@@ -3238,6 +3274,40 @@ export default function ServiceTickets() {
       setEditedEntryOverrides({});
     }
   };
+
+  const openTicketPanelRef = useRef(openTicketPanel);
+  openTicketPanelRef.current = openTicketPanel;
+
+  useEffect(() => {
+    if (existingTickets === undefined) return;
+    let pending: string | null = null;
+    try {
+      pending = sessionStorage.getItem(PENDING_OPEN_RECORD_KEY);
+    } catch {
+      return;
+    }
+    if (!pending) return;
+
+    const found = tickets.find(
+      (t: ServiceTicket & { _matchedRecordId?: string }) =>
+        t.id === pending || t._matchedRecordId === pending
+    );
+    if (!found) {
+      try {
+        sessionStorage.removeItem(PENDING_OPEN_RECORD_KEY);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+
+    try {
+      sessionStorage.removeItem(PENDING_OPEN_RECORD_KEY);
+    } catch {
+      /* ignore */
+    }
+    void openTicketPanelRef.current(found);
+  }, [tickets, existingTickets]);
 
   return (
     <div>
