@@ -617,6 +617,17 @@ function getInvoicePdfFilename(
   return `${approver}_${projectNum}_${dateRange}.pdf`;
 }
 
+/**
+ * Filename for merged download (QuickBooks invoice + service ticket PDFs).
+ * Differs from the standalone invoice name so saving to the same folder does not create " (1)" duplicates.
+ */
+function mergedInvoiceBatchDownloadFilename(sourceInvoiceName: string | null | undefined): string {
+  let stem = invoiceFilenameForDownload(sourceInvoiceName);
+  stem = stem.replace(/\.pdf$/i, '').trim();
+  if (!stem) stem = 'invoice';
+  return `${stem} - with service tickets.pdf`;
+}
+
 /** Single line for non-CNRL period groups (no PO/AFE breakdown); poAfe empty so "PO/AFE/CC:" is not shown */
 function buildSingleLineBreakdown(
   tickets: (ServiceTicket & { recordId?: string })[],
@@ -1629,14 +1640,16 @@ export default function Invoices() {
     const invoiceFile = fileOverride ?? invoiceFilesByGroupId[groupId];
     const saved = savedInvoiceMetadata?.[groupId];
     let invoiceBlob: Blob;
-    let downloadFilename: string;
+    let sourceInvoiceName: string;
     if (invoiceFile) {
       invoiceBlob = invoiceFile;
-      downloadFilename = invoiceFilenameForDownload(invoiceFile.name || 'invoice.pdf');
+      sourceInvoiceName = invoiceFile.name || 'invoice.pdf';
     } else if (saved?.storagePath) {
       invoiceBlob = await invoicedBatchInvoicesService.downloadInvoice(saved.storagePath);
-      downloadFilename = invoiceFilenameForDownload(saved.filename || 'invoice.pdf');
+      sourceInvoiceName = saved.filename || 'invoice.pdf';
     } else return;
+
+    const downloadFilename = mergedInvoiceBatchDownloadFilename(sourceInvoiceName);
 
     const { tickets: groupTickets } = group;
     setDownloadingWithInvoiceGroupId(groupId);
