@@ -36,6 +36,218 @@ function formatDateOnlyLocal(dateStr: string): string {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** DB fields needed to rebuild service rows the same way as the ticket panel (list/search preview). */
+type TicketRecordForRowPreview = {
+  edited_descriptions?: Record<string, string[]> | null;
+  edited_hours?: Record<string, number | number[]> | null;
+  edited_entry_overrides?: Record<
+    string,
+    { description: string; st: number; tt: number; ft: number; so: number; fo: number }
+  > | null;
+  is_edited?: boolean | null;
+  ticket_number?: string | null;
+  workflow_status?: string | null;
+};
+
+type PreviewServiceRow = {
+  id: string;
+  description: string;
+  st: number;
+  tt: number;
+  ft: number;
+  so: number;
+  fo: number;
+};
+
+const PREVIEW_RATE_TYPES = ['Shop Time', 'Travel Time', 'Field Time', 'Shop Overtime', 'Field Overtime'] as const;
+
+function entriesToPreviewRows(entries: ServiceTicket['entries']): PreviewServiceRow[] {
+  return entries.map((entry, index) => {
+    const rateType = entry.rate_type || 'Shop Time';
+    const hours = Number(entry.hours) || 0;
+    return {
+      id: entry.id || `entry-${index}`,
+      description: entry.description || '',
+      st: rateType === 'Shop Time' ? hours : 0,
+      tt: rateType === 'Travel Time' ? hours : 0,
+      ft: rateType === 'Field Time' ? hours : 0,
+      so: rateType === 'Shop Overtime' ? hours : 0,
+      fo: rateType === 'Field Overtime' ? hours : 0,
+    };
+  });
+}
+
+function buildPreviewRowsWithOverrides(
+  entries: ServiceTicket['entries'],
+  overrides: Record<string, { description: string; st: number; tt: number; ft: number; so: number; fo: number }>
+): PreviewServiceRow[] {
+  const baseRows = entriesToPreviewRows(entries);
+  const merged = baseRows.map((row) => {
+    const ov = overrides[row.id];
+    if (ov) {
+      return { ...row, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo };
+    }
+    return row;
+  });
+  const existingIds = new Set(baseRows.map((r) => r.id));
+  Object.entries(overrides).forEach(([id, ov]) => {
+    if (!existingIds.has(id) && id.startsWith('new-')) {
+      merged.push({ id, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo });
+    }
+  });
+  return merged;
+}
+
+/**
+ * Rebuild service rows from DB snapshot — mirrors openTicketPanel logic so list description matches the modal.
+ */
+function reconstructPreviewRowsFromTicketRecord(
+  entries: ServiceTicket['entries'],
+  rec: TicketRecordForRowPreview | null | undefined
+): PreviewServiceRow[] {
+  if (!rec) {
+    return entriesToPreviewRows(entries);
+  }
+
+  const isFrozen =
+    !!rec.ticket_number ||
+    (!!rec.workflow_status && rec.workflow_status !== 'draft' && rec.workflow_status !== 'rejected');
+
+  const savedOverrides = rec.edited_entry_overrides ?? {};
+  const ticketEntryIds = new Set(entries.map((e) => e.id));
+  const relevantOverrides: Record<string, (typeof savedOverrides)[string]> = {};
+  Object.entries(savedOverrides).forEach(([id, ov]) => {
+    if (ticketEntryIds.has(id) || id.startsWith('new-')) {
+      relevantOverrides[id] = ov;
+    }
+  });
+  const hasPerEntryOverrides = Object.keys(relevantOverrides).length > 0;
+  const hasApprovedTicketNumber = !!rec.ticket_number;
+
+  if (hasPerEntryOverrides && !hasApprovedTicketNumber) {
+    return buildPreviewRowsWithOverrides(entries, relevantOverrides);
+  }
+
+  const loadedDescriptions = rec.edited_descriptions || {};
+  const loadedHours = rec.edited_hours || {};
+  const hasLegacyData =
+    Object.keys(loadedDescriptions).length > 0 || Object.keys(loadedHours).length > 0;
+  const shouldUseSnapshot = hasLegacyData && (!!rec.is_edited || isFrozen);
+
+  if (!shouldUseSnapshot) {
+    return entriesToPreviewRows(entries);
+  }
+
+  const loadedRows: PreviewServiceRow[] = [];
+  if (entries.length > 0 && Object.keys(loadedDescriptions).length > 0) {
+    const descQueues: Record<string, string[]> = {};
+    const hoursQueues: Record<string, number[]> = {};
+    for (const rt of PREVIEW_RATE_TYPES) {
+      const descs = loadedDescriptions[rt] || [];
+      const hrs = loadedHours[rt];
+      descQueues[rt] = [...descs];
+      hoursQueues[rt] = Array.isArray(hrs) ? [...hrs] : hrs !== undefined ? [hrs as number] : [];
+    }
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const rateType = (entry.rate_type || 'Shop Time') as string;
+      const desc = descQueues[rateType]?.shift() ?? '';
+      const hours = hoursQueues[rateType]?.shift() ?? 0;
+      const id = entry.id || `entry-${i}`;
+      loadedRows.push({
+        id,
+        description: desc,
+        st: rateType === 'Shop Time' ? hours : 0,
+        tt: rateType === 'Travel Time' ? hours : 0,
+        ft: rateType === 'Field Time' ? hours : 0,
+        so: rateType === 'Shop Overtime' ? hours : 0,
+        fo: rateType === 'Field Overtime' ? hours : 0,
+      });
+    }
+    for (const rt of PREVIEW_RATE_TYPES) {
+      const descs = descQueues[rt];
+      const hrs = hoursQueues[rt];
+      if (descs && hrs) {
+        for (let j = 0; j < descs.length; j++) {
+          const hours = hrs[j] ?? 0;
+          loadedRows.push({
+            id: `legacy-${rt}-${j}`,
+            description: descs[j] ?? '',
+            st: rt === 'Shop Time' ? hours : 0,
+            tt: rt === 'Travel Time' ? hours : 0,
+            ft: rt === 'Field Time' ? hours : 0,
+            so: rt === 'Shop Overtime' ? hours : 0,
+            fo: rt === 'Field Overtime' ? hours : 0,
+          });
+        }
+      }
+    }
+  } else if (Object.keys(loadedDescriptions).length > 0) {
+    let rowIndex = 0;
+    Object.keys(loadedDescriptions).forEach((rateType) => {
+      const descs = loadedDescriptions[rateType] || [];
+      const hrs = loadedHours[rateType];
+      const hoursArray = Array.isArray(hrs) ? hrs : hrs !== undefined ? [hrs as number] : [];
+      descs.forEach((desc, i) => {
+        const hours = hoursArray[i] || 0;
+        loadedRows.push({
+          id: `legacy-${rowIndex++}`,
+          description: desc,
+          st: rateType === 'Shop Time' ? hours : 0,
+          tt: rateType === 'Travel Time' ? hours : 0,
+          ft: rateType === 'Field Time' ? hours : 0,
+          so: rateType === 'Shop Overtime' ? hours : 0,
+          fo: rateType === 'Field Overtime' ? hours : 0,
+        });
+      });
+    });
+  } else if (Object.keys(loadedHours).length > 0) {
+    let rowIndex = 0;
+    Object.keys(loadedHours).forEach((rateType) => {
+      const hrs = loadedHours[rateType];
+      const hoursArray = Array.isArray(hrs) ? hrs : hrs !== undefined ? [hrs as number] : [];
+      hoursArray.forEach((hours) => {
+        if (hours > 0) {
+          loadedRows.push({
+            id: `legacy-${rateType}-${rowIndex++}`,
+            description: '',
+            st: rateType === 'Shop Time' ? hours : 0,
+            tt: rateType === 'Travel Time' ? hours : 0,
+            ft: rateType === 'Field Time' ? hours : 0,
+            so: rateType === 'Shop Overtime' ? hours : 0,
+            fo: rateType === 'Field Overtime' ? hours : 0,
+          });
+        }
+      });
+    });
+  }
+
+  return loadedRows.length > 0 ? loadedRows : entriesToPreviewRows(entries);
+}
+
+function firstNonEmptyDescriptionFromPreviewRows(rows: PreviewServiceRow[]): string {
+  for (const r of rows) {
+    const s = (r.description || '').trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+/** First line of work description for lists — uses saved ticket data when present. */
+function listPreviewWorkDescription(
+  ticket: ServiceTicket,
+  record: TicketRecordForRowPreview | null | undefined
+): string {
+  const rows = reconstructPreviewRowsFromTicketRecord(ticket.entries || [], record);
+  const fromSaved = firstNonEmptyDescriptionFromPreviewRows(rows);
+  if (fromSaved) return fromSaved;
+  return (
+    (ticket.entries || [])
+      .map((e) => e.description?.trim())
+      .filter(Boolean)[0] || ''
+  );
+}
+
 export default function ServiceTickets() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -1444,7 +1656,7 @@ export default function ServiceTickets() {
       let query = supabase
         .from(tableName)
         .select(`
-          id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
+          id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
           approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
         `)
         .gte('date', startDate)
@@ -1457,7 +1669,7 @@ export default function ServiceTickets() {
         // If the join fails (column doesn't exist yet), try without the join
         let fallbackQuery = supabase
           .from(tableName)
-          .select('id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
+          .select('id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
           .gte('date', startDate)
           .lte('date', endDate);
         if (!isAdmin && user?.id) {
@@ -2099,7 +2311,9 @@ export default function ServiceTickets() {
         const project = ((t.projectName || '') + ' ' + (t.projectNumber || '')).toLowerCase();
         const employee = (t.userName || '').toLowerCase();
         const dateStr = formatDateOnlyLocal(t.date).toLowerCase();
-        const workDesc = (t.entries || []).map((e: any) => (e.description || '').toLowerCase()).join(' ');
+        const rec = findMatchingTicketRecord(t);
+        const previewRows = reconstructPreviewRowsFromTicketRecord(t.entries || [], rec as TicketRecordForRowPreview);
+        const workDesc = previewRows.map((r) => (r.description || '').toLowerCase()).join(' ');
         return ticketId.includes(term) || customer.includes(term) || project.includes(term) || employee.includes(term) || dateStr.includes(term) || workDesc.includes(term);
       });
     }
@@ -3367,9 +3581,7 @@ export default function ServiceTickets() {
                                             const existing = findMatchingTicketRecord(t);
                                             const wfStatus = existing?.workflow_status || 'draft';
                                             const isRejected = wfStatus === 'rejected';
-                                            const workDesc = (t.entries || [])
-                                              .map((e: any) => e.description?.trim())
-                                              .filter(Boolean)[0] || '';
+                                            const workDesc = listPreviewWorkDescription(t, existing as TicketRecordForRowPreview);
                                             const displayDesc = workDesc.length > 80 ? workDesc.slice(0, 77) + '…' : workDesc;
                                             return (
                                               <div
