@@ -2530,11 +2530,28 @@ function sanitizeStoragePathSegment(s: string): string {
   return s.replace(/[/\\?*:|"]/g, '_').slice(0, 200);
 }
 
+/** Strip browser/OS duplicate suffixes e.g. "Invoice 1647 (1).pdf" → "Invoice 1647.pdf" */
+function stripInvoiceUploadDuplicateSuffix(filename: string): string {
+  const trimmed = filename.trim() || 'invoice.pdf';
+  const lastDot = trimmed.lastIndexOf('.');
+  if (lastDot <= 0) {
+    return trimmed.replace(/\s+\(\d+\)$/u, '');
+  }
+  const base = trimmed.slice(0, lastDot);
+  const ext = trimmed.slice(lastDot);
+  let cleaned = base;
+  while (/\s+\(\d+\)$/u.test(cleaned)) {
+    cleaned = cleaned.replace(/\s+\(\d+\)$/u, '');
+  }
+  return (cleaned || 'invoice') + ext;
+}
+
 export const invoicedBatchInvoicesService = {
   async uploadInvoice(groupId: string, file: File): Promise<{ storagePath: string; filename: string }> {
     const safeId = sanitizeStoragePathSegment(groupId);
     const timestamp = Date.now();
-    const safeName = sanitizeStoragePathSegment(file.name || 'invoice.pdf');
+    const logicalName = stripInvoiceUploadDuplicateSuffix(file.name || 'invoice.pdf');
+    const safeName = sanitizeStoragePathSegment(logicalName);
     const storagePath = `${safeId}/${timestamp}_${safeName}`;
 
     const { error: uploadError } = await supabase.storage
@@ -2548,7 +2565,7 @@ export const invoicedBatchInvoicesService = {
       .upsert(
         {
           group_id: groupId,
-          invoice_filename: file.name || 'invoice.pdf',
+          invoice_filename: logicalName,
           storage_path: storagePath,
           updated_at: new Date().toISOString(),
         },
@@ -2556,7 +2573,7 @@ export const invoicedBatchInvoicesService = {
       );
 
     if (upsertError) throw upsertError;
-    return { storagePath, filename: file.name || 'invoice.pdf' };
+    return { storagePath, filename: logicalName };
   },
 
   async getAllInvoicedGroupIds(): Promise<string[]> {

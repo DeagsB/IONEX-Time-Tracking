@@ -247,9 +247,10 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
   return parts.join(', ');
 }
 
-/** Single PO/AFE breakdown line with copy button (excludes total from copy) */
+/** Single PO/AFE breakdown line — click row to copy PO/AFE + ticket list (total not copied) */
 function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: string; poAfe: string; totalAmount: number }) {
   const [copied, setCopied] = useState(false);
+  const [hover, setHover] = useState(false);
   const isNone = !poAfe || poAfe === '(none)' || poAfe === NO_PO_AFE_LABEL;
   const copyText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const displayText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
@@ -262,31 +263,53 @@ function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: st
       // ignore
     }
   };
+  const rowBackground = copied ? 'var(--bg-secondary)' : hover ? 'var(--bg-tertiary)' : 'transparent';
+  const rowOutline = hover || copied ? '1px solid var(--border-color)' : '1px solid transparent';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '13px' }}>
-      <span style={{ color: 'var(--text-primary)', flex: 1 }}>
-        {displayText}
-      </span>
-      <span style={{ fontWeight: 700, color: 'var(--primary-color)', fontSize: '14px', minWidth: '70px', textAlign: 'right' }}>
-        ${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </span>
-      <button
-        onClick={handleCopy}
-        title="Copy ticket list and PO/AFE/CC (excludes total)"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleCopy}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          void handleCopy();
+        }
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={copied ? 'Copied to clipboard' : 'Click anywhere on this row (including the amount) to copy PO/AFE and tickets (total not included)'}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '6px',
+        fontSize: '13px',
+        cursor: 'pointer',
+        borderRadius: '6px',
+        padding: '6px 10px',
+        marginLeft: '-10px',
+        marginRight: '-10px',
+        backgroundColor: rowBackground,
+        border: rowOutline,
+        transition: 'background-color 0.15s ease, border-color 0.15s ease',
+      }}
+    >
+      {/* pointer-events: none so clicks on the amount (and text) always hit the row and copy */}
+      <span style={{ color: 'var(--text-primary)', flex: 1, textAlign: 'left', pointerEvents: 'none' }}>{displayText}</span>
+      <span
         style={{
-          padding: '4px 8px',
-          backgroundColor: copied ? 'var(--primary-color)' : 'var(--bg-secondary)',
-          color: copied ? 'white' : 'var(--text-secondary)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '4px',
-          fontSize: '11px',
-          fontWeight: 600,
-          cursor: 'pointer',
-          flexShrink: 0,
+          fontWeight: 700,
+          color: 'var(--primary-color)',
+          fontSize: '14px',
+          minWidth: '70px',
+          textAlign: 'right',
+          pointerEvents: 'none',
+          userSelect: 'none',
         }}
       >
-        {copied ? 'Copied!' : 'Copy'}
-      </button>
+        ${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </span>
     </div>
   );
 }
@@ -2097,10 +2120,11 @@ export default function Invoices() {
                         setUploadingInvoiceGroupId(groupId);
                         setExportError(null);
                         try {
-                          await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
-                          setInvoiceFileForGroup(groupId, file);
+                          const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
+                          const fileForUi = new File([file], storedName, { type: file.type });
+                          setInvoiceFileForGroup(groupId, fileForUi);
                           await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                          await handleDownloadBatchWithInvoice(group, groupId, file);
+                          await handleDownloadBatchWithInvoice(group, groupId, fileForUi);
                         } catch (err) {
                           setExportError(err instanceof Error ? err.message : 'Upload failed');
                         } finally {
@@ -2129,10 +2153,11 @@ export default function Invoices() {
                           setUploadingInvoiceGroupId(groupId);
                           setExportError(null);
                           try {
-                            await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
-                            setInvoiceFileForGroup(groupId, file);
+                            const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
+                            const fileForUi = new File([file], storedName, { type: file.type });
+                            setInvoiceFileForGroup(groupId, fileForUi);
                             await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                            await handleDownloadBatchWithInvoice(group, groupId, file);
+                            await handleDownloadBatchWithInvoice(group, groupId, fileForUi);
                           } catch (err) {
                             setExportError(err instanceof Error ? err.message : 'Upload failed');
                           } finally {
