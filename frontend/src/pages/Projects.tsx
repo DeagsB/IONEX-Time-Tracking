@@ -204,7 +204,6 @@ export default function Projects() {
         ft_junior_rate: data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null,
         ft_senior_rate: data.ft_senior_rate ? parseFloat(data.ft_senior_rate) : null,
         travel_rate: data.travel_rate ? parseFloat(data.travel_rate) : null,
-        invoice_date_grouping: 'bi-weekly',
         is_demo: isDemoMode,
       };
       if (!user?.id) throw new Error('User not authenticated.');

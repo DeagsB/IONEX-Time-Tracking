@@ -299,19 +299,6 @@ export type DateRangeGrouping =
   | 'monthly'
   | 'project-completion';
 
-const DATE_RANGE_GROUPING_VALUES = new Set<DateRangeGrouping>([
-  'daily',
-  'weekly',
-  'bi-weekly',
-  'monthly',
-  'project-completion',
-]);
-
-function parseStoredInvoiceGrouping(v: unknown): DateRangeGrouping | undefined {
-  if (typeof v !== 'string' || !DATE_RANGE_GROUPING_VALUES.has(v as DateRangeGrouping)) return undefined;
-  return v as DateRangeGrouping;
-}
-
 /** CNRL invoice batches always use calendar periods; project-completion is not used on the CNRL path. */
 function cnrlPeriodGrouping(g: DateRangeGrouping): Exclude<DateRangeGrouping, 'project-completion'> {
   return g === 'project-completion' ? 'bi-weekly' : g;
@@ -557,6 +544,17 @@ export default function Invoices() {
     [dateRangeGroupingByCustomer, customers]
   );
 
+  /** Grouping for a ticket: session project override, else customer default (same as pre–invoice_date_grouping; keeps getGroupId stable vs marks from 398505f). */
+  const getGroupingForTicket = useCallback(
+    (customerId: string, projectId: string) => {
+      if (projectId && dateRangeGroupingByProject[projectId]) {
+        return dateRangeGroupingByProject[projectId];
+      }
+      return getGroupingForCustomer(customerId);
+    },
+    [dateRangeGroupingByProject, getGroupingForCustomer]
+  );
+
   const { data: employees } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeesService.getAll(),
@@ -566,24 +564,6 @@ export default function Invoices() {
     queryKey: ['projects'],
     queryFn: () => projectsService.getAll(),
   });
-
-  /** Grouping for a ticket: session project override → (non-CNRL only) DB invoice_date_grouping → customer default. CNRL never reads DB so batching matches pre–invoice_date_grouping behavior. */
-  const getGroupingForTicket = useCallback(
-    (customerId: string, projectId: string) => {
-      if (projectId && dateRangeGroupingByProject[projectId]) {
-        return dateRangeGroupingByProject[projectId];
-      }
-      const cust = customers?.find((c: { id: string; name?: string }) => c.id === customerId);
-      const isCnrlCustomer = (cust?.name ?? '').toUpperCase().includes('CNRL');
-      if (!isCnrlCustomer && projectId) {
-        const proj = projects?.find((p: { id: string; invoice_date_grouping?: string | null }) => p.id === projectId);
-        const fromDb = parseStoredInvoiceGrouping(proj?.invoice_date_grouping);
-        if (fromDb) return fromDb;
-      }
-      return getGroupingForCustomer(customerId);
-    },
-    [dateRangeGroupingByProject, getGroupingForCustomer, projects, customers]
-  );
 
   // Build full tickets from billable entries + approved records (same logic as ServiceTickets)
   // approvedRecords is already filtered by date range to match Service Tickets Approved tab
@@ -790,15 +770,6 @@ export default function Invoices() {
       .toUpperCase()
       .includes('CNRL');
   }, [selectedProjectId, projects, customers]);
-
-  const defaultGroupingForSelectedProject = useMemo((): DateRangeGrouping => {
-    if (!selectedProjectId) return 'monthly';
-    const proj = projects?.find((p: { id: string; customer_id?: string | null; invoice_date_grouping?: string | null }) => p.id === selectedProjectId);
-    const fromDb = parseStoredInvoiceGrouping(proj?.invoice_date_grouping);
-    if (fromDb) return fromDb;
-    const custId = selectedCustomerId || proj?.customer_id || '';
-    return getGroupingForCustomer(custId);
-  }, [selectedProjectId, projects, selectedCustomerId, getGroupingForCustomer]);
 
   const invoiceFilterProject = useMemo(() => {
     if (!selectedProjectId) return undefined;
@@ -1487,7 +1458,7 @@ export default function Invoices() {
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
         {isCNRL
           ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.'
-          : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, monthly, or one batch per project) for invoicing. New projects default to bi-weekly grouping on this page.'}
+          : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, monthly, or one batch per project) for invoicing.'}
       </p>
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
@@ -1600,7 +1571,7 @@ export default function Invoices() {
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by (project)</label>
             <select
-              value={dateRangeGroupingByProject[selectedProjectId] ?? defaultGroupingForSelectedProject}
+              value={dateRangeGroupingByProject[selectedProjectId] ?? getGroupingForCustomer(selectedCustomerId || '')}
               onChange={(e) => setDateRangeGroupingByProject((prev) => ({ ...prev, [selectedProjectId]: e.target.value as DateRangeGrouping }))}
               style={{
                 padding: '8px 12px',
