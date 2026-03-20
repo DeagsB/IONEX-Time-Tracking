@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import {
@@ -292,10 +292,36 @@ function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: st
 const MARKED_INVOICED_STORAGE_KEY = 'ionex-invoices-marked';
 const FROZEN_INVOICED_GROUPS_KEY = 'ionex-invoices-frozen-groups';
 
-export type DateRangeGrouping = 'daily' | 'weekly' | 'bi-weekly' | 'monthly';
+export type DateRangeGrouping =
+  | 'daily'
+  | 'weekly'
+  | 'bi-weekly'
+  | 'monthly'
+  | 'project-completion';
 
-/** Get period key for a ticket date for non-CNRL grouping (daily / weekly / bi-weekly / monthly) */
-function getPeriodKey(dateStr: string, grouping: DateRangeGrouping): string {
+const DATE_RANGE_GROUPING_VALUES = new Set<DateRangeGrouping>([
+  'daily',
+  'weekly',
+  'bi-weekly',
+  'monthly',
+  'project-completion',
+]);
+
+function parseStoredInvoiceGrouping(v: unknown): DateRangeGrouping | undefined {
+  if (typeof v !== 'string' || !DATE_RANGE_GROUPING_VALUES.has(v as DateRangeGrouping)) return undefined;
+  return v as DateRangeGrouping;
+}
+
+/** CNRL invoice batches always use calendar periods; project-completion is not used on the CNRL path. */
+function cnrlPeriodGrouping(g: DateRangeGrouping): Exclude<DateRangeGrouping, 'project-completion'> {
+  return g === 'project-completion' ? 'bi-weekly' : g;
+}
+
+/** Get period key for a ticket date for non-CNRL grouping (daily / weekly / bi-weekly / monthly / project-completion) */
+function getPeriodKey(dateStr: string, grouping: DateRangeGrouping, projectId?: string): string {
+  if (grouping === 'project-completion') {
+    return projectId ? `pc:${projectId}` : 'pc:unknown';
+  }
   const d = new Date(dateStr + 'T12:00:00');
   const y = d.getFullYear();
   const m = d.getMonth();
@@ -330,6 +356,7 @@ function toDdMmYyyy(d: Date): string {
 
 /** Human-readable label for a period key */
 function getPeriodLabel(periodKey: string, grouping: DateRangeGrouping): string {
+  if (grouping === 'project-completion') return 'Project completion';
   if (grouping === 'daily') return periodKey;
   if (grouping === 'monthly') {
     const [y, m] = periodKey.split('-');
@@ -530,17 +557,6 @@ export default function Invoices() {
     [dateRangeGroupingByCustomer, customers]
   );
 
-  /** Grouping for a ticket: if the project has a custom group-by, use it; else use customer grouping */
-  const getGroupingForTicket = useCallback(
-    (customerId: string, projectId: string) => {
-      if (projectId && dateRangeGroupingByProject[projectId]) {
-        return dateRangeGroupingByProject[projectId];
-      }
-      return getGroupingForCustomer(customerId);
-    },
-    [dateRangeGroupingByProject, getGroupingForCustomer]
-  );
-
   const { data: employees } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeesService.getAll(),
@@ -550,6 +566,24 @@ export default function Invoices() {
     queryKey: ['projects'],
     queryFn: () => projectsService.getAll(),
   });
+
+  /** Grouping for a ticket: session project override → (non-CNRL only) DB invoice_date_grouping → customer default. CNRL never reads DB so batching matches pre–invoice_date_grouping behavior. */
+  const getGroupingForTicket = useCallback(
+    (customerId: string, projectId: string) => {
+      if (projectId && dateRangeGroupingByProject[projectId]) {
+        return dateRangeGroupingByProject[projectId];
+      }
+      const cust = customers?.find((c: { id: string; name?: string }) => c.id === customerId);
+      const isCnrlCustomer = (cust?.name ?? '').toUpperCase().includes('CNRL');
+      if (!isCnrlCustomer && projectId) {
+        const proj = projects?.find((p: { id: string; invoice_date_grouping?: string | null }) => p.id === projectId);
+        const fromDb = parseStoredInvoiceGrouping(proj?.invoice_date_grouping);
+        if (fromDb) return fromDb;
+      }
+      return getGroupingForCustomer(customerId);
+    },
+    [dateRangeGroupingByProject, getGroupingForCustomer, projects, customers]
+  );
 
   // Build full tickets from billable entries + approved records (same logic as ServiceTickets)
   // approvedRecords is already filtered by date range to match Service Tickets Approved tab
@@ -747,6 +781,30 @@ export default function Invoices() {
     [customers]
   );
 
+  const projectFilterCustomerIsCnrl = useMemo(() => {
+    if (!selectedProjectId) return false;
+    const proj = projects?.find((p: { id: string; customer_id?: string | null }) => p.id === selectedProjectId);
+    const cid = proj?.customer_id;
+    if (!cid) return false;
+    return (customers?.find((c: { id: string; name?: string }) => c.id === cid)?.name ?? '')
+      .toUpperCase()
+      .includes('CNRL');
+  }, [selectedProjectId, projects, customers]);
+
+  const defaultGroupingForSelectedProject = useMemo((): DateRangeGrouping => {
+    if (!selectedProjectId) return 'monthly';
+    const proj = projects?.find((p: { id: string; customer_id?: string | null; invoice_date_grouping?: string | null }) => p.id === selectedProjectId);
+    const fromDb = parseStoredInvoiceGrouping(proj?.invoice_date_grouping);
+    if (fromDb) return fromDb;
+    const custId = selectedCustomerId || proj?.customer_id || '';
+    return getGroupingForCustomer(custId);
+  }, [selectedProjectId, projects, selectedCustomerId, getGroupingForCustomer]);
+
+  const invoiceFilterProject = useMemo(() => {
+    if (!selectedProjectId) return undefined;
+    return projects?.find((p: { id: string }) => p.id === selectedProjectId);
+  }, [selectedProjectId, projects]);
+
   // Group tickets: CNRL = by approver/PO/AFE etc.; non-CNRL = by project then date period (daily/weekly/bi-weekly/monthly)
   // When "All customers" is selected, split by customer: CNRL tickets use CNRL grouping, others use time-frame grouping
   const groupedTickets = useMemo((): { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] => {
@@ -795,8 +853,9 @@ export default function Invoices() {
         if (!keyObj.approverCode || keyObj.approverCode === '_') continue;
         const customerIdForGrouping = singleCustomer ? selectedCustomerId! : (t.customerId ?? '');
         const projectIdForGrouping = keyObj.projectId ?? (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? t.projectId ?? '';
-        const grouping = getGroupingForTicket(customerIdForGrouping, projectIdForGrouping);
-        const periodKey = getPeriodKey(t.date ?? '', grouping);
+        const groupingRaw = getGroupingForTicket(customerIdForGrouping, projectIdForGrouping);
+        const grouping = cnrlPeriodGrouping(groupingRaw);
+        const periodKey = getPeriodKey(t.date ?? '', grouping, projectIdForGrouping);
         const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}|${periodKey}`;
         const list = groups.get(groupKey) ?? [];
         list.push(ticket);
@@ -855,7 +914,8 @@ export default function Invoices() {
         const periodKeyFromKey = parts[2] ?? '';
         const customerIdForLabel = singleCustomer ? selectedCustomerId! : (first.customerId ?? '');
         const projectIdForLabel = first.recordProjectId ?? first.projectId ?? '';
-        const grouping = getGroupingForTicket(customerIdForLabel, projectIdForLabel);
+        const groupingRaw = getGroupingForTicket(customerIdForLabel, projectIdForLabel);
+        const grouping = cnrlPeriodGrouping(groupingRaw);
         const periodLabel = getPeriodLabel(periodKeyFromKey, grouping);
         const keyWithPeriod: InvoiceGroupKeyWithPeriod = {
           ...keyObj,
@@ -874,7 +934,7 @@ export default function Invoices() {
         const projectId = t.recordProjectId ?? t.projectId ?? '';
         const customerIdForGrouping = singleCustomer ? selectedCustomerId! : (t.customerId ?? '');
         const grouping = getGroupingForTicket(customerIdForGrouping, projectId);
-        const periodKey = getPeriodKey(t.date ?? '', grouping);
+        const periodKey = getPeriodKey(t.date ?? '', grouping, projectId);
         const groupKey = singleCustomer ? `${projectId}|${periodKey}` : `${t.customerId ?? ''}|${projectId}|${periodKey}`;
         const list = groupMap.get(groupKey) ?? [];
         list.push(ticket);
@@ -896,7 +956,11 @@ export default function Invoices() {
         const customerIdForLabel = singleCustomer ? selectedCustomerId : (parts[0] ?? '');
         const projectIdFromKey = singleCustomer ? parts[0]! : parts[1]!;
         const grouping = getGroupingForTicket(customerIdForLabel, projectIdFromKey);
-        const periodLabel = getPeriodLabel(periodKey, grouping);
+        let periodLabel = getPeriodLabel(periodKey, grouping);
+        if (grouping === 'project-completion') {
+          const lbl = [first.projectNumber, first.projectName].filter(Boolean).join(' – ');
+          periodLabel = lbl ? `Project batch: ${lbl}` : 'Project completion';
+        }
         const keyObj: InvoiceGroupKeyWithPeriod = {
           projectId: first.recordProjectId ?? first.projectId ?? projectIdFromKey,
           projectName: first.projectName,
@@ -1008,6 +1072,13 @@ export default function Invoices() {
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const markProjectCompletedMutation = useMutation({
+    mutationFn: (projectId: string) => projectsService.update(projectId, { status: 'completed' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
 
   type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[] };
   const [frozenInvoicedGroups, setFrozenInvoicedGroups] = useState<Record<string, FrozenGroupSnapshot>>(() => {
@@ -1416,7 +1487,7 @@ export default function Invoices() {
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
         {isCNRL
           ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets.'
-          : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, or monthly) for invoicing.'}
+          : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, monthly, or one batch per project) for invoicing. New projects default to bi-weekly grouping on this page.'}
       </p>
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
@@ -1469,6 +1540,39 @@ export default function Invoices() {
             ))}
           </select>
         </div>
+        {selectedProjectId && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (!invoiceFilterProject || invoiceFilterProject.status === 'completed') return;
+                if (!window.confirm('Mark this project as completed in Projects? You can change status again from the Projects page.')) return;
+                markProjectCompletedMutation.mutate(selectedProjectId);
+              }}
+              disabled={
+                !selectedProjectId ||
+                markProjectCompletedMutation.isPending ||
+                invoiceFilterProject?.status === 'completed'
+              }
+              style={{
+                padding: '8px 12px',
+                backgroundColor: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor:
+                  !selectedProjectId || markProjectCompletedMutation.isPending || invoiceFilterProject?.status === 'completed'
+                    ? 'not-allowed'
+                    : 'pointer',
+                opacity: invoiceFilterProject?.status === 'completed' ? 0.6 : 1,
+              }}
+            >
+              {invoiceFilterProject?.status === 'completed' ? 'Project completed' : 'Mark project as completed'}
+            </button>
+          </div>
+        )}
         {selectedCustomerId && (
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by (customer)</label>
@@ -1488,6 +1592,7 @@ export default function Invoices() {
               <option value="weekly">Weekly</option>
               <option value="bi-weekly">Bi-weekly</option>
               <option value="monthly">Monthly</option>
+              {!isCNRL && <option value="project-completion">Project completion (one batch per project)</option>}
             </select>
           </div>
         )}
@@ -1495,7 +1600,7 @@ export default function Invoices() {
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by (project)</label>
             <select
-              value={dateRangeGroupingByProject[selectedProjectId] ?? getGroupingForCustomer(selectedCustomerId || '')}
+              value={dateRangeGroupingByProject[selectedProjectId] ?? defaultGroupingForSelectedProject}
               onChange={(e) => setDateRangeGroupingByProject((prev) => ({ ...prev, [selectedProjectId]: e.target.value as DateRangeGrouping }))}
               style={{
                 padding: '8px 12px',
@@ -1510,6 +1615,9 @@ export default function Invoices() {
               <option value="weekly">Weekly</option>
               <option value="bi-weekly">Bi-weekly</option>
               <option value="monthly">Monthly</option>
+              {(!selectedCustomerId ? !projectFilterCustomerIsCnrl : !isCNRL) && (
+                <option value="project-completion">Project completion (one batch per project)</option>
+              )}
             </select>
           </div>
         )}
