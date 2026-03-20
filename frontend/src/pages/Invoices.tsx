@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -246,6 +246,60 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
     i++;
   }
   return parts.join(', ');
+}
+
+/** Subtle click-to-copy for header values: pointer + dotted underline on hover, brief “Copied” tooltip. */
+function CopyableHeaderValue({ copyText, children }: { copyText: string; children: ReactNode }) {
+  const trimmed = copyText.trim();
+  const inactive = !trimmed;
+  const [copied, setCopied] = useState(false);
+  const [hover, setHover] = useState(false);
+
+  const copyNow = useCallback(async () => {
+    if (inactive) return;
+    try {
+      await navigator.clipboard.writeText(trimmed);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }, [inactive, trimmed]);
+
+  if (inactive) {
+    return <>{children}</>;
+  }
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        e.stopPropagation();
+        void copyNow();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          void copyNow();
+        }
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={copied ? 'Copied' : 'Copy'}
+      style={{
+        cursor: 'pointer',
+        borderRadius: '3px',
+        outline: 'none',
+        textDecoration: hover && !copied ? 'underline dotted' : undefined,
+        textDecorationColor: 'var(--text-tertiary)',
+        textUnderlineOffset: '2px',
+      }}
+    >
+      {children}
+    </span>
+  );
 }
 
 /** PO/AFE line + amount as two separate shadowed boxes; each copies its own text */
@@ -2102,16 +2156,47 @@ export default function Invoices() {
                 >
                   {/* Summary: project, approver, PO/AFE/CC, and total */}
                   <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }} title={projectDisplay}>
-                      Project: {projectDisplay.length > 60 ? `${projectDisplay.slice(0, 60)}…` : projectDisplay}
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                      <strong>Project:</strong>{' '}
+                      <CopyableHeaderValue copyText={projectDisplay}>
+                        {projectDisplay.length > 60 ? `${projectDisplay.slice(0, 60)}…` : projectDisplay}
+                      </CopyableHeaderValue>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-                      <span><strong>Approver:</strong> {key.approverCode || key.approver || '(none)'}</span>
-                      <span><strong>PO/AFE/CC:</strong> {headerPoAfe}</span>
+                      <span>
+                        <strong>Approver:</strong>{' '}
+                        <CopyableHeaderValue copyText={key.approverCode || key.approver || ''}>
+                          {key.approverCode || key.approver || '(none)'}
+                        </CopyableHeaderValue>
+                      </span>
+                      <span>
+                        <strong>PO/AFE/CC:</strong>{' '}
+                        <CopyableHeaderValue copyText={headerPoAfe === '(none)' ? '' : headerPoAfe}>
+                          {headerPoAfe}
+                        </CopyableHeaderValue>
+                      </span>
                       {key.cc ? (
-                        <span><strong>Coding:</strong> {key.cc}{key.periodLabel || key.periodKey ? <> · <strong>{key.periodLabel || key.periodKey}</strong></> : ''}</span>
+                        <span>
+                          <strong>Coding:</strong>{' '}
+                          <CopyableHeaderValue copyText={key.cc}>{key.cc}</CopyableHeaderValue>
+                          {key.periodLabel || key.periodKey ? (
+                            <>
+                              {' · '}
+                              <strong>
+                                <CopyableHeaderValue copyText={key.periodLabel || key.periodKey || ''}>
+                                  {key.periodLabel || key.periodKey}
+                                </CopyableHeaderValue>
+                              </strong>
+                            </>
+                          ) : null}
+                        </span>
                       ) : key.periodLabel || key.periodKey ? (
-                        <span><strong>Period:</strong> <strong>{key.periodLabel || key.periodKey}</strong></span>
+                        <span>
+                          <strong>Period:</strong>{' '}
+                          <CopyableHeaderValue copyText={key.periodLabel || key.periodKey || ''}>
+                            <strong>{key.periodLabel || key.periodKey}</strong>
+                          </CopyableHeaderValue>
+                        </span>
                       ) : null}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
@@ -2474,30 +2559,55 @@ export default function Invoices() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
-                    <span title={[key.projectNumber, key.projectName].filter(Boolean).join(' – ') || key.projectId || '(none)'}>
+                    <span>
                       <strong>Project:</strong>{' '}
                       {(() => {
                         const num = key.projectNumber?.trim();
                         const name = key.projectName?.trim();
-                        const display = num && name ? `${num} – ${name}` : num || name || key.projectId || '(none)';
+                        const fullDisplay = num && name ? `${num} – ${name}` : num || name || key.projectId || '(none)';
                         const maxLen = 40;
-                        return display.length > maxLen ? `${display.slice(0, maxLen)}…` : display;
+                        const short = fullDisplay.length > maxLen ? `${fullDisplay.slice(0, maxLen)}…` : fullDisplay;
+                        return (
+                          <CopyableHeaderValue copyText={fullDisplay === '(none)' ? '' : fullDisplay}>{short}</CopyableHeaderValue>
+                        );
                       })()}
                     </span>
                     {key.periodKey ? (
                       <>
                         {key.approverCode && key.approverCode !== key.periodKey ? (
-                          <span><strong>Approver:</strong> {key.approverCode || key.approver || '(none)'}</span>
+                          <span>
+                            <strong>Approver:</strong>{' '}
+                            <CopyableHeaderValue copyText={key.approverCode || key.approver || ''}>
+                              {key.approverCode || key.approver || '(none)'}
+                            </CopyableHeaderValue>
+                          </span>
                         ) : null}
-                        {key.cc ? <span><strong>Coding:</strong> {key.cc}</span> : null}
-                        <span><strong>Period:</strong> {key.periodLabel || key.periodKey}</span>
+                        {key.cc ? (
+                          <span>
+                            <strong>Coding:</strong> <CopyableHeaderValue copyText={key.cc}>{key.cc}</CopyableHeaderValue>
+                          </span>
+                        ) : null}
+                        <span>
+                          <strong>Period:</strong>{' '}
+                          <CopyableHeaderValue copyText={key.periodLabel || key.periodKey || ''}>
+                            {key.periodLabel || key.periodKey}
+                          </CopyableHeaderValue>
+                        </span>
                       </>
                     ) : (
                       <>
-                        <span><strong>Approver:</strong> {key.approver || '(none)'}</span>
+                        <span>
+                          <strong>Approver:</strong>{' '}
+                          <CopyableHeaderValue copyText={key.approver || ''}>{key.approver || '(none)'}</CopyableHeaderValue>
+                        </span>
                         <span><strong>PO/AFE/CC (Cost Center):</strong> {key.poAfe || '(none)'}</span>
                         <span><strong>Location:</strong> {key.location || '(none)'}</span>
-                        <span><strong>Coding:</strong> {key.cc || '(none)'}</span>
+                        <span>
+                          <strong>Coding:</strong>{' '}
+                          <CopyableHeaderValue copyText={key.cc && key.cc !== '(none)' ? key.cc : ''}>
+                            {key.cc || '(none)'}
+                          </CopyableHeaderValue>
+                        </span>
                         <span><strong>Other:</strong> {key.other || '(none)'}</span>
                       </>
                     )}
