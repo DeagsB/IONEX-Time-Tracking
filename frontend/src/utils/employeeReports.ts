@@ -1,5 +1,11 @@
 // Employee Reports utility functions for data aggregation and analysis
 
+import {
+  buildSharedFieldsMapForProject,
+  entryServiceTicketMatchKeys,
+  dbServiceTicketMatchKeys,
+} from './serviceTickets';
+
 export interface TimeEntry {
   id: string;
   date: string;
@@ -10,6 +16,11 @@ export interface TimeEntry {
   description?: string;
   user_id: string;
   project_id?: string;
+  location?: string;
+  po_afe?: string;
+  approver?: string;
+  cc?: string;
+  other?: string;
   user?: {
     id: string;
     first_name?: string;
@@ -20,6 +31,8 @@ export interface TimeEntry {
     id: string;
     name: string;
     project_number?: string;
+    location?: string;
+    po_afe?: string;
     customer?: {
       id: string;
       name: string;
@@ -166,6 +179,8 @@ export interface ServiceTicketHours {
   total_amount?: number;
   customer_id?: string;
   project_id?: string;
+  location?: string | null;
+  header_overrides?: Record<string, string | undefined> | null;
   is_edited?: boolean;
   edited_hours?: Record<string, number | number[]>;
   workflow_status?: string;
@@ -260,6 +275,45 @@ function isBillable(entry: TimeEntry): boolean {
   return b === true || (typeof b === 'string' && b.toLowerCase() === 'true');
 }
 
+/** Precompute shared location/PO maps per project (same as Service Tickets grouping). */
+function buildSharedMapsByProject(entries: TimeEntry[]): Map<string, ReturnType<typeof buildSharedFieldsMapForProject>> {
+  const byProject = new Map<string, TimeEntry[]>();
+  entries.forEach((e) => {
+    if (!e.project_id) return;
+    if (!byProject.has(e.project_id)) byProject.set(e.project_id, []);
+    byProject.get(e.project_id)!.push(e);
+  });
+  const out = new Map<string, ReturnType<typeof buildSharedFieldsMapForProject>>();
+  byProject.forEach((list, pid) => {
+    out.set(pid, buildSharedFieldsMapForProject(list, pid));
+  });
+  return out;
+}
+
+/** Time entries that belong on this service ticket (not all same-day rows for user+project). */
+function entriesMatchingServiceTicket(
+  entries: TimeEntry[],
+  ticket: ServiceTicketHours,
+  sharedMapsByProject: Map<string, ReturnType<typeof buildSharedFieldsMapForProject>>
+): TimeEntry[] {
+  if (!ticket.project_id) return [];
+  const sharedMap = sharedMapsByProject.get(ticket.project_id);
+  if (!sharedMap) return [];
+  const shareKey = `${ticket.date}-${ticket.user_id}-${ticket.project_id}`;
+  const shared = sharedMap.get(shareKey) || {};
+  const projectFallback = entries.find((e) => e.project_id === ticket.project_id)?.project as
+    | { location?: string; po_afe?: string }
+    | undefined;
+  const ticketKeys = dbServiceTicketMatchKeys(ticket, projectFallback || null);
+  return entries.filter((entry) => {
+    if (entry.user_id !== ticket.user_id || entry.project_id !== ticket.project_id || entry.date !== ticket.date) return false;
+    if (!isBillable(entry)) return false;
+    if (ticket.customer_id && entry.project?.customer?.id && entry.project.customer.id !== ticket.customer_id) return false;
+    const ek = entryServiceTicketMatchKeys(entry, shared, entry.project || projectFallback);
+    return ek.locationKey === ticketKeys.locationKey && ek.groupingKey === ticketKeys.groupingKey;
+  });
+}
+
 const NON_REVENUE_STATUSES = new Set(['draft', 'submitted', 'rejected']);
 
 /**
@@ -273,6 +327,7 @@ function calculateBillableHoursByStatus(
   let approved = 0;
   let all = 0;
   const userTickets = serviceTicketHours.filter(t => t.user_id === userId);
+  const sharedMapsByProject = buildSharedMapsByProject(entries);
   for (const ticket of userTickets) {
     let hours = 0;
     if (ticket.is_edited && ticket.edited_hours) {
@@ -285,11 +340,7 @@ function calculateBillableHoursByStatus(
       const ws = (ticket.workflow_status || 'draft').toLowerCase();
       const isDraftRejected = ws === 'draft' || ws === 'rejected' || !!(ticket.rejected_at != null && ticket.rejected_at !== '');
       if (hours === 0 && isDraftRejected) {
-        const matching = entries.filter(e =>
-          isBillable(e) && e.date === ticket.date &&
-          (e.project?.customer?.id === ticket.customer_id || (!ticket.customer_id && !e.project?.customer?.id)) &&
-          (e.project_id === ticket.project_id || (!ticket.project_id && !e.project_id))
-        );
+        const matching = entriesMatchingServiceTicket(entries, ticket, sharedMapsByProject);
         hours = matching.reduce((s, e) => s + (Number(e.hours) || 0), 0);
       }
     }
@@ -848,12 +899,9 @@ export function calculateRateTypeBreakdown(
     }
   });
 
-  // STEP 3: Calculate HOURS and REVENUE
-  // FIX: Always start with time entries, then adjust for edited service tickets
-  // This ensures hours are counted even if service tickets haven't been clicked/created
+  // STEP 3: Calculate HOURS and REVENUE — one pass per service ticket, entries matched by location + PO/AFE (same as Service Tickets / Profitability).
   console.log('[RateTypeBreakdown] Service tickets received:', serviceTicketHours?.length || 0, 'userId:', userId);
-  
-  // First, calculate billable hours from time entries (this is the base)
+
   const billableHoursByRateType: Record<string, number> = {
     shopTime: 0,
     fieldTime: 0,
@@ -862,142 +910,95 @@ export function calculateRateTypeBreakdown(
     fieldOvertime: 0,
   };
 
-  // Track which entries have been processed by service tickets
-  const processedEntryIds = new Set<string>();
-
-  // Group service tickets by date + user_id + customer_id + project_id
-  // Sum hours from all tickets for the same combination (handles multiple tickets per day)
-  const ticketGroupsMap = new Map<string, ServiceTicketHours[]>();
-  // Draft, rejected, or resubmitted (rejected then submitted again) — use entry hours when ticket has no saved hours
   const isDraftRejectedOrResubmitted = (t: ServiceTicketHours) => {
     const ws = (t.workflow_status || 'draft').toLowerCase();
     if (ws === 'draft' || ws === 'rejected') return true;
     return !!(t.rejected_at != null && t.rejected_at !== '');
   };
 
-  if (serviceTicketHours && serviceTicketHours.length > 0) {
-    serviceTicketHours.forEach(ticket => {
-      if (ticket.user_id !== userId) return;
-      // Skip tickets with 0 hours unless draft/rejected/resubmitted (we'll use matching time entry hours for those)
-      const hasNoSavedHours = Number(ticket.total_hours) === 0 && (!ticket.is_edited || !ticket.edited_hours);
-      if (hasNoSavedHours && !isDraftRejectedOrResubmitted(ticket)) return;
-      
-      const key = `${ticket.date}-${ticket.user_id}-${ticket.customer_id || 'unassigned'}-${ticket.project_id || 'unassigned'}`;
-      if (!ticketGroupsMap.has(key)) {
-        ticketGroupsMap.set(key, []);
-      }
-      ticketGroupsMap.get(key)!.push(ticket);
-    });
-  }
-  
-  console.log('[RateTypeBreakdown] After grouping:', ticketGroupsMap.size, 'ticket groups');
+  const sharedMapsByProject = buildSharedMapsByProject(entries);
 
-  // Process service tickets - edited tickets take precedence, but sum all tickets per group
-  ticketGroupsMap.forEach((tickets, key) => {
-    // Find matching entries for this ticket group
-    const firstTicket = tickets[0];
-    const matchingEntries = entries.filter(entry => {
-      if (entry.date !== firstTicket.date) return false;
-      if (!isBillable(entry)) return false;
-      if (firstTicket.customer_id && entry.project?.customer?.id !== firstTicket.customer_id) return false;
-      if (firstTicket.project_id && entry.project_id !== firstTicket.project_id) return false;
-      return true;
-    });
-    
-    // Check if any entries in this group have already been processed
-    const unprocessedEntries = matchingEntries.filter(entry => !processedEntryIds.has(entry.id));
-    
-    // If all entries are already processed, skip this group (already handled by another ticket)
-    if (unprocessedEntries.length === 0 && matchingEntries.length > 0) {
-      return;
-    }
-    
-    // Mark unprocessed entries as processed
-    unprocessedEntries.forEach(entry => processedEntryIds.add(entry.id));
-    
-    // Separate edited and non-edited tickets
-    const editedTickets = tickets.filter(t => t.is_edited && t.edited_hours);
-    const nonEditedTickets = tickets.filter(t => !t.is_edited || !t.edited_hours);
-    
-    // Process edited tickets first (they override everything)
-    editedTickets.forEach(ticket => {
-      console.log('[RateTypeBreakdown] Processing edited ticket:', ticket.id, ticket.edited_hours);
-      
-      Object.keys(ticket.edited_hours!).forEach(rateTypeKey => {
-        const hours = ticket.edited_hours![rateTypeKey];
-        let totalHoursForRate = 0;
-        
-        if (Array.isArray(hours)) {
-          totalHoursForRate = hours.reduce((sum: number, h: number) => sum + (h || 0), 0);
+  const addProportionalHours = (matchingEntries: TimeEntry[], sourceHours: number) => {
+    const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+    if (totalEntryHours > 0) {
+      matchingEntries.forEach((entry) => {
+        const entryHours = Number(entry.hours) || 0;
+        const proportion = entryHours / totalEntryHours;
+        const proportionalHours = sourceHours * proportion;
+        const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
+        if (rateType.includes('shop') && rateType.includes('overtime')) {
+          billableHoursByRateType.shopOvertime += proportionalHours;
+        } else if (rateType.includes('field') && rateType.includes('overtime')) {
+          billableHoursByRateType.fieldOvertime += proportionalHours;
+        } else if (rateType.includes('field')) {
+          billableHoursByRateType.fieldTime += proportionalHours;
+        } else if (rateType.includes('travel')) {
+          billableHoursByRateType.travelTime += proportionalHours;
         } else {
-          totalHoursForRate = hours as number;
-        }
-        
-        if (totalHoursForRate > 0) {
-          const rateType = rateTypeKey.toLowerCase();
-          
-          if (rateType.includes('shop') && rateType.includes('overtime')) {
-            billableHoursByRateType.shopOvertime += totalHoursForRate;
-          } else if (rateType.includes('field') && rateType.includes('overtime')) {
-            billableHoursByRateType.fieldOvertime += totalHoursForRate;
-          } else if (rateType.includes('field')) {
-            billableHoursByRateType.fieldTime += totalHoursForRate;
-          } else if (rateType.includes('travel')) {
-            billableHoursByRateType.travelTime += totalHoursForRate;
-          } else {
-            billableHoursByRateType.shopTime += totalHoursForRate;
-          }
+          billableHoursByRateType.shopTime += proportionalHours;
         }
       });
-    });
-    
-    // Process non-edited tickets only if no edited tickets exist
-    // NOTE: Process even if no matching time entries (entry may have been deleted but service ticket still exists)
-    if (editedTickets.length === 0 && nonEditedTickets.length > 0) {
-      // Sum total_hours from all non-edited tickets in this group
-      const totalTicketHours = nonEditedTickets.reduce((sum, t) => sum + (Number(t.total_hours) || 0), 0);
-      const totalEntryHours = unprocessedEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
-      const groupIsDraftRejectedOrResubmitted = nonEditedTickets.some(t => isDraftRejectedOrResubmitted(t));
-      // Use ticket hours when present; for draft/rejected/resubmitted with 0 saved hours, use entry hours
-      const effectiveHours = totalTicketHours > 0
-        ? totalTicketHours
-        : (groupIsDraftRejectedOrResubmitted && totalEntryHours > 0 ? totalEntryHours : 0);
+    } else {
+      billableHoursByRateType.shopTime += sourceHours;
+    }
+  };
 
-      if (effectiveHours > 0) {
-        console.log('[RateTypeBreakdown] Processing non-edited tickets:', nonEditedTickets.length, 'effective_hours:', effectiveHours, totalTicketHours > 0 ? '(from ticket)' : '(draft/rejected/resubmitted from entries)');
-        
-        if (totalEntryHours > 0) {
-          // Distribute hours proportionally by entry rate type
-          const sourceHours = totalTicketHours > 0 ? totalTicketHours : totalEntryHours;
-          unprocessedEntries.forEach(entry => {
-            const entryHours = Number(entry.hours) || 0;
-            const proportion = entryHours / totalEntryHours;
-            const proportionalHours = sourceHours * proportion;
-            const rateType = (entry.rate_type || 'Shop Time').toLowerCase();
-            
+  if (serviceTicketHours && serviceTicketHours.length > 0) {
+    for (const ticket of serviceTicketHours) {
+      if (ticket.user_id !== userId) continue;
+      const hasNoSavedHours = Number(ticket.total_hours) === 0 && (!ticket.is_edited || !ticket.edited_hours);
+      if (hasNoSavedHours && !isDraftRejectedOrResubmitted(ticket)) continue;
+
+      const matchingEntries = entriesMatchingServiceTicket(entries, ticket, sharedMapsByProject);
+
+      if (ticket.is_edited && ticket.edited_hours) {
+        Object.keys(ticket.edited_hours).forEach((rateTypeKey) => {
+          const hours = ticket.edited_hours![rateTypeKey];
+          let totalHoursForRate = 0;
+          if (Array.isArray(hours)) {
+            totalHoursForRate = hours.reduce((sum: number, h: number) => sum + (h || 0), 0);
+          } else {
+            totalHoursForRate = hours as number;
+          }
+          if (totalHoursForRate > 0) {
+            const rateType = rateTypeKey.toLowerCase();
             if (rateType.includes('shop') && rateType.includes('overtime')) {
-              billableHoursByRateType.shopOvertime += proportionalHours;
+              billableHoursByRateType.shopOvertime += totalHoursForRate;
             } else if (rateType.includes('field') && rateType.includes('overtime')) {
-              billableHoursByRateType.fieldOvertime += proportionalHours;
+              billableHoursByRateType.fieldOvertime += totalHoursForRate;
             } else if (rateType.includes('field')) {
-              billableHoursByRateType.fieldTime += proportionalHours;
+              billableHoursByRateType.fieldTime += totalHoursForRate;
             } else if (rateType.includes('travel')) {
-              billableHoursByRateType.travelTime += proportionalHours;
+              billableHoursByRateType.travelTime += totalHoursForRate;
             } else {
-              billableHoursByRateType.shopTime += proportionalHours;
+              billableHoursByRateType.shopTime += totalHoursForRate;
             }
-          });
-        } else {
-          // No matching entries (entry was deleted) - use service ticket hours directly
-          // Default to shop time since we don't have entry rate type info
-          billableHoursByRateType.shopTime += effectiveHours;
-        }
+          }
+        });
+        continue;
+      }
+
+      const totalTicketHours = Number(ticket.total_hours) || 0;
+      const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
+      const effectiveHours =
+        totalTicketHours > 0
+          ? totalTicketHours
+          : isDraftRejectedOrResubmitted(ticket) && totalEntryHours > 0
+            ? totalEntryHours
+            : 0;
+
+      if (effectiveHours <= 0) continue;
+
+      if (matchingEntries.length > 0 && totalEntryHours > 0) {
+        const sourceHours = totalTicketHours > 0 ? totalTicketHours : totalEntryHours;
+        addProportionalHours(matchingEntries, sourceHours);
+      } else {
+        billableHoursByRateType.shopTime += effectiveHours;
       }
     }
-  });
+  }
 
   // NOTE: Billable time entries without matching service tickets are NOT counted as billable hours.
-  // Billable hours should only come from service tickets to ensure reports match the service tickets page.
 
   console.log('[RateTypeBreakdown] Final billableHoursByRateType:', billableHoursByRateType);
   console.log('[RateTypeBreakdown] Final payrollCostsByRateType:', payrollCostsByRateType);
@@ -1065,7 +1066,8 @@ export function calculateProjectBreakdown(
   const ticketHoursByProject = new Map<string, number>();
   const ticketRevenueByProject = new Map<string, number>();
   const NON_REVENUE_STATUSES_P = new Set(['draft', 'submitted', 'rejected']);
-  
+  const sharedMapsForProjectBreakdown = buildSharedMapsByProject(entries);
+
   if (serviceTicketHours) {
     serviceTicketHours.forEach(ticket => {
       if (ticket.user_id === userId && ticket.project_id) {
@@ -1083,12 +1085,7 @@ export function calculateProjectBreakdown(
             ticketHours += hoursForRate;
           });
         } else {
-          const matchingEntries = entries.filter(e =>
-            isBillable(e) &&
-            e.project_id === ticket.project_id &&
-            e.date === ticket.date &&
-            (e.project?.customer?.id === ticket.customer_id || (!ticket.customer_id && !e.project?.customer?.id))
-          );
+          const matchingEntries = entriesMatchingServiceTicket(entries, ticket, sharedMapsForProjectBreakdown);
           const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
           const isDraftRejectedOrResubmitted = (t: ServiceTicketHours) => {
             const w = (t.workflow_status || 'draft').toLowerCase();
@@ -1239,7 +1236,8 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
   const ticketHoursByCustomer = new Map<string, number>();
   const ticketRevenueByCustomer = new Map<string, number>();
   const NON_REVENUE_STATUSES_C = new Set(['draft', 'submitted', 'rejected']);
-  
+  const sharedMapsForCustomerBreakdown = buildSharedMapsByProject(entries);
+
   if (serviceTicketHours) {
     serviceTicketHours.forEach(ticket => {
       if (ticket.user_id === userId && ticket.customer_id) {
@@ -1257,12 +1255,7 @@ export function calculateCustomerBreakdown(entries: TimeEntry[], employee?: Empl
             ticketHours += hoursForRate;
           });
         } else {
-          const matchingEntries = entries.filter(e =>
-            isBillable(e) &&
-            e.project?.customer?.id === ticket.customer_id &&
-            e.date === ticket.date &&
-            (e.project_id === ticket.project_id || !ticket.project_id)
-          );
+          const matchingEntries = entriesMatchingServiceTicket(entries, ticket, sharedMapsForCustomerBreakdown);
           const totalEntryHours = matchingEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0);
           const isDraftRejectedOrResubmitted = (t: ServiceTicketHours) => {
             const w = (t.workflow_status || 'draft').toLowerCase();

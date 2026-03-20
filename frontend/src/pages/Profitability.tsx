@@ -5,6 +5,11 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, employeesService, timeEntriesService, payRateHistoryService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 import { calculateBurden, applyGst } from '../utils/employeeReports';
+import {
+  buildSharedFieldsMapForProject,
+  entryServiceTicketMatchKeys,
+  dbServiceTicketMatchKeys,
+} from '../utils/serviceTickets';
 
 interface ProjectFinancials {
   projectId: string;
@@ -90,7 +95,7 @@ export default function Profitability() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from(tableName)
-        .select('id, ticket_number, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours, workflow_status')
+        .select('id, ticket_number, user_id, date, total_hours, total_amount, customer_id, project_id, location, header_overrides, is_edited, edited_hours, workflow_status')
         .or('is_discarded.is.null,is_discarded.eq.false');
       if (error) throw error;
       return data || [];
@@ -321,6 +326,9 @@ export default function Profitability() {
     if (!expandedProjectId) return [];
 
     const projectTickets = (serviceTickets as any[]).filter((t: any) => t.project_id === expandedProjectId);
+    const projectEntriesForShare = (allTimeEntries as any[]).filter((e: any) => e.project_id === expandedProjectId);
+    const sharedByDayUserProject = buildSharedFieldsMapForProject(projectEntriesForShare, expandedProjectId);
+    const projectById = new Map((projects as any[]).map((p: any) => [p.id, p]));
 
     const getLoadedRate = (emp: any, rates: any, rateType: string) => {
       let payRate = 0;
@@ -353,10 +361,19 @@ export default function Profitability() {
 
         let estimatedRevenue = savedAmount;
 
-        // Find matching time entries for this ticket (needed for drafts with 0 saved hours)
-        const matchingEntries = (allTimeEntries as any[]).filter((e: any) =>
-          e.user_id === t.user_id && e.project_id === t.project_id && e.date === t.date
-        );
+        const proj = projectById.get(t.project_id);
+        const shareKey = `${t.date}-${t.user_id}-${t.project_id}`;
+        const shared = sharedByDayUserProject.get(shareKey) || {};
+        const ticketKeys = dbServiceTicketMatchKeys(t, proj);
+
+        // Match time entries the same way service tickets are grouped: date + user + project + location + PO/AFE.
+        // Otherwise every ticket on the same day gets the full day's payroll (duplicate cost bug).
+        const matchingEntries = (allTimeEntries as any[]).filter((e: any) => {
+          if (e.user_id !== t.user_id || e.project_id !== t.project_id || e.date !== t.date) return false;
+          if (t.customer_id && e.project?.customer?.id && e.project.customer.id !== t.customer_id) return false;
+          const ek = entryServiceTicketMatchKeys(e, shared, e.project ?? proj);
+          return ek.locationKey === ticketKeys.locationKey && ek.groupingKey === ticketKeys.groupingKey;
+        });
         const entryHours = matchingEntries.reduce((sum: number, e: any) => sum + (Number(e.hours) || 0), 0);
         const effectiveHours = ticketHours > 0 ? ticketHours : entryHours;
 
@@ -392,7 +409,7 @@ export default function Profitability() {
         return true;
       })
       .sort((a: any, b: any) => b.date.localeCompare(a.date));
-  }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId, rateHistoryByEmpId, includeGst]);
+  }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId, rateHistoryByEmpId, includeGst, projects]);
 
   const expandedLaborByEmployee = useMemo(() => {
     if (!expandedProjectId) return [];

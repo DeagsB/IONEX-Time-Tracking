@@ -16,6 +16,8 @@ export const timeEntriesService = {
           id,
           name,
           project_number,
+          location,
+          po_afe,
           color,
           customer:customers!projects_customer_id_fkey(
             id,
@@ -662,7 +664,7 @@ export const reportsService = {
       .select(`
         *,
         user:users!time_entries_user_id_fkey(id, first_name, last_name, email, archived),
-        project:projects!time_entries_project_id_fkey(id, name, project_number, customer:customers!projects_customer_id_fkey(id, name))
+        project:projects!time_entries_project_id_fkey(id, name, project_number, location, po_afe, customer:customers!projects_customer_id_fkey(id, name))
       `)
       .gte('date', startDate)
       .lte('date', endDate)
@@ -783,7 +785,7 @@ export const reportsService = {
   async getServiceTicketHours(startDate: string, endDate: string, userId?: string) {
     let query = supabase
       .from('service_tickets')
-      .select('id, user_id, date, total_hours, total_amount, customer_id, project_id, is_edited, edited_hours, workflow_status, rejected_at')
+      .select('id, user_id, date, total_hours, total_amount, customer_id, project_id, location, header_overrides, is_edited, edited_hours, workflow_status, rejected_at')
       .gte('date', startDate)
       .lte('date', endDate)
       .or('is_discarded.is.null,is_discarded.eq.false');

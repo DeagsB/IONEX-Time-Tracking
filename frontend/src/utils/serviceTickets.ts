@@ -482,6 +482,77 @@ export function buildGroupingKey(poAfe: string): string {
   return `_${BILLING_KEY_SEP}${p}${BILLING_KEY_SEP}_`;
 }
 
+/** Shared location / PO fields for a (date, user, project) bucket — same fill logic as groupEntriesIntoTickets. */
+export type SharedFieldsForTicketMatch = {
+  location?: string;
+  po_afe?: string;
+  approver?: string;
+  cc?: string;
+  other?: string;
+};
+
+export function buildSharedFieldsMapForProject(
+  entries: Array<{
+    date?: string;
+    user_id?: string;
+    project_id?: string;
+    location?: string;
+    po_afe?: string;
+    approver?: string;
+    cc?: string;
+    other?: string;
+  }>,
+  projectId: string
+): Map<string, SharedFieldsForTicketMatch> {
+  const map = new Map<string, SharedFieldsForTicketMatch>();
+  for (const e of entries) {
+    if (e.project_id !== projectId || !e.date || !e.user_id) continue;
+    const key = `${e.date}-${e.user_id}-${projectId}`;
+    let s = map.get(key);
+    if (!s) {
+      s = {};
+      map.set(key, s);
+    }
+    if (!s.location && e.location?.trim()) s.location = e.location;
+    if (!s.po_afe && e.po_afe?.trim()) s.po_afe = e.po_afe;
+    if (!s.approver && e.approver?.trim()) s.approver = e.approver;
+    if (!s.cc && e.cc?.trim()) s.cc = e.cc;
+    if (!s.other && e.other?.trim()) s.other = e.other;
+  }
+  return map;
+}
+
+export function entryServiceTicketMatchKeys(
+  entry: {
+    location?: string;
+    po_afe?: string;
+    project?: { location?: string; po_afe?: string } | null;
+  },
+  shared: SharedFieldsForTicketMatch,
+  projectFallback?: { location?: string; po_afe?: string } | null
+): { locationKey: string; groupingKey: string } {
+  const effectiveLocation = entry.location?.trim() ? entry.location : shared.location;
+  const effectivePoAfe = entry.po_afe?.trim() ? entry.po_afe : shared.po_afe;
+  const proj = entry.project || projectFallback;
+  const entryLocation = (effectiveLocation || proj?.location || '') as string;
+  const locationKey = (entryLocation || '').trim().toLowerCase().replace(/\s+/g, ' ') || '_no_location_';
+  const poAfe = (effectivePoAfe ?? proj?.po_afe ?? '') || '';
+  const groupingKey = buildGroupingKey(typeof poAfe === 'string' ? poAfe : '');
+  return { locationKey, groupingKey };
+}
+
+export function dbServiceTicketMatchKeys(
+  ticket: { location?: string | null; header_overrides?: Record<string, string | undefined> | null },
+  project?: { po_afe?: string; location?: string } | null
+): { locationKey: string; groupingKey: string } {
+  const ov = (ticket.header_overrides as Record<string, string | undefined> | null) || {};
+  const poAfe = (ov.po_afe?.trim() ? ov.po_afe : project?.po_afe ?? '') || '';
+  const groupingKey = buildGroupingKey(poAfe);
+  const ticketLoc = (ticket.location ?? '').trim();
+  const locationKey = (ticketLoc || '').trim().toLowerCase().replace(/\s+/g, ' ') || '_no_location_';
+  return { locationKey, groupingKey };
+}
+
 /** Extract billing key (grouping key) from ticket.id.
  * Ticket format: date-customerId-userId-projectId-location-_::poAfe::_
  * The grouping key contains hyphens (e.g. FC250375-9086), so we cannot use lastIndexOf('-'). 
