@@ -28,6 +28,15 @@ import { generateAndStorePdf, mergePdfBlobs } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
 import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
 
+type PdfExportEntryOverride = {
+  description: string;
+  st: number;
+  tt: number;
+  ft: number;
+  so: number;
+  fo: number;
+};
+
 type ApprovedRecord = {
   id: string;
   ticket_number: string;
@@ -38,9 +47,169 @@ type ApprovedRecord = {
   location: string | null;
   is_edited?: boolean;
   edited_hours?: unknown;
+  edited_descriptions?: Record<string, string[]> | null;
+  edited_entry_overrides?: Record<string, PdfExportEntryOverride> | null;
   total_hours?: number | string | null;
   header_overrides?: { approver_po_afe?: string; service_location?: string } | null;
 };
+
+const PDF_EXPORT_RATE_ORDER = [
+  'Shop Time',
+  'Travel Time',
+  'Field Time',
+  'Shop Overtime',
+  'Field Overtime',
+] as const;
+
+/** Merge saved per-entry overrides into time-entry rows (same idea as Service Tickets panel). */
+function mergePdfEntryOverridesIntoRows(
+  entries: ServiceTicket['entries'],
+  overrides: Record<string, PdfExportEntryOverride>
+): Array<{ id: string; description: string; st: number; tt: number; ft: number; so: number; fo: number }> {
+  const baseRows = entries.map((entry, index) => {
+    const rateType = entry.rate_type || 'Shop Time';
+    const hours = entry.hours || 0;
+    return {
+      id: entry.id || `entry-${index}`,
+      description: entry.description || '',
+      st: rateType === 'Shop Time' ? hours : 0,
+      tt: rateType === 'Travel Time' ? hours : 0,
+      ft: rateType === 'Field Time' ? hours : 0,
+      so: rateType === 'Shop Overtime' ? hours : 0,
+      fo: rateType === 'Field Overtime' ? hours : 0,
+    };
+  });
+  const merged = baseRows.map((row) => {
+    const ov = overrides[row.id];
+    if (ov) {
+      return { ...row, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo };
+    }
+    return row;
+  });
+  const existingIds = new Set(baseRows.map((r) => r.id));
+  Object.entries(overrides).forEach(([id, ov]) => {
+    if (!existingIds.has(id) && id.startsWith('new-')) {
+      merged.push({ id, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo });
+    }
+  });
+  return merged;
+}
+
+/** Expand service rows to one PDF line per non-zero hour bucket (matches PDF column layout). */
+function serviceRowsToTicketPdfEntries(
+  rows: Array<{ id: string; description: string; st: number; tt: number; ft: number; so: number; fo: number }>,
+  match: ServiceTicket
+): ServiceTicket['entries'] {
+  const first = match.entries[0];
+  const user = first?.user;
+  const project = first?.project;
+  const out: ServiceTicket['entries'] = [];
+  let seq = 0;
+  const cols: [keyof (typeof rows)[0], string][] = [
+    ['st', 'Shop Time'],
+    ['tt', 'Travel Time'],
+    ['ft', 'Field Time'],
+    ['so', 'Shop Overtime'],
+    ['fo', 'Field Overtime'],
+  ];
+  for (const row of rows) {
+    for (const [key, rateType] of cols) {
+      const h = row[key] as number;
+      if (h > 0) {
+        out.push({
+          id: `${row.id}-${rateType}-${seq++}`,
+          date: match.date,
+          hours: h,
+          description: row.description?.trim() ? row.description : 'Work performed',
+          rate_type: rateType,
+          user_id: match.userId,
+          user,
+          project_id: match.projectId,
+          project,
+        } as ServiceTicket['entries'][number]);
+      }
+    }
+  }
+  return out;
+}
+
+function emptyHoursByRateType(): ServiceTicket['hoursByRateType'] {
+  return {
+    'Shop Time': 0,
+    'Travel Time': 0,
+    'Field Time': 0,
+    'Shop Overtime': 0,
+    'Field Overtime': 0,
+  };
+}
+
+/**
+ * Align invoice-batch PDFs with the Service Tickets UI: use saved edited_descriptions / edited_entry_overrides.
+ * Approval persists edited_hours + edited_descriptions with is_edited=false, so we must not gate on is_edited.
+ */
+function augmentMatchTicketForInvoicePdf(rec: ApprovedRecord, match: ServiceTicket): Partial<ServiceTicket> | null {
+  const overrides = rec.edited_entry_overrides;
+  if (overrides && Object.keys(overrides).length > 0 && match.entries.length > 0) {
+    const rows = mergePdfEntryOverridesIntoRows(match.entries, overrides);
+    const entries = serviceRowsToTicketPdfEntries(rows, match);
+    if (entries.length === 0) return null;
+    const hoursByRateType = emptyHoursByRateType();
+    for (const e of entries) {
+      const rt = e.rate_type as keyof ServiceTicket['hoursByRateType'];
+      if (rt in hoursByRateType) {
+        hoursByRateType[rt] += Number(e.hours) || 0;
+      }
+    }
+    const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+    return { entries, hoursByRateType, totalHours };
+  }
+
+  const editedHours = rec.edited_hours as Record<string, number | number[]> | null | undefined;
+  if (!editedHours || Object.keys(editedHours).length === 0) return null;
+
+  const editedDesc = (rec.edited_descriptions || {}) as Record<string, string[]>;
+  const entries: ServiceTicket['entries'] = [];
+  const hoursByRateType = emptyHoursByRateType();
+  let synIdx = 0;
+  const firstEntry = match.entries[0];
+
+  for (const rateType of PDF_EXPORT_RATE_ORDER) {
+    const hRaw = editedHours[rateType];
+    if (hRaw === undefined || hRaw === null) continue;
+    const hList = (Array.isArray(hRaw) ? hRaw : [hRaw]).map((x) => Number(x) || 0);
+    const dList = editedDesc[rateType] || [];
+    let sumForType = 0;
+    for (let i = 0; i < hList.length; i++) {
+      const h = hList[i];
+      if (h <= 0) continue;
+      sumForType += h;
+      const descFromEdited = dList[i];
+      const fallback = match.entries.find((e) => e.rate_type === rateType)?.description;
+      const desc =
+        descFromEdited != null && String(descFromEdited).trim() !== ''
+          ? descFromEdited
+          : fallback || match.entries[0]?.description || 'Work performed';
+      entries.push({
+        id: `syn-${rateType}-${synIdx++}`,
+        date: match.date,
+        hours: h,
+        description: desc,
+        rate_type: rateType,
+        user_id: match.userId,
+        user: firstEntry?.user,
+        project_id: match.projectId,
+        project: firstEntry?.project,
+      } as ServiceTicket['entries'][number]);
+    }
+    if (sumForType > 0) {
+      (hoursByRateType as Record<string, number>)[rateType] = sumForType;
+    }
+  }
+
+  if (entries.length === 0) return null;
+  const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+  return { entries, hoursByRateType, totalHours };
+}
 
 /** Parse ticket number to extract numeric part for sorting (e.g. DB_25001 -> 25001) */
 function ticketNumberSortValue(ticketNumber: string | undefined): number {
@@ -428,43 +597,13 @@ export default function Invoices() {
         usedBaseTicketIds.add(match.id);
         const proj = projects?.find((p: { id: string }) => p.id === (rec.project_id ?? match.projectId));
         let ticketToUse = match;
-        if (rec.is_edited && rec.edited_hours) {
-          const editedHours = rec.edited_hours as Record<string, number | number[]>;
-          const hoursByRateType = { ...match.hoursByRateType };
-          Object.keys(editedHours).forEach((rateType) => {
-            if (rateType in hoursByRateType) {
-              const hours = editedHours[rateType];
-              (hoursByRateType as Record<string, number>)[rateType] = Array.isArray(hours)
-                ? hours.reduce((s: number, h: number) => s + (h || 0), 0)
-                : (hours as number) || 0;
-            }
-          });
-          const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
-          const descByRateType = new Map<string, string>();
-          for (const e of match.entries) {
-            const rt = e.rate_type;
-            if (rt && e.description && !descByRateType.has(rt)) {
-              descByRateType.set(rt, e.description);
-            }
-          }
-          const syntheticEntries = Object.entries(hoursByRateType)
-            .filter(([, h]) => h > 0)
-            .map(([rateType, hours]) => ({
-              id: `syn-${rateType}`,
-              date: match.date,
-              hours,
-              description: descByRateType.get(rateType) || match.entries[0]?.description || 'Work performed',
-              rate_type: rateType,
-              user_id: match.userId,
-              user: match.entries[0]?.user,
-              project_id: match.projectId,
-              project: match.entries[0]?.project,
-            })) as ServiceTicket['entries'];
+        const pdfAugment = augmentMatchTicketForInvoicePdf(rec, match);
+        if (pdfAugment && pdfAugment.entries && pdfAugment.entries.length > 0) {
           ticketToUse = {
             ...match,
-            hoursByRateType,
-            totalHours,
-            entries: syntheticEntries.length > 0 ? syntheticEntries : match.entries,
+            hoursByRateType: pdfAugment.hoursByRateType ?? match.hoursByRateType,
+            totalHours: pdfAugment.totalHours ?? match.totalHours,
+            entries: pdfAugment.entries,
           };
         }
         const pf = getProjectHeaderFields(proj);

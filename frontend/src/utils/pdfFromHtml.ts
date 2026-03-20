@@ -3,6 +3,22 @@ import { PDFDocument } from 'pdf-lib';
 import { ServiceTicket, getApproverPoAfeCcFromTicket } from './serviceTickets';
 import { supabase } from '../lib/supabaseClient';
 
+/** yyyy-mm-dd parses as UTC midnight in JS, which shifts the calendar day west of UTC (e.g. Americas). */
+function parseDateForTicketPdf(dateStr: string): Date {
+  const trimmed = dateStr.trim();
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+  if (ymd) {
+    return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
+  }
+  return new Date(trimmed);
+}
+
+function formatTicketDateMmDdYyyy(dateStr: string): string {
+  const d = parseDateForTicketPdf(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}/${d.getFullYear()}`;
+}
+
 interface PdfExportResult {
   blob: Blob;
   filename: string;
@@ -83,12 +99,6 @@ export async function downloadPdfFromHtml(
   const expensesTotal = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
   const grandTotal = rtAmount + ttAmount + ftAmount + otAmount + expensesTotal;
 
-  // Format date
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}/${d.getFullYear()}`;
-  };
-
   // Group entries by description (notes only; no date in PDF service description)
   // Reverse order so oldest/first-created entries appear at top (matches service ticket UI)
   const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
@@ -117,7 +127,12 @@ export async function downloadPdfFromHtml(
     : ticket.userName || 'Unknown';
   const employeeEmail = ticket.entries[0]?.user?.email || '';
 
-  const ticketDate = ticket.entries[0]?.date ? formatDate(ticket.entries[0].date) : formatDate(new Date().toISOString());
+  const rawTicketDate = ticket.date || ticket.entries[0]?.date;
+  const ticketDate = rawTicketDate
+    ? formatTicketDateMmDdYyyy(rawTicketDate)
+    : formatTicketDateMmDdYyyy(
+        `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
+      );
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket, ticket.customerInfo as any);
   const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
 
@@ -489,12 +504,6 @@ export async function generateAndStorePdf(
   const expensesTotal = expenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
   const grandTotal = rtAmount + ttAmount + ftAmount + otAmount + expensesTotal;
 
-  // Format date
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}/${d.getFullYear()}`;
-  };
-
   // Group entries by description (notes only; no date in PDF service description)
   // For standalone tickets with no entries, build from hoursByRateType
   const descriptionLines: { text: string; st: number; tt: number; ft: number; so: number; fo: number }[] = [];
@@ -535,7 +544,12 @@ export async function generateAndStorePdf(
     : ticket.userName || 'Unknown';
   const employeeEmail = ticket.entries[0]?.user?.email || '';
 
-  const ticketDate = ticket.entries[0]?.date ? formatDate(ticket.entries[0].date) : formatDate(new Date().toISOString());
+  const rawTicketDate = ticket.date || ticket.entries[0]?.date;
+  const ticketDate = rawTicketDate
+    ? formatTicketDateMmDdYyyy(rawTicketDate)
+    : formatTicketDateMmDdYyyy(
+        `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
+      );
   const filename = `ServiceTicket_${ticket.ticketNumber || ticket.id.substring(0, 8)}.pdf`;
 
   // Build the same HTML as downloadPdfFromHtml (abbreviated for space)

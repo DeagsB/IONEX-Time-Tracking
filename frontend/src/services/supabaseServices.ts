@@ -1823,7 +1823,7 @@ export const serviceTicketsService = {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     let query = supabase
       .from(tableName)
-      .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, total_hours, header_overrides')
+      .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, header_overrides')
       .not('workflow_status', 'in', '("draft","rejected")')
       .eq('is_discarded', false)
       .not('ticket_number', 'is', null)
