@@ -348,12 +348,6 @@ export default function Projects() {
     }
   };
 
-  const handleMarkInactive = (id: string) => {
-    if (window.confirm('Mark this project as inactive? It will be hidden from the main list and only visible to admins.')) {
-      setActiveMutation.mutate({ id, active: false });
-    }
-  };
-
   const handleReactivate = (id: string) => {
     setActiveMutation.mutate({ id, active: true });
   };
@@ -1158,7 +1152,7 @@ export default function Projects() {
               <th onClick={() => handleSort('hours')} style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
                 Total Hours {sortField === 'hours' && (sortDirection === 'asc' ? '▲' : '▼')}
               </th>
-              <th style={{ textAlign: 'right' }}>Actions</th>
+              <th style={{ textAlign: 'right' }}>Close</th>
             </tr>
           </thead>
           <tbody>
@@ -1186,11 +1180,16 @@ export default function Projects() {
               return (
               <tr
                 key={project.id}
+                title={user ? 'Click row to edit' : undefined}
+                onClick={() => {
+                  if (user) handleEdit(project);
+                }}
                 style={{
                   borderLeft: rowBorderLeft,
                   transition: 'background-color 0.2s',
                   backgroundColor: rowBg,
                   opacity: isClosed && !missingProjectNumber ? 0.92 : 1,
+                  cursor: user ? 'pointer' : 'default',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = rowHoverBg;
@@ -1260,37 +1259,37 @@ export default function Projects() {
                 <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                   {formatHours(projectHours[project.id] || 0)}
                 </td>
-                <td style={{ textAlign: 'right' }}>
+                <td style={{ textAlign: 'right', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
                   {user && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', justifyContent: 'flex-end' }}>
-                      <button
-                        className="button button-secondary"
-                        style={{ padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleEdit(project)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="button button-secondary"
-                        style={{ padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleToggleCompleted(project)}
-                        disabled={setCompletedMutation.isPending}
-                        title={isClosed ? 'Show as active on Profitability' : 'Mute on Profitability (project stays visible)'}
-                      >
-                        {isClosed ? 'Reopen' : 'Mark closed'}
-                      </button>
-                      {isAdmin && (
-                        <button
-                          className="button button-secondary"
-                          style={{ padding: '5px 10px', fontSize: '12px' }}
-                          onClick={() => handleMarkInactive(project.id)}
-                          title="Hide from main list (admins can still see in Inactive section)"
-                        >
-                          Mark inactive
-                        </button>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCompleted(project)}
+                      disabled={setCompletedMutation.isPending}
+                      title={isClosed ? 'Show as active on Profitability' : 'Mark closed — muted on Profitability; stays in lists'}
+                      style={{
+                        padding: '7px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        letterSpacing: '0.02em',
+                        borderRadius: '999px',
+                        border: isClosed ? '1px solid rgba(34, 197, 94, 0.45)' : '1px solid color-mix(in srgb, var(--primary-color) 55%, var(--border-color))',
+                        backgroundColor: isClosed ? 'rgba(34, 197, 94, 0.1)' : 'color-mix(in srgb, var(--primary-color) 8%, transparent)',
+                        color: isClosed ? '#16a34a' : 'var(--primary-color)',
+                        cursor: setCompletedMutation.isPending ? 'not-allowed' : 'pointer',
+                        opacity: setCompletedMutation.isPending ? 0.65 : 1,
+                        transition: 'background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease',
+                        boxShadow: isClosed ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (setCompletedMutation.isPending) return;
+                        e.currentTarget.style.filter = 'brightness(1.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.filter = '';
+                      }}
+                    >
+                      {isClosed ? 'Reopen' : 'Mark closed'}
+                    </button>
                   )}
                 </td>
               </tr>
@@ -1319,8 +1318,26 @@ export default function Projects() {
             <tbody>
               {sortedInactiveProjects.map((project: any) => {
                 const inClosed = project.is_completed === true;
+                const inRowBg = 'rgba(0,0,0,0.02)';
+                const inRowHover = 'var(--hover-bg)';
                 return (
-                <tr key={project.id} style={{ opacity: 0.85 }}>
+                <tr
+                  key={project.id}
+                  title="Click row to edit"
+                  onClick={() => handleEdit(project)}
+                  style={{
+                    opacity: 0.85,
+                    cursor: 'pointer',
+                    backgroundColor: inRowBg,
+                    transition: 'background-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = inRowHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = inRowBg;
+                  }}
+                >
                   <td style={{ fontFamily: 'monospace', fontWeight: '600' }}>{project.project_number || '-'}</td>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1362,28 +1379,58 @@ export default function Projects() {
                   <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                     {formatHours(projectHours[project.id] || 0)}
                   </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', justifyContent: 'flex-end' }}>
-                      <button
-                        className="button button-secondary"
-                        style={{ padding: '5px 10px', fontSize: '12px' }}
-                        onClick={() => handleEdit(project)}
-                      >
-                        Edit
-                      </button>
+                  <td style={{ textAlign: 'right', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-end' }}>
                       <button
                         type="button"
-                        className="button button-secondary"
-                        style={{ padding: '5px 10px', fontSize: '12px' }}
                         onClick={() => handleToggleCompleted(project)}
                         disabled={setCompletedMutation.isPending}
+                        title={inClosed ? 'Show as active on Profitability' : 'Mark closed — muted on Profitability'}
+                        style={{
+                          padding: '7px 16px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          letterSpacing: '0.02em',
+                          borderRadius: '999px',
+                          border: inClosed ? '1px solid rgba(34, 197, 94, 0.45)' : '1px solid color-mix(in srgb, var(--primary-color) 55%, var(--border-color))',
+                          backgroundColor: inClosed ? 'rgba(34, 197, 94, 0.1)' : 'color-mix(in srgb, var(--primary-color) 8%, transparent)',
+                          color: inClosed ? '#16a34a' : 'var(--primary-color)',
+                          cursor: setCompletedMutation.isPending ? 'not-allowed' : 'pointer',
+                          opacity: setCompletedMutation.isPending ? 0.65 : 1,
+                          transition: 'background-color 0.15s ease, filter 0.1s ease',
+                          boxShadow: inClosed ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!setCompletedMutation.isPending) e.currentTarget.style.filter = 'brightness(1.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.filter = '';
+                        }}
                       >
                         {inClosed ? 'Reopen' : 'Mark closed'}
                       </button>
                       <button
-                        className="button button-primary"
-                        style={{ padding: '5px 10px', fontSize: '12px' }}
+                        type="button"
                         onClick={() => handleReactivate(project.id)}
+                        style={{
+                          padding: '7px 16px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          letterSpacing: '0.02em',
+                          borderRadius: '999px',
+                          border: 'none',
+                          backgroundColor: 'var(--primary-color)',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                          transition: 'filter 0.1s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.filter = 'brightness(1.08)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.filter = '';
+                        }}
                       >
                         Reactivate
                       </button>
