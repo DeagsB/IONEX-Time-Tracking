@@ -247,69 +247,119 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
   return parts.join(', ');
 }
 
-/** Single PO/AFE breakdown line — click row to copy PO/AFE + ticket list (total not copied) */
+/** PO/AFE line + amount as two separate shadowed boxes; each copies its own text */
 function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: string; poAfe: string; totalAmount: number }) {
-  const [copied, setCopied] = useState(false);
-  const [hover, setHover] = useState(false);
+  const [hoverLine, setHoverLine] = useState(false);
+  const [hoverAmount, setHoverAmount] = useState(false);
+  const [copiedLine, setCopiedLine] = useState(false);
+  const [copiedAmount, setCopiedAmount] = useState(false);
   const isNone = !poAfe || poAfe === '(none)' || poAfe === NO_PO_AFE_LABEL;
   const copyText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const displayText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
-  const handleCopy = async () => {
+  const formattedTotal = `$${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const shadowRest = '0 1px 3px rgba(0, 0, 0, 0.08)';
+  const shadowHover = '0 4px 16px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08)';
+
+  const copyLine = async () => {
     try {
       await navigator.clipboard.writeText(copyText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopiedLine(true);
+      setTimeout(() => setCopiedLine(false), 1500);
     } catch {
       // ignore
     }
   };
-  const rowBackground = copied ? 'var(--bg-secondary)' : hover ? 'var(--bg-tertiary)' : 'transparent';
-  const rowOutline = hover || copied ? '1px solid var(--border-color)' : '1px solid transparent';
+
+  const copyAmount = async () => {
+    try {
+      await navigator.clipboard.writeText(formattedTotal);
+      setCopiedAmount(true);
+      setTimeout(() => setCopiedAmount(false), 1500);
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={handleCopy}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          void handleCopy();
-        }
-      }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      title={copied ? 'Copied to clipboard' : 'Click anywhere on this row (including the amount) to copy PO/AFE and tickets (total not included)'}
       style={{
         display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        marginBottom: '6px',
+        alignItems: 'stretch',
+        gap: '10px',
+        marginBottom: '8px',
         fontSize: '13px',
-        cursor: 'pointer',
-        borderRadius: '6px',
-        padding: '6px 10px',
-        marginLeft: '-10px',
-        marginRight: '-10px',
-        backgroundColor: rowBackground,
-        border: rowOutline,
-        transition: 'background-color 0.15s ease, border-color 0.15s ease',
       }}
     >
-      {/* pointer-events: none so clicks on the amount (and text) always hit the row and copy */}
-      <span style={{ color: 'var(--text-primary)', flex: 1, textAlign: 'left', pointerEvents: 'none' }}>{displayText}</span>
-      <span
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          void copyLine();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            void copyLine();
+          }
+        }}
+        onMouseEnter={() => setHoverLine(true)}
+        onMouseLeave={() => setHoverLine(false)}
+        title={copiedLine ? 'Copied!' : 'Click to copy line (PO/AFE and tickets; not the dollar amount)'}
         style={{
-          fontWeight: 700,
-          color: 'var(--primary-color)',
-          fontSize: '14px',
-          minWidth: '70px',
-          textAlign: 'right',
-          pointerEvents: 'none',
+          flex: 1,
+          minWidth: 0,
+          padding: '8px 12px',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          color: 'var(--text-primary)',
+          textAlign: 'left',
+          border: '1px solid var(--border-color)',
+          backgroundColor: copiedLine ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+          boxShadow: hoverLine || copiedLine ? shadowHover : shadowRest,
+          transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
           userSelect: 'none',
         }}
       >
-        ${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </span>
+        {displayText}
+      </div>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          void copyAmount();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            void copyAmount();
+          }
+        }}
+        onMouseEnter={() => setHoverAmount(true)}
+        onMouseLeave={() => setHoverAmount(false)}
+        title={copiedAmount ? 'Copied!' : 'Click to copy this amount only'}
+        style={{
+          flexShrink: 0,
+          alignSelf: 'flex-start',
+          padding: '8px 14px',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          fontWeight: 700,
+          color: 'var(--primary-color)',
+          fontSize: '14px',
+          textAlign: 'right',
+          whiteSpace: 'nowrap',
+          border: '1px solid var(--border-color)',
+          backgroundColor: copiedAmount ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+          boxShadow: hoverAmount || copiedAmount ? shadowHover : shadowRest,
+          transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
+          userSelect: 'none',
+        }}
+      >
+        {formattedTotal}
+      </div>
     </div>
   );
 }
