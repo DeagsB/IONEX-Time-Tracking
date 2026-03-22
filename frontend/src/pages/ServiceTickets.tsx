@@ -266,6 +266,24 @@ function serviceTicketExpenseTypeLabel(type: string): string {
   }
 }
 
+/** Unit field hint text by expense type (Mileage/Truck Hours vs per diem, etc.). */
+function expenseUnitExamples(type: string): string {
+  switch (type) {
+    case 'Travel':
+      return 'km, hr';
+    case 'Subsistence':
+      return 'day, trip';
+    case 'Hotel':
+      return 'night, room';
+    case 'Equipment':
+      return 'unit, day, hr';
+    case 'Expenses':
+      return 'item, trip, lump sum';
+    default:
+      return 'km, day, hr';
+  }
+}
+
 export default function ServiceTickets() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -5667,12 +5685,12 @@ export default function ServiceTickets() {
                               </select>
                             </div>
                             <div>
-                              <label style={labelStyle}>Unit (e.g., km, day, hr)</label>
+                              <label style={labelStyle}>{`Unit (e.g., ${expenseUnitExamples(editingExpense.expense_type)})`}</label>
                               <input
                                 style={inputStyle}
                                 value={editingExpense.unit || ''}
                                 onChange={(e) => setEditingExpense({ ...editingExpense, unit: e.target.value })}
-                                placeholder="km, day, hr, unit"
+                                placeholder={expenseUnitExamples(editingExpense.expense_type)}
                               />
                             </div>
                           </div>
@@ -7529,12 +7547,12 @@ export default function ServiceTickets() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Unit</label>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>{`Unit (e.g., ${expenseUnitExamples(createEditingExpense.expense_type)})`}</label>
                         <input
                           type="text"
                           value={createEditingExpense.unit || ''}
                           onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, unit: e.target.value } : null)}
-                          placeholder="km, day..."
+                          placeholder={expenseUnitExamples(createEditingExpense.expense_type)}
                           style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
                         />
                       </div>
