@@ -3002,7 +3002,13 @@ export default function ServiceTickets() {
       initialEditableTicketRef.current = { ...initialToShow };
     }
 
-    setDisplayTicketNumber(ticket.displayTicketNumber || '');
+    // Raw tickets (e.g. deep link from Invoices via openRecord=id) lack displayTicketNumber — only ticketsWithNumbers adds it
+    setDisplayTicketNumber(
+      ticket.displayTicketNumber ||
+        existingRecord?.ticket_number ||
+        ticket.ticketNumber ||
+        ''
+    );
 
     const initialRows = entriesToServiceRows(ticket.entries);
     originalTimeEntryRowsRef.current = initialRows.map(r => ({ ...r }));
