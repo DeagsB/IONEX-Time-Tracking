@@ -479,6 +479,14 @@ export default function ServiceTickets() {
     /** When this line came from a receipt (modal or suggested), unlink this user_expense if removed from ticket */
     linkedUserExpenseId?: string;
   }>>([]);
+
+  /** Inline validation for the ticket expense add/edit form (replaces blocking alerts). */
+  const [ticketExpenseFormIssues, setTicketExpenseFormIssues] = useState<
+    Partial<Record<'description' | 'receipt' | 'ticketRecord' | 'save', string>>
+  >({});
+  const clearTicketExpenseFormIssues = useCallback(() => {
+    setTicketExpenseFormIssues({});
+  }, []);
   
   // Editable ticket fields state
   const [editableTicket, setEditableTicket] = useState<{
@@ -608,17 +616,22 @@ export default function ServiceTickets() {
       if (!editingExpense.needs_reimbursement) return;
       if (et !== 'Hotel' && et !== 'Expenses') return;
       if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
-        alert('Please choose an image or PDF receipt.');
+        setTicketExpenseFormIssues({ receipt: 'Please choose an image or PDF file.' });
         return;
       }
       if (!editingExpense.description.trim()) {
-        alert('Please enter a description for this expense first, then attach the receipt.');
+        setTicketExpenseFormIssues({
+          description: 'Enter a description before attaching the receipt.',
+        });
         return;
       }
       if (!currentTicketRecordId) {
-        alert('Cannot add expense: ticket record not ready. Please close and reopen the ticket.');
+        setTicketExpenseFormIssues({
+          ticketRecord: 'This ticket is not ready to save expenses. Close and reopen the ticket, then try again.',
+        });
         return;
       }
+      setTicketExpenseFormIssues({});
       const amt = (Number(editingExpense.quantity) || 0) * (Number(editingExpense.rate) || 0);
       setPendingReimbursementExpense({
         expense_type: et,
@@ -5087,6 +5100,20 @@ export default function ServiceTickets() {
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
                 };
+                const expenseFieldErrorOutline: React.CSSProperties = {
+                  borderColor: '#ef5350',
+                  borderWidth: 2,
+                  boxShadow: '0 0 0 1px rgba(239, 83, 80, 0.35)',
+                };
+                const expenseIssueBannerStyle: React.CSSProperties = {
+                  marginBottom: '10px',
+                  padding: '8px 10px',
+                  backgroundColor: 'rgba(239, 83, 80, 0.1)',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  color: '#ef5350',
+                  lineHeight: 1.4,
+                };
                 const sectionStyle: React.CSSProperties = {
                   backgroundColor: 'var(--bg-secondary)',
                   borderRadius: '8px',
@@ -5587,6 +5614,7 @@ export default function ServiceTickets() {
                         {currentTicketRecordId && !isLockedForEditing && (
                           <button
                             onClick={() => {
+                              clearTicketExpenseFormIssues();
                               setEditingExpense({
                                 expense_type: 'Travel',
                                 description: 'Mileage',
@@ -5676,6 +5704,11 @@ export default function ServiceTickets() {
                           padding: '12px',
                           marginBottom: '12px',
                         }}>
+                          {(ticketExpenseFormIssues.ticketRecord || ticketExpenseFormIssues.save) && (
+                            <div style={expenseIssueBannerStyle} role="alert">
+                              {ticketExpenseFormIssues.ticketRecord ?? ticketExpenseFormIssues.save}
+                            </div>
+                          )}
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '12px' }}>
                             <div>
                               <label style={labelStyle}>Type</label>
@@ -5688,6 +5721,7 @@ export default function ServiceTickets() {
                                 }}
                                 value={editingExpense.expense_type}
                                 onChange={(e) => {
+                                  clearTicketExpenseFormIssues();
                                   const selectedType = e.target.value as 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
                                   // Auto-fill default values based on type
                                   let defaults = { unit: '', description: '', quantity: 1, rate: 0 };
@@ -5736,23 +5770,53 @@ export default function ServiceTickets() {
                               <input
                                 style={inputStyle}
                                 value={editingExpense.unit || ''}
-                                onChange={(e) => setEditingExpense({ ...editingExpense, unit: e.target.value })}
+                                onChange={(e) => {
+                                  setTicketExpenseFormIssues((prev) => {
+                                    const next = { ...prev };
+                                    delete next.save;
+                                    return next;
+                                  });
+                                  setEditingExpense({ ...editingExpense, unit: e.target.value });
+                                }}
                                 placeholder={getExpenseUnitFieldLabels(editingExpense.expense_type).placeholder}
                               />
                             </div>
                           </div>
                           <div style={{ marginBottom: '12px' }}>
-                            <label style={labelStyle}>Description</label>
+                            <label
+                              style={{
+                                ...labelStyle,
+                                ...(ticketExpenseFormIssues.description ? { color: '#ef5350' } : {}),
+                              }}
+                            >
+                              Description
+                            </label>
                             <input
-                              style={inputStyle}
+                              style={{
+                                ...inputStyle,
+                                ...(ticketExpenseFormIssues.description ? expenseFieldErrorOutline : {}),
+                              }}
                               value={editingExpense.description}
-                              onChange={(e) => setEditingExpense({ ...editingExpense, description: e.target.value })}
+                              onChange={(e) => {
+                                setTicketExpenseFormIssues((prev) => {
+                                  const next = { ...prev };
+                                  delete next.description;
+                                  delete next.save;
+                                  return next;
+                                });
+                                setEditingExpense({ ...editingExpense, description: e.target.value });
+                              }}
                               placeholder={
                                 editingExpense.expense_type === 'Expenses'
                                   ? 'e.g., Parts, supplies, materials, subcontractor'
                                   : 'e.g., Mileage, Per diem, Laptop rental'
                               }
                             />
+                            {ticketExpenseFormIssues.description && (
+                              <div style={{ marginTop: '6px', fontSize: '12px', color: '#ef5350', lineHeight: 1.35 }}>
+                                {ticketExpenseFormIssues.description}
+                              </div>
+                            )}
                             {!editingExpense.id &&
                               editingExpense.expense_type === 'Expenses' &&
                               editingExpense.needs_reimbursement && (
@@ -5771,6 +5835,11 @@ export default function ServiceTickets() {
                                 style={inputStyle}
                                 value={editingExpense.quantity || ''}
                                 onChange={(e) => {
+                                  setTicketExpenseFormIssues((prev) => {
+                                    const next = { ...prev };
+                                    delete next.save;
+                                    return next;
+                                  });
                                   const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                   setEditingExpense({ ...editingExpense, quantity: isNaN(val) ? 0 : val });
                                 }}
@@ -5786,6 +5855,11 @@ export default function ServiceTickets() {
                                 style={inputStyle}
                                 value={editingExpense.rate || ''}
                                 onChange={(e) => {
+                                  setTicketExpenseFormIssues((prev) => {
+                                    const next = { ...prev };
+                                    delete next.save;
+                                    return next;
+                                  });
                                   const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                   setEditingExpense({ ...editingExpense, rate: isNaN(val) ? 0 : val });
                                 }}
@@ -5802,6 +5876,12 @@ export default function ServiceTickets() {
                                 checked={editingExpense.needs_reimbursement || false}
                                 onChange={(e) => {
                                   const checked = e.target.checked;
+                                  setTicketExpenseFormIssues((prev) => {
+                                    const next = { ...prev };
+                                    delete next.save;
+                                    if (!checked) delete next.receipt;
+                                    return next;
+                                  });
                                   setEditingExpense({ ...editingExpense, needs_reimbursement: checked });
                                 }}
                               />
@@ -5823,7 +5903,12 @@ export default function ServiceTickets() {
                             (editingExpense.expense_type === 'Hotel' ||
                               editingExpense.expense_type === 'Expenses') && (
                               <div style={{ marginBottom: '12px' }}>
-                                <label style={labelStyle}>
+                                <label
+                                  style={{
+                                    ...labelStyle,
+                                    ...(ticketExpenseFormIssues.receipt ? { color: '#ef5350' } : {}),
+                                  }}
+                                >
                                   {editingExpense.expense_type === 'Expenses'
                                     ? 'Receipt (opens amount, GST and markup)'
                                     : 'Receipt — drop or click to open amount, GST and markup'}
@@ -5849,36 +5934,56 @@ export default function ServiceTickets() {
                                   onDragLeave={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                                    e.currentTarget.style.borderColor = ticketExpenseFormIssues.receipt
+                                      ? '#ef5350'
+                                      : 'var(--border-color)';
                                   }}
                                   onDrop={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                                    e.currentTarget.style.borderColor = ticketExpenseFormIssues.receipt
+                                      ? '#ef5350'
+                                      : 'var(--border-color)';
                                     const file = e.dataTransfer.files?.[0];
                                     if (!file) return;
-                                    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') return;
+                                    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+                                      e.currentTarget.style.borderColor = '#ef5350';
+                                      setTicketExpenseFormIssues({
+                                        receipt: 'Please drop an image or PDF file.',
+                                      });
+                                      return;
+                                    }
                                     openReimbursementReceiptModalFromExpenseForm(file);
                                   }}
                                   onClick={() => inFormReimbursementReceiptInputRef.current?.click()}
                                   style={{
                                     padding: '12px',
                                     borderRadius: '6px',
-                                    border: '2px dashed var(--border-color)',
-                                    backgroundColor: 'var(--bg-tertiary)',
+                                    border: ticketExpenseFormIssues.receipt
+                                      ? '2px dashed #ef5350'
+                                      : '2px dashed var(--border-color)',
+                                    backgroundColor: ticketExpenseFormIssues.receipt
+                                      ? 'rgba(239, 83, 80, 0.08)'
+                                      : 'var(--bg-tertiary)',
                                     fontSize: '12px',
-                                    color: 'var(--text-tertiary)',
+                                    color: ticketExpenseFormIssues.receipt ? '#ef5350' : 'var(--text-tertiary)',
                                     textAlign: 'center',
                                     cursor: 'pointer',
                                   }}
                                 >
                                   Drop receipt here or click to choose (image or PDF)
                                 </div>
+                                {ticketExpenseFormIssues.receipt && (
+                                  <div style={{ marginTop: '6px', fontSize: '12px', color: '#ef5350', lineHeight: 1.35 }}>
+                                    {ticketExpenseFormIssues.receipt}
+                                  </div>
+                                )}
                               </div>
                             )}
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                             <button
                               onClick={() => {
+                                clearTicketExpenseFormIssues();
                                 setEditingExpense(null);
                               }}
                               style={{
@@ -5896,11 +6001,16 @@ export default function ServiceTickets() {
                             <button
                               onClick={async () => {
                                 if (!editingExpense.description.trim()) {
-                                  alert('Please enter a description');
+                                  setTicketExpenseFormIssues({
+                                    description: 'Please enter a description.',
+                                  });
                                   return;
                                 }
                                 if (!currentTicketRecordId) {
-                                  alert('Cannot add expense: ticket record not ready. Please close and reopen the ticket.');
+                                  setTicketExpenseFormIssues({
+                                    ticketRecord:
+                                      'Cannot add expense: ticket record is not ready. Close and reopen the ticket, then try again.',
+                                  });
                                   return;
                                 }
                                 // Mileage/Truck Hours or Laptop/Basic Equipment + reimbursement: add line directly (client billed qty×rate; payroll: mileage % or 100% equipment)
@@ -5909,6 +6019,7 @@ export default function ServiceTickets() {
                                   editingExpense.needs_reimbursement &&
                                   (editingExpense.expense_type === 'Travel' || editingExpense.expense_type === 'Equipment')
                                 ) {
+                                  clearTicketExpenseFormIssues();
                                   setPendingAddExpenses((prev) => [
                                     ...prev,
                                     {
@@ -5932,9 +6043,10 @@ export default function ServiceTickets() {
                                   (editingExpense.expense_type === 'Hotel' ||
                                     editingExpense.expense_type === 'Expenses')
                                 ) {
-                                  alert(
-                                    'Enter a description, then drop or select a receipt in the area below. That opens the form for amount, GST, and markup—saving adds the line to the ticket.',
-                                  );
+                                  setTicketExpenseFormIssues({
+                                    receipt:
+                                      'Use the receipt area below: drop or select a file to open amount, GST, and markup. Saving there adds this line to the ticket.',
+                                  });
                                   return;
                                 }
                                 try {
@@ -5949,6 +6061,7 @@ export default function ServiceTickets() {
                                       unit: editingExpense.unit?.trim() || undefined,
                                       needs_reimbursement: editingExpense.needs_reimbursement,
                                     });
+                                    clearTicketExpenseFormIssues();
                                     setEditingExpense(null);
                                   } else {
                                     setPendingAddExpenses((prev) => [
@@ -5964,6 +6077,7 @@ export default function ServiceTickets() {
                                         needs_reimbursement: editingExpense.needs_reimbursement || false,
                                       },
                                     ]);
+                                    clearTicketExpenseFormIssues();
                                     setEditingExpense(null);
                                   }
                                 } catch (err: unknown) {
@@ -5980,7 +6094,7 @@ export default function ServiceTickets() {
                                   if (typeof message === 'string' && (message.includes('row-level security') || message.includes('policy') || message.includes('permission') || message.includes('403') || message.includes('violates'))) {
                                     message = "Permission denied — RLS policy blocked the insert. Ensure the expense migration has been applied and your user has access to this ticket's expenses.";
                                   }
-                                  alert(`Failed to save expense:\n${message}`);
+                                  setTicketExpenseFormIssues({ save: message });
                                 }
                               }}
                               style={{
@@ -6037,6 +6151,7 @@ export default function ServiceTickets() {
                           <div style={{ display: 'flex', gap: '6px' }}>
                             <button
                               onClick={() => {
+                                clearTicketExpenseFormIssues();
                                 if (expense.id?.startsWith('pending-')) {
                                   setPendingAddExpenses((prev) => prev.filter((e) => e.tempId !== expense.id));
                                   setEditingExpense({
