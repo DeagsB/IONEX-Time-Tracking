@@ -561,8 +561,6 @@ export default function ServiceTickets() {
   const [receiptForm, setReceiptForm] = useState({ description: '', amount: '', gst: '', markupType: 'dollar' as 'dollar' | 'percent', markupValue: '', is_billable: false });
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
-  const receiptDropRef = useRef<HTMLDivElement>(null);
-  const receiptFileInputRef = useRef<HTMLInputElement>(null);
   // When user adds expense with Needs Reimbursement, we prompt for receipt before adding
   const [pendingReimbursementExpense, setPendingReimbursementExpense] = useState<{
     expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
@@ -572,7 +570,7 @@ export default function ServiceTickets() {
     actual_cost?: number;
     unit?: string;
   } | null>(null);
-  /** New Hotel + reimbursable: attach receipt in-form before Add (hides duplicate global drop zone). */
+  /** New Hotel + reimbursable: attach receipt in-form before Add. */
   const [hotelExpenseReceiptFile, setHotelExpenseReceiptFile] = useState<File | null>(null);
   const [hotelExpenseReceiptPreviewUrl, setHotelExpenseReceiptPreviewUrl] = useState<string | null>(null);
   const hotelExpenseReceiptInputRef = useRef<HTMLInputElement>(null);
@@ -6058,70 +6056,6 @@ export default function ServiceTickets() {
                           <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: '700' }}>
                             ${[...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))), ...pendingAddExpenses].reduce((sum, e) => sum + (e.quantity * e.rate), 0).toFixed(2)}
                           </span>
-                        </div>
-                      )}
-
-                      {/* Internal Receipts Drag & Drop — hidden while adding reimbursable Hotel (in-form receipt zone instead) */}
-                      {!isLockedForEditing &&
-                        !(
-                          editingExpense &&
-                          !editingExpense.id &&
-                          editingExpense.expense_type === 'Hotel' &&
-                          editingExpense.needs_reimbursement
-                        ) && (
-                        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                          <h4 style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '8px' }}>Internal Receipts</h4>
-                          <input
-                            type="file"
-                            accept="image/*,.pdf"
-                            ref={receiptFileInputRef}
-                            style={{ display: 'none' }}
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
-                              setReceiptFile(file);
-                              setReceiptForm({ description: '', amount: '', gst: '', markupType: 'dollar', markupValue: '', is_billable: false });
-                              setReceiptUploadError(null);
-                              setReceiptPreviewUrl(URL.createObjectURL(file));
-                              setShowReceiptModal(true);
-                              e.target.value = '';
-                            }}
-                          />
-                          <div
-                            ref={receiptDropRef}
-                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
-                            onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--border-color)'; }}
-                            onDrop={(e) => {
-                              e.preventDefault(); e.stopPropagation();
-                              e.currentTarget.style.borderColor = 'var(--border-color)';
-                              const file = e.dataTransfer.files?.[0];
-                              if (!file) return;
-                              if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
-                              setReceiptFile(file);
-                              setReceiptForm({ description: '', amount: '', gst: '', markupType: 'dollar', markupValue: '', is_billable: false });
-                              setReceiptUploadError(null);
-                              setReceiptPreviewUrl(URL.createObjectURL(file));
-                              setShowReceiptModal(true);
-                            }}
-                            onClick={() => receiptFileInputRef.current?.click()}
-                            style={{
-                              padding: '16px',
-                              borderRadius: '6px',
-                              border: '2px dashed var(--border-color)',
-                              backgroundColor: 'var(--bg-tertiary)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: 'var(--text-tertiary)',
-                              fontSize: '13px',
-                              textAlign: 'center',
-                              cursor: 'pointer',
-                              transition: 'border-color 0.2s',
-                            }}
-                          >
-                            Drop receipt image here, or click to upload
-                          </div>
                         </div>
                       )}
 
