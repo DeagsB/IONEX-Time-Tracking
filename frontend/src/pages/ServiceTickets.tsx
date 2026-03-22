@@ -248,6 +248,22 @@ function listPreviewWorkDescription(
   );
 }
 
+/** Display label for expense_type values stored on service ticket expenses (matches form dropdown). */
+function serviceTicketExpenseTypeLabel(type: string): string {
+  switch (type) {
+    case 'Travel':
+      return 'Mileage/Truck Hours';
+    case 'Subsistence':
+      return 'Per Diem';
+    case 'Equipment':
+      return 'Equipment Billout';
+    case 'Expenses':
+      return 'Other';
+    default:
+      return type;
+  }
+}
+
 export default function ServiceTickets() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -5617,7 +5633,7 @@ export default function ServiceTickets() {
                                   });
                                 }}
                               >
-                                <option value="Travel">Mileage</option>
+                                <option value="Travel">Mileage/Truck Hours</option>
                                 <option value="Subsistence">Per Diem</option>
                                 <option value="Equipment">Equipment Billout</option>
                                 <option value="Expenses">Other</option>
@@ -5671,21 +5687,6 @@ export default function ServiceTickets() {
                                   setEditingExpense({ ...editingExpense, rate: isNaN(val) ? 0 : val });
                                 }}
                                 placeholder="0.00"
-                              />
-                            </div>
-                            <div>
-                              <label style={labelStyle}>Actual Cost ($)</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                style={inputStyle}
-                                value={editingExpense.actual_cost || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                  setEditingExpense({ ...editingExpense, actual_cost: isNaN(val) ? 0 : val });
-                                }}
-                                placeholder="0.00 (optional)"
                               />
                             </div>
                           </div>
@@ -5833,7 +5834,7 @@ export default function ServiceTickets() {
                         >
                           <div>
                             <span style={{ color: 'var(--primary-color)', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase' }}>
-                              {expense.expense_type}
+                              {serviceTicketExpenseTypeLabel(expense.expense_type)}
                             </span>
                             <div style={{ color: 'var(--text-primary)', marginTop: '2px' }}>
                               {expense.description}
@@ -7346,7 +7347,15 @@ export default function ServiceTickets() {
                   <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Travel / Subsistence / Expenses / Equipment</h3>
                   <button
                     className="button button-primary"
-                    onClick={() => setCreateEditingExpense({ expense_type: 'Travel', description: '', quantity: 1, rate: 0, unit: '' })}
+                    onClick={() =>
+                      setCreateEditingExpense({
+                        expense_type: 'Travel',
+                        description: 'Mileage',
+                        quantity: 1,
+                        rate: 1,
+                        unit: 'km',
+                      })
+                    }
                     style={{ padding: '6px 12px', fontSize: '12px' }}
                   >
                     + Add Expense
@@ -7361,13 +7370,37 @@ export default function ServiceTickets() {
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Type</label>
                         <select
                           value={createEditingExpense.expense_type}
-                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, expense_type: e.target.value as any } : null)}
+                          onChange={(e) => {
+                            const selectedType = e.target.value as 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+                            let defaults = { unit: '', description: '', quantity: 1, rate: 0 };
+                            if (selectedType === 'Travel') {
+                              defaults = { unit: 'km', description: 'Mileage', quantity: 1, rate: 1 };
+                            } else if (selectedType === 'Subsistence') {
+                              defaults = { unit: 'Day', description: 'Per Diem', quantity: 1, rate: 60 };
+                            } else if (selectedType === 'Equipment') {
+                              defaults = { unit: 'unit', description: 'Equipment Billout', quantity: 1, rate: 10 };
+                            } else {
+                              defaults = { unit: '', description: '', quantity: 0, rate: 0 };
+                            }
+                            setCreateEditingExpense((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    expense_type: selectedType,
+                                    unit: defaults.unit,
+                                    description: defaults.description,
+                                    quantity: defaults.quantity,
+                                    rate: defaults.rate,
+                                  }
+                                : null
+                            );
+                          }}
                           style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px' }}
                         >
-                          <option value="Travel">Travel</option>
-                          <option value="Subsistence">Subsistence</option>
-                          <option value="Expenses">Expenses</option>
-                          <option value="Equipment">Equipment</option>
+                          <option value="Travel">Mileage/Truck Hours</option>
+                          <option value="Subsistence">Per Diem</option>
+                          <option value="Equipment">Equipment Billout</option>
+                          <option value="Expenses">Other</option>
                         </select>
                       </div>
                       <div>
@@ -7441,7 +7474,7 @@ export default function ServiceTickets() {
                     {createExpenses.map((exp) => (
                       <div key={exp.tempId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
                         <div>
-                          <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--primary-color)', textTransform: 'uppercase' }}>{exp.expense_type}</span>
+                          <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--primary-color)', textTransform: 'uppercase' }}>{serviceTicketExpenseTypeLabel(exp.expense_type)}</span>
                           <div style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{exp.description}{exp.unit ? ` (${exp.unit})` : ''}</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
