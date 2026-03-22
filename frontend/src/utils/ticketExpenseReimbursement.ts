@@ -20,7 +20,7 @@ export function ticketExpenseReimbursementBase(exp: {
   // Only skip out-of-pocket base when explicitly company-paid; undefined still reimburses like legacy rows.
   if (exp.needs_reimbursement === false) return billed;
   const raw = exp.actual_cost;
-  const ac = raw != null && raw !== '' ? Number(raw) : NaN;
+  const ac = raw != null ? Number(raw) : NaN;
   if (!(ac > 0) || Number.isNaN(ac)) return billed;
   const expType = (exp.expense_type || '').toLowerCase();
   const desc = (exp.description || '').toLowerCase();
