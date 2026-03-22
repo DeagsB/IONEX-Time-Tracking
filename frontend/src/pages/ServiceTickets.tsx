@@ -266,22 +266,22 @@ function serviceTicketExpenseTypeLabel(type: string): string {
   }
 }
 
-/** Unit field hint text by expense type (Mileage/Truck Hours vs per diem, etc.). */
-function expenseUnitExamples(type: string): string {
-  switch (type) {
-    case 'Travel':
-      return 'km, hr';
-    case 'Subsistence':
-      return 'day, trip';
-    case 'Hotel':
-      return 'night, room';
-    case 'Equipment':
-      return 'day, week, flat fee';
-    case 'Expenses':
-      return 'item, trip, lump sum';
-    default:
-      return 'km, day, hr';
+/** Unit field label + placeholder by expense type. */
+function getExpenseUnitFieldLabels(type: string): { label: string; placeholder: string } {
+  if (type === 'Expenses') {
+    return { label: 'Unit (optional—usually leave blank)', placeholder: '' };
   }
+  const ex =
+    type === 'Travel'
+      ? 'km, hr'
+      : type === 'Subsistence'
+        ? 'day, trip'
+        : type === 'Hotel'
+          ? 'night, room'
+          : type === 'Equipment'
+            ? 'hr, day, week'
+            : 'km, day, hr';
+  return { label: `Unit (e.g., ${ex})`, placeholder: ex };
 }
 
 export default function ServiceTickets() {
@@ -592,6 +592,8 @@ export default function ServiceTickets() {
   const [hotelExpenseReceiptFile, setHotelExpenseReceiptFile] = useState<File | null>(null);
   const [hotelExpenseReceiptPreviewUrl, setHotelExpenseReceiptPreviewUrl] = useState<string | null>(null);
   const hotelExpenseReceiptInputRef = useRef<HTMLInputElement>(null);
+  /** Other (Expenses) + reimbursement: receipt drop opens the receipt/markup modal immediately. */
+  const otherExpenseReceiptInputRef = useRef<HTMLInputElement>(null);
   const receiptModalFileInputRef = useRef<HTMLInputElement>(null);
 
   const clearHotelExpenseReceiptDraft = useCallback(() => {
@@ -601,6 +603,45 @@ export default function ServiceTickets() {
     });
     setHotelExpenseReceiptFile(null);
   }, []);
+
+  const openOtherReimbursableReceiptFromForm = useCallback(
+    (file: File) => {
+      if (!editingExpense) return;
+      if (!editingExpense.description.trim()) {
+        alert('Please enter a description for this expense first, then attach the receipt.');
+        return;
+      }
+      if (!currentTicketRecordId) {
+        alert('Cannot add expense: ticket record not ready. Please close and reopen the ticket.');
+        return;
+      }
+      setPendingReimbursementExpense({
+        expense_type: 'Expenses',
+        description: editingExpense.description.trim(),
+        quantity: Number(editingExpense.quantity) || 0,
+        rate: Number(editingExpense.rate) || 0,
+        actual_cost: Number(editingExpense.actual_cost) || 0,
+        unit: editingExpense.unit?.trim() || undefined,
+      });
+      setReceiptForm({
+        description: editingExpense.description.trim(),
+        amount: '',
+        gst: '',
+        markupType: 'dollar',
+        markupValue: '',
+        is_billable: true,
+      });
+      setReceiptFile(file);
+      setReceiptPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
+      setReceiptUploadError(null);
+      setShowReceiptModal(true);
+      setEditingExpense(null);
+    },
+    [editingExpense, currentTicketRecordId]
+  );
 
   const handleStartReceiptEdit = (receipt: any) => {
     setEditingReceipt(receipt);
@@ -5654,7 +5695,7 @@ export default function ServiceTickets() {
                                   } else if (selectedType === 'Hotel') {
                                     defaults = { unit: 'night', description: 'Hotel', quantity: 1, rate: 0 };
                                   } else if (selectedType === 'Equipment') {
-                                    defaults = { unit: 'day', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
+                                    defaults = { unit: 'hr', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
                                   } else if (selectedType === 'Expenses') {
                                     // Other - all empty
                                     defaults = { unit: '', description: '', quantity: 0, rate: 0 };
@@ -5684,12 +5725,12 @@ export default function ServiceTickets() {
                               </select>
                             </div>
                             <div>
-                              <label style={labelStyle}>{`Unit (e.g., ${expenseUnitExamples(editingExpense.expense_type)})`}</label>
+                              <label style={labelStyle}>{getExpenseUnitFieldLabels(editingExpense.expense_type).label}</label>
                               <input
                                 style={inputStyle}
                                 value={editingExpense.unit || ''}
                                 onChange={(e) => setEditingExpense({ ...editingExpense, unit: e.target.value })}
-                                placeholder={expenseUnitExamples(editingExpense.expense_type)}
+                                placeholder={getExpenseUnitFieldLabels(editingExpense.expense_type).placeholder}
                               />
                             </div>
                           </div>
@@ -5699,8 +5740,19 @@ export default function ServiceTickets() {
                               style={inputStyle}
                               value={editingExpense.description}
                               onChange={(e) => setEditingExpense({ ...editingExpense, description: e.target.value })}
-                              placeholder="e.g., Mileage, Per diem, Laptop rental"
+                              placeholder={
+                                editingExpense.expense_type === 'Expenses'
+                                  ? 'e.g., Parts, supplies, materials, subcontractor'
+                                  : 'e.g., Mileage, Per diem, Laptop rental'
+                              }
                             />
+                            {!editingExpense.id &&
+                              editingExpense.expense_type === 'Expenses' &&
+                              editingExpense.needs_reimbursement && (
+                              <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                                Other covers costs outside the usual travel/laptop lines. If this needs reimbursement, enter a short description, then drop the receipt below—you’ll enter amount, GST, and markup there; that sets your actual cost and the billed rate on the ticket.
+                              </div>
+                            )}
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                             <div>
@@ -5754,10 +5806,65 @@ export default function ServiceTickets() {
                                     ? 'Needs reimbursement (attach receipt below)'
                                     : editingExpense.expense_type === 'Equipment'
                                       ? 'Needs reimbursement (personally owned laptop/equipment)'
-                                      : 'Needs reimbursement'}
+                                      : editingExpense.expense_type === 'Expenses'
+                                        ? 'Needs reimbursement (receipt required—drop below after description)'
+                                        : 'Needs reimbursement'}
                               </label>
                             </div>
                           )}
+                          {!editingExpense.id &&
+                            editingExpense.expense_type === 'Expenses' &&
+                            editingExpense.needs_reimbursement && (
+                              <div style={{ marginBottom: '12px' }}>
+                                <label style={labelStyle}>Receipt (opens amount, GST and markup)</label>
+                                <input
+                                  type="file"
+                                  accept="image/*,.pdf"
+                                  ref={otherExpenseReceiptInputRef}
+                                  style={{ display: 'none' }}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    e.target.value = '';
+                                    if (!file) return;
+                                    openOtherReimbursableReceiptFromForm(file);
+                                  }}
+                                />
+                                <div
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.currentTarget.style.borderColor = 'var(--primary-color)';
+                                  }}
+                                  onDragLeave={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                                    const file = e.dataTransfer.files?.[0];
+                                    if (!file) return;
+                                    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') return;
+                                    openOtherReimbursableReceiptFromForm(file);
+                                  }}
+                                  onClick={() => otherExpenseReceiptInputRef.current?.click()}
+                                  style={{
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    border: '2px dashed var(--border-color)',
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    fontSize: '12px',
+                                    color: 'var(--text-tertiary)',
+                                    textAlign: 'center',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Drop receipt here or click to choose (image or PDF)
+                                </div>
+                              </div>
+                            )}
                           {!editingExpense.id &&
                             editingExpense.expense_type === 'Hotel' &&
                             editingExpense.needs_reimbursement && (
@@ -5850,6 +5957,12 @@ export default function ServiceTickets() {
                                 }
                                 // When Needs Reimbursement is checked, prompt for receipt first
                                 if (!editingExpense.id && editingExpense.needs_reimbursement) {
+                                  if (editingExpense.expense_type === 'Expenses') {
+                                    alert(
+                                      'For reimbursable Other expenses, use the receipt area below: enter a description first, then drop or select the receipt. That opens the form where you enter amount, GST, and markup—saving sets the billed rate and your cost on the ticket.',
+                                    );
+                                    return;
+                                  }
                                   if (editingExpense.expense_type === 'Hotel') {
                                     if (!hotelExpenseReceiptFile || !hotelExpenseReceiptPreviewUrl) {
                                       alert('Attach a receipt using the drop zone above, or uncheck Needs reimbursement if the hotel cost is billed only.');
@@ -6218,7 +6331,11 @@ export default function ServiceTickets() {
                     {/* Right: Inputs */}
                     <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                        {pendingReimbursementExpense ? 'Upload Receipt for Reimbursement' : 'New Receipt Expense'}
+                        {pendingReimbursementExpense
+                          ? pendingReimbursementExpense.expense_type === 'Expenses'
+                            ? 'Other expense — receipt, cost and markup'
+                            : 'Upload Receipt for Reimbursement'
+                          : 'New Receipt Expense'}
                       </h3>
                       {receiptUploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{receiptUploadError}</div>}
                       <div>
@@ -7484,7 +7601,7 @@ export default function ServiceTickets() {
                             } else if (selectedType === 'Hotel') {
                               defaults = { unit: 'night', description: 'Hotel', quantity: 1, rate: 0 };
                             } else if (selectedType === 'Equipment') {
-                              defaults = { unit: 'day', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
+                              defaults = { unit: 'hr', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
                             } else {
                               defaults = { unit: '', description: '', quantity: 0, rate: 0 };
                             }
@@ -7522,6 +7639,11 @@ export default function ServiceTickets() {
                           type="text"
                           value={createEditingExpense.description}
                           onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, description: e.target.value } : null)}
+                          placeholder={
+                            createEditingExpense.expense_type === 'Expenses'
+                              ? 'e.g., Parts, supplies, materials'
+                              : 'e.g., Mileage, Per diem, Laptop rental'
+                          }
                           style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
                         />
                       </div>
@@ -7548,12 +7670,12 @@ export default function ServiceTickets() {
                         />
                       </div>
                       <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>{`Unit (e.g., ${expenseUnitExamples(createEditingExpense.expense_type)})`}</label>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>{getExpenseUnitFieldLabels(createEditingExpense.expense_type).label}</label>
                         <input
                           type="text"
                           value={createEditingExpense.unit || ''}
                           onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, unit: e.target.value } : null)}
-                          placeholder={expenseUnitExamples(createEditingExpense.expense_type)}
+                          placeholder={getExpenseUnitFieldLabels(createEditingExpense.expense_type).placeholder}
                           style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
                         />
                       </div>
@@ -7577,7 +7699,9 @@ export default function ServiceTickets() {
                               ? 'Needs reimbursement (attach receipt after ticket is created)'
                               : createEditingExpense.expense_type === 'Equipment'
                                 ? 'Needs reimbursement (personally owned laptop/equipment)'
-                                : 'Needs reimbursement'}
+                                : createEditingExpense.expense_type === 'Expenses'
+                                  ? 'Needs reimbursement (create ticket first, then add from ticket with receipt)'
+                                  : 'Needs reimbursement'}
                         </label>
                       </div>
                     )}
@@ -7592,6 +7716,15 @@ export default function ServiceTickets() {
                       <button
                         onClick={() => {
                           if (!createEditingExpense.description) return;
+                          if (
+                            createEditingExpense.expense_type === 'Expenses' &&
+                            createEditingExpense.needs_reimbursement
+                          ) {
+                            alert(
+                              'Reimbursable Other expenses need a receipt and amounts. Create the ticket first, then add this line from the ticket: choose Other, check reimbursement, enter a description, and drop the receipt to open the cost and markup form.',
+                            );
+                            return;
+                          }
                           setCreateExpenses((prev) => [
                             ...prev,
                             {
