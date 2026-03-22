@@ -5709,7 +5709,14 @@ export default function ServiceTickets() {
                               {ticketExpenseFormIssues.ticketRecord ?? ticketExpenseFormIssues.save}
                             </div>
                           )}
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '12px' }}>
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: editingExpense.expense_type === 'Hotel' ? '1fr' : 'repeat(2, 1fr)',
+                              gap: '12px',
+                              marginBottom: '12px',
+                            }}
+                          >
                             <div>
                               <label style={labelStyle}>Type</label>
                               <select
@@ -5734,7 +5741,7 @@ export default function ServiceTickets() {
                                     // Per Diem
                                     defaults = { unit: 'Day', description: 'Per Diem', quantity: 1, rate: 60 };
                                   } else if (selectedType === 'Hotel') {
-                                    defaults = { unit: 'night', description: 'Hotel', quantity: 1, rate: 0 };
+                                    defaults = { unit: '', description: 'Hotel', quantity: 1, rate: 0 };
                                   } else if (selectedType === 'Equipment') {
                                     defaults = { unit: 'hr', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
                                   } else if (selectedType === 'Expenses') {
@@ -5765,22 +5772,24 @@ export default function ServiceTickets() {
                                 <option value="Expenses">Other</option>
                               </select>
                             </div>
-                            <div>
-                              <label style={labelStyle}>{getExpenseUnitFieldLabels(editingExpense.expense_type).label}</label>
-                              <input
-                                style={inputStyle}
-                                value={editingExpense.unit || ''}
-                                onChange={(e) => {
-                                  setTicketExpenseFormIssues((prev) => {
-                                    const next = { ...prev };
-                                    delete next.save;
-                                    return next;
-                                  });
-                                  setEditingExpense({ ...editingExpense, unit: e.target.value });
-                                }}
-                                placeholder={getExpenseUnitFieldLabels(editingExpense.expense_type).placeholder}
-                              />
-                            </div>
+                            {editingExpense.expense_type !== 'Hotel' && (
+                              <div>
+                                <label style={labelStyle}>{getExpenseUnitFieldLabels(editingExpense.expense_type).label}</label>
+                                <input
+                                  style={inputStyle}
+                                  value={editingExpense.unit || ''}
+                                  onChange={(e) => {
+                                    setTicketExpenseFormIssues((prev) => {
+                                      const next = { ...prev };
+                                      delete next.save;
+                                      return next;
+                                    });
+                                    setEditingExpense({ ...editingExpense, unit: e.target.value });
+                                  }}
+                                  placeholder={getExpenseUnitFieldLabels(editingExpense.expense_type).placeholder}
+                                />
+                              </div>
+                            )}
                           </div>
                           <div style={{ marginBottom: '12px' }}>
                             <label
@@ -5825,48 +5834,63 @@ export default function ServiceTickets() {
                               </div>
                             )}
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                            <div>
-                              <label style={labelStyle}>Quantity</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                style={inputStyle}
-                                value={editingExpense.quantity || ''}
-                                onChange={(e) => {
-                                  setTicketExpenseFormIssues((prev) => {
-                                    const next = { ...prev };
-                                    delete next.save;
-                                    return next;
-                                  });
-                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                  setEditingExpense({ ...editingExpense, quantity: isNaN(val) ? 0 : val });
-                                }}
-                                placeholder="0.00"
-                              />
+                          {!(
+                            editingExpense.expense_type === 'Hotel' &&
+                            editingExpense.needs_reimbursement
+                          ) && (
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns:
+                                  editingExpense.expense_type === 'Hotel' ? '1fr' : '1fr 1fr',
+                                gap: '12px',
+                                marginBottom: '12px',
+                              }}
+                            >
+                              {editingExpense.expense_type !== 'Hotel' && (
+                                <div>
+                                  <label style={labelStyle}>Quantity</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    style={inputStyle}
+                                    value={editingExpense.quantity || ''}
+                                    onChange={(e) => {
+                                      setTicketExpenseFormIssues((prev) => {
+                                        const next = { ...prev };
+                                        delete next.save;
+                                        return next;
+                                      });
+                                      const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                      setEditingExpense({ ...editingExpense, quantity: isNaN(val) ? 0 : val });
+                                    }}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              )}
+                              <div>
+                                <label style={labelStyle}>Billed Rate ($)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  style={inputStyle}
+                                  value={editingExpense.rate || ''}
+                                  onChange={(e) => {
+                                    setTicketExpenseFormIssues((prev) => {
+                                      const next = { ...prev };
+                                      delete next.save;
+                                      return next;
+                                    });
+                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                    setEditingExpense({ ...editingExpense, rate: isNaN(val) ? 0 : val });
+                                  }}
+                                  placeholder="0.00"
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <label style={labelStyle}>Billed Rate ($)</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                style={inputStyle}
-                                value={editingExpense.rate || ''}
-                                onChange={(e) => {
-                                  setTicketExpenseFormIssues((prev) => {
-                                    const next = { ...prev };
-                                    delete next.save;
-                                    return next;
-                                  });
-                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                  setEditingExpense({ ...editingExpense, rate: isNaN(val) ? 0 : val });
-                                }}
-                                placeholder="0.00"
-                              />
-                            </div>
-                          </div>
+                          )}
                           {/* Per Diem: always reimbursable in reports (no checkbox). Travel: optional personal-vehicle reimbursement. */}
                           {editingExpense.expense_type !== 'Subsistence' && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -6050,15 +6074,22 @@ export default function ServiceTickets() {
                                   return;
                                 }
                                 try {
+                                  const isHotelRow = editingExpense.expense_type === 'Hotel';
+                                  const saveQuantity = isHotelRow
+                                    ? 1
+                                    : Number(editingExpense.quantity) || 0;
+                                  const saveUnit = isHotelRow
+                                    ? undefined
+                                    : editingExpense.unit?.trim() || undefined;
                                   if (editingExpense.id) {
                                     await updateExpenseMutation.mutateAsync({
                                       id: editingExpense.id,
                                       expense_type: editingExpense.expense_type,
                                       description: editingExpense.description.trim(),
-                                      quantity: Number(editingExpense.quantity) || 0,
+                                      quantity: saveQuantity,
                                       rate: Number(editingExpense.rate) || 0,
                                       actual_cost: Number(editingExpense.actual_cost) || 0,
-                                      unit: editingExpense.unit?.trim() || undefined,
+                                      unit: saveUnit,
                                       needs_reimbursement: editingExpense.needs_reimbursement,
                                     });
                                     clearTicketExpenseFormIssues();
@@ -6069,10 +6100,10 @@ export default function ServiceTickets() {
                                       {
                                         expense_type: editingExpense.expense_type,
                                         description: editingExpense.description.trim(),
-                                        quantity: Number(editingExpense.quantity) || 0,
+                                        quantity: saveQuantity,
                                         rate: Number(editingExpense.rate) || 0,
                                         actual_cost: Number(editingExpense.actual_cost) || 0,
-                                        unit: editingExpense.unit?.trim() || undefined,
+                                        unit: saveUnit,
                                         tempId: `pending-${Date.now()}-${prev.length}`,
                                         needs_reimbursement: editingExpense.needs_reimbursement || false,
                                       },
@@ -7657,7 +7688,17 @@ export default function ServiceTickets() {
                 {/* Add/Edit expense form */}
                 {createEditingExpense && (
                   <div style={{ padding: '12px', marginBottom: '12px', backgroundColor: 'rgba(255, 152, 0, 0.08)', borderRadius: '8px', border: '1px solid rgba(255, 152, 0, 0.3)' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr 1fr', gap: '8px', alignItems: 'end' }}>
+                    {(() => {
+                      const isHotelCreate = createEditingExpense.expense_type === 'Hotel';
+                      const hideCreateHotelRate =
+                        isHotelCreate && createEditingExpense.needs_reimbursement;
+                      const createExpenseGridColumns = isHotelCreate
+                        ? hideCreateHotelRate
+                          ? '1fr 2fr'
+                          : '1fr 2fr 1fr'
+                        : '1fr 2fr 1fr 1fr 1fr';
+                      return (
+                    <div style={{ display: 'grid', gridTemplateColumns: createExpenseGridColumns, gap: '8px', alignItems: 'end' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Type</label>
                         <select
@@ -7670,7 +7711,7 @@ export default function ServiceTickets() {
                             } else if (selectedType === 'Subsistence') {
                               defaults = { unit: 'Day', description: 'Per Diem', quantity: 1, rate: 60 };
                             } else if (selectedType === 'Hotel') {
-                              defaults = { unit: 'night', description: 'Hotel', quantity: 1, rate: 0 };
+                              defaults = { unit: '', description: 'Hotel', quantity: 1, rate: 0 };
                             } else if (selectedType === 'Equipment') {
                               defaults = { unit: 'hr', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
                             } else {
@@ -7718,39 +7759,58 @@ export default function ServiceTickets() {
                           style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
                         />
                       </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Qty</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={createEditingExpense.quantity}
-                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, quantity: parseFloat(e.target.value) || 0 } : null)}
-                          style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', textAlign: 'center' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Rate ($)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={createEditingExpense.rate}
-                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, rate: parseFloat(e.target.value) || 0 } : null)}
-                          style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', textAlign: 'center' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>{getExpenseUnitFieldLabels(createEditingExpense.expense_type).label}</label>
-                        <input
-                          type="text"
-                          value={createEditingExpense.unit || ''}
-                          onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, unit: e.target.value } : null)}
-                          placeholder={getExpenseUnitFieldLabels(createEditingExpense.expense_type).placeholder}
-                          style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
-                        />
-                      </div>
+                      {!isHotelCreate && (
+                        <>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Qty</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={createEditingExpense.quantity}
+                              onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, quantity: parseFloat(e.target.value) || 0 } : null)}
+                              style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', textAlign: 'center' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Rate ($)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={createEditingExpense.rate}
+                              onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, rate: parseFloat(e.target.value) || 0 } : null)}
+                              style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', textAlign: 'center' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>{getExpenseUnitFieldLabels(createEditingExpense.expense_type).label}</label>
+                            <input
+                              type="text"
+                              value={createEditingExpense.unit || ''}
+                              onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, unit: e.target.value } : null)}
+                              placeholder={getExpenseUnitFieldLabels(createEditingExpense.expense_type).placeholder}
+                              style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                        </>
+                      )}
+                      {isHotelCreate && !hideCreateHotelRate && (
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Rate ($)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={createEditingExpense.rate}
+                            onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, rate: parseFloat(e.target.value) || 0 } : null)}
+                            style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', textAlign: 'center' }}
+                          />
+                        </div>
+                      )}
                     </div>
+                      );
+                    })()}
                     {createEditingExpense.expense_type !== 'Subsistence' && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
                         <input
@@ -7802,6 +7862,9 @@ export default function ServiceTickets() {
                               ...createEditingExpense,
                               tempId: `exp-${Date.now()}`,
                               needs_reimbursement: createEditingExpense.needs_reimbursement ?? false,
+                              ...(createEditingExpense.expense_type === 'Hotel'
+                                ? { quantity: 1, unit: '' }
+                                : {}),
                             },
                           ]);
                           setCreateEditingExpense(null);
