@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
+import { ticketExpenseReimbursementBase } from '../utils/ticketExpenseReimbursement';
 
 interface TimeEntry {
   id: string;
@@ -597,26 +598,29 @@ export default function Payroll() {
         continue;
       }
 
-      const amount = qty * rate * reimbRate;
+      const reimbBase = ticketExpenseReimbursementBase(exp);
+      const amount = reimbBase * reimbRate;
+      const displayQty = qty || 1;
+      const displayRate = reimbBase / displayQty;
       const entry = getOrCreate(userId);
       entry.total += amount;
       entry.lines.push({
         category,
         description: exp.description || '',
-        quantity: qty,
-        rate,
+        quantity: displayQty,
+        rate: displayRate,
         reimbRate,
         amount,
         ticketNumber,
       });
     }
 
-    // Process receipt expenses (pre-markup cost = amount field directly); includes catch-up for current period
+    // Process receipt expenses (subtotal + GST = employee out-of-pocket); includes catch-up for current period
     for (const exp of receiptExpensesForReimbursements as any[]) {
       const userId = exp.user_id;
       if (!userId) continue;
 
-      const amount = Number(exp.amount) || 0;
+      const amount = (Number(exp.amount) || 0) + (Number(exp.gst) || 0);
       const entry = getOrCreate(userId);
       entry.total += amount;
       entry.lines.push({

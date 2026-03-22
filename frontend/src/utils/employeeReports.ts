@@ -5,6 +5,7 @@ import {
   entryServiceTicketMatchKeys,
   dbServiceTicketMatchKeys,
 } from './serviceTickets';
+import { ticketExpenseBilledAmount, ticketExpenseReimbursementBase } from './ticketExpenseReimbursement';
 
 export interface TimeEntry {
   id: string;
@@ -643,8 +644,9 @@ export function aggregateEmployeeMetrics(
 
   // Calculate expense cost and billed amount from service ticket expenses for this employee.
   // expenseBilled = total amount billed to customer (all expenses: quantity × rate).
-  // expenseCost = reimbursement cost: what we pay the employee = amount × reimb_rate for reimbursable items.
-  // Billed-only (needs_reimbursement=false): cost = 0. Reimbursable: cost = amount × reimb_rate.
+  // expenseCost = reimbursement cost: what we pay the employee = reimb_base × reimb_rate.
+  // reimb_base is actual_cost (incl. GST) for hotel/other receipt lines when set; else quantity × rate.
+  // Billed-only (needs_reimbursement=false): cost = 0. Reimbursable: cost = reimb_base × reimb_rate.
   const expenseBreakdownMap = new Map<string, { billed: number; cost: number }>();
   const getOrCreate = (cat: string) => {
     if (!expenseBreakdownMap.has(cat)) expenseBreakdownMap.set(cat, { billed: 0, cost: 0 });
@@ -656,8 +658,8 @@ export function aggregateEmployeeMetrics(
   if (ticketExpenses) {
     ticketExpenses.forEach(exp => {
       if (exp.service_tickets?.user_id !== userId) return;
-      const amount = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-      expenseBilled += amount;
+      const billed = ticketExpenseBilledAmount(exp);
+      expenseBilled += billed;
 
       const expType = (exp.expense_type || '').toLowerCase();
       const desc = (exp.description || '').toLowerCase();
@@ -690,10 +692,11 @@ export function aggregateEmployeeMetrics(
         reimbRate = 1.00;
       }
 
+      const reimbBase = ticketExpenseReimbursementBase(exp);
       const entry = getOrCreate(category);
-      entry.billed += amount;
-      entry.cost += amount * reimbRate;
-      expenseCost += amount * reimbRate;
+      entry.billed += billed;
+      entry.cost += reimbBase * reimbRate;
+      expenseCost += reimbBase * reimbRate;
     });
   }
 
@@ -1149,7 +1152,7 @@ export function calculateProjectBreakdown(
       const projectId = exp.service_tickets?.project_id;
       if (!projectId) return;
 
-      const amount = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      const billed = ticketExpenseBilledAmount(exp);
       const expType = (exp.expense_type || '').toLowerCase();
       const desc = (exp.description || '').toLowerCase();
 
@@ -1180,8 +1183,9 @@ export function calculateProjectBreakdown(
         });
       }
       const data = projectMap.get(projectId)!;
-      data.expenseBilled += amount;
-      data.expenseCost += amount * reimbRate;
+      const reimbBase = ticketExpenseReimbursementBase(exp);
+      data.expenseBilled += billed;
+      data.expenseCost += reimbBase * reimbRate;
     });
   }
 
