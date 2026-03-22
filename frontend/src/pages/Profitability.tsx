@@ -221,7 +221,10 @@ export default function Profitability() {
         return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
       }
       if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
-      if (desc.includes('hotel')) return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+      if (expType === 'hotel' || desc.includes('hotel')) {
+        if (exp.needs_reimbursement === false) return 0;
+        return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+      }
       // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
       if (exp.actual_cost != null) return Number(exp.actual_cost);
       if (!exp.needs_reimbursement) return 0;
@@ -462,7 +465,10 @@ export default function Profitability() {
       return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
     }
     if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
-    if (desc.includes('hotel')) return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+    if (expType === 'hotel' || desc.includes('hotel')) {
+      if (exp.needs_reimbursement === false) return 0;
+      return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+    }
     // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
     if (exp.actual_cost != null) return Number(exp.actual_cost);
     if (!exp.needs_reimbursement) return 0;
@@ -474,7 +480,7 @@ export default function Profitability() {
     if (billedTotal <= 0) return false;
     const desc = (exp.description || exp.expense_type || '').toLowerCase();
     const expType = (exp.expense_type || '').toLowerCase();
-    if (expType === 'travel' || desc.includes('per diem') || desc.includes('hotel')) return false;
+    if (expType === 'travel' || expType === 'hotel' || desc.includes('per diem') || desc.includes('hotel')) return false;
     if (exp.needs_reimbursement) return false;
     if (exp.actual_cost != null && Number(exp.actual_cost) > 0) return false;
     return true;

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -257,6 +257,8 @@ function serviceTicketExpenseTypeLabel(type: string): string {
       return 'Per Diem';
     case 'Equipment':
       return 'Equipment Billout';
+    case 'Hotel':
+      return 'Hotel';
     case 'Expenses':
       return 'Other';
     default:
@@ -421,7 +423,7 @@ export default function ServiceTickets() {
   // Expense management state
   const [expenses, setExpenses] = useState<Array<{
     id?: string;
-    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
     description: string;
     quantity: number;
     rate: number;
@@ -430,7 +432,7 @@ export default function ServiceTickets() {
   }>>([]);
   const [editingExpense, setEditingExpense] = useState<{
     id?: string;
-    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
     description: string;
     quantity: number;
     rate: number;
@@ -440,7 +442,7 @@ export default function ServiceTickets() {
   } | null>(null);
   const [pendingDeleteExpenseIds, setPendingDeleteExpenseIds] = useState<Set<string>>(new Set());
   const [pendingAddExpenses, setPendingAddExpenses] = useState<Array<{
-    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
     description: string;
     quantity: number;
     rate: number;
@@ -562,14 +564,26 @@ export default function ServiceTickets() {
   const receiptFileInputRef = useRef<HTMLInputElement>(null);
   // When user adds expense with Needs Reimbursement, we prompt for receipt before adding
   const [pendingReimbursementExpense, setPendingReimbursementExpense] = useState<{
-    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
     description: string;
     quantity: number;
     rate: number;
     actual_cost?: number;
     unit?: string;
   } | null>(null);
+  /** New Hotel + reimbursable: attach receipt in-form before Add (hides duplicate global drop zone). */
+  const [hotelExpenseReceiptFile, setHotelExpenseReceiptFile] = useState<File | null>(null);
+  const [hotelExpenseReceiptPreviewUrl, setHotelExpenseReceiptPreviewUrl] = useState<string | null>(null);
+  const hotelExpenseReceiptInputRef = useRef<HTMLInputElement>(null);
   const receiptModalFileInputRef = useRef<HTMLInputElement>(null);
+
+  const clearHotelExpenseReceiptDraft = useCallback(() => {
+    setHotelExpenseReceiptPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setHotelExpenseReceiptFile(null);
+  }, []);
 
   const handleStartReceiptEdit = (receipt: any) => {
     setEditingReceipt(receipt);
@@ -659,7 +673,7 @@ export default function ServiceTickets() {
   ]);
   const [createExpenses, setCreateExpenses] = useState<Array<{
     tempId: string;
-    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
     description: string;
     quantity: number;
     rate: number;
@@ -667,7 +681,7 @@ export default function ServiceTickets() {
     needs_reimbursement?: boolean;
   }>>([]);
   const [createEditingExpense, setCreateEditingExpense] = useState<{
-    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
     description: string;
     quantity: number;
     rate: number;
@@ -2059,7 +2073,7 @@ export default function ServiceTickets() {
   const createExpenseMutation = useMutation({
     mutationFn: (expense: {
       service_ticket_id: string;
-      expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+      expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
       description: string;
       quantity: number;
       rate: number;
@@ -5504,7 +5518,7 @@ export default function ServiceTickets() {
             {/* Expenses Section */}
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={sectionTitleStyle}>Travel / Subsistence / Expenses / Equipment</h3>
+                        <h3 style={sectionTitleStyle}>Travel / Subsistence / Hotel / Expenses / Equipment</h3>
                         {currentTicketRecordId && !isLockedForEditing && (
                           <button
                             onClick={() => {
@@ -5608,7 +5622,8 @@ export default function ServiceTickets() {
                                 }}
                                 value={editingExpense.expense_type}
                                 onChange={(e) => {
-                                  const selectedType = e.target.value as 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+                                  clearHotelExpenseReceiptDraft();
+                                  const selectedType = e.target.value as 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
                                   // Auto-fill default values based on type
                                   let defaults = { unit: '', description: '', quantity: 1, rate: 0 };
                                   
@@ -5619,6 +5634,8 @@ export default function ServiceTickets() {
                                   } else if (selectedType === 'Subsistence') {
                                     // Per Diem
                                     defaults = { unit: 'Day', description: 'Per Diem', quantity: 1, rate: 60 };
+                                  } else if (selectedType === 'Hotel') {
+                                    defaults = { unit: 'night', description: 'Hotel', quantity: 1, rate: 0 };
                                   } else if (selectedType === 'Equipment') {
                                     // Equipment Billout
                                     defaults = { unit: 'unit', description: 'Equipment Billout', quantity: 1, rate: 10 };
@@ -5635,7 +5652,7 @@ export default function ServiceTickets() {
                                     quantity: defaults.quantity,
                                     rate: defaults.rate,
                                     needs_reimbursement:
-                                      selectedType === 'Travel'
+                                      selectedType === 'Travel' || selectedType === 'Hotel'
                                         ? false
                                         : selectedType === 'Subsistence'
                                           ? false
@@ -5645,6 +5662,7 @@ export default function ServiceTickets() {
                               >
                                 <option value="Travel">Mileage/Truck Hours</option>
                                 <option value="Subsistence">Per Diem</option>
+                                <option value="Hotel">Hotel</option>
                                 <option value="Equipment">Equipment Billout</option>
                                 <option value="Expenses">Other</option>
                               </select>
@@ -5707,18 +5725,89 @@ export default function ServiceTickets() {
                                 type="checkbox"
                                 id="needs-reimbursement-ticket-expense"
                                 checked={editingExpense.needs_reimbursement || false}
-                                onChange={(e) => setEditingExpense({ ...editingExpense, needs_reimbursement: e.target.checked })}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setEditingExpense({ ...editingExpense, needs_reimbursement: checked });
+                                  if (!checked && editingExpense.expense_type === 'Hotel') clearHotelExpenseReceiptDraft();
+                                }}
                               />
                               <label htmlFor="needs-reimbursement-ticket-expense" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
                                 {editingExpense.expense_type === 'Travel'
                                   ? 'Needs reimbursement (personal vehicle)'
-                                  : 'Needs reimbursement'}
+                                  : editingExpense.expense_type === 'Hotel'
+                                    ? 'Needs reimbursement (attach receipt below)'
+                                    : 'Needs reimbursement'}
                               </label>
                             </div>
                           )}
+                          {!editingExpense.id &&
+                            editingExpense.expense_type === 'Hotel' &&
+                            editingExpense.needs_reimbursement && (
+                              <div style={{ marginBottom: '12px' }}>
+                                <label style={labelStyle}>Receipt (required for reimbursement)</label>
+                                <input
+                                  type="file"
+                                  accept="image/*,.pdf"
+                                  ref={hotelExpenseReceiptInputRef}
+                                  style={{ display: 'none' }}
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    e.target.value = '';
+                                    if (!file) return;
+                                    setHotelExpenseReceiptPreviewUrl((prev) => {
+                                      if (prev) URL.revokeObjectURL(prev);
+                                      return URL.createObjectURL(file);
+                                    });
+                                    setHotelExpenseReceiptFile(file);
+                                  }}
+                                />
+                                <div
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.currentTarget.style.borderColor = 'var(--primary-color)';
+                                  }}
+                                  onDragLeave={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                                    const file = e.dataTransfer.files?.[0];
+                                    if (!file) return;
+                                    setHotelExpenseReceiptPreviewUrl((prev) => {
+                                      if (prev) URL.revokeObjectURL(prev);
+                                      return URL.createObjectURL(file);
+                                    });
+                                    setHotelExpenseReceiptFile(file);
+                                  }}
+                                  onClick={() => hotelExpenseReceiptInputRef.current?.click()}
+                                  style={{
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    border: '2px dashed var(--border-color)',
+                                    backgroundColor: 'var(--bg-tertiary)',
+                                    fontSize: '12px',
+                                    color: 'var(--text-tertiary)',
+                                    textAlign: 'center',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {hotelExpenseReceiptFile
+                                    ? `Selected: ${hotelExpenseReceiptFile.name} (click to change)`
+                                    : 'Drop receipt here or click to choose (image or PDF)'}
+                                </div>
+                              </div>
+                            )}
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                             <button
-                              onClick={() => setEditingExpense(null)}
+                              onClick={() => {
+                                clearHotelExpenseReceiptDraft();
+                                setEditingExpense(null);
+                              }}
                               style={{
                                 padding: '6px 12px',
                                 backgroundColor: 'transparent',
@@ -5743,6 +5832,38 @@ export default function ServiceTickets() {
                                 }
                                 // When Needs Reimbursement is checked, prompt for receipt first
                                 if (!editingExpense.id && editingExpense.needs_reimbursement) {
+                                  if (editingExpense.expense_type === 'Hotel') {
+                                    if (!hotelExpenseReceiptFile || !hotelExpenseReceiptPreviewUrl) {
+                                      alert('Attach a receipt using the drop zone above, or uncheck Needs reimbursement if the hotel cost is billed only.');
+                                      return;
+                                    }
+                                    const amt = (Number(editingExpense.quantity) || 0) * (Number(editingExpense.rate) || 0);
+                                    setPendingReimbursementExpense({
+                                      expense_type: 'Hotel',
+                                      description: editingExpense.description.trim(),
+                                      quantity: Number(editingExpense.quantity) || 0,
+                                      rate: Number(editingExpense.rate) || 0,
+                                      actual_cost: Number(editingExpense.actual_cost) || 0,
+                                      unit: editingExpense.unit?.trim() || undefined,
+                                    });
+                                    setReceiptForm({
+                                      description: editingExpense.description.trim(),
+                                      amount: amt > 0 ? String(amt) : '',
+                                      gst: '',
+                                      markupType: 'dollar',
+                                      markupValue: '',
+                                      is_billable: true,
+                                    });
+                                    if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+                                    setReceiptFile(hotelExpenseReceiptFile);
+                                    setReceiptPreviewUrl(hotelExpenseReceiptPreviewUrl);
+                                    setHotelExpenseReceiptFile(null);
+                                    setHotelExpenseReceiptPreviewUrl(null);
+                                    setReceiptUploadError(null);
+                                    setShowReceiptModal(true);
+                                    setEditingExpense(null);
+                                    return;
+                                  }
                                   const amt = (Number(editingExpense.quantity) || 0) * (Number(editingExpense.rate) || 0);
                                   setPendingReimbursementExpense({
                                     expense_type: editingExpense.expense_type,
@@ -5870,7 +5991,15 @@ export default function ServiceTickets() {
                               onClick={() => {
                                 if (expense.id?.startsWith('pending-')) {
                                   setPendingAddExpenses((prev) => prev.filter((e) => e.tempId !== expense.id));
-                                  setEditingExpense({ expense_type: expense.expense_type, description: expense.description, quantity: expense.quantity, rate: expense.rate, actual_cost: expense.actual_cost, unit: expense.unit });
+                                  setEditingExpense({
+                                    expense_type: expense.expense_type,
+                                    description: expense.description,
+                                    quantity: expense.quantity,
+                                    rate: expense.rate,
+                                    actual_cost: expense.actual_cost,
+                                    unit: expense.unit,
+                                    needs_reimbursement: expense.needs_reimbursement,
+                                  });
                                 } else {
                                   setEditingExpense({ ...expense });
                                 }
@@ -5931,8 +6060,14 @@ export default function ServiceTickets() {
                         </div>
                       )}
 
-                      {/* Internal Receipts Drag & Drop */}
-                      {!isLockedForEditing && (
+                      {/* Internal Receipts Drag & Drop — hidden while adding reimbursable Hotel (in-form receipt zone instead) */}
+                      {!isLockedForEditing &&
+                        !(
+                          editingExpense &&
+                          !editingExpense.id &&
+                          editingExpense.expense_type === 'Hotel' &&
+                          editingExpense.needs_reimbursement
+                        ) && (
                         <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                           <h4 style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '8px' }}>Internal Receipts</h4>
                           <input
@@ -7358,7 +7493,7 @@ export default function ServiceTickets() {
               {/* Expenses */}
               <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Travel / Subsistence / Expenses / Equipment</h3>
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Travel / Subsistence / Hotel / Expenses / Equipment</h3>
                   <button
                     className="button button-primary"
                     onClick={() =>
@@ -7386,12 +7521,14 @@ export default function ServiceTickets() {
                         <select
                           value={createEditingExpense.expense_type}
                           onChange={(e) => {
-                            const selectedType = e.target.value as 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+                            const selectedType = e.target.value as 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
                             let defaults = { unit: '', description: '', quantity: 1, rate: 0 };
                             if (selectedType === 'Travel') {
                               defaults = { unit: 'km', description: 'Mileage', quantity: 1, rate: 1 };
                             } else if (selectedType === 'Subsistence') {
                               defaults = { unit: 'Day', description: 'Per Diem', quantity: 1, rate: 60 };
+                            } else if (selectedType === 'Hotel') {
+                              defaults = { unit: 'night', description: 'Hotel', quantity: 1, rate: 0 };
                             } else if (selectedType === 'Equipment') {
                               defaults = { unit: 'unit', description: 'Equipment Billout', quantity: 1, rate: 10 };
                             } else {
@@ -7407,7 +7544,7 @@ export default function ServiceTickets() {
                                     quantity: defaults.quantity,
                                     rate: defaults.rate,
                                     needs_reimbursement:
-                                      selectedType === 'Travel'
+                                      selectedType === 'Travel' || selectedType === 'Hotel'
                                         ? false
                                         : selectedType === 'Subsistence'
                                           ? false
@@ -7420,6 +7557,7 @@ export default function ServiceTickets() {
                         >
                           <option value="Travel">Mileage/Truck Hours</option>
                           <option value="Subsistence">Per Diem</option>
+                          <option value="Hotel">Hotel</option>
                           <option value="Equipment">Equipment Billout</option>
                           <option value="Expenses">Other</option>
                         </select>
@@ -7481,7 +7619,9 @@ export default function ServiceTickets() {
                         <label htmlFor="needs-reimbursement-create-expense" style={{ fontSize: '12px', color: 'var(--text-primary)', cursor: 'pointer' }}>
                           {createEditingExpense.expense_type === 'Travel'
                             ? 'Needs reimbursement (personal vehicle)'
-                            : 'Needs reimbursement'}
+                            : createEditingExpense.expense_type === 'Hotel'
+                              ? 'Needs reimbursement (attach receipt after ticket is created)'
+                              : 'Needs reimbursement'}
                         </label>
                       </div>
                     )}

@@ -2077,7 +2077,7 @@ export const serviceTicketExpensesService = {
 
   async create(expense: {
     service_ticket_id: string;
-    expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
     description: string;
     quantity: number;
     rate: number;
@@ -2097,7 +2097,7 @@ export const serviceTicketExpensesService = {
   },
 
   async update(id: string, updates: {
-    expense_type?: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
+    expense_type?: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
     description?: string;
     quantity?: number;
     rate?: number;

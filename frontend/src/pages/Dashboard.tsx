@@ -187,8 +187,10 @@ export default function Dashboard() {
         }
       } else if (desc.includes('per diem')) {
         cost = amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
-      } else if (desc.includes('hotel')) {
-        cost = amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+      } else if (expType === 'hotel' || desc.includes('hotel')) {
+        if (exp.needs_reimbursement !== false) {
+          cost = amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+        }
       } else if (exp.actual_cost != null) {
         cost = Number(exp.actual_cost);
       } else if (exp.needs_reimbursement) {
