@@ -5807,11 +5807,11 @@ export default function ServiceTickets() {
                               />
                               <label htmlFor="needs-reimbursement-ticket-expense" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
                                 {editingExpense.expense_type === 'Travel'
-                                  ? 'Needs reimbursement (personal vehicle — full bill to client; payroll uses employee mileage %, default 90%)'
+                                  ? 'Needs reimbursement (personal vehicle)'
                                   : editingExpense.expense_type === 'Hotel'
                                     ? 'Needs reimbursement (attach receipt below)'
                                     : editingExpense.expense_type === 'Equipment'
-                                      ? 'Needs reimbursement (personal laptop/equipment — full bill to client; 100% reimbursed)'
+                                      ? 'Needs reimbursement'
                                       : editingExpense.expense_type === 'Expenses'
                                         ? 'Needs reimbursement (receipt required—drop below after description)'
                                         : 'Needs reimbursement'}
@@ -7650,11 +7650,11 @@ export default function ServiceTickets() {
                         />
                         <label htmlFor="needs-reimbursement-create-expense" style={{ fontSize: '12px', color: 'var(--text-primary)', cursor: 'pointer' }}>
                           {createEditingExpense.expense_type === 'Travel'
-                            ? 'Needs reimbursement (personal vehicle — full bill; mileage % on payroll, default 90%)'
+                            ? 'Needs reimbursement (personal vehicle)'
                             : createEditingExpense.expense_type === 'Hotel'
                               ? 'Needs reimbursement (attach receipt after ticket is created)'
                               : createEditingExpense.expense_type === 'Equipment'
-                                ? 'Needs reimbursement (personal laptop/equipment — full bill; 100% reimbursed)'
+                                ? 'Needs reimbursement'
                                 : createEditingExpense.expense_type === 'Expenses'
                                   ? 'Needs reimbursement (create ticket first, then add from ticket with receipt)'
                                   : 'Needs reimbursement'}
