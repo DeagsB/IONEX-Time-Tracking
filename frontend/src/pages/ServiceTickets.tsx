@@ -291,6 +291,21 @@ function parseLinkedUserExpenseIdFromReceiptTempId(tempId: string | undefined): 
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rest) ? rest : undefined;
 }
 
+/** Same trimming semantics as userExpensesService._removeLinkedTicketExpense (description match). */
+function normalizedTicketExpenseDescription(s: string | undefined | null): string {
+  return (s ?? '').trim().toLowerCase();
+}
+
+/** True if a visible service_ticket_expenses line pairs with this user_expense receipt. */
+function receiptHasMatchingTicketExpenseLine(
+  receiptDescription: string | undefined | null,
+  lines: Array<{ description?: string | null }>
+): boolean {
+  const rd = normalizedTicketExpenseDescription(receiptDescription);
+  if (!rd) return false;
+  return lines.some((e) => normalizedTicketExpenseDescription(e.description) === rd);
+}
+
 export default function ServiceTickets() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -6321,7 +6336,12 @@ export default function ServiceTickets() {
                       )}
 
                           {/* Receipts linked on user_expenses (billable / reimbursement); refreshes when applying suggested receipts or saving */}
-                          {currentTicketRecordId && (
+                          {currentTicketRecordId && (() => {
+                            const visibleLinesForReceiptMatch = [
+                              ...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))),
+                              ...pendingAddExpenses,
+                            ];
+                            return (
                             <div style={{ marginTop: '12px' }}>
                               <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '6px' }}>Attached Receipts</div>
                               {attachedReceipts.length === 0 ? (
@@ -6329,24 +6349,32 @@ export default function ServiceTickets() {
                                   None linked yet. Use “+ Add to Ticket” on suggested billable receipts above, or link from the Expenses page—they appear here once tied to this ticket.
                                 </p>
                               ) : (
-                                attachedReceipts.map((r: any) => (
+                                attachedReceipts.map((r: any) => {
+                                  const hasLine = receiptHasMatchingTicketExpenseLine(r.description, visibleLinesForReceiptMatch);
+                                  return (
                                   <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', marginBottom: '4px', fontSize: '13px' }}>
-                                    <div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
                                       <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{r.description}</span>
                                       <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>${parseFloat(r.amount).toFixed(2)}</span>
                                       {parseFloat(r.gst || 0) > 0 && <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px', fontSize: '11px' }}>GST: ${parseFloat(r.gst).toFixed(2)}</span>}
+                                      {!hasLine && (
+                                        <div style={{ marginTop: '4px', fontSize: '11px', color: '#ff9800', fontWeight: '600' }}>
+                                          No matching expense line on this ticket — use Unlink to clear the link, or add an expense with the same description.
+                                        </div>
+                                      )}
                                     </div>
                                     {!isLockedForEditing && (
-                                      <div style={{ display: 'flex', gap: '6px' }}>
+                                      <div style={{ display: 'flex', gap: '6px', flexShrink: 0, marginLeft: '8px' }}>
                                         <button
                                           onClick={() => handleStartReceiptEdit(r)}
                                           style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                                         >
                                           Edit
                                         </button>
+                                        {!hasLine && (
                                         <button
                                           onClick={async () => {
-                                            if (!confirm('Unlink this receipt from the ticket? The expense line will be removed.')) return;
+                                            if (!confirm('Unlink this receipt from the ticket? It is not tied to an expense line above; the receipt will move back to unapplied billable (if still billable).')) return;
                                             try {
                                               await userExpensesService.unapplyFromTicket(r.id);
                                               queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
@@ -6361,13 +6389,16 @@ export default function ServiceTickets() {
                                         >
                                           Unlink
                                         </button>
+                                        )}
                                       </div>
                                     )}
                                   </div>
-                                ))
+                                  );
+                                })
                               )}
                             </div>
-                          )}
+                            );
+                          })()}
                     </div>
 
                   {/* Notes for the approver (bottom of modal, internal use only) */}
