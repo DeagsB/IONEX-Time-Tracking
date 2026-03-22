@@ -397,7 +397,7 @@ export async function downloadPdfFromHtml(
             </colgroup>
             <thead>
               <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
-                <td style="padding: 3px 6px;">Travel / Subsistence / Hotel / Expenses / Laptop–Basic Equipment</td>
+                <td style="padding: 3px 6px;">Expenses</td>
                 <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">RATE</td>
                 <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">QTY</td>
                 <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SUB</td>
@@ -900,7 +900,7 @@ function buildPdfHtml(
             </colgroup>
             <thead>
               <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
-                <td style="padding: 3px 6px;">Travel / Subsistence / Hotel / Expenses / Laptop–Basic Equipment</td>
+                <td style="padding: 3px 6px;">Expenses</td>
                 <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">RATE</td>
                 <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">QTY</td>
                 <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SUB</td>

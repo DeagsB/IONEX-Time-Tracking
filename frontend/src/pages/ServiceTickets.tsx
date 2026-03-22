@@ -5610,7 +5610,7 @@ export default function ServiceTickets() {
             {/* Expenses Section */}
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={sectionTitleStyle}>Travel / Subsistence / Hotel / Expenses / Laptop–Basic Equipment</h3>
+                        <h3 style={sectionTitleStyle}>Expenses</h3>
                         {currentTicketRecordId && !isLockedForEditing && (
                           <button
                             onClick={() => {
@@ -7635,7 +7635,7 @@ export default function ServiceTickets() {
               {/* Expenses */}
               <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Travel / Subsistence / Hotel / Expenses / Laptop–Basic Equipment</h3>
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Expenses</h3>
                   <button
                     className="button button-primary"
                     onClick={() =>
