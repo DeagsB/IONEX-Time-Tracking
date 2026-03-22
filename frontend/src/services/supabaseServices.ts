@@ -2465,11 +2465,13 @@ export const userExpensesService = {
   },
 
   async _removeLinkedTicketExpense(serviceTicketId: string, description: string) {
+    const d = (description || '').trim();
+    if (!d) return;
     const { data: linked } = await supabase
       .from('service_ticket_expenses')
       .select('id')
       .eq('service_ticket_id', serviceTicketId)
-      .ilike('description', description);
+      .ilike('description', d);
 
     if (linked && linked.length > 0) {
       await supabase
@@ -2481,11 +2483,13 @@ export const userExpensesService = {
 
   /** Unlink user_expenses (receipts) when their linked service_ticket_expense is deleted */
   async unlinkReceiptsForDeletedExpense(serviceTicketId: string, description: string) {
+    const d = (description || '').trim();
+    if (!d) return;
     const { data: receipts } = await supabase
       .from('user_expenses')
       .select('id')
       .eq('service_ticket_id', serviceTicketId)
-      .ilike('description', description);
+      .ilike('description', d);
 
     if (receipts && receipts.length > 0) {
       await supabase

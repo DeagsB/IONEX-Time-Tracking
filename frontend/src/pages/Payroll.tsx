@@ -584,6 +584,9 @@ export default function Payroll() {
       } else if (expType === 'equipment' && desc.includes('truck')) {
         reimbRate = Number(employee?.truck_reimb_rate) || 1.00;
         category = 'Truck';
+      } else if (expType === 'equipment' && exp.needs_reimbursement) {
+        reimbRate = 1.0;
+        category = 'Laptop/Equipment';
       } else if (expType === 'subsistence' && desc.includes('per diem')) {
         reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
         category = 'Per Diem';

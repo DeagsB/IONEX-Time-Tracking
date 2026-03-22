@@ -284,6 +284,13 @@ function getExpenseUnitFieldLabels(type: string): { label: string; placeholder: 
   return { label: `Unit (e.g., ${ex})`, placeholder: ex };
 }
 
+/** tempId `receipt-<uuid>` encodes linked user_expenses.id (from modal create or suggested receipt). */
+function parseLinkedUserExpenseIdFromReceiptTempId(tempId: string | undefined): string | undefined {
+  if (!tempId?.startsWith('receipt-')) return undefined;
+  const rest = tempId.slice('receipt-'.length);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rest) ? rest : undefined;
+}
+
 export default function ServiceTickets() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -469,6 +476,8 @@ export default function ServiceTickets() {
     unit?: string;
     tempId?: string;
     needs_reimbursement?: boolean;
+    /** When this line came from a receipt (modal or suggested), unlink this user_expense if removed from ticket */
+    linkedUserExpenseId?: string;
   }>>([]);
   
   // Editable ticket fields state
@@ -588,7 +597,7 @@ export default function ServiceTickets() {
     actual_cost?: number;
     unit?: string;
   } | null>(null);
-  /** Hotel / Other + reimbursement: in-form receipt drop opens the receipt + markup modal. Travel and Laptop/Basic Equipment use Add → modal (receipt optional in modal). */
+  /** Hotel / Other + reimbursement: in-form receipt drop opens the receipt + markup modal. Travel and Laptop/Basic Equipment + reimbursement: Add adds the line directly (no receipt modal; payroll uses mileage % / 100% equipment). */
   const inFormReimbursementReceiptInputRef = useRef<HTMLInputElement>(null);
   const receiptModalFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -871,7 +880,7 @@ export default function ServiceTickets() {
       for (const expenseId of pendingDeleteExpenseIds) {
         const expense = expenses.find((e) => e.id === expenseId);
         if (expense && recordId) {
-          await userExpensesService.unlinkReceiptsForDeletedExpense(recordId, expense.description);
+          await userExpensesService.unlinkReceiptsForDeletedExpense(recordId, expense.description || '');
         }
         await serviceTicketExpensesService.delete(expenseId);
       }
@@ -886,6 +895,7 @@ export default function ServiceTickets() {
             quantity: exp.quantity,
             rate: exp.rate,
             unit: exp.unit,
+            actual_cost: exp.actual_cost,
             needs_reimbursement: exp.needs_reimbursement || false,
             reimbursement_status: exp.needs_reimbursement ? (isAdmin ? 'approved' : 'pending') : undefined,
           });
@@ -5635,6 +5645,7 @@ export default function ServiceTickets() {
                                         rate: totalWithMarkup,
                                         unit: '',
                                         tempId: `receipt-${r.id}`,
+                                        linkedUserExpenseId: r.id,
                                       },
                                     ]);
                                     queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
@@ -5796,11 +5807,11 @@ export default function ServiceTickets() {
                               />
                               <label htmlFor="needs-reimbursement-ticket-expense" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
                                 {editingExpense.expense_type === 'Travel'
-                                  ? 'Needs reimbursement (personal vehicle)'
+                                  ? 'Needs reimbursement (personal vehicle — full bill to client; payroll uses employee mileage %, default 90%)'
                                   : editingExpense.expense_type === 'Hotel'
                                     ? 'Needs reimbursement (attach receipt below)'
                                     : editingExpense.expense_type === 'Equipment'
-                                      ? 'Needs reimbursement (personally owned laptop/equipment)'
+                                      ? 'Needs reimbursement (personal laptop/equipment — full bill to client; 100% reimbursed)'
                                       : editingExpense.expense_type === 'Expenses'
                                         ? 'Needs reimbursement (receipt required—drop below after description)'
                                         : 'Needs reimbursement'}
@@ -5892,35 +5903,25 @@ export default function ServiceTickets() {
                                   alert('Cannot add expense: ticket record not ready. Please close and reopen the ticket.');
                                   return;
                                 }
-                                // Mileage/Truck Hours or Laptop/Basic Equipment + reimbursement: Add opens receipt modal (attach receipt inside modal if needed)
+                                // Mileage/Truck Hours or Laptop/Basic Equipment + reimbursement: add line directly (client billed qty×rate; payroll: mileage % or 100% equipment)
                                 if (
                                   !editingExpense.id &&
                                   editingExpense.needs_reimbursement &&
                                   (editingExpense.expense_type === 'Travel' || editingExpense.expense_type === 'Equipment')
                                 ) {
-                                  const et = editingExpense.expense_type;
-                                  const amt = (Number(editingExpense.quantity) || 0) * (Number(editingExpense.rate) || 0);
-                                  setPendingReimbursementExpense({
-                                    expense_type: et,
-                                    description: editingExpense.description.trim(),
-                                    quantity: Number(editingExpense.quantity) || 0,
-                                    rate: Number(editingExpense.rate) || 0,
-                                    actual_cost: Number(editingExpense.actual_cost) || 0,
-                                    unit: editingExpense.unit?.trim() || undefined,
-                                  });
-                                  setReceiptForm({
-                                    description: editingExpense.description.trim(),
-                                    amount: amt > 0 ? String(amt) : '',
-                                    gst: '',
-                                    markupType: 'dollar',
-                                    markupValue: '',
-                                    is_billable: true,
-                                  });
-                                  setReceiptFile(null);
-                                  if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
-                                  setReceiptPreviewUrl(null);
-                                  setReceiptUploadError(null);
-                                  setShowReceiptModal(true);
+                                  setPendingAddExpenses((prev) => [
+                                    ...prev,
+                                    {
+                                      expense_type: editingExpense.expense_type,
+                                      description: editingExpense.description.trim(),
+                                      quantity: Number(editingExpense.quantity) || 0,
+                                      rate: Number(editingExpense.rate) || 0,
+                                      actual_cost: Number(editingExpense.actual_cost) || 0,
+                                      unit: editingExpense.unit?.trim() || undefined,
+                                      tempId: `pending-${Date.now()}-${prev.length}`,
+                                      needs_reimbursement: true,
+                                    },
+                                  ]);
                                   setEditingExpense(null);
                                   return;
                                 }
@@ -6064,12 +6065,42 @@ export default function ServiceTickets() {
                               Edit
                             </button>
                             <button
-                              onClick={() => {
-                                if (expense.id?.startsWith('pending-')) {
+                              onClick={async () => {
+                                if (expense.id?.startsWith('pending-') || expense.id?.startsWith('receipt-')) {
+                                  const row = pendingAddExpenses.find((e) => e.tempId === expense.id);
+                                  const ueId =
+                                    row?.linkedUserExpenseId ?? parseLinkedUserExpenseIdFromReceiptTempId(expense.id);
+                                  if (ueId) {
+                                    try {
+                                      await userExpensesService.unapplyFromTicket(ueId);
+                                      queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+                                      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+                                      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+                                    } catch (err: unknown) {
+                                      const msg = err instanceof Error ? err.message : 'Unknown error';
+                                      alert(`Failed to unlink receipt: ${msg}`);
+                                      return;
+                                    }
+                                  } else if (currentTicketRecordId && expense.description?.trim()) {
+                                    try {
+                                      await userExpensesService.unlinkReceiptsForDeletedExpense(
+                                        currentTicketRecordId,
+                                        expense.description ?? '',
+                                      );
+                                      queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+                                      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+                                    } catch (err: unknown) {
+                                      const msg = err instanceof Error ? err.message : 'Unknown error';
+                                      alert(`Failed to unlink receipt: ${msg}`);
+                                      return;
+                                    }
+                                  }
                                   setPendingAddExpenses((prev) => prev.filter((e) => e.tempId !== expense.id));
-                                } else if (expense.id) {
-                                  const id = expense.id;
-                                  setPendingDeleteExpenseIds((prev) => new Set(prev).add(id));
+                                  return;
+                                }
+                                if (expense.id) {
+                                  const delId = expense.id;
+                                  setPendingDeleteExpenseIds((prev) => new Set(prev).add(delId));
                                 }
                               }}
                               style={{
@@ -6321,7 +6352,7 @@ export default function ServiceTickets() {
                                 const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
                                 storagePath = await userExpensesService.uploadReceipt(optimized);
                               }
-                              await userExpensesService.create({
+                              const createdReceipt = await userExpensesService.create({
                                 description: receiptForm.description.trim(),
                                 amount: amt,
                                 expense_date: new Date().toISOString().split('T')[0],
@@ -6333,7 +6364,7 @@ export default function ServiceTickets() {
                                 status: isAdmin ? 'approved' : 'pending',
                               });
                               // If billable AND attached to this ticket, also add to the billable expenses list on the ticket (rate = amount + markup)
-                              if (currentTicketRecordId) {
+                              if (currentTicketRecordId && createdReceipt?.id) {
                                 const expenseType = pendingReimbursementExpense?.expense_type ?? 'Expenses';
                                 const unit = pendingReimbursementExpense?.unit;
                                 setPendingAddExpenses((prev) => [
@@ -6345,7 +6376,8 @@ export default function ServiceTickets() {
                                     rate: totalWithMarkup,
                                     actual_cost: pendingReimbursementExpense ? expTotal : undefined,
                                     unit: unit ?? '',
-                                    tempId: `receipt-${Date.now()}`,
+                                    tempId: `receipt-${createdReceipt.id}`,
+                                    linkedUserExpenseId: createdReceipt.id,
                                     needs_reimbursement: !!pendingReimbursementExpense,
                                   },
                                 ]);
@@ -7618,11 +7650,11 @@ export default function ServiceTickets() {
                         />
                         <label htmlFor="needs-reimbursement-create-expense" style={{ fontSize: '12px', color: 'var(--text-primary)', cursor: 'pointer' }}>
                           {createEditingExpense.expense_type === 'Travel'
-                            ? 'Needs reimbursement (personal vehicle)'
+                            ? 'Needs reimbursement (personal vehicle — full bill; mileage % on payroll, default 90%)'
                             : createEditingExpense.expense_type === 'Hotel'
                               ? 'Needs reimbursement (attach receipt after ticket is created)'
                               : createEditingExpense.expense_type === 'Equipment'
-                                ? 'Needs reimbursement (personally owned laptop/equipment)'
+                                ? 'Needs reimbursement (personal laptop/equipment — full bill; 100% reimbursed)'
                                 : createEditingExpense.expense_type === 'Expenses'
                                   ? 'Needs reimbursement (create ticket first, then add from ticket with receipt)'
                                   : 'Needs reimbursement'}
