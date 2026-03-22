@@ -429,6 +429,7 @@ export default function ServiceTickets() {
     rate: number;
     actual_cost?: number;
     unit?: string;
+    needs_reimbursement?: boolean;
   }>>([]);
   const [editingExpense, setEditingExpense] = useState<{
     id?: string;
