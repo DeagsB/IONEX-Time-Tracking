@@ -480,6 +480,221 @@ function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: st
   );
 }
 
+type InvoiceTicketModalTicket = ServiceTicket & {
+  recordId?: string;
+  headerOverrides?: unknown;
+  recordProjectId?: string;
+};
+
+function InvoiceTicketDetailModal({
+  ticket,
+  expenses,
+  onClose,
+}: {
+  ticket: InvoiceTicketModalTicket;
+  expenses: InvoiceExpenseLine[];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const ho = ticket.headerOverrides as
+    | { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string }
+    | undefined;
+  const gk = getInvoiceGroupKey(
+    {
+      projectId: ticket.recordProjectId ?? ticket.projectId,
+      projectName: ticket.projectName,
+      projectNumber: ticket.projectNumber,
+      location: ticket.location,
+      projectApproverPoAfe: ticket.projectApproverPoAfe,
+      projectLocation: ticket.projectLocation,
+      projectOther: ticket.projectOther,
+      customerInfo: ticket.customerInfo,
+      entries: ticket.entries,
+    },
+    ho
+  );
+  const rid = ticket.recordId?.trim() || ticket.id;
+  const totalAmount = calculateTicketTotalAmount(ticket, expenses);
+  const formattedTotal = `$${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const entryRows =
+    ticket.entries.length > 0
+      ? ticket.entries.map((e, i) => (
+          <tr key={e.id || i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <td style={{ padding: '8px 10px', fontSize: '13px', verticalAlign: 'top' }}>{e.description || '—'}</td>
+            <td style={{ padding: '8px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>{e.rate_type || '—'}</td>
+            <td style={{ padding: '8px 10px', fontSize: '13px', textAlign: 'right', whiteSpace: 'nowrap' }}>{e.hours ?? 0}h</td>
+          </tr>
+        ))
+      : PDF_EXPORT_RATE_ORDER.filter((rt) => (ticket.hoursByRateType[rt] || 0) > 0).map((rt) => (
+          <tr key={rt} style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <td style={{ padding: '8px 10px', fontSize: '13px' }}>—</td>
+            <td style={{ padding: '8px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>{rt}</td>
+            <td style={{ padding: '8px 10px', fontSize: '13px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+              {ticket.hoursByRateType[rt]}h
+            </td>
+          </tr>
+        ));
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="invoice-ticket-modal-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 10050,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+      }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: 'var(--bg-primary)',
+          borderRadius: '12px',
+          maxWidth: 720,
+          width: '100%',
+          maxHeight: '85vh',
+          overflow: 'auto',
+          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+          border: '1px solid var(--border-color)',
+        }}
+      >
+        <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border-color)' }}>
+          <h2 id="invoice-ticket-modal-title" style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>
+            {ticket.ticketNumber || 'Ticket'} — {ticket.userName}
+          </h2>
+          <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            {ticket.date}
+            {ticket.customerName ? ` · ${ticket.customerName}` : ''}
+          </div>
+        </div>
+        <div style={{ padding: '16px 20px', fontSize: '13px', display: 'grid', gap: '8px' }}>
+          <div>
+            <span style={{ color: 'var(--text-tertiary)' }}>Project: </span>
+            {[ticket.projectNumber, ticket.projectName].filter(Boolean).join(' – ') || gk.projectId || '—'}
+          </div>
+          <div>
+            <span style={{ color: 'var(--text-tertiary)' }}>Location: </span>
+            {gk.location || ticket.location || '—'}
+          </div>
+          <div>
+            <span style={{ color: 'var(--text-tertiary)' }}>Approver: </span>
+            {gk.approver || '—'}
+          </div>
+          <div>
+            <span style={{ color: 'var(--text-tertiary)' }}>PO/AFE/CC: </span>
+            {gk.poAfe || '—'}
+          </div>
+          <div>
+            <span style={{ color: 'var(--text-tertiary)' }}>Coding: </span>
+            {gk.cc || '—'}
+          </div>
+        </div>
+        <div style={{ padding: '0 20px 16px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+            Time entries
+          </div>
+          {entryRows.length > 0 ? (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+                  <th style={{ padding: '6px 10px', fontWeight: 600 }}>Description</th>
+                  <th style={{ padding: '6px 10px', fontWeight: 600 }}>Rate</th>
+                  <th style={{ padding: '6px 10px', fontWeight: 600, textAlign: 'right' }}>Hours</th>
+                </tr>
+              </thead>
+              <tbody>{entryRows}</tbody>
+            </table>
+          ) : (
+            <div style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>No time rows for this ticket.</div>
+          )}
+        </div>
+        {expenses.length > 0 && (
+          <div style={{ padding: '0 20px 16px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+              Expenses
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+                  <th style={{ padding: '6px 10px', fontWeight: 600 }}>Qty × rate</th>
+                  <th style={{ padding: '6px 10px', fontWeight: 600, textAlign: 'right' }}>Line</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((e, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <td style={{ padding: '8px 10px' }}>
+                      {e.quantity} × ${e.rate.toFixed(2)}
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                      ${(e.quantity * e.rate).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div style={{ padding: '12px 20px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--primary-color)' }}>Batch subtotal (labour + expenses): {formattedTotal}</div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: 'var(--text-primary)',
+              }}
+            >
+              Close
+            </button>
+            <Link
+              to={serviceTicketEditHref(rid)}
+              onClick={onClose}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: 'var(--primary-color)',
+                color: 'white',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              Open in Service Tickets
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const MARKED_INVOICED_STORAGE_KEY = 'ionex-invoices-marked';
 const FROZEN_INVOICED_GROUPS_KEY = 'ionex-invoices-frozen-groups';
 
@@ -1303,6 +1518,7 @@ export default function Invoices() {
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
   const [showInvoiced, setShowInvoiced] = useState(false);
+  const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
   const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
@@ -2591,24 +2807,26 @@ export default function Invoices() {
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
                         {groupTickets.map((t) => {
-                          const rid =
-                            (t as ServiceTicket & { recordId?: string }).recordId?.trim() || t.id;
+                          const ticket = t as InvoiceTicketModalTicket;
                           return (
-                            <Link
+                            <button
                               key={t.id}
-                              to={serviceTicketEditHref(rid)}
+                              type="button"
+                              onClick={() => setInvoiceTicketModalTicket(ticket)}
                               style={{
                                 padding: '4px 10px',
                                 backgroundColor: 'var(--bg-tertiary)',
                                 borderRadius: '6px',
                                 fontSize: '13px',
                                 color: 'inherit',
-                                textDecoration: 'none',
+                                border: 'none',
                                 cursor: 'pointer',
+                                fontFamily: 'inherit',
+                                textAlign: 'left',
                               }}
                             >
                               {t.ticketNumber} – {t.userName} ({t.totalHours}h)
-                            </Link>
+                            </button>
                           );
                         })}
                       </div>
@@ -2930,24 +3148,26 @@ export default function Invoices() {
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {groupTickets.map((t) => {
-                    const rid =
-                      (t as ServiceTicket & { recordId?: string }).recordId?.trim() || t.id;
+                    const ticket = t as InvoiceTicketModalTicket;
                     return (
-                      <Link
+                      <button
                         key={t.id}
-                        to={serviceTicketEditHref(rid)}
+                        type="button"
+                        onClick={() => setInvoiceTicketModalTicket(ticket)}
                         style={{
                           padding: '4px 10px',
                           backgroundColor: 'var(--bg-tertiary)',
                           borderRadius: '6px',
                           fontSize: '13px',
                           color: 'inherit',
-                          textDecoration: 'none',
+                          border: 'none',
                           cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          textAlign: 'left',
                         }}
                       >
                         {t.ticketNumber} – {t.userName} ({t.totalHours}h)
-                      </Link>
+                      </button>
                     );
                   })}
                 </div>
@@ -2956,6 +3176,18 @@ export default function Invoices() {
             })}
           </div>
         </>
+      )}
+
+      {invoiceTicketModalTicket && (
+        <InvoiceTicketDetailModal
+          ticket={invoiceTicketModalTicket}
+          expenses={
+            invoiceTicketModalTicket.recordId
+              ? expensesByRecordId.get(invoiceTicketModalTicket.recordId) ?? []
+              : []
+          }
+          onClose={() => setInvoiceTicketModalTicket(null)}
+        />
       )}
     </div>
   );
