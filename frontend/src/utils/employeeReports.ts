@@ -665,14 +665,18 @@ export function aggregateEmployeeMetrics(
       let category: string;
       let reimbRate = 0;
 
-      // Per Diem, Mileage, Hotel are inherently reimbursable; use reimb rate regardless of needs_reimbursement flag.
+      // Per Diem, Hotel: reimbursable from employee settings (not gated by needs_reimbursement).
+      // Travel (Mileage/Truck Hours): needs_reimbursement=false = company vehicle, billed only (no employee cost).
       // Other/Parts: only include if needs_reimbursement is set (company-paid parts are excluded from Employee Reports).
       if (expType === 'subsistence' && desc.includes('per diem')) {
         category = 'Per Diem';
         reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
-      } else if (expType === 'travel' && desc.includes('mileage')) {
+      } else if (expType === 'travel') {
         category = 'Mileage';
-        reimbRate = Number(employee?.mileage_reimb_rate) || 0.90;
+        reimbRate =
+          exp.needs_reimbursement === false
+            ? 0
+            : Number(employee?.mileage_reimb_rate) || 0.90;
       } else if (desc.includes('hotel')) {
         category = 'Hotel';
         reimbRate = Number(employee?.hotel_reimb_rate) || 1.00;
@@ -1148,8 +1152,11 @@ export function calculateProjectBreakdown(
       let reimbRate = 0;
       if (expType === 'subsistence' && desc.includes('per diem')) {
         reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
-      } else if (expType === 'travel' && desc.includes('mileage')) {
-        reimbRate = Number(employee?.mileage_reimb_rate) || 0.90;
+      } else if (expType === 'travel') {
+        reimbRate =
+          exp.needs_reimbursement === false
+            ? 0
+            : Number(employee?.mileage_reimb_rate) || 0.90;
       } else if (desc.includes('hotel')) {
         reimbRate = Number(employee?.hotel_reimb_rate) || 1.00;
       } else {

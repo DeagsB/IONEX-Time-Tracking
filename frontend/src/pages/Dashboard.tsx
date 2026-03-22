@@ -179,10 +179,12 @@ export default function Dashboard() {
       const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
       const emp = empByUserId.get(exp.service_tickets?.user_id);
       const desc = (exp.description || exp.expense_type || '').toLowerCase();
+      const expType = (exp.expense_type || '').toLowerCase();
       let cost = 0;
-      // Mileage, Per Diem, Hotel: always use reimb rate (ignore actual_cost which may be 0)
-      if (desc.includes('mileage')) {
-        cost = amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+      if (expType === 'travel') {
+        if (exp.needs_reimbursement !== false) {
+          cost = amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+        }
       } else if (desc.includes('per diem')) {
         cost = amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
       } else if (desc.includes('hotel')) {

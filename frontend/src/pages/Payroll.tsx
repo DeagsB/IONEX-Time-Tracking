@@ -573,7 +573,8 @@ export default function Payroll() {
       let reimbRate = 0;
       let category = '';
 
-      if (expType === 'travel' && desc.includes('mileage')) {
+      if (expType === 'travel') {
+        if (exp.needs_reimbursement === false) continue;
         reimbRate = Number(employee?.mileage_reimb_rate) || 0.90;
         category = 'Mileage';
       } else if (expType === 'equipment' && desc.includes('truck')) {

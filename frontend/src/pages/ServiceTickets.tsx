@@ -664,6 +664,7 @@ export default function ServiceTickets() {
     quantity: number;
     rate: number;
     unit?: string;
+    needs_reimbursement?: boolean;
   }>>([]);
   const [createEditingExpense, setCreateEditingExpense] = useState<{
     expense_type: 'Travel' | 'Subsistence' | 'Expenses' | 'Equipment';
@@ -671,6 +672,7 @@ export default function ServiceTickets() {
     quantity: number;
     rate: number;
     unit?: string;
+    needs_reimbursement?: boolean;
   } | null>(null);
   const [showInlineCreateCustomer, setShowInlineCreateCustomer] = useState(false);
   const [inlineCustomerName, setInlineCustomerName] = useState('');
@@ -2891,6 +2893,7 @@ export default function ServiceTickets() {
             quantity: exp.quantity,
             rate: exp.rate,
             unit: exp.unit || '',
+            needs_reimbursement: exp.needs_reimbursement ?? false,
           });
         }
       }
@@ -5511,6 +5514,7 @@ export default function ServiceTickets() {
                                 quantity: 1,
                                 rate: 1,
                                 unit: 'km',
+                                needs_reimbursement: false,
                               });
                             }}
                             style={{
@@ -5630,6 +5634,12 @@ export default function ServiceTickets() {
                                     description: defaults.description,
                                     quantity: defaults.quantity,
                                     rate: defaults.rate,
+                                    needs_reimbursement:
+                                      selectedType === 'Travel'
+                                        ? false
+                                        : selectedType === 'Subsistence'
+                                          ? false
+                                          : editingExpense.needs_reimbursement,
                                   });
                                 }}
                               >
@@ -5690,16 +5700,20 @@ export default function ServiceTickets() {
                               />
                             </div>
                           </div>
-                          {/* Needs Reimbursement checkbox — hidden for Mileage/Per Diem (auto-reimbursed) */}
-                          {editingExpense.expense_type !== 'Travel' && editingExpense.expense_type !== 'Subsistence' && (
+                          {/* Per Diem: always reimbursable in reports (no checkbox). Travel: optional personal-vehicle reimbursement. */}
+                          {editingExpense.expense_type !== 'Subsistence' && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                               <input
                                 type="checkbox"
-                                id="needs-reimbursement"
+                                id="needs-reimbursement-ticket-expense"
                                 checked={editingExpense.needs_reimbursement || false}
                                 onChange={(e) => setEditingExpense({ ...editingExpense, needs_reimbursement: e.target.checked })}
                               />
-                              <label htmlFor="needs-reimbursement" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>Needs Reimbursement</label>
+                              <label htmlFor="needs-reimbursement-ticket-expense" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                                {editingExpense.expense_type === 'Travel'
+                                  ? 'Needs reimbursement (personal vehicle)'
+                                  : 'Needs reimbursement'}
+                              </label>
                             </div>
                           )}
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -7354,6 +7368,7 @@ export default function ServiceTickets() {
                         quantity: 1,
                         rate: 1,
                         unit: 'km',
+                        needs_reimbursement: false,
                       })
                     }
                     style={{ padding: '6px 12px', fontSize: '12px' }}
@@ -7391,6 +7406,12 @@ export default function ServiceTickets() {
                                     description: defaults.description,
                                     quantity: defaults.quantity,
                                     rate: defaults.rate,
+                                    needs_reimbursement:
+                                      selectedType === 'Travel'
+                                        ? false
+                                        : selectedType === 'Subsistence'
+                                          ? false
+                                          : prev.needs_reimbursement,
                                   }
                                 : null
                             );
@@ -7445,6 +7466,25 @@ export default function ServiceTickets() {
                         />
                       </div>
                     </div>
+                    {createEditingExpense.expense_type !== 'Subsistence' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+                        <input
+                          type="checkbox"
+                          id="needs-reimbursement-create-expense"
+                          checked={createEditingExpense.needs_reimbursement || false}
+                          onChange={(e) =>
+                            setCreateEditingExpense((prev) =>
+                              prev ? { ...prev, needs_reimbursement: e.target.checked } : null
+                            )
+                          }
+                        />
+                        <label htmlFor="needs-reimbursement-create-expense" style={{ fontSize: '12px', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                          {createEditingExpense.expense_type === 'Travel'
+                            ? 'Needs reimbursement (personal vehicle)'
+                            : 'Needs reimbursement'}
+                        </label>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px', justifyContent: 'flex-end' }}>
                       <button
                         onClick={() => setCreateEditingExpense(null)}
@@ -7456,7 +7496,14 @@ export default function ServiceTickets() {
                       <button
                         onClick={() => {
                           if (!createEditingExpense.description) return;
-                          setCreateExpenses(prev => [...prev, { ...createEditingExpense, tempId: `exp-${Date.now()}` }]);
+                          setCreateExpenses((prev) => [
+                            ...prev,
+                            {
+                              ...createEditingExpense,
+                              tempId: `exp-${Date.now()}`,
+                              needs_reimbursement: createEditingExpense.needs_reimbursement ?? false,
+                            },
+                          ]);
                           setCreateEditingExpense(null);
                         }}
                         className="button button-primary"

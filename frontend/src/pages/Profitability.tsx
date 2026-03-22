@@ -214,8 +214,12 @@ export default function Profitability() {
       const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
       const emp = empByUserId.get(exp.service_tickets?.user_id);
       const desc = (exp.description || exp.expense_type || '').toLowerCase();
-      // Mileage, Per Diem, Hotel: always use reimb rate (ignore actual_cost which may be 0 from migration)
-      if (desc.includes('mileage')) return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+      const expType = (exp.expense_type || '').toLowerCase();
+      // Travel (Mileage/Truck Hours): needs_reimbursement=false = billed to client only, $0 internal mileage cost
+      if (expType === 'travel') {
+        if (exp.needs_reimbursement === false) return 0;
+        return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+      }
       if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
       if (desc.includes('hotel')) return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
       // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
@@ -452,8 +456,11 @@ export default function Profitability() {
     const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
     const emp = empByUserId.get(exp.service_tickets?.user_id);
     const desc = (exp.description || exp.expense_type || '').toLowerCase();
-    // Mileage, Per Diem, Hotel: always use reimb rate (ignore actual_cost which may be 0 from migration)
-    if (desc.includes('mileage')) return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+    const expType = (exp.expense_type || '').toLowerCase();
+    if (expType === 'travel') {
+      if (exp.needs_reimbursement === false) return 0;
+      return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+    }
     if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
     if (desc.includes('hotel')) return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
     // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
@@ -466,7 +473,8 @@ export default function Profitability() {
   const isBilloutActualCostUnset = (exp: any, billedTotal: number): boolean => {
     if (billedTotal <= 0) return false;
     const desc = (exp.description || exp.expense_type || '').toLowerCase();
-    if (desc.includes('mileage') || desc.includes('per diem') || desc.includes('hotel')) return false;
+    const expType = (exp.expense_type || '').toLowerCase();
+    if (expType === 'travel' || desc.includes('per diem') || desc.includes('hotel')) return false;
     if (exp.needs_reimbursement) return false;
     if (exp.actual_cost != null && Number(exp.actual_cost) > 0) return false;
     return true;

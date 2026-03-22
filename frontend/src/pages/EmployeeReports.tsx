@@ -606,7 +606,7 @@ export default function EmployeeReports() {
                                   const expType = (exp.expense_type || '').toLowerCase();
                                   const desc = (exp.description || '').toLowerCase();
                                   if (expType === 'subsistence' && desc.includes('per diem')) return false;
-                                  if (expType === 'travel' && desc.includes('mileage')) return false;
+                                  if (expType === 'travel') return false;
                                   if (desc.includes('hotel')) return false;
                                   if (!exp.needs_reimbursement) return false;
                                   return true;
