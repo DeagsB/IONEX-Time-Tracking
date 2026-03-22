@@ -256,7 +256,7 @@ function serviceTicketExpenseTypeLabel(type: string): string {
     case 'Subsistence':
       return 'Per Diem';
     case 'Equipment':
-      return 'Equipment Billout';
+      return 'Laptop/Basic Equipment';
     case 'Hotel':
       return 'Hotel';
     case 'Expenses':
@@ -276,7 +276,7 @@ function expenseUnitExamples(type: string): string {
     case 'Hotel':
       return 'night, room';
     case 'Equipment':
-      return 'unit, day, hr';
+      return 'day, week, flat fee';
     case 'Expenses':
       return 'item, trip, lump sum';
     default:
@@ -5535,7 +5535,7 @@ export default function ServiceTickets() {
             {/* Expenses Section */}
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={sectionTitleStyle}>Travel / Subsistence / Hotel / Expenses / Equipment</h3>
+                        <h3 style={sectionTitleStyle}>Travel / Subsistence / Hotel / Expenses / Laptop–Basic Equipment</h3>
                         {currentTicketRecordId && !isLockedForEditing && (
                           <button
                             onClick={() => {
@@ -5654,8 +5654,7 @@ export default function ServiceTickets() {
                                   } else if (selectedType === 'Hotel') {
                                     defaults = { unit: 'night', description: 'Hotel', quantity: 1, rate: 0 };
                                   } else if (selectedType === 'Equipment') {
-                                    // Equipment Billout
-                                    defaults = { unit: 'unit', description: 'Equipment Billout', quantity: 1, rate: 10 };
+                                    defaults = { unit: 'day', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
                                   } else if (selectedType === 'Expenses') {
                                     // Other - all empty
                                     defaults = { unit: '', description: '', quantity: 0, rate: 0 };
@@ -5680,7 +5679,7 @@ export default function ServiceTickets() {
                                 <option value="Travel">Mileage/Truck Hours</option>
                                 <option value="Subsistence">Per Diem</option>
                                 <option value="Hotel">Hotel</option>
-                                <option value="Equipment">Equipment Billout</option>
+                                <option value="Equipment">Laptop/Basic Equipment</option>
                                 <option value="Expenses">Other</option>
                               </select>
                             </div>
@@ -5700,7 +5699,7 @@ export default function ServiceTickets() {
                               style={inputStyle}
                               value={editingExpense.description}
                               onChange={(e) => setEditingExpense({ ...editingExpense, description: e.target.value })}
-                              placeholder="e.g., Mileage, Per diem, Equipment billout"
+                              placeholder="e.g., Mileage, Per diem, Laptop rental"
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
@@ -5753,7 +5752,9 @@ export default function ServiceTickets() {
                                   ? 'Needs reimbursement (personal vehicle)'
                                   : editingExpense.expense_type === 'Hotel'
                                     ? 'Needs reimbursement (attach receipt below)'
-                                    : 'Needs reimbursement'}
+                                    : editingExpense.expense_type === 'Equipment'
+                                      ? 'Needs reimbursement (personally owned laptop/equipment)'
+                                      : 'Needs reimbursement'}
                               </label>
                             </div>
                           )}
@@ -7446,7 +7447,7 @@ export default function ServiceTickets() {
               {/* Expenses */}
               <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Travel / Subsistence / Hotel / Expenses / Equipment</h3>
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Travel / Subsistence / Hotel / Expenses / Laptop–Basic Equipment</h3>
                   <button
                     className="button button-primary"
                     onClick={() =>
@@ -7483,7 +7484,7 @@ export default function ServiceTickets() {
                             } else if (selectedType === 'Hotel') {
                               defaults = { unit: 'night', description: 'Hotel', quantity: 1, rate: 0 };
                             } else if (selectedType === 'Equipment') {
-                              defaults = { unit: 'unit', description: 'Equipment Billout', quantity: 1, rate: 10 };
+                              defaults = { unit: 'day', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
                             } else {
                               defaults = { unit: '', description: '', quantity: 0, rate: 0 };
                             }
@@ -7511,7 +7512,7 @@ export default function ServiceTickets() {
                           <option value="Travel">Mileage/Truck Hours</option>
                           <option value="Subsistence">Per Diem</option>
                           <option value="Hotel">Hotel</option>
-                          <option value="Equipment">Equipment Billout</option>
+                          <option value="Equipment">Laptop/Basic Equipment</option>
                           <option value="Expenses">Other</option>
                         </select>
                       </div>
@@ -7574,7 +7575,9 @@ export default function ServiceTickets() {
                             ? 'Needs reimbursement (personal vehicle)'
                             : createEditingExpense.expense_type === 'Hotel'
                               ? 'Needs reimbursement (attach receipt after ticket is created)'
-                              : 'Needs reimbursement'}
+                              : createEditingExpense.expense_type === 'Equipment'
+                                ? 'Needs reimbursement (personally owned laptop/equipment)'
+                                : 'Needs reimbursement'}
                         </label>
                       </div>
                     )}
