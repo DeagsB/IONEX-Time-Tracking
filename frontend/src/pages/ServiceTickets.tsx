@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef, Fragment } from 'rea
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService, userExpensesService } from '../services/supabaseServices';
+import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService, userExpensesService, type ServiceTicketExpenseRow } from '../services/supabaseServices';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, getTicketBillingKey, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -1343,7 +1343,7 @@ export default function ServiceTickets() {
           const ticketWithOverrides = ov ? applyHeaderOverridesToTicket(ticket, ov) : ticket;
           const ticketWithNumber = { ...ticketWithOverrides, ticketNumber };
           // Load expenses for bulk export
-          let ticketExpenses = [];
+          let ticketExpenses: ServiceTicketExpenseRow[] = [];
           if (ticketRecordId) {
             try {
               ticketExpenses = await serviceTicketExpensesService.getByTicketId(ticketRecordId);

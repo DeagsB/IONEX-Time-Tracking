@@ -1958,7 +1958,29 @@ export const serviceTicketsService = {
 };
 
 /** App + UI use "Expenses" for the "Other" line type; Postgres CHECK typically allows "Other" only. */
-type ServiceTicketExpenseTypeApp = 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
+export type ServiceTicketExpenseTypeApp =
+  | 'Travel'
+  | 'Subsistence'
+  | 'Hotel'
+  | 'Expenses'
+  | 'Equipment';
+
+/** Row from `service_ticket_expenses` with `expense_type` normalized for the app (Other → Expenses). */
+export type ServiceTicketExpenseRow = {
+  id: string;
+  service_ticket_id: string;
+  expense_type: ServiceTicketExpenseTypeApp;
+  description: string;
+  quantity: number;
+  rate: number;
+  unit?: string;
+  actual_cost?: number;
+  needs_reimbursement?: boolean;
+  reimbursement_status?: string;
+  reimbursement_approved_at?: string;
+  created_at?: string;
+  updated_at?: string;
+};
 
 function ticketExpenseTypeToDb(t: string | undefined | null): string {
   if (t === 'Expenses') return 'Other';
@@ -1976,7 +1998,7 @@ function ticketExpenseTypeFromDb(t: string | undefined | null): ServiceTicketExp
 }
 
 export const serviceTicketExpensesService = {
-  async getByTicketId(ticketId: string) {
+  async getByTicketId(ticketId: string): Promise<ServiceTicketExpenseRow[]> {
     const { data, error } = await supabase
       .from('service_ticket_expenses')
       .select('*')
@@ -1984,10 +2006,28 @@ export const serviceTicketExpensesService = {
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    return (data || []).map((row: Record<string, unknown>) => ({
-      ...row,
-      expense_type: ticketExpenseTypeFromDb(row.expense_type as string),
-    }));
+    return (data ?? []).map((row) => {
+      const r = row as Record<string, unknown>;
+      const unitRaw = r.unit;
+      const acRaw = r.actual_cost;
+      const nrRaw = r.needs_reimbursement;
+      const out: ServiceTicketExpenseRow = {
+        id: String(r.id ?? ''),
+        service_ticket_id: String(r.service_ticket_id ?? ''),
+        expense_type: ticketExpenseTypeFromDb(r.expense_type as string),
+        description: String(r.description ?? ''),
+        quantity: Number(r.quantity) || 0,
+        rate: Number(r.rate) || 0,
+      };
+      if (unitRaw != null && String(unitRaw).trim() !== '') out.unit = String(unitRaw);
+      if (acRaw != null && !Number.isNaN(Number(acRaw))) out.actual_cost = Number(acRaw);
+      if (typeof nrRaw === 'boolean') out.needs_reimbursement = nrRaw;
+      if (r.reimbursement_status != null) out.reimbursement_status = String(r.reimbursement_status);
+      if (r.reimbursement_approved_at != null) out.reimbursement_approved_at = String(r.reimbursement_approved_at);
+      if (r.created_at != null) out.created_at = String(r.created_at);
+      if (r.updated_at != null) out.updated_at = String(r.updated_at);
+      return out;
+    });
   },
 
   /** Get total $ (quantity * rate) per service_ticket_id for the given ticket IDs */
