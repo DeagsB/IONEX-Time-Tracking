@@ -25,6 +25,9 @@ const initialReceiptForm: ReceiptFormState = {
   notes: '',
 };
 
+/** After delete, server row is removed only after this delay unless the user clicks Undo. */
+const DELETE_UNDO_MS = 8000;
+
 export default function Expenses() {
   const queryClient = useQueryClient();
   const { user, isAdmin } = useAuth();
@@ -206,7 +209,93 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
       queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
     },
+    onError: (err: unknown) => {
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      alert('Failed to delete expense: ' + msg);
+    },
   });
+
+  /** Pending receipt delete: removed from UI immediately; server delete runs after timeout unless Undo. */
+  const pendingDeleteRef = useRef<{ expense: any; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const [deleteUndoLabel, setDeleteUndoLabel] = useState<string | null>(null);
+
+  const insertExpenseSortedInCache = (expense: any) => {
+    queryClient.setQueryData(['userExpenses'], (old: any[] | undefined) => {
+      const list = old || [];
+      if (list.some((e) => e.id === expense.id)) return list;
+      const next = [...list, expense];
+      next.sort((a, b) => {
+        const da = String(a.expense_date || '');
+        const db = String(b.expense_date || '');
+        if (da !== db) return db.localeCompare(da);
+        return String(b.id).localeCompare(String(a.id));
+      });
+      return next;
+    });
+  };
+
+  const removeExpenseFromCache = (id: string) => {
+    queryClient.setQueryData(['userExpenses'], (old: any[] | undefined) => (old || []).filter((e) => e.id !== id));
+  };
+
+  const flushPreviousPendingDelete = () => {
+    const p = pendingDeleteRef.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingDeleteRef.current = null;
+    setDeleteUndoLabel(null);
+    deleteExpenseMutation.mutate(p.expense.id);
+  };
+
+  const undoPendingExpenseDelete = () => {
+    const p = pendingDeleteRef.current;
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingDeleteRef.current = null;
+    setDeleteUndoLabel(null);
+    insertExpenseSortedInCache(p.expense);
+  };
+
+  const requestDeleteExpense = (exp: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    flushPreviousPendingDelete();
+    if (editingExpense?.id === exp.id) {
+      setEditingExpense(null);
+      setEditReceiptPreviewUrl(null);
+    }
+    removeExpenseFromCache(exp.id);
+    const desc = (exp.description || 'Expense').trim();
+    const short = desc.length > 52 ? `${desc.slice(0, 52)}…` : desc || 'Expense';
+    setDeleteUndoLabel(short);
+    const timer = setTimeout(() => {
+      pendingDeleteRef.current = null;
+      setDeleteUndoLabel(null);
+      deleteExpenseMutation.mutate(exp.id);
+    }, DELETE_UNDO_MS);
+    pendingDeleteRef.current = { expense: exp, timer };
+  };
+
+  useEffect(() => {
+    return () => {
+      const p = pendingDeleteRef.current;
+      if (!p) return;
+      clearTimeout(p.timer);
+      pendingDeleteRef.current = null;
+      queryClient.setQueryData(['userExpenses'], (old: any[] | undefined) => {
+        const list = old || [];
+        if (list.some((e) => e.id === p.expense.id)) return list;
+        const next = [...list, p.expense];
+        next.sort((a, b) => {
+          const da = String(a.expense_date || '');
+          const db = String(b.expense_date || '');
+          if (da !== db) return db.localeCompare(da);
+          return String(b.id).localeCompare(String(a.id));
+        });
+        return next;
+      });
+    };
+  }, [queryClient]);
 
   const handleStartEdit = (exp: any) => {
     setEditingExpense(exp);
@@ -934,9 +1023,21 @@ export default function Expenses() {
                   </td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                     <button
-                      onClick={(e) => { e.stopPropagation(); if (confirm('Delete this expense?')) deleteExpenseMutation.mutate(exp.id); }}
+                      onClick={(e) => requestDeleteExpense(exp, e)}
+                      disabled={deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id}
                       title="Delete"
-                      style={{ color: '#ef5350', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', padding: '6px', lineHeight: 1, borderRadius: '4px', transition: 'background-color 0.15s' }}
+                      style={{
+                        color: '#ef5350',
+                        background: 'none',
+                        border: 'none',
+                        cursor: deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id ? 'not-allowed' : 'pointer',
+                        fontSize: '16px',
+                        padding: '6px',
+                        lineHeight: 1,
+                        borderRadius: '4px',
+                        transition: 'background-color 0.15s',
+                        opacity: deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id ? 0.45 : 1,
+                      }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(239, 83, 80, 0.15)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}
                     >
@@ -1502,6 +1603,51 @@ export default function Expenses() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {deleteUndoLabel && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10006,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            padding: '12px 20px',
+            borderRadius: '10px',
+            backgroundColor: 'var(--bg-primary)',
+            border: '1px solid var(--border-color)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+            maxWidth: 'min(560px, calc(100vw - 32px))',
+          }}
+        >
+          <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>
+            Expense removed.{' '}
+            <span style={{ color: 'var(--text-secondary)' }}>{deleteUndoLabel}</span>
+          </span>
+          <button
+            type="button"
+            onClick={undoPendingExpenseDelete}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: 'var(--primary-color)',
+              color: 'white',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            Undo
+          </button>
         </div>
       )}
     </div>
