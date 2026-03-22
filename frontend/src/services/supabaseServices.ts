@@ -2004,7 +2004,13 @@ function ticketExpenseTypeToDb(t: string | undefined | null): string {
 
 function ticketExpenseTypeFromDb(t: string | undefined | null): ServiceTicketExpenseTypeApp {
   const u = String(t ?? '').trim();
-  if (u === 'Other' || u === 'other') return 'Expenses';
+  const lower = u.toLowerCase();
+  if (lower === 'other') return 'Expenses';
+  if (lower === 'travel') return 'Travel';
+  if (lower === 'subsistence') return 'Subsistence';
+  if (lower === 'hotel') return 'Hotel';
+  if (lower === 'equipment') return 'Equipment';
+  if (lower === 'expenses') return 'Expenses';
   if (u === 'Travel' || u === 'Subsistence' || u === 'Hotel' || u === 'Equipment' || u === 'Expenses') {
     return u as ServiceTicketExpenseTypeApp;
   }

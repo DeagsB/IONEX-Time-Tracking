@@ -1032,6 +1032,7 @@ export default function ServiceTickets() {
     setShowCloseConfirm(false);
     setSelectedTicket(null);
     setCurrentTicketRecordId(null);
+    setExpenses([]);
     setEditableTicket(null);
     setSubmitError(null);
     setServiceRows([]);
@@ -2194,11 +2195,15 @@ export default function ServiceTickets() {
       quantity: number;
       rate: number;
       unit?: string;
+      actual_cost?: number;
+      needs_reimbursement?: boolean;
+      reimbursement_status?: string;
     }) => serviceTicketExpensesService.create(expense),
     onSuccess: () => {
       if (currentTicketRecordId) {
         loadExpenses(currentTicketRecordId);
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+        queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
       }
     },
   });
@@ -3051,6 +3056,7 @@ export default function ServiceTickets() {
     setCurrentTicketRecordId(existingRecord?.id || null);
 
     setSelectedTicket(ticket);
+    setExpenses([]);
     setPendingDeleteExpenseIds(new Set());
     setPendingAddExpenses([]);
     if (!existingRecord && ticket.entries?.length > 0) {
@@ -6091,20 +6097,31 @@ export default function ServiceTickets() {
                                   (editingExpense.expense_type === 'Travel' || editingExpense.expense_type === 'Equipment')
                                 ) {
                                   clearTicketExpenseFormIssues();
-                                  setPendingAddExpenses((prev) => [
-                                    ...prev,
-                                    {
+                                  try {
+                                    await createExpenseMutation.mutateAsync({
+                                      service_ticket_id: currentTicketRecordId,
                                       expense_type: editingExpense.expense_type,
                                       description: editingExpense.description.trim(),
                                       quantity: Number(editingExpense.quantity) || 0,
                                       rate: Number(editingExpense.rate) || 0,
-                                      actual_cost: Number(editingExpense.actual_cost) || 0,
                                       unit: editingExpense.unit?.trim() || undefined,
-                                      tempId: `pending-${Date.now()}-${prev.length}`,
+                                      actual_cost: Number(editingExpense.actual_cost) || 0,
                                       needs_reimbursement: true,
-                                    },
-                                  ]);
-                                  setEditingExpense(null);
+                                      reimbursement_status: isAdmin ? 'approved' : 'pending',
+                                    });
+                                    setEditingExpense(null);
+                                  } catch (err: unknown) {
+                                    const raw = err instanceof Error
+                                      ? err.message
+                                      : (err && typeof err === 'object' && 'message' in err)
+                                        ? String((err as { message: unknown }).message)
+                                        : String(err);
+                                    let message = raw || 'Failed to save expense. Please try again.';
+                                    if (typeof message === 'string' && (message.includes('row-level security') || message.includes('policy') || message.includes('permission') || message.includes('403') || message.includes('violates'))) {
+                                      message = "Permission denied — RLS policy blocked the insert. Ensure the expense migration has been applied and your user has access to this ticket's expenses.";
+                                    }
+                                    setTicketExpenseFormIssues({ save: message });
+                                  }
                                   return;
                                 }
                                 // Hotel / Other + reimbursement: use in-form receipt drop (not Add)
