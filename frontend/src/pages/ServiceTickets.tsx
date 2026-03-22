@@ -789,7 +789,16 @@ export default function ServiceTickets() {
   const normStr = (v: unknown): string => String(v ?? '').trim();
 
   const performSave = async (): Promise<boolean> => {
-    if (!selectedTicket) return false;
+    if (!selectedTicket) {
+      alert('Unable to save: ticket context was lost. Close this panel and open the ticket again.');
+      return false;
+    }
+    if (editingExpense) {
+      alert(
+        'Finish the open expense line first: use Add, Update, or Cancel on the orange expense form, then click Save Changes.',
+      );
+      return false;
+    }
     setIsSavingTicket(true);
     try {
       // Ensure we have a ticket record (handles race when user saves before open completes)
@@ -931,6 +940,20 @@ export default function ServiceTickets() {
       initialServiceRowsRef.current = serviceRows.map(r => ({ ...r }));
       setPendingChangesVersion(v => v + 1);
       return true;
+    } catch (err: unknown) {
+      console.error('Save ticket failed:', err);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : String(err);
+      alert(
+        msg
+          ? `Failed to save changes: ${msg}`
+          : 'Failed to save changes. Check the browser console for details.',
+      );
+      return false;
     } finally {
       setIsSavingTicket(false);
     }
@@ -5835,8 +5858,9 @@ export default function ServiceTickets() {
                             )}
                           </div>
                           {!(
-                            editingExpense.expense_type === 'Hotel' &&
-                            editingExpense.needs_reimbursement
+                            editingExpense.needs_reimbursement &&
+                            (editingExpense.expense_type === 'Hotel' ||
+                              editingExpense.expense_type === 'Expenses')
                           ) && (
                             <div
                               style={{
@@ -5906,7 +5930,14 @@ export default function ServiceTickets() {
                                     if (!checked) delete next.receipt;
                                     return next;
                                   });
-                                  setEditingExpense({ ...editingExpense, needs_reimbursement: checked });
+                                  setEditingExpense({
+                                    ...editingExpense,
+                                    needs_reimbursement: checked,
+                                    ...(checked &&
+                                    editingExpense.expense_type === 'Expenses'
+                                      ? { quantity: 1 }
+                                      : {}),
+                                  });
                                 }}
                               />
                               <label htmlFor="needs-reimbursement-ticket-expense" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
@@ -6075,9 +6106,13 @@ export default function ServiceTickets() {
                                 }
                                 try {
                                   const isHotelRow = editingExpense.expense_type === 'Hotel';
-                                  const saveQuantity = isHotelRow
-                                    ? 1
-                                    : Number(editingExpense.quantity) || 0;
+                                  const isOtherReimbRow =
+                                    editingExpense.expense_type === 'Expenses' &&
+                                    editingExpense.needs_reimbursement;
+                                  const saveQuantity =
+                                    isHotelRow || isOtherReimbRow
+                                      ? 1
+                                      : Number(editingExpense.quantity) || 0;
                                   const saveUnit = isHotelRow
                                     ? undefined
                                     : editingExpense.unit?.trim() || undefined;
@@ -7690,13 +7725,17 @@ export default function ServiceTickets() {
                   <div style={{ padding: '12px', marginBottom: '12px', backgroundColor: 'rgba(255, 152, 0, 0.08)', borderRadius: '8px', border: '1px solid rgba(255, 152, 0, 0.3)' }}>
                     {(() => {
                       const isHotelCreate = createEditingExpense.expense_type === 'Hotel';
-                      const hideCreateHotelRate =
-                        isHotelCreate && createEditingExpense.needs_reimbursement;
-                      const createExpenseGridColumns = isHotelCreate
-                        ? hideCreateHotelRate
-                          ? '1fr 2fr'
-                          : '1fr 2fr 1fr'
-                        : '1fr 2fr 1fr 1fr 1fr';
+                      const isOtherCreate = createEditingExpense.expense_type === 'Expenses';
+                      const reimbCreate = createEditingExpense.needs_reimbursement;
+                      const hideCreateHotelRate = isHotelCreate && reimbCreate;
+                      const hideOtherQtyRateOnCreate = isOtherCreate && reimbCreate;
+                      const createExpenseGridColumns = hideCreateHotelRate
+                        ? '1fr 2fr'
+                        : isHotelCreate
+                          ? '1fr 2fr 1fr'
+                          : hideOtherQtyRateOnCreate
+                            ? '1fr 2fr 1fr'
+                            : '1fr 2fr 1fr 1fr 1fr';
                       return (
                     <div style={{ display: 'grid', gridTemplateColumns: createExpenseGridColumns, gap: '8px', alignItems: 'end' }}>
                       <div>
@@ -7759,7 +7798,7 @@ export default function ServiceTickets() {
                           style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
                         />
                       </div>
-                      {!isHotelCreate && (
+                      {!isHotelCreate && !hideOtherQtyRateOnCreate && (
                         <>
                           <div>
                             <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Qty</label>
@@ -7795,6 +7834,18 @@ export default function ServiceTickets() {
                           </div>
                         </>
                       )}
+                      {hideOtherQtyRateOnCreate && (
+                        <div>
+                          <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>{getExpenseUnitFieldLabels(createEditingExpense.expense_type).label}</label>
+                          <input
+                            type="text"
+                            value={createEditingExpense.unit || ''}
+                            onChange={(e) => setCreateEditingExpense(prev => prev ? { ...prev, unit: e.target.value } : null)}
+                            placeholder={getExpenseUnitFieldLabels(createEditingExpense.expense_type).placeholder}
+                            style={{ width: '100%', padding: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      )}
                       {isHotelCreate && !hideCreateHotelRate && (
                         <div>
                           <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>Rate ($)</label>
@@ -7817,11 +7868,20 @@ export default function ServiceTickets() {
                           type="checkbox"
                           id="needs-reimbursement-create-expense"
                           checked={createEditingExpense.needs_reimbursement || false}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const checked = e.target.checked;
                             setCreateEditingExpense((prev) =>
-                              prev ? { ...prev, needs_reimbursement: e.target.checked } : null
-                            )
-                          }
+                              prev
+                                ? {
+                                    ...prev,
+                                    needs_reimbursement: checked,
+                                    ...(checked && prev.expense_type === 'Expenses'
+                                      ? { quantity: 1 }
+                                      : {}),
+                                  }
+                                : null
+                            );
+                          }}
                         />
                         <label htmlFor="needs-reimbursement-create-expense" style={{ fontSize: '12px', color: 'var(--text-primary)', cursor: 'pointer' }}>
                           {createEditingExpense.expense_type === 'Travel'
@@ -7864,7 +7924,10 @@ export default function ServiceTickets() {
                               needs_reimbursement: createEditingExpense.needs_reimbursement ?? false,
                               ...(createEditingExpense.expense_type === 'Hotel'
                                 ? { quantity: 1, unit: '' }
-                                : {}),
+                                : createEditingExpense.expense_type === 'Expenses' &&
+                                    createEditingExpense.needs_reimbursement
+                                  ? { quantity: 1 }
+                                  : {}),
                             },
                           ]);
                           setCreateEditingExpense(null);
