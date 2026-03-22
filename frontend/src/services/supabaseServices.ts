@@ -1982,10 +1982,24 @@ export type ServiceTicketExpenseRow = {
   updated_at?: string;
 };
 
+/** Values must match Postgres `service_ticket_expenses_expense_type_check` (see migration). */
+const TICKET_EXPENSE_DB_TYPES = new Set(['Travel', 'Subsistence', 'Hotel', 'Equipment', 'Other', 'Expenses']);
+
 function ticketExpenseTypeToDb(t: string | undefined | null): string {
-  if (t === 'Expenses') return 'Other';
-  const s = (t && String(t).trim()) || '';
-  return s || 'Travel';
+  const raw = String(t ?? '').trim();
+  if (!raw) return 'Travel';
+  const lower = raw.toLowerCase();
+  // App UI type for miscellaneous / billable-from-receipt lines
+  if (lower === 'expenses') return 'Other';
+  // Title-case common DB values so "HOTEL", "travel" still save
+  const title = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  if (title === 'Other') return 'Other';
+  if (TICKET_EXPENSE_DB_TYPES.has(title)) return title;
+  if (lower === 'mileage' || lower === 'truck') return 'Travel';
+  if (lower === 'per diem' || lower === 'perdiem') return 'Subsistence';
+  if (lower === 'hotel') return 'Hotel';
+  if (lower === 'equipment' || lower.includes('laptop')) return 'Equipment';
+  return 'Other';
 }
 
 function ticketExpenseTypeFromDb(t: string | undefined | null): ServiceTicketExpenseTypeApp {
