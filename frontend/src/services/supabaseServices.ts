@@ -1957,6 +1957,24 @@ export const serviceTicketsService = {
   },
 };
 
+/** App + UI use "Expenses" for the "Other" line type; Postgres CHECK typically allows "Other" only. */
+type ServiceTicketExpenseTypeApp = 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
+
+function ticketExpenseTypeToDb(t: string | undefined | null): string {
+  if (t === 'Expenses') return 'Other';
+  const s = (t && String(t).trim()) || '';
+  return s || 'Travel';
+}
+
+function ticketExpenseTypeFromDb(t: string | undefined | null): ServiceTicketExpenseTypeApp {
+  const u = String(t ?? '').trim();
+  if (u === 'Other' || u === 'other') return 'Expenses';
+  if (u === 'Travel' || u === 'Subsistence' || u === 'Hotel' || u === 'Equipment' || u === 'Expenses') {
+    return u as ServiceTicketExpenseTypeApp;
+  }
+  return 'Expenses';
+}
+
 export const serviceTicketExpensesService = {
   async getByTicketId(ticketId: string) {
     const { data, error } = await supabase
@@ -1966,7 +1984,10 @@ export const serviceTicketExpensesService = {
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    return data;
+    return (data || []).map((row: Record<string, unknown>) => ({
+      ...row,
+      expense_type: ticketExpenseTypeFromDb(row.expense_type as string),
+    }));
   },
 
   /** Get total $ (quantity * rate) per service_ticket_id for the given ticket IDs */
@@ -2088,12 +2109,18 @@ export const serviceTicketExpensesService = {
   }) {
     const { data, error } = await supabase
       .from('service_ticket_expenses')
-      .insert(expense)
+      .insert({
+        ...expense,
+        expense_type: ticketExpenseTypeToDb(expense.expense_type),
+      })
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+    return {
+      ...data,
+      expense_type: ticketExpenseTypeFromDb(data?.expense_type as string),
+    };
   },
 
   async update(id: string, updates: {
@@ -2106,15 +2133,22 @@ export const serviceTicketExpensesService = {
     needs_reimbursement?: boolean;
     reimbursement_status?: string;
   }) {
+    const payload =
+      updates.expense_type !== undefined
+        ? { ...updates, expense_type: ticketExpenseTypeToDb(updates.expense_type) }
+        : updates;
     const { data, error } = await supabase
       .from('service_ticket_expenses')
-      .update(updates)
+      .update(payload)
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
-    return data;
+    return {
+      ...data,
+      expense_type: ticketExpenseTypeFromDb(data?.expense_type as string),
+    };
   },
 
   async delete(id: string) {

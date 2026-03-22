@@ -5700,6 +5700,7 @@ export default function ServiceTickets() {
                                       },
                                     ]);
                                     queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+                                    queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
                                   } catch (err: any) {
                                     alert('Failed to apply receipt: ' + (err.message || 'Unknown error'));
                                   }
@@ -6319,46 +6320,52 @@ export default function ServiceTickets() {
                         </div>
                       )}
 
-                          {/* Attached Receipts List */}
-                          {attachedReceipts.length > 0 && (
+                          {/* Receipts linked on user_expenses (billable / reimbursement); refreshes when applying suggested receipts or saving */}
+                          {currentTicketRecordId && (
                             <div style={{ marginTop: '12px' }}>
                               <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '6px' }}>Attached Receipts</div>
-                              {attachedReceipts.map((r: any) => (
-                                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', marginBottom: '4px', fontSize: '13px' }}>
-                                  <div>
-                                    <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{r.description}</span>
-                                    <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>${parseFloat(r.amount).toFixed(2)}</span>
-                                    {parseFloat(r.gst || 0) > 0 && <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px', fontSize: '11px' }}>GST: ${parseFloat(r.gst).toFixed(2)}</span>}
-                                  </div>
-                                  {!isLockedForEditing && (
-                                    <div style={{ display: 'flex', gap: '6px' }}>
-                                      <button
-                                        onClick={() => handleStartReceiptEdit(r)}
-                                        style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        onClick={async () => {
-                                          if (!confirm('Unlink this receipt from the ticket? The expense line will be removed.')) return;
-                                          try {
-                                            await userExpensesService.unapplyFromTicket(r.id);
-                                            queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
-                                            queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
-                                            queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
-                                            if (currentTicketRecordId) await loadExpenses(currentTicketRecordId);
-                                          } catch (err: any) {
-                                            alert('Failed to unlink: ' + (err?.message || 'Unknown error'));
-                                          }
-                                        }}
-                                        style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 83, 80, 0.1)', color: '#ef5350', border: '1px solid rgba(239, 83, 80, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                                      >
-                                        Unlink
-                                      </button>
+                              {attachedReceipts.length === 0 ? (
+                                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
+                                  None linked yet. Use “+ Add to Ticket” on suggested billable receipts above, or link from the Expenses page—they appear here once tied to this ticket.
+                                </p>
+                              ) : (
+                                attachedReceipts.map((r: any) => (
+                                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', marginBottom: '4px', fontSize: '13px' }}>
+                                    <div>
+                                      <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{r.description}</span>
+                                      <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>${parseFloat(r.amount).toFixed(2)}</span>
+                                      {parseFloat(r.gst || 0) > 0 && <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px', fontSize: '11px' }}>GST: ${parseFloat(r.gst).toFixed(2)}</span>}
                                     </div>
-                                  )}
-                                </div>
-                              ))}
+                                    {!isLockedForEditing && (
+                                      <div style={{ display: 'flex', gap: '6px' }}>
+                                        <button
+                                          onClick={() => handleStartReceiptEdit(r)}
+                                          style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={async () => {
+                                            if (!confirm('Unlink this receipt from the ticket? The expense line will be removed.')) return;
+                                            try {
+                                              await userExpensesService.unapplyFromTicket(r.id);
+                                              queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+                                              queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+                                              queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+                                              if (currentTicketRecordId) await loadExpenses(currentTicketRecordId);
+                                            } catch (err: any) {
+                                              alert('Failed to unlink: ' + (err?.message || 'Unknown error'));
+                                            }
+                                          }}
+                                          style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 83, 80, 0.1)', color: '#ef5350', border: '1px solid rgba(239, 83, 80, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                        >
+                                          Unlink
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              )}
                             </div>
                           )}
                     </div>
@@ -6564,6 +6571,7 @@ export default function ServiceTickets() {
                                 ]);
                               }
                               queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+                              queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
                               setShowReceiptModal(false);
                               setPendingReimbursementExpense(null);
                               if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);

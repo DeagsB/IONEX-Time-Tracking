@@ -456,6 +456,7 @@ export default function Expenses() {
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
       setMarkupModalTicket(null);
       setApplyExpenseId(null);
