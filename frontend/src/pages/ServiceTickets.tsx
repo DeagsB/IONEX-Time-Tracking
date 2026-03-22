@@ -588,7 +588,7 @@ export default function ServiceTickets() {
     actual_cost?: number;
     unit?: string;
   } | null>(null);
-  /** Reimbursable expense types: drop/select receipt in-form opens the receipt + markup modal (not Add). */
+  /** Hotel / Other + reimbursement: in-form receipt drop opens the receipt + markup modal. Travel and Laptop/Basic Equipment use Add → modal (receipt optional in modal). */
   const inFormReimbursementReceiptInputRef = useRef<HTMLInputElement>(null);
   const receiptModalFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -597,7 +597,7 @@ export default function ServiceTickets() {
       if (!editingExpense) return;
       const et = editingExpense.expense_type;
       if (!editingExpense.needs_reimbursement) return;
-      if (et !== 'Hotel' && et !== 'Expenses' && et !== 'Travel' && et !== 'Equipment') return;
+      if (et !== 'Hotel' && et !== 'Expenses') return;
       if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
         alert('Please choose an image or PDF receipt.');
         return;
@@ -5810,9 +5810,7 @@ export default function ServiceTickets() {
                           {!editingExpense.id &&
                             editingExpense.needs_reimbursement &&
                             (editingExpense.expense_type === 'Hotel' ||
-                              editingExpense.expense_type === 'Expenses' ||
-                              editingExpense.expense_type === 'Travel' ||
-                              editingExpense.expense_type === 'Equipment') && (
+                              editingExpense.expense_type === 'Expenses') && (
                               <div style={{ marginBottom: '12px' }}>
                                 <label style={labelStyle}>
                                   {editingExpense.expense_type === 'Expenses'
@@ -5894,14 +5892,44 @@ export default function ServiceTickets() {
                                   alert('Cannot add expense: ticket record not ready. Please close and reopen the ticket.');
                                   return;
                                 }
-                                // When Needs Reimbursement is checked, prompt for receipt first
+                                // Mileage/Truck Hours or Laptop/Basic Equipment + reimbursement: Add opens receipt modal (attach receipt inside modal if needed)
+                                if (
+                                  !editingExpense.id &&
+                                  editingExpense.needs_reimbursement &&
+                                  (editingExpense.expense_type === 'Travel' || editingExpense.expense_type === 'Equipment')
+                                ) {
+                                  const et = editingExpense.expense_type;
+                                  const amt = (Number(editingExpense.quantity) || 0) * (Number(editingExpense.rate) || 0);
+                                  setPendingReimbursementExpense({
+                                    expense_type: et,
+                                    description: editingExpense.description.trim(),
+                                    quantity: Number(editingExpense.quantity) || 0,
+                                    rate: Number(editingExpense.rate) || 0,
+                                    actual_cost: Number(editingExpense.actual_cost) || 0,
+                                    unit: editingExpense.unit?.trim() || undefined,
+                                  });
+                                  setReceiptForm({
+                                    description: editingExpense.description.trim(),
+                                    amount: amt > 0 ? String(amt) : '',
+                                    gst: '',
+                                    markupType: 'dollar',
+                                    markupValue: '',
+                                    is_billable: true,
+                                  });
+                                  setReceiptFile(null);
+                                  if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+                                  setReceiptPreviewUrl(null);
+                                  setReceiptUploadError(null);
+                                  setShowReceiptModal(true);
+                                  setEditingExpense(null);
+                                  return;
+                                }
+                                // Hotel / Other + reimbursement: use in-form receipt drop (not Add)
                                 if (
                                   !editingExpense.id &&
                                   editingExpense.needs_reimbursement &&
                                   (editingExpense.expense_type === 'Hotel' ||
-                                    editingExpense.expense_type === 'Expenses' ||
-                                    editingExpense.expense_type === 'Travel' ||
-                                    editingExpense.expense_type === 'Equipment')
+                                    editingExpense.expense_type === 'Expenses')
                                 ) {
                                   alert(
                                     'Enter a description, then drop or select a receipt in the area below. That opens the form for amount, GST, and markup—saving adds the line to the ticket.',
@@ -6270,7 +6298,15 @@ export default function ServiceTickets() {
                           onClick={async () => {
                             if (!receiptForm.description.trim()) { setReceiptUploadError('Name is required'); return; }
                             if (!receiptForm.amount || parseFloat(receiptForm.amount) <= 0) { setReceiptUploadError('Amount is required'); return; }
-                            if (pendingReimbursementExpense && !receiptFile) { setReceiptUploadError('Receipt image or PDF is required for reimbursement'); return; }
+                            if (
+                              pendingReimbursementExpense &&
+                              !receiptFile &&
+                              pendingReimbursementExpense.expense_type !== 'Travel' &&
+                              pendingReimbursementExpense.expense_type !== 'Equipment'
+                            ) {
+                              setReceiptUploadError('Receipt image or PDF is required for reimbursement');
+                              return;
+                            }
                             setIsUploadingReceipt(true);
                             setReceiptUploadError(null);
                             try {
