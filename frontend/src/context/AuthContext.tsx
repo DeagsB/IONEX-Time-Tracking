@@ -188,6 +188,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return;
       }
 
+      // Re-verify JWT-bound user before mutating React state (avoids races with refresh / other tabs).
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      const verified = authData?.user;
+      if (authErr || !verified || verified.id !== supabaseUser.id) {
+        console.warn('AuthProvider: fetchUserProfile skipped — session no longer matches', authErr?.message);
+        setLoading(false);
+        return;
+      }
+
       if (data) {
         // Auth is source of truth for email (e.g. after email-change verification)
         const authEmail = supabaseUser.email || '';

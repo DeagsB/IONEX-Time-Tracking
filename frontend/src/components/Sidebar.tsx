@@ -13,8 +13,7 @@ export default function Sidebar() {
     queryKey: ['rejectedTicketsCount', user?.id, isDemoMode],
     queryFn: () => serviceTicketsService.getRejectedCountForUser(user!.id, isDemoMode),
     enabled: !!user?.id,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   });
   const showRejectedBadge = rejectedTicketsCount > 0;
 

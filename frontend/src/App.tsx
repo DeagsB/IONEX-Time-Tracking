@@ -26,7 +26,14 @@ import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 import Maintenance from './pages/Maintenance';
 
-const queryClient = new QueryClient();
+// Avoid refetch-on-focus racing token refresh on some browsers (entries briefly OK then empty).
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, isDeveloper, maintenanceMode } = useAuth();
