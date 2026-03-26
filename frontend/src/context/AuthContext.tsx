@@ -74,12 +74,26 @@ const DEV_USER: User = {
   role: 'ADMIN', // Override to ADMIN for dev mode
 };
 
+/** Minimal app user from JWT so routes/queries have user.id before the users-table fetch finishes (or if it fails transiently). */
+function appUserFromSupabaseAuth(su: SupabaseUser): User {
+  const md = su.user_metadata || {};
+  return {
+    id: su.id,
+    email: su.email || '',
+    firstName: String(md.first_name ?? ''),
+    lastName: String(md.last_name ?? ''),
+    role: 'USER',
+  };
+}
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(DEV_MODE ? DEV_USER : null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(DEV_MODE ? false : true);
   const signedOutCheckGenerationRef = useRef(0);
   const fetchUserProfileRef = useRef<((u: SupabaseUser) => Promise<void>) | null>(null);
+  const userRef = useRef<User | null>(user);
+  userRef.current = user;
 
   // Developer role switching - persisted in localStorage
   const [effectiveRole, setEffectiveRoleState] = useState<'ADMIN' | 'USER'>(() => {
@@ -198,6 +212,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.log('🔐 AuthProvider: Session retrieved', session ? 'User authenticated' : 'No session');
       setSession(session);
       if (session?.user) {
+        setUser((prev) => (prev?.id === session.user.id ? prev : appUserFromSupabaseAuth(session.user)));
         fetchUserProfile(session.user);
       } else {
         setLoading(false);
@@ -216,16 +231,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
       console.log('🔐 AuthProvider: onAuthStateChange', event, session ? 'session present' : 'no session');
       if (event === 'SIGNED_OUT') {
-        // Token refresh sometimes emits SIGNED_OUT briefly; verify storage before kicking user to login.
+        // Real sign-out clears storage; some clients also emit SIGNED_OUT during refresh or slow storage (e.g. new OS / AV).
         const gen = ++signedOutCheckGenerationRef.current;
         void (async () => {
+          const tryRecover = async (): Promise<Session | null> => {
+            const { data: { session: s } } = await supabase.auth.getSession();
+            return s?.user ? s : null;
+          };
           await new Promise((r) => setTimeout(r, 200));
           if (gen !== signedOutCheckGenerationRef.current) return;
-          const { data: { session: recovered } } = await supabase.auth.getSession();
+          let recovered = await tryRecover();
+          if (!recovered) {
+            await new Promise((r) => setTimeout(r, 500));
+            if (gen !== signedOutCheckGenerationRef.current) return;
+            recovered = await tryRecover();
+          }
+          if (!recovered) {
+            await new Promise((r) => setTimeout(r, 500));
+            if (gen !== signedOutCheckGenerationRef.current) return;
+            recovered = await tryRecover();
+          }
           if (recovered?.user) {
-            console.warn('AuthProvider: SIGNED_OUT ignored — session still in storage (refresh race)');
+            const su = recovered.user;
+            console.warn('AuthProvider: SIGNED_OUT — session still present after checks, keeping auth');
             setSession(recovered);
-            await fetchUserProfileRef.current?.(recovered.user);
+            setUser((prev) => (prev?.id === su.id ? prev : appUserFromSupabaseAuth(su)));
+            await fetchUserProfileRef.current?.(su);
+            return;
+          }
+          if (gen !== signedOutCheckGenerationRef.current) return;
+          const { data: refreshData } = await supabase.auth.refreshSession();
+          const refreshed = refreshData?.session;
+          if (refreshed?.user) {
+            console.warn('AuthProvider: SIGNED_OUT — recovered via refreshSession');
+            setSession(refreshed);
+            setUser((prev) => (prev?.id === refreshed.user.id ? prev : appUserFromSupabaseAuth(refreshed.user)));
+            await fetchUserProfileRef.current?.(refreshed.user);
             return;
           }
           setSession(null);
@@ -238,6 +279,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // session briefly during refresh; setSession(null) then desynced React from the live Supabase session.
       if (session?.user) {
         setSession(session);
+        setUser((prev) => (prev?.id === session.user.id ? prev : appUserFromSupabaseAuth(session.user)));
         void fetchUserProfile(session.user);
       }
     });
@@ -246,6 +288,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       clearTimeout(loadingTimeout);
       subscription.unsubscribe();
     };
+  }, []);
+
+  // If storage/client briefly desyncs (new Windows, strict browser, tab sleep), resync when the tab is visible again.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      void supabase.auth.getSession().then(({ data: { session: s } }) => {
+        if (!s?.user || userRef.current) return;
+        setSession(s);
+        setUser(appUserFromSupabaseAuth(s.user));
+        void fetchUserProfileRef.current?.(s.user);
+      });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -263,6 +320,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (data.session) {
       setSession(data.session);
       if (data.user) {
+        setUser((prev) => (prev?.id === data.user.id ? prev : appUserFromSupabaseAuth(data.user)));
         await fetchUserProfile(data.user);
       }
     }
