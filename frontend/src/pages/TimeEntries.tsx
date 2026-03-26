@@ -23,6 +23,7 @@ export default function TimeEntries() {
 
   const { data: timeEntries, isLoading: isLoadingEntries } = useQuery({
     queryKey: ['timeEntries', isDemoMode, user?.id],
+    enabled: !!user?.id,
     queryFn: () => timeEntriesService.getAll(isDemoMode, user?.id),
   });
 

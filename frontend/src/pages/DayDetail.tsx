@@ -88,6 +88,7 @@ export default function DayDetail() {
 
   const { data: timeEntries } = useQuery({
     queryKey: ['timeEntries', 'day', date, user?.id],
+    enabled: !!user?.id && !!date,
     queryFn: async () => {
       const entries = await timeEntriesService.getAll(undefined, user?.id);
       if (!date || !entries) return [];

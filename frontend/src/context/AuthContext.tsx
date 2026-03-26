@@ -160,8 +160,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setLoading(false);
         return;
       }
-      setSession(session);
+      // Never mirror a null session here (only SIGNED_OUT clears). Some browsers/clients emit a null
+      // session briefly during refresh; setSession(null) then desynced React from the live Supabase session.
       if (session?.user) {
+        setSession(session);
         void fetchUserProfile(session.user);
       }
     });
