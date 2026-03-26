@@ -8,12 +8,12 @@ try {
     throw new Error('Supabase configuration is missing. Check environment variables.');
   }
 
+  // flowType defaults work best for email/password; explicit 'pkce' can break refresh and cause SIGNED_OUT → login redirect.
   supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      flowType: 'pkce',
       storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     },
   });

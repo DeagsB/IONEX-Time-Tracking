@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User as SupabaseUser, Session, AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 
@@ -78,7 +78,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(DEV_MODE ? DEV_USER : null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(DEV_MODE ? false : true);
-  
+  const signedOutCheckGenerationRef = useRef(0);
+  const fetchUserProfileRef = useRef<((u: SupabaseUser) => Promise<void>) | null>(null);
+
   // Developer role switching - persisted in localStorage
   const [effectiveRole, setEffectiveRoleState] = useState<'ADMIN' | 'USER'>(() => {
     const stored = localStorage.getItem('developer_effective_role');
@@ -114,6 +116,65 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const displayRole: 'ADMIN' | 'USER' | 'DEVELOPER' = isDeveloper
     ? (effectiveRole === 'USER' ? 'USER' : 'ADMIN')
     : (user?.role || 'USER');
+
+  const fetchUserProfile = async (supabaseUser: SupabaseUser) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', supabaseUser.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = not found
+        console.error('Error fetching user profile:', error);
+        setLoading(false);
+        return;
+      }
+
+      if (data) {
+        const authEmail = supabaseUser.email || '';
+        if (authEmail && data.email !== authEmail) {
+          await supabase.from('users').update({ email: authEmail }).eq('id', supabaseUser.id);
+        }
+        setUser({
+          id: data.id,
+          email: authEmail || data.email || '',
+          firstName: data.first_name || '',
+          lastName: data.last_name || '',
+          role: data.role || 'USER',
+        });
+      } else {
+        const { data: newUser, error: insertError } = await supabase
+          .from('users')
+          .insert({
+            id: supabaseUser.id,
+            email: supabaseUser.email || '',
+            first_name: supabaseUser.user_metadata?.first_name || '',
+            last_name: supabaseUser.user_metadata?.last_name || '',
+            role: 'USER',
+          })
+          .select()
+          .single();
+
+        if (!insertError && newUser) {
+          setUser({
+            id: newUser.id,
+            email: newUser.email || '',
+            firstName: newUser.first_name || '',
+            lastName: newUser.last_name || '',
+            role: newUser.role || 'USER',
+          });
+        }
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
+      setLoading(false);
+    }
+  };
+
+  fetchUserProfileRef.current = fetchUserProfile;
 
   useEffect(() => {
     // Skip auth initialization in development mode
@@ -155,9 +216,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
       console.log('🔐 AuthProvider: onAuthStateChange', event, session ? 'session present' : 'no session');
       if (event === 'SIGNED_OUT') {
-        setSession(null);
-        setUser(null);
-        setLoading(false);
+        // Token refresh sometimes emits SIGNED_OUT briefly; verify storage before kicking user to login.
+        const gen = ++signedOutCheckGenerationRef.current;
+        void (async () => {
+          await new Promise((r) => setTimeout(r, 200));
+          if (gen !== signedOutCheckGenerationRef.current) return;
+          const { data: { session: recovered } } = await supabase.auth.getSession();
+          if (recovered?.user) {
+            console.warn('AuthProvider: SIGNED_OUT ignored — session still in storage (refresh race)');
+            setSession(recovered);
+            await fetchUserProfileRef.current?.(recovered.user);
+            return;
+          }
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+        })();
         return;
       }
       // Never mirror a null session here (only SIGNED_OUT clears). Some browsers/clients emit a null
@@ -173,73 +247,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       subscription.unsubscribe();
     };
   }, []);
-
-  const fetchUserProfile = async (supabaseUser: SupabaseUser) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', supabaseUser.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 = not found
-        console.error('Error fetching user profile:', error);
-        setLoading(false);
-        return;
-      }
-
-      // Re-verify JWT-bound user before mutating React state (avoids races with refresh / other tabs).
-      const { data: authData, error: authErr } = await supabase.auth.getUser();
-      const verified = authData?.user;
-      if (authErr || !verified || verified.id !== supabaseUser.id) {
-        console.warn('AuthProvider: fetchUserProfile skipped — session no longer matches', authErr?.message);
-        setLoading(false);
-        return;
-      }
-
-      if (data) {
-        // Auth is source of truth for email (e.g. after email-change verification)
-        const authEmail = supabaseUser.email || '';
-        if (authEmail && data.email !== authEmail) {
-          await supabase.from('users').update({ email: authEmail }).eq('id', supabaseUser.id);
-        }
-        setUser({
-          id: data.id,
-          email: authEmail || data.email || '',
-          firstName: data.first_name || '',
-          lastName: data.last_name || '',
-          role: data.role || 'USER',
-        });
-      } else {
-        // User profile doesn't exist yet, create it
-        const { data: newUser, error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: supabaseUser.id,
-            email: supabaseUser.email || '',
-            first_name: supabaseUser.user_metadata?.first_name || '',
-            last_name: supabaseUser.user_metadata?.last_name || '',
-            role: 'USER',
-          })
-          .select()
-          .single();
-
-        if (!insertError && newUser) {
-          setUser({
-            id: newUser.id,
-            email: newUser.email || '',
-            firstName: newUser.first_name || '',
-            lastName: newUser.last_name || '',
-            role: newUser.role || 'USER',
-          });
-        }
-      }
-      setLoading(false);
-    } catch (error) {
-      console.error('Error in fetchUserProfile:', error);
-      setLoading(false);
-    }
-  };
 
   const login = async (email: string, password: string) => {
     if (DEV_MODE) {
