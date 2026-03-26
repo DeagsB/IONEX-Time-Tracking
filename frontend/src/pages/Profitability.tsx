@@ -1,0 +1,1389 @@
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
+import { projectsService, employeesService, timeEntriesService, payRateHistoryService } from '../services/supabaseServices';
+import { supabase } from '../lib/supabaseClient';
+import { calculateBurden, applyGst } from '../utils/employeeReports';
+import {
+  buildSharedFieldsMapForProject,
+  entryServiceTicketMatchKeys,
+  dbServiceTicketMatchKeys,
+} from '../utils/serviceTickets';
+
+interface ProjectFinancials {
+  projectId: string;
+  projectNumber: string;
+  name: string;
+  customerName: string;
+  color: string;
+  /** Closed on Projects page; row is muted on this screen */
+  isCompleted: boolean;
+  budget: number | null;
+  revenue: number;
+  /** Labor-only revenue (service ticket total_amount), before expense billouts */
+  laborRevenuePreGst: number;
+  /** Customer-billed expense lines (qty × rate) on included tickets, pre-GST */
+  expenseBilledPreGst: number;
+  /** Revenue from approved/exported tickets only */
+  revenueApproved: number;
+  /** Revenue from all tickets including draft/submitted/rejected */
+  revenueAllTickets: number;
+  laborCost: number;
+  expenseCost: number;
+  totalCost: number;
+  profit: number;
+  margin: number;
+  totalHours: number;
+  ticketCount: number;
+}
+
+export default function Profitability() {
+  const { isAdmin } = useAuth();
+  const { isDemoMode } = useDemoMode();
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'project_number' | 'name' | 'revenue' | 'profit' | 'margin' | 'budget_usage'>('project_number');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [showInactive, setShowInactive] = useState(false);
+  const [editingBudgetProjectId, setEditingBudgetProjectId] = useState<string | null>(null);
+  const [budgetInputValue, setBudgetInputValue] = useState('');
+  const budgetInputRef = useRef<HTMLInputElement>(null);
+  const [expenseMarkupExpanded, setExpenseMarkupExpanded] = useState(true);
+  const [includeGst, setIncludeGst] = useState(true);
+
+  const queryClient = useQueryClient();
+  const budgetMutation = useMutation({
+    mutationFn: async ({ projectId, budget }: { projectId: string; budget: number }) => {
+      return projectsService.update(projectId, { budget });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setEditingBudgetProjectId(null);
+      setBudgetInputValue('');
+    },
+    onError: (err) => {
+      alert(`Failed to save budget: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    },
+  });
+
+  useEffect(() => {
+    if (editingBudgetProjectId && budgetInputRef.current) {
+      budgetInputRef.current.focus();
+    }
+  }, [editingBudgetProjectId]);
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects', showInactive],
+    queryFn: () => projectsService.getAll(showInactive),
+  });
+
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeesService.getAll(),
+    enabled: isAdmin,
+  });
+
+  const { data: allTimeEntries = [] } = useQuery({
+    queryKey: ['allTimeEntries'],
+    queryFn: () => timeEntriesService.getAll(isDemoMode),
+    enabled: isAdmin,
+  });
+
+  const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+
+  const { data: serviceTickets = [] } = useQuery({
+    queryKey: ['profitability-tickets', isDemoMode],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('id, ticket_number, user_id, date, total_hours, total_amount, customer_id, project_id, location, header_overrides, is_edited, edited_hours, workflow_status')
+        .or('is_discarded.is.null,is_discarded.eq.false');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: isAdmin,
+  });
+
+  const { data: ticketExpenses = [] } = useQuery({
+    queryKey: ['profitability-ticket-expenses', isDemoMode],
+    queryFn: async () => {
+      const expTable = isDemoMode ? 'service_ticket_expenses' : 'service_ticket_expenses';
+      const { data, error } = await supabase
+        .from(expTable)
+        .select(`
+          id, service_ticket_id, expense_type, description, quantity, rate, actual_cost, needs_reimbursement,
+          service_tickets!inner(id, project_id, user_id, workflow_status, is_discarded)
+        `);
+      if (error) throw error;
+      return (data || []).filter((r: any) => {
+        const st = r.service_tickets;
+        if (!st) return false;
+        if (st.is_discarded === true) return false;
+        if (st.workflow_status === 'draft' || st.workflow_status === 'rejected') return false;
+        return true;
+      });
+    },
+    enabled: isAdmin,
+  });
+
+  const { data: rateHistory = [] } = useQuery({
+    queryKey: ['pay-rate-history'],
+    queryFn: () => payRateHistoryService.getAll(),
+    enabled: isAdmin,
+  });
+
+  const empByUserId = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const emp of employees as any[]) {
+      if (emp.user_id) map.set(emp.user_id, emp);
+    }
+    return map;
+  }, [employees]);
+
+  // Build lookup: employee_id → sorted rate snapshots (ascending by effective_date)
+  const rateHistoryByEmpId = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const r of rateHistory) {
+      const list = map.get(r.employee_id) || [];
+      list.push(r);
+      map.set(r.employee_id, list);
+    }
+    map.forEach((list) => list.sort((a: any, b: any) => a.effective_date.localeCompare(b.effective_date)));
+    return map;
+  }, [rateHistory]);
+
+  // Return the rate snapshot effective on `date` for the given employee record.
+  // Falls back to the employee's current rates if no history exists.
+  const getRatesForDate = (emp: any, date: string) => {
+    const history = rateHistoryByEmpId.get(emp.id);
+    if (!history || history.length === 0) return emp;
+    let match = history[0];
+    for (const h of history) {
+      if (h.effective_date <= date) match = h;
+      else break;
+    }
+    return match;
+  };
+
+  const projectFinancials: ProjectFinancials[] = useMemo(() => {
+    if (!projects.length) return [];
+
+    const revenueByProject = new Map<string, number>();
+    const revenueAllTicketsByProject = new Map<string, number>();
+    const ticketCountByProject = new Map<string, number>();
+    const NON_REVENUE_STATUSES = new Set(['draft', 'submitted', 'rejected']);
+    for (const t of serviceTickets as any[]) {
+      if (!t.project_id) continue;
+      // Skip empty placeholder records (auto-created drafts with no data)
+      const tHrs = Number(t.total_hours) || 0;
+      const tAmt = Number(t.total_amount) || 0;
+      if (tHrs === 0 && tAmt === 0 && !t.is_edited && t.workflow_status === 'draft') continue;
+      ticketCountByProject.set(t.project_id, (ticketCountByProject.get(t.project_id) || 0) + 1);
+      const amt = Number(t.total_amount) || 0;
+      revenueAllTicketsByProject.set(t.project_id, (revenueAllTicketsByProject.get(t.project_id) || 0) + amt);
+      if (NON_REVENUE_STATUSES.has(t.workflow_status)) continue;
+      revenueByProject.set(t.project_id, (revenueByProject.get(t.project_id) || 0) + amt);
+    }
+
+    const laborByProject = new Map<string, number>();
+    const hoursByProject = new Map<string, number>();
+    for (const entry of allTimeEntries as any[]) {
+      if (!entry.project_id || !entry.hours) continue;
+      const hours = Number(entry.hours) || 0;
+      hoursByProject.set(entry.project_id, (hoursByProject.get(entry.project_id) || 0) + hours);
+
+      const emp = empByUserId.get(entry.user_id);
+      let payRate = 0;
+      const rateType = entry.rate_type || 'Shop Time';
+      if (emp) {
+        const rates = getRatesForDate(emp, entry.date);
+        if (rateType === 'Internal') payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Field Time') payRate = Number(rates.field_pay_rate) || 0;
+        else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
+        else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
+
+        payRate = payRate * (1 + calculateBurden(emp));
+      }
+      laborByProject.set(entry.project_id, (laborByProject.get(entry.project_id) || 0) + hours * payRate);
+    }
+
+    const getExpenseCost = (exp: any) => {
+      const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      const emp = empByUserId.get(exp.service_tickets?.user_id);
+      const desc = (exp.description || exp.expense_type || '').toLowerCase();
+      const expType = (exp.expense_type || '').toLowerCase();
+      // Travel (Mileage/Truck Hours): needs_reimbursement=false = billed to client only, $0 internal mileage cost
+      if (expType === 'travel') {
+        if (exp.needs_reimbursement === false) return 0;
+        return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+      }
+      if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
+      if (expType === 'hotel' || desc.includes('hotel')) {
+        if (exp.needs_reimbursement === false) return 0;
+        return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+      }
+      // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
+      if (exp.actual_cost != null) return Number(exp.actual_cost);
+      if (!exp.needs_reimbursement) return 0;
+      return amt;
+    };
+
+    const expenseByProject = new Map<string, number>();
+    /** Customer-billed totals from ticket expense lines (same tickets as ticketExpenses query). */
+    const expenseBilledByProject = new Map<string, number>();
+    for (const exp of ticketExpenses as any[]) {
+      const ticket = exp.service_tickets;
+      if (!ticket?.project_id) continue;
+      const billed = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+      expenseByProject.set(ticket.project_id, (expenseByProject.get(ticket.project_id) || 0) + getExpenseCost(exp));
+      expenseBilledByProject.set(ticket.project_id, (expenseBilledByProject.get(ticket.project_id) || 0) + billed);
+    }
+
+    return (projects as any[]).map((p: any) => {
+      const laborRevenuePreGst = revenueByProject.get(p.id) || 0;
+      const expenseBilledPreGst = expenseBilledByProject.get(p.id) || 0;
+      const revenuePreGst = laborRevenuePreGst + expenseBilledPreGst;
+      const revenueAllTicketsPreGst = revenueAllTicketsByProject.get(p.id) || 0;
+      const revenue = includeGst ? applyGst(revenuePreGst) : revenuePreGst;
+      const revenueAllTickets = includeGst ? applyGst(revenueAllTicketsPreGst) : revenueAllTicketsPreGst;
+      const laborCost = laborByProject.get(p.id) || 0;
+      const expenseCost = expenseByProject.get(p.id) || 0;
+      const totalCost = laborCost + expenseCost;
+      const profit = revenue - totalCost;
+      const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+      return {
+        projectId: p.id,
+        projectNumber: p.project_number || '',
+        name: p.name || '',
+        customerName: p.customer?.name || 'No Customer',
+        color: p.color || '#4ecdc4',
+        isCompleted: p.is_completed === true,
+        budget: p.budget != null && Number(p.budget) > 0 ? Number(p.budget) : null,
+        revenue,
+        laborRevenuePreGst,
+        expenseBilledPreGst,
+        revenueApproved: revenue,
+        revenueAllTickets,
+        laborCost,
+        expenseCost,
+        totalCost,
+        profit,
+        margin,
+        totalHours: hoursByProject.get(p.id) || 0,
+        ticketCount: ticketCountByProject.get(p.id) || 0,
+      };
+    });
+  }, [projects, serviceTickets, allTimeEntries, ticketExpenses, empByUserId, rateHistoryByEmpId, includeGst]);
+
+  const filtered = useMemo(() => {
+    let list = projectFinancials;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(term) ||
+          p.projectNumber.toLowerCase().includes(term) ||
+          p.customerName.toLowerCase().includes(term)
+      );
+    }
+    list.sort((a, b) => {
+      if (a.isCompleted !== b.isCompleted) return (a.isCompleted ? 1 : 0) - (b.isCompleted ? 1 : 0);
+      let cmp = 0;
+      if (sortBy === 'project_number') {
+        const numA = parseInt(a.projectNumber, 10);
+        const numB = parseInt(b.projectNumber, 10);
+        const hasNumA = !isNaN(numA);
+        const hasNumB = !isNaN(numB);
+        // Default (desc): named projects first A–Z, then numeric by project number descending
+        if (!hasNumA && hasNumB) cmp = -1;   // name before numeric
+        else if (hasNumA && !hasNumB) cmp = 1;
+        else if (!hasNumA && !hasNumB) cmp = a.name.localeCompare(b.name);
+        else cmp = numB - numA;   // both numeric: higher number first
+      } else if (sortBy === 'name') cmp = a.name.localeCompare(b.name);
+      else if (sortBy === 'revenue') cmp = a.revenue - b.revenue;
+      else if (sortBy === 'profit') cmp = a.profit - b.profit;
+      else if (sortBy === 'margin') cmp = a.margin - b.margin;
+      else if (sortBy === 'budget_usage') {
+        const aUsage = a.budget ? a.revenue / a.budget : -1;
+        const bUsage = b.budget ? b.revenue / b.budget : -1;
+        cmp = aUsage - bUsage;
+      }
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
+    return list;
+  }, [projectFinancials, searchTerm, sortBy, sortDir]);
+
+  const totals = useMemo(() => {
+    let revenue = 0, cost = 0, hours = 0, tickets = 0;
+    for (const p of filtered) {
+      revenue += p.revenue;
+      cost += p.totalCost;
+      hours += p.totalHours;
+      tickets += p.ticketCount;
+    }
+    return { revenue, cost, profit: revenue - cost, hours, tickets };
+  }, [filtered]);
+
+  const expandedProject = useMemo(() => {
+    if (!expandedProjectId) return null;
+    return projectFinancials.find((p) => p.projectId === expandedProjectId) || null;
+  }, [expandedProjectId, projectFinancials]);
+
+  const expandedTickets = useMemo(() => {
+    if (!expandedProjectId) return [];
+
+    const projectTickets = (serviceTickets as any[]).filter((t: any) => t.project_id === expandedProjectId);
+    const projectEntriesForShare = (allTimeEntries as any[]).filter((e: any) => e.project_id === expandedProjectId);
+    const sharedByDayUserProject = buildSharedFieldsMapForProject(projectEntriesForShare, expandedProjectId);
+    const projectById = new Map((projects as any[]).map((p: any) => [p.id, p]));
+
+    const getLoadedRate = (emp: any, rates: any, rateType: string) => {
+      let payRate = 0;
+      if (rateType === 'Internal') payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
+      else if (rateType === 'Shop Time') payRate = Number(rates.shop_pay_rate) || 0;
+      else if (rateType === 'Field Time') payRate = Number(rates.field_pay_rate) || 0;
+      else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
+      else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
+      else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
+      return payRate * (1 + calculateBurden(emp));
+    };
+
+    const getBillableRate = (emp: any, rateType: string) => {
+      if (!emp) return 0;
+      const rt = rateType.toLowerCase();
+      if (rt.includes('shop') && rt.includes('overtime')) return Number(emp.shop_ot_rate) || 0;
+      if (rt.includes('field') && rt.includes('overtime')) return Number(emp.field_ot_rate) || 0;
+      if (rt.includes('field')) return Number(emp.ft_rate) || 0;
+      if (rt.includes('travel')) return Number(emp.tt_rate) || 0;
+      return Number(emp.rt_rate) || 0;
+    };
+
+    return projectTickets
+      .map((t: any) => {
+        let payrollCost = 0;
+        const emp = empByUserId.get(t.user_id);
+        const ticketHours = Number(t.total_hours) || 0;
+        const savedAmount = Number(t.total_amount) || 0;
+        const isDraftOrSubmitted = t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected';
+
+        let estimatedRevenue = savedAmount;
+
+        const proj = projectById.get(t.project_id);
+        const shareKey = `${t.date}-${t.user_id}-${t.project_id}`;
+        const shared = sharedByDayUserProject.get(shareKey) || {};
+        const ticketKeys = dbServiceTicketMatchKeys(t, proj);
+
+        // Match time entries the same way service tickets are grouped: date + user + project + location + PO/AFE.
+        // Otherwise every ticket on the same day gets the full day's payroll (duplicate cost bug).
+        const matchingEntries = (allTimeEntries as any[]).filter((e: any) => {
+          if (e.user_id !== t.user_id || e.project_id !== t.project_id || e.date !== t.date) return false;
+          if (t.customer_id && e.project?.customer?.id && e.project.customer.id !== t.customer_id) return false;
+          const ek = entryServiceTicketMatchKeys(e, shared, e.project ?? proj);
+          return ek.locationKey === ticketKeys.locationKey && ek.groupingKey === ticketKeys.groupingKey;
+        });
+        const entryHours = matchingEntries.reduce((sum: number, e: any) => sum + (Number(e.hours) || 0), 0);
+        const effectiveHours = ticketHours > 0 ? ticketHours : entryHours;
+
+        // Payroll cost is ALWAYS based on actual time entries (hours worked), not billed hours.
+        // This correctly handles cases like OPI where 4 hours billed but only 3 hours payroll cost.
+        if (emp && matchingEntries.length > 0) {
+          const rates = getRatesForDate(emp, t.date);
+          for (const e of matchingEntries) {
+            const h = Number(e.hours) || 0;
+            const rt = e.rate_type || 'Shop Time';
+            payrollCost += h * getLoadedRate(emp, rates, rt);
+            if (isDraftOrSubmitted && savedAmount === 0) {
+              estimatedRevenue += h * getBillableRate(emp, rt);
+            }
+          }
+        }
+
+        const ticketRevenue = isDraftOrSubmitted && savedAmount === 0 ? estimatedRevenue : savedAmount;
+        const revenueWithGst = includeGst ? applyGst(ticketRevenue) : ticketRevenue;
+        return {
+          ...t,
+          payrollCost,
+          total_hours: effectiveHours > 0 && ticketHours === 0 ? effectiveHours : ticketHours,
+          total_amount: revenueWithGst,
+          profit: revenueWithGst - payrollCost,
+        };
+      })
+      .filter((t: any) => {
+        const hrs = Number(t.total_hours) || 0;
+        const amt = Number(t.total_amount) || 0;
+        const cost = t.payrollCost || 0;
+        if (hrs === 0 && amt === 0 && cost === 0) return false;
+        return true;
+      })
+      .sort((a: any, b: any) => b.date.localeCompare(a.date));
+  }, [expandedProjectId, serviceTickets, allTimeEntries, empByUserId, rateHistoryByEmpId, includeGst, projects]);
+
+  const expandedLaborByEmployee = useMemo(() => {
+    if (!expandedProjectId) return [];
+    const map = new Map<string, { name: string; hours: number; cost: number }>();
+    for (const entry of allTimeEntries as any[]) {
+      if (entry.project_id !== expandedProjectId || !entry.hours) continue;
+      const hours = Number(entry.hours) || 0;
+      const emp = empByUserId.get(entry.user_id);
+      const empName = emp?.user
+        ? `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim()
+        : 'Unknown';
+
+      let payRate = 0;
+      const rateType = entry.rate_type || 'Shop Time';
+      if (emp) {
+        const rates = getRatesForDate(emp, entry.date);
+        if (rateType === 'Internal') payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Field Time') payRate = Number(rates.field_pay_rate) || 0;
+        else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
+        else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
+        else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
+
+        payRate = payRate * (1 + calculateBurden(emp));
+      }
+
+      const existing = map.get(entry.user_id) || { name: empName, hours: 0, cost: 0 };
+      existing.hours += hours;
+      existing.cost += hours * payRate;
+      map.set(entry.user_id, existing);
+    }
+    return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
+  }, [expandedProjectId, allTimeEntries, empByUserId, rateHistoryByEmpId]);
+
+  const getExpenseCostForDisplay = (exp: any) => {
+    const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+    const emp = empByUserId.get(exp.service_tickets?.user_id);
+    const desc = (exp.description || exp.expense_type || '').toLowerCase();
+    const expType = (exp.expense_type || '').toLowerCase();
+    if (expType === 'travel') {
+      if (exp.needs_reimbursement === false) return 0;
+      return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
+    }
+    if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
+    if (expType === 'hotel' || desc.includes('hotel')) {
+      if (exp.needs_reimbursement === false) return 0;
+      return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
+    }
+    // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
+    if (exp.actual_cost != null) return Number(exp.actual_cost);
+    if (!exp.needs_reimbursement) return 0;
+    return amt;
+  };
+
+  /** Equipment / other billout: $0 actual cost usually means "not entered", not zero COGS — don't treat full billed as markup. */
+  const isBilloutActualCostUnset = (exp: any, billedTotal: number): boolean => {
+    if (billedTotal <= 0) return false;
+    const desc = (exp.description || exp.expense_type || '').toLowerCase();
+    const expType = (exp.expense_type || '').toLowerCase();
+    if (expType === 'travel' || expType === 'hotel' || desc.includes('per diem') || desc.includes('hotel')) return false;
+    if (exp.needs_reimbursement) return false;
+    if (exp.actual_cost != null && Number(exp.actual_cost) > 0) return false;
+    return true;
+  };
+
+  const expandedExpenses = useMemo(() => {
+    if (!expandedProjectId) return [];
+    return (ticketExpenses as any[])
+      .filter((exp: any) => exp.service_tickets?.project_id === expandedProjectId)
+      .map((exp: any) => {
+        const billedTotal = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+        const cost = getExpenseCostForDisplay(exp);
+        const markupUnknown = isBilloutActualCostUnset(exp, billedTotal);
+        const profitKnown = markupUnknown ? 0 : billedTotal - cost;
+        return {
+          description: exp.description || exp.expense_type || 'Expense',
+          type: exp.expense_type || '',
+          quantity: Number(exp.quantity) || 0,
+          rate: Number(exp.rate) || 0,
+          total: billedTotal,
+          cost,
+          profit: profitKnown,
+          markupUnknown,
+        };
+      })
+      .filter((exp: any) => {
+        if (exp.total <= 0) return false;
+        if (exp.markupUnknown) return true;
+        return exp.profit > 0;
+      })
+      .sort((a: any, b: any) => {
+        if (a.markupUnknown !== b.markupUnknown) return a.markupUnknown ? 1 : -1;
+        return b.profit - a.profit;
+      });
+  }, [expandedProjectId, ticketExpenses, empByUserId]);
+
+  const expandedExpenseMarkupKnownTotal = useMemo(
+    () => expandedExpenses.reduce((s, e: any) => s + (e.markupUnknown ? 0 : e.profit), 0),
+    [expandedExpenses]
+  );
+  const expandedExpenseMarkupUnknownCount = useMemo(
+    () => expandedExpenses.filter((e: any) => e.markupUnknown).length,
+    [expandedExpenses]
+  );
+
+  const fmt = (n: number) => n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const handleSort = (field: typeof sortBy) => {
+    if (sortBy === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(field); setSortDir(field === 'project_number' ? 'desc' : 'desc'); }
+  };
+
+  const sortArrow = (field: typeof sortBy) =>
+    sortBy === field ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : '';
+
+  if (!isAdmin) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <h2>Access Denied</h2>
+        <p>This page is only available to administrators.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '30px', maxWidth: '1400px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1 style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+            Project Profitability
+          </h1>
+          <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+            Financial overview across all projects
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+            />
+            Show inactive
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={includeGst}
+              onChange={(e) => setIncludeGst(e.target.checked)}
+            />
+            Include GST (5%) on billable amounts
+          </label>
+          <input
+            type="text"
+            placeholder="Search projects..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              fontSize: '13px',
+              width: '220px',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+        {[
+          { label: 'Total Revenue', value: `$${fmt(totals.revenue)}`, color: '#2196F3' },
+          { label: 'Total Cost', value: `$${fmt(totals.cost)}`, color: '#ff9800' },
+          { label: 'Total Profit', value: `$${fmt(totals.profit)}`, color: totals.profit >= 0 ? '#4caf50' : '#e53935' },
+          { label: 'Total Hours', value: totals.hours.toFixed(1), color: '#9c27b0' },
+          { label: 'Service Tickets', value: String(totals.tickets), color: '#607d8b' },
+        ].map((card) => (
+          <div
+            key={card.label}
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '12px',
+              padding: '18px 20px',
+              borderLeft: `4px solid ${card.color}`,
+            }}
+          >
+            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '6px' }}>
+              {card.label}
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+              {card.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Project List */}
+      <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+              <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => handleSort('project_number')}>Project{sortArrow('project_number')}</th>
+              <th style={{ ...thStyle, textAlign: 'center' }}>Budget Usage</th>
+              <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('revenue')}>Revenue{sortArrow('revenue')}</th>
+              <th style={{ ...thStyle, textAlign: 'right' }}>Cost</th>
+              <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('profit')}>Profit{sortArrow('profit')}</th>
+              <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('margin')}>Margin{sortArrow('margin')}</th>
+              <th style={{ ...thStyle, textAlign: 'right' }}>Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                  No projects found
+                </td>
+              </tr>
+            )}
+            {filtered.map((p) => {
+              const isExpanded = expandedProjectId === p.projectId;
+              const budgetPct = p.budget ? Math.min((p.revenue / p.budget) * 100, 100) : null;
+              const overBudget = p.budget ? p.revenue > p.budget : false;
+              const closedRow = p.isCompleted;
+              const idleBg = closedRow ? 'rgba(148, 163, 184, 0.08)' : 'transparent';
+              const hoverBg = closedRow ? 'rgba(148, 163, 184, 0.14)' : 'var(--bg-secondary)';
+              const expandedBg = closedRow ? 'rgba(148, 163, 184, 0.12)' : 'var(--bg-secondary)';
+
+              return (
+                <tr
+                  key={p.projectId}
+                  onClick={() => setExpandedProjectId(isExpanded ? null : p.projectId)}
+                  style={{
+                    borderBottom: '1px solid var(--border-color)',
+                    cursor: 'pointer',
+                    backgroundColor: isExpanded ? expandedBg : idleBg,
+                    transition: 'background-color 0.15s, opacity 0.15s, filter 0.15s',
+                    opacity: closedRow ? 0.78 : 1,
+                    filter: closedRow ? 'grayscale(0.42)' : undefined,
+                  }}
+                  onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = hoverBg; }}
+                  onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = idleBg; }}
+                >
+                  <td style={{ ...tdStyle, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div
+                      style={{
+                        width: '10px',
+                        height: '10px',
+                        borderRadius: '50%',
+                        backgroundColor: p.color,
+                        flexShrink: 0,
+                        opacity: closedRow ? 0.65 : 1,
+                      }}
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: '600',
+                          fontSize: '13px',
+                          color: closedRow ? 'var(--text-secondary)' : 'var(--text-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <span>
+                          {p.projectNumber ? `${p.projectNumber} - ` : ''}
+                          {p.name}
+                        </span>
+                        {closedRow ? (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: '700',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                              color: 'var(--text-tertiary)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              flexShrink: 0,
+                            }}
+                          >
+                            Closed
+                          </span>
+                        ) : null}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{p.customerName}</div>
+                    </div>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'center', minWidth: '180px' }} onClick={(e) => e.stopPropagation()}>
+                    {p.budget ? (
+                      <BudgetBar
+                        pct={budgetPct!}
+                        overBudget={overBudget}
+                        budget={p.budget}
+                        revenue={p.revenue}
+                        revenueApproved={p.revenueApproved}
+                        revenueAllTickets={p.revenueAllTickets}
+                      />
+                    ) : editingBudgetProjectId === p.projectId ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>$</span>
+                        <input
+                          ref={budgetInputRef}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={budgetInputValue}
+                          onChange={(e) => setBudgetInputValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const val = parseFloat(budgetInputValue);
+                              if (!isNaN(val) && val > 0) {
+                                budgetMutation.mutate({ projectId: p.projectId, budget: val });
+                              } else {
+                                setEditingBudgetProjectId(null);
+                                setBudgetInputValue('');
+                              }
+                            } else if (e.key === 'Escape') {
+                              setEditingBudgetProjectId(null);
+                              setBudgetInputValue('');
+                            }
+                          }}
+                          onBlur={() => {
+                            const val = parseFloat(budgetInputValue);
+                            if (!isNaN(val) && val > 0) {
+                              budgetMutation.mutate({ projectId: p.projectId, budget: val });
+                            } else {
+                              setEditingBudgetProjectId(null);
+                              setBudgetInputValue('');
+                            }
+                          }}
+                          placeholder="0"
+                          style={{
+                            width: '90px',
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            fontFamily: 'monospace',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            backgroundColor: 'var(--bg-primary)',
+                            color: 'var(--text-primary)',
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingBudgetProjectId(p.projectId);
+                          setBudgetInputValue('');
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          color: 'var(--text-secondary, #6b7280)',
+                          textDecoration: 'underline',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        + Add budget
+                      </button>
+                    )}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
+                    ${fmt(p.revenue)}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                    ${fmt(p.totalCost)}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: p.profit >= 0 ? '#4caf50' : '#e53935' }}>
+                    ${fmt(p.profit)}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <span
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        backgroundColor: p.margin >= 20 ? 'rgba(76,175,80,0.12)' : p.margin >= 0 ? 'rgba(255,152,0,0.12)' : 'rgba(229,57,53,0.12)',
+                        color: p.margin >= 20 ? '#4caf50' : p.margin >= 0 ? '#ff9800' : '#e53935',
+                      }}
+                    >
+                      {p.margin.toFixed(1)}%
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                    {p.totalHours.toFixed(1)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Expanded Detail Panel */}
+      {expandedProject && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            zIndex: 1000,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '20px',
+          }}
+          onClick={() => setExpandedProjectId(null)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '16px',
+              maxWidth: '1000px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '32px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px' }}>
+              <div>
+                {expandedProject.isCompleted ? (
+                  <div
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      color: 'var(--text-secondary)',
+                      marginBottom: '10px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(148, 163, 184, 0.15)',
+                      border: '1px solid var(--border-color)',
+                    }}
+                  >
+                    Marked closed on the Projects page — totals are unchanged; this is visual only.
+                  </div>
+                ) : null}
+                <h2 style={{ margin: 0, fontSize: '22px', color: 'var(--text-primary)' }}>
+                  <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: expandedProject.color, marginRight: '10px', verticalAlign: 'middle' }} />
+                  {expandedProject.projectNumber ? `${expandedProject.projectNumber} - ` : ''}{expandedProject.name}
+                </h2>
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-tertiary)' }}>{expandedProject.customerName}</p>
+              </div>
+              <button
+                onClick={() => setExpandedProjectId(null)}
+                style={{
+                  background: 'none',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {'\u2715'}
+              </button>
+            </div>
+
+            {/* KPI Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '28px' }}>
+              {expandedProject.budget && (
+                <KpiCard label="Budget" value={`$${fmt(expandedProject.budget)}`} />
+              )}
+              <KpiCard label="Revenue" value={`$${fmt(expandedProject.revenue)}`} color="#2196F3" />
+              <KpiCard label="Total Cost" value={`$${fmt(expandedProject.totalCost)}`} color="#ff9800" />
+              <KpiCard label="Profit" value={`$${fmt(expandedProject.profit)}`} color={expandedProject.profit >= 0 ? '#4caf50' : '#e53935'} />
+              <KpiCard label="Margin" value={`${expandedProject.margin.toFixed(1)}%`} color={expandedProject.margin >= 20 ? '#4caf50' : expandedProject.margin >= 0 ? '#ff9800' : '#e53935'} />
+              <KpiCard label="Hours" value={expandedProject.totalHours.toFixed(1)} color="#9c27b0" />
+            </div>
+
+            {/* Budget Bar (detail) */}
+            {expandedProject.budget && (
+              <div style={{ marginBottom: '28px' }}>
+                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Budget Usage
+                </div>
+                <BudgetBar
+                  pct={Math.min((expandedProject.revenue / expandedProject.budget) * 100, 100)}
+                  overBudget={expandedProject.revenue > expandedProject.budget}
+                  budget={expandedProject.budget}
+                  revenue={expandedProject.revenue}
+                  revenueApproved={expandedProject.revenueApproved}
+                  revenueAllTickets={expandedProject.revenueAllTickets}
+                  large
+                />
+              </div>
+            )}
+
+            {/* Labor Breakdown */}
+            <DetailSection title={`Labor Costs \u2014 $${fmt(expandedProject.laborCost)}`}>
+              {expandedLaborByEmployee.length === 0 ? (
+                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No labor recorded</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <th style={detailThStyle}>Employee</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Loaded Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expandedLaborByEmployee.map((emp, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={detailTdStyle}>{emp.name}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{emp.hours.toFixed(1)}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(emp.cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic', marginTop: '8px', marginBottom: 0 }}>
+                * Labor costs include burden from actual employee data (benefits, CPP, EI, allowances; 5% GST for contractors)
+              </p>
+            </DetailSection>
+
+            {/* Expenses with Markup (only items where billed > cost, e.g. mileage at 90% reimb) */}
+            <div style={{ marginBottom: '24px' }}>
+              <button
+                type="button"
+                onClick={() => setExpenseMarkupExpanded((v) => !v)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: 0,
+                  margin: 0,
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  color: 'var(--text-primary)',
+                  paddingBottom: '8px',
+                  borderBottom: '1px solid var(--border-color)',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ fontSize: '10px', opacity: 0.8 }}>{expenseMarkupExpanded ? '▼' : '▶'}</span>
+                Expense Markup — ${fmt(expandedExpenseMarkupKnownTotal)}
+                {expandedExpenseMarkupUnknownCount > 0 ? (
+                  <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: '8px', fontSize: '12px' }}>
+                    ({expandedExpenseMarkupUnknownCount} line{expandedExpenseMarkupUnknownCount !== 1 ? 's' : ''} need
+                    Actual Cost)
+                  </span>
+                ) : null}
+              </button>
+              {expenseMarkupExpanded && (
+                <div style={{ marginTop: '12px' }}>
+                  {expandedExpenses.length === 0 ? (
+                    <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
+                      No billout expenses on this project, or no markup where company cost is known.
+                    </p>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <th style={detailThStyle}>Description</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Qty</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Rate</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Total</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Company Cost</th>
+                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Markup</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {expandedExpenses.map((exp: any, i: number) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <td style={detailTdStyle}>
+                              <span style={{ fontWeight: '500' }}>{exp.description}</span>
+                              {exp.type && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>({exp.type})</span>}
+                            </td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{exp.quantity}</td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.rate)}</td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.total)}</td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e91e63' }}>
+                              {exp.markupUnknown ? (
+                                <span title="Enter what the company paid in Actual Cost ($) on the service ticket expense">
+                                  ${fmt(exp.cost)}*
+                                </span>
+                              ) : (
+                                `$${fmt(exp.cost)}`
+                              )}
+                            </td>
+                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: exp.profit >= 0 ? '#4caf50' : '#e53935' }}>
+                              {exp.markupUnknown ? (
+                                <span style={{ color: 'var(--text-tertiary)' }} title="Markup = billed total − company cost">
+                                  —
+                                </span>
+                              ) : (
+                                `$${fmt(exp.profit)}`
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  {expandedExpenseMarkupUnknownCount > 0 && (
+                    <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '10px', marginBottom: 0 }}>
+                      * Markup is billed total minus <strong>Actual Cost ($)</strong> on the service ticket — not the billed
+                      total alone. Enter your vendor/COGS amount there; top-line profit still includes the full customer
+                      billout and $0 cost until you do.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Revenue (Tickets) Breakdown */}
+            <DetailSection title={`Revenue \u2014 ${expandedTickets.length} ticket${expandedTickets.length !== 1 ? 's' : ''}`}>
+              {expandedTickets.length === 0 ? (
+                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No tickets recorded</p>
+              ) : (
+                <>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <th style={detailThStyle}>Date</th>
+                      <th style={detailThStyle}>Ticket</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Revenue</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Payroll Cost</th>
+                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Net Profit</th>
+                      <th style={{ ...detailThStyle, textAlign: 'center' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expandedTickets.map((t: any) => {
+                      const rev = Number(t.total_amount) || 0;
+                      const emp = empByUserId.get(t.user_id);
+                      const empName = emp?.user ? [emp.user.first_name, emp.user.last_name].filter(Boolean).join(' ') : null;
+                      const isDraft = t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected';
+                      const isInternal = rev === 0 && (t.payrollCost || 0) > 0 && !isDraft;
+                      const hasTicketNumber = !!t.ticket_number;
+                      const ticketDisplay = !hasTicketNumber
+                        ? 'Pending Approval'
+                        : (isInternal && empName ? `${empName} - internal` : t.ticket_number);
+                      return (
+                      <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: isDraft ? 0.7 : 1 }}>
+                        <td style={detailTdStyle}>{t.date}</td>
+                        <td style={detailTdStyle}>
+                          <div>
+                            <span style={{ fontFamily: isInternal && hasTicketNumber ? 'inherit' : 'monospace', color: hasTicketNumber ? 'var(--text-secondary)' : '#ff9800' }}>
+                              {ticketDisplay}
+                            </span>
+                            {empName && !isInternal && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>{empName}</div>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{Number(t.total_hours || 0).toFixed(1)}</td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>
+                          {isDraft ? (
+                            <span style={{ color: '#ff9800', fontStyle: 'italic' }} title="Draft — not included in totals">
+                              ${fmt(rev)} *
+                            </span>
+                          ) : (
+                            `$${fmt(rev)}`
+                          )}
+                        </td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: isDraft ? '#ff9800' : 'var(--text-secondary)' }}>
+                          {isDraft ? (
+                            <span style={{ fontStyle: 'italic' }} title="Draft — not included in totals">${fmt(t.payrollCost || 0)} *</span>
+                          ) : (
+                            `$${fmt(t.payrollCost || 0)}`
+                          )}
+                        </td>
+                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: isDraft ? '#ff9800' : ((t.profit || 0) >= 0 ? '#4caf50' : '#e53935') }}>
+                          {isDraft ? (
+                            <span style={{ fontStyle: 'italic' }} title="Draft — not included in totals">${fmt(t.profit || 0)} *</span>
+                          ) : (
+                            `$${fmt(t.profit || 0)}`
+                          )}
+                        </td>
+                        <td style={{ ...detailTdStyle, textAlign: 'center' }}>
+                          {!hasTicketNumber && (t.workflow_status === 'submitted' || t.workflow_status === 'draft') ? (
+                            <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600', backgroundColor: 'rgba(255,152,0,0.12)', color: '#ff9800', textTransform: 'capitalize' }}>
+                              Pending Approval
+                            </span>
+                          ) : (
+                            <StatusBadge status={t.workflow_status} />
+                          )}
+                        </td>
+                      </tr>
+                    ); })}
+                    {(() => {
+                      const ticketHours = expandedTickets.reduce((sum: number, t: any) => sum + (Number(t.total_hours) || 0), 0);
+                      const ticketCost = expandedTickets.reduce((sum: number, t: any) => sum + (t.payrollCost || 0), 0);
+                      const totalProjectHours = expandedProject?.totalHours || 0;
+                      const totalProjectCost = expandedProject?.laborCost || 0;
+                      const unbilledHours = totalProjectHours - ticketHours;
+                      const unbilledCost = totalProjectCost - ticketCost;
+                      if (unbilledHours <= 0.05) return null;
+                      return (
+                        <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(229, 57, 53, 0.05)' }}>
+                          <td style={detailTdStyle}></td>
+                          <td style={detailTdStyle}>
+                            <span style={{ color: '#e53935', fontStyle: 'italic', fontSize: '12px' }}>Unbilled labor</span>
+                          </td>
+                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>{unbilledHours.toFixed(1)}</td>
+                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-tertiary)' }}>—</td>
+                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>${fmt(unbilledCost)}</td>
+                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>
+                            -${fmt(unbilledCost)}
+                          </td>
+                          <td style={{ ...detailTdStyle, textAlign: 'center' }}>
+                            <span style={{ fontSize: '11px', color: '#e53935', fontStyle: 'italic' }}>No ticket</span>
+                          </td>
+                        </tr>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+                {expandedTickets.some((t: any) => t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected') && (
+                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#ff9800', fontStyle: 'italic' }}>
+                    * Draft/submitted/rejected amounts are shown for reference but not included in revenue or profit totals
+                  </p>
+                )}
+                </>
+              )}
+            </DetailSection>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BudgetBar({
+  pct,
+  overBudget,
+  budget,
+  revenue,
+  revenueApproved = revenue,
+  revenueAllTickets = revenue,
+  large,
+}: {
+  pct: number;
+  overBudget: boolean;
+  budget: number;
+  revenue: number;
+  revenueApproved?: number;
+  revenueAllTickets?: number;
+  large?: boolean;
+}) {
+  const height = large ? 24 : 16;
+  const barColor = overBudget ? '#e53935' : pct > 80 ? '#ff9800' : '#2196F3';
+
+  // Three segments: approved (colored), pending draft/submitted/rejected (greyed), remaining budget (light grey)
+  const approvedPct = budget > 0 ? Math.min((revenueApproved / budget) * 100, 100) : 0;
+  const pendingPct = budget > 0 ? Math.min(((revenueAllTickets - revenueApproved) / budget) * 100, Math.max(0, 100 - approvedPct)) : 0;
+  const remainingPct = Math.max(0, 100 - approvedPct - pendingPct);
+
+  return (
+    <div>
+      <div
+        style={{
+          position: 'relative',
+          height,
+          borderRadius: height / 2,
+          backgroundColor: 'rgba(158,158,158,0.15)',
+          overflow: 'hidden',
+          display: 'flex',
+        }}
+      >
+        {/* Approved (revenue-contributing) */}
+        {approvedPct > 0 && (
+          <div
+            title="Approved: revenue from approved/exported tickets"
+            style={{
+              width: `${approvedPct}%`,
+              height: '100%',
+              borderTopLeftRadius: height / 2,
+              borderBottomLeftRadius: height / 2,
+              borderTopRightRadius: pendingPct <= 0 ? height / 2 : 0,
+              borderBottomRightRadius: pendingPct <= 0 ? height / 2 : 0,
+              background: `repeating-linear-gradient(
+                -45deg,
+                ${barColor},
+                ${barColor} 6px,
+                ${adjustAlpha(barColor, 0.6)} 6px,
+                ${adjustAlpha(barColor, 0.6)} 12px
+              )`,
+              transition: 'width 0.4s ease',
+              flexShrink: 0,
+            }}
+          />
+        )}
+        {/* Pending (draft/submitted/rejected) */}
+        {pendingPct > 0 && (
+          <div
+            title="Pending: revenue on draft, submitted, or rejected tickets (not yet contributing)"
+            style={{
+              width: `${pendingPct}%`,
+              height: '100%',
+              background: `repeating-linear-gradient(
+                -45deg,
+                rgba(158,158,158,0.5),
+                rgba(158,158,158,0.5) 6px,
+                rgba(158,158,158,0.3) 6px,
+                rgba(158,158,158,0.3) 12px
+              )`,
+              flexShrink: 0,
+              borderTopRightRadius: remainingPct <= 0 ? height / 2 : 0,
+              borderBottomRightRadius: remainingPct <= 0 ? height / 2 : 0,
+            }}
+          />
+        )}
+        {/* Remaining budget */}
+        {remainingPct > 0 && (
+          <div
+            title="Remaining budget"
+            style={{
+              width: `${remainingPct}%`,
+              height: '100%',
+              backgroundColor: 'rgba(158,158,158,0.15)',
+              flexShrink: 0,
+              borderTopRightRadius: height / 2,
+              borderBottomRightRadius: height / 2,
+            }}
+          />
+        )}
+        {(large || overBudget) && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: overBudget ? '10px' : '11px',
+              fontWeight: '700',
+              color: overBudget ? '#fff' : pct > 50 ? '#fff' : 'var(--text-primary)',
+              textShadow: (overBudget || pct > 50) ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+              pointerEvents: 'none',
+            }}
+          >
+            {overBudget ? 'Overbudget' : `${pct.toFixed(0)}%`}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+          ${(revenue / 1000).toFixed(1)}k
+        </span>
+        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+          ${(budget / 1000).toFixed(1)}k
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function adjustAlpha(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function KpiCard({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div
+      style={{
+        padding: '14px 16px',
+        borderRadius: '10px',
+        border: '1px solid var(--border-color)',
+        backgroundColor: 'var(--bg-secondary)',
+        borderLeft: color ? `3px solid ${color}` : undefined,
+      }}
+    >
+      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: '18px', fontWeight: '700', color: color || 'var(--text-primary)', fontFamily: 'monospace' }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: '24px' }}>
+      <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>
+        {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const colorMap: Record<string, { bg: string; fg: string }> = {
+    approved: { bg: 'rgba(76,175,80,0.12)', fg: '#4caf50' },
+    pdf_exported: { bg: 'rgba(33,150,243,0.12)', fg: '#2196F3' },
+    qbo_created: { bg: 'rgba(156,39,176,0.12)', fg: '#9c27b0' },
+    sent_to_cnrl: { bg: 'rgba(255,152,0,0.12)', fg: '#ff9800' },
+    cnrl_approved: { bg: 'rgba(0,150,136,0.12)', fg: '#009688' },
+    submitted_to_cnrl: { bg: 'rgba(63,81,181,0.12)', fg: '#3f51b5' },
+  };
+  const c = colorMap[status] || { bg: 'rgba(158,158,158,0.12)', fg: '#9e9e9e' };
+  const label = (status || 'unknown').replace(/_/g, ' ');
+  return (
+    <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600', backgroundColor: c.bg, color: c.fg, textTransform: 'capitalize' }}>
+      {label}
+    </span>
+  );
+}
+
+const thStyle: React.CSSProperties = {
+  padding: '12px 16px',
+  fontSize: '11px',
+  fontWeight: '600',
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px',
+  color: 'var(--text-tertiary)',
+  textAlign: 'left',
+  userSelect: 'none',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '14px 16px',
+  fontSize: '13px',
+  color: 'var(--text-primary)',
+};
+
+const detailThStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  fontSize: '11px',
+  fontWeight: '600',
+  textTransform: 'uppercase',
+  letterSpacing: '0.3px',
+  color: 'var(--text-tertiary)',
+  textAlign: 'left',
+};
+
+const detailTdStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  fontSize: '13px',
+  color: 'var(--text-primary)',
+};

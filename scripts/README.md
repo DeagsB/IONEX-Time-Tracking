@@ -1,0 +1,45 @@
+# Scripts
+
+One-off and maintenance scripts for IONEX Time Tracking.
+
+## migrate-header-overrides-to-separate-fields.mjs
+
+One-time migration: backfills `approver`, `po_afe`, `cc` in `header_overrides` from `approver_po_afe` so the frontend can read separate fields directly (no parsing).
+
+**How to run**
+
+```bash
+cd backend && node -r dotenv/config ../scripts/migrate-header-overrides-to-separate-fields.mjs
+```
+
+Requires `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in `backend/.env`.
+
+## remove-duplicate-service-tickets-morgan-wolfe.sql
+
+Removes duplicate service tickets for **Morgan Wolfe** that were created when location was added to service ticket matching (same date + customer ended up with multiple tickets, e.g. one with empty location and one with a location).
+
+**How to run**
+
+1. Open **Supabase Dashboard** → your project → **SQL Editor**.
+2. (Optional) Run the **PREVIEW** block (uncomment it) to see which duplicate groups exist and which ticket IDs will be kept vs deleted.
+3. Run the main **DO $$ ... $$** block. It will:
+   - Find Morgan Wolfe’s `user_id` from `public.users` (first_name = 'Morgan', last_name = 'Wolfe').
+   - Find duplicate groups: same `(date, user_id, customer_id)` with more than one row.
+   - For each group, **keep** one ticket (prefer the one with `ticket_number` set, then smallest `id`).
+   - Delete related rows in `service_ticket_expenses` for the tickets being removed.
+   - Delete the duplicate `service_tickets` rows.
+
+Only the **production** table `service_tickets` is modified; `service_tickets_demo` is not changed.
+
+## recover-service-ticket-hours.sql
+
+Recovers hours for approved service tickets that show 0.00 but have matching time entries. Use when:
+- Tickets have `project_id=null` (merge couldn't match to base ticket)
+- `total_hours` and `edited_hours` were never persisted at approval time
+
+**How to run**
+
+1. Open **Supabase Dashboard** → your project → **SQL Editor**.
+2. Run the script. It will update `project_id`, `total_hours`, `edited_hours`, and `edited_descriptions` from time entries.
+
+**Note:** The trigger `protect_approved_ticket_edited_data` blocks non-admin updates. Run while logged in as an admin in the Dashboard, or temporarily disable the trigger for the recovery run.

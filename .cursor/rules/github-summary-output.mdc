@@ -1,0 +1,21 @@
+---
+description: Output a GitHub-ready summary after completing work for PR/release notes
+alwaysApply: true
+---
+
+# Output GitHub Summary After Completing Work
+
+After completing code changes or finishing a task, **output a short description** that the user can attach to a GitHub PR, release, or summary.
+
+- **Format**: Clear, scannable bullets or a brief paragraph. Include what was added, changed, or fixed.
+- **Length**: A few lines to a short paragraph—enough to paste into a PR description or release notes.
+- **When**: At the end of your response when you've made edits or completed a requested task.
+- Do not run git commit/push or build unless the user asks; just provide the summary text for them to use.
+
+Example style:
+```
+## Summary
+- Added X; updated Y to do Z.
+- Fixed behavior when … .
+- User can now … .
+```

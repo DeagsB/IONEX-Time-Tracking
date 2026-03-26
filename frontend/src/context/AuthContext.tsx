@@ -1,0 +1,372 @@
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { User as SupabaseUser, Session, AuthChangeEvent } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabaseClient';
+
+interface User {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: 'ADMIN' | 'USER' | 'DEVELOPER';
+}
+
+interface SignUpResult {
+  user: SupabaseUser | null;
+  session: Session | null;
+  needsEmailConfirmation: boolean;
+}
+
+interface AuthContextType {
+  user: User | null;
+  session: Session | null;
+  login: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, firstName: string, lastName: string, department?: string) => Promise<SignUpResult>;
+  logout: () => Promise<void>;
+  updateUser: (updates: Partial<User>) => void;
+  refreshUserProfile: () => Promise<void>;
+  loading: boolean;
+  // Developer role switching
+  isDeveloper: boolean;
+  effectiveRole: 'ADMIN' | 'USER';
+  setEffectiveRole: (role: 'ADMIN' | 'USER') => void;
+  // Computed admin check - considers developer's effective role
+  isAdmin: boolean;
+  /** Display role for UI/testing: when developer with effectiveRole=USER, shows 'USER'; otherwise actual role */
+  displayRole: 'ADMIN' | 'USER' | 'DEVELOPER';
+  // Maintenance mode - admins can toggle; persisted in localStorage
+  maintenanceMode: boolean;
+  setMaintenanceMode: (on: boolean) => void;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+/** Invoices page: all admins and developers can access */
+export const canAccessInvoices = (user: { email?: string; role?: string } | null) =>
+  user?.role === 'ADMIN' || user?.role === 'DEVELOPER';
+
+/** Expenses page: all authenticated users and admins can access */
+export const canAccessExpenses = (_user: { id?: string } | null) => true;
+
+// Development mode - bypass authentication
+const DEV_MODE = false; // Set to false for production
+const DEV_USER_ID = '235d854a-1b7d-4e00-a5a4-43835c85c086'; // Existing user from database
+
+// =====================================================
+// MAINTENANCE MODE - Default when no override is set in localStorage
+// Only DEVELOPER role users can access when on. Admins can toggle at runtime.
+// =====================================================
+const MAINTENANCE_MODE_DEFAULT = false;
+const MAINTENANCE_STORAGE_KEY = 'ionex_maintenance_mode';
+
+const DEV_USER: User = {
+  id: DEV_USER_ID,
+  email: 'bespalkodeagan@gmail.com',
+  firstName: 'Deagan',
+  lastName: 'Bespalko',
+  role: 'ADMIN', // Override to ADMIN for dev mode
+};
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(DEV_MODE ? DEV_USER : null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(DEV_MODE ? false : true);
+  
+  // Developer role switching - persisted in localStorage
+  const [effectiveRole, setEffectiveRoleState] = useState<'ADMIN' | 'USER'>(() => {
+    const stored = localStorage.getItem('developer_effective_role');
+    return (stored === 'ADMIN' || stored === 'USER') ? stored : 'ADMIN';
+  });
+
+  // Maintenance mode - admins can toggle; override persisted in localStorage
+  const [maintenanceMode, setMaintenanceModeState] = useState<boolean>(() => {
+    const stored = localStorage.getItem(MAINTENANCE_STORAGE_KEY);
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+    return MAINTENANCE_MODE_DEFAULT;
+  });
+
+  const setMaintenanceMode = (on: boolean) => {
+    setMaintenanceModeState(on);
+    localStorage.setItem(MAINTENANCE_STORAGE_KEY, String(on));
+  };
+  
+  const isDeveloper = user?.role === 'DEVELOPER';
+  
+  const setEffectiveRole = (role: 'ADMIN' | 'USER') => {
+    setEffectiveRoleState(role);
+    localStorage.setItem('developer_effective_role', role);
+  };
+  
+  // Computed admin check - developers use their effective role, others use actual role
+  const isAdmin = isDeveloper 
+    ? effectiveRole === 'ADMIN' 
+    : user?.role === 'ADMIN';
+
+  // Display role for UI/testing: when developer testing as user, show USER so identity matches behavior
+  const displayRole: 'ADMIN' | 'USER' | 'DEVELOPER' = isDeveloper
+    ? (effectiveRole === 'USER' ? 'USER' : 'ADMIN')
+    : (user?.role || 'USER');
+
+  useEffect(() => {
+    // Skip auth initialization in development mode
+    if (DEV_MODE) {
+      console.log('🔧 DEV MODE: Using existing user as admin');
+      console.log('✅ Dev user ID:', DEV_USER_ID);
+      return;
+    }
+
+    console.log('🔐 AuthProvider: Initializing auth state...');
+    
+    // Set a timeout to prevent infinite loading
+    const loadingTimeout = setTimeout(() => {
+      console.warn('⚠️ AuthProvider: Loading timeout - forcing loading to complete');
+      setLoading(false);
+    }, 5000); // 5 second timeout
+
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(loadingTimeout);
+      console.log('🔐 AuthProvider: Session retrieved', session ? 'User authenticated' : 'No session');
+      setSession(session);
+      if (session?.user) {
+        fetchUserProfile(session.user);
+      } else {
+        setLoading(false);
+        console.log('🔐 AuthProvider: No user, loading complete');
+      }
+    }).catch((error) => {
+      clearTimeout(loadingTimeout);
+      console.error("❌ AuthProvider: Error getting session:", error);
+      setLoading(false);
+    });
+
+    // Listen for auth changes. Only treat SIGNED_OUT as "logged out": some clients emit a null
+    // session briefly during refresh or startup; clearing user then caused entries to vanish / redirect to login.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
+      console.log('🔐 AuthProvider: onAuthStateChange', event, session ? 'session present' : 'no session');
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      setSession(session);
+      if (session?.user) {
+        void fetchUserProfile(session.user);
+      }
+    });
+
+    return () => {
+      clearTimeout(loadingTimeout);
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const fetchUserProfile = async (supabaseUser: SupabaseUser) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', supabaseUser.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+        console.error('Error fetching user profile:', error);
+        setLoading(false);
+        return;
+      }
+
+      if (data) {
+        // Auth is source of truth for email (e.g. after email-change verification)
+        const authEmail = supabaseUser.email || '';
+        if (authEmail && data.email !== authEmail) {
+          await supabase.from('users').update({ email: authEmail }).eq('id', supabaseUser.id);
+        }
+        setUser({
+          id: data.id,
+          email: authEmail || data.email || '',
+          firstName: data.first_name || '',
+          lastName: data.last_name || '',
+          role: data.role || 'USER',
+        });
+      } else {
+        // User profile doesn't exist yet, create it
+        const { data: newUser, error: insertError } = await supabase
+          .from('users')
+          .insert({
+            id: supabaseUser.id,
+            email: supabaseUser.email || '',
+            first_name: supabaseUser.user_metadata?.first_name || '',
+            last_name: supabaseUser.user_metadata?.last_name || '',
+            role: 'USER',
+          })
+          .select()
+          .single();
+
+        if (!insertError && newUser) {
+          setUser({
+            id: newUser.id,
+            email: newUser.email || '',
+            firstName: newUser.first_name || '',
+            lastName: newUser.last_name || '',
+            role: newUser.role || 'USER',
+          });
+        }
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
+      setLoading(false);
+    }
+  };
+
+  const login = async (email: string, password: string) => {
+    if (DEV_MODE) {
+      console.log('🔧 DEV MODE: Login bypassed');
+      return;
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) throw error;
+    if (data.session) {
+      setSession(data.session);
+      if (data.user) {
+        await fetchUserProfile(data.user);
+      }
+    }
+  };
+
+  const signUp = async (email: string, password: string, firstName: string, lastName: string, department?: string): Promise<SignUpResult> => {
+    if (DEV_MODE) {
+      console.log('🔧 DEV MODE: SignUp bypassed');
+      return {
+        user: null,
+        session: null,
+        needsEmailConfirmation: false,
+      };
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: {
+          first_name: firstName,
+          last_name: lastName,
+          department: department || null,
+        },
+      },
+    });
+
+    if (error) {
+      console.error('❌ Signup error:', error);
+      throw error;
+    }
+    
+    // Log signup result for debugging
+    console.log('✅ Signup successful:', {
+      user: data.user?.id,
+      email: data.user?.email,
+      emailConfirmed: data.user?.email_confirmed_at ? 'Yes' : 'No',
+      hasSession: !!data.session,
+      needsEmailConfirmation: !data.session && !!data.user,
+    });
+    
+    // Return data to check if email confirmation is required
+    return {
+      user: data.user,
+      session: data.session,
+      needsEmailConfirmation: !data.session && !!data.user, // If user exists but no session, email confirmation is needed
+    };
+  };
+
+  const logout = async () => {
+    if (DEV_MODE) {
+      console.log('🔧 DEV MODE: Logout - clearing user state');
+      // In dev mode, still clear the user state so logout works
+      setUser(null);
+      setSession(null);
+      return;
+    }
+
+    await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+  };
+
+  const updateUser = (updates: Partial<User>) => {
+    if (user) {
+      setUser({ ...user, ...updates });
+    }
+  };
+
+  const refreshUserProfile = async () => {
+    if (DEV_MODE && user) {
+      // In dev mode, fetch from database to get updated values
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (!error && data) {
+          setUser({
+            id: data.id,
+            email: data.email || user.email,
+            firstName: data.first_name || user.firstName,
+            lastName: data.last_name || user.lastName,
+            role: data.role || user.role,
+          });
+        }
+      } catch (error) {
+        console.error('Error refreshing user profile:', error);
+      }
+      return;
+    }
+
+    const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+    if (supabaseUser) {
+      await fetchUserProfile(supabaseUser);
+    }
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        login,
+        signUp,
+        logout,
+        updateUser,
+        refreshUserProfile,
+        loading,
+        isDeveloper,
+        effectiveRole,
+        setEffectiveRole,
+        isAdmin,
+        displayRole,
+        maintenanceMode,
+        setMaintenanceMode,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};

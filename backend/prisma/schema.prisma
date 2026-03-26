@@ -1,0 +1,139 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      String   @default("USER") // ADMIN or USER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  timeEntries TimeEntry[]
+  employee    Employee?
+
+  @@map("users")
+}
+
+model Employee {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  employeeId    String   @unique
+  wageRate      Float
+  hourlyRate    Float?
+  salary        Float?
+  hireDate      DateTime
+  department    String?
+  position      String?
+  status        String   @default("active") // active, inactive, terminated
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timeEntries TimeEntry[]
+  forms       Form[]
+
+  @@map("employees")
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?
+  country     String?
+  taxId       String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  projects Project[]
+
+  @@map("customers")
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  customerId    String
+  rate          Float    // Default rate for this project
+  billingType   String   @default("hourly") // hourly, fixed, retainer
+  status        String   @default("active") // active, completed, on-hold, cancelled
+  startDate     DateTime?
+  endDate       DateTime?
+  budget        Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  timeEntries TimeEntry[]
+
+  @@map("projects")
+}
+
+model TimeEntry {
+  id          String    @id @default(cuid())
+  userId      String
+  employeeId  String?
+  projectId   String?
+  date        DateTime
+  startTime   DateTime?
+  endTime     DateTime?
+  hours       Float     // Total hours worked
+  rate        Float     // Rate applied for this entry
+  billable    Boolean   @default(true)
+  description String?
+  approved    Boolean   @default(false)
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@map("time_entries")
+}
+
+model Form {
+  id          String   @id @default(cuid())
+  employeeId  String
+  formType    String   // e.g., "timesheet", "expense", "time-off", etc.
+  title       String
+  content     String   // JSON string or text content
+  status      String   @default("pending") // pending, approved, rejected
+  submittedAt DateTime @default(now())
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("forms")
+}
+

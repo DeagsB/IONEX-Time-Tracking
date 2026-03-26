@@ -1,0 +1,471 @@
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth, canAccessInvoices, canAccessExpenses } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
+import { useTheme } from '../context/ThemeContext';
+import { serviceTicketsService, projectsService } from '../services/supabaseServices';
+
+export default function Sidebar() {
+  const location = useLocation();
+  const { user, logout, isAdmin } = useAuth();
+  const { isDemoMode } = useDemoMode();
+  const { data: rejectedTicketsCount = 0 } = useQuery({
+    queryKey: ['rejectedTicketsCount', user?.id, isDemoMode],
+    queryFn: () => serviceTicketsService.getRejectedCountForUser(user!.id, isDemoMode),
+    enabled: !!user?.id,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+  const showRejectedBadge = rejectedTicketsCount > 0;
+
+  const { data: projectsForMissingCount } = useQuery({
+    queryKey: ['projects', 'sidebar-missing-count', isAdmin],
+    queryFn: () => projectsService.getAll(false), // only active projects – ignore inactive for notification
+    enabled: !!isAdmin,
+  });
+  const projectsMissingNumberCount = (projectsForMissingCount || []).filter(
+    (p: any) => !p.project_number || String(p.project_number).trim() === ''
+  ).length;
+  const showMissingProjectNumberBadge = isAdmin && projectsMissingNumberCount > 0;
+
+  const { data: resubmittedTicketsCount = 0 } = useQuery({
+    queryKey: ['resubmittedTicketsCount', isAdmin, isDemoMode],
+    queryFn: () => serviceTicketsService.getResubmittedCountForAdmin(isDemoMode),
+    enabled: !!isAdmin,
+  });
+  const showResubmittedBadge = isAdmin && resubmittedTicketsCount > 0;
+
+  const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
+
+  const handleSignOut = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  return (
+    <div style={{
+      width: '240px',
+      backgroundColor: 'var(--bg-primary)',
+      borderRight: '1px solid var(--border-color)',
+      height: '100vh',
+      position: 'fixed',
+      left: 0,
+      top: 0,
+      padding: '24px 0 0 0',
+      boxShadow: 'var(--shadow-sm)',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      <div style={{ padding: '0 20px', marginBottom: '32px', flexShrink: 0 }}>
+        <img
+          src="/ionex-logo-removebg-preview.png"
+          alt="IONEX Time Tracking"
+          onError={(e) => {
+            if (!e.currentTarget.src.includes('ionex-logo.png')) {
+              e.currentTarget.src = '/ionex-logo.png';
+            }
+          }}
+          style={{
+            height: '50px',
+            width: 'auto',
+            objectFit: 'contain',
+          }}
+        />
+      </div>
+
+      <div style={{ padding: '0 15px', flex: 1, overflowY: 'auto' }}>
+        {isAdmin && (
+          <div style={{ marginBottom: '30px' }}>
+            <SidebarLink to="/dashboard" active={isActive('/dashboard')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isActive('/dashboard') ? 'var(--logo-red)' : 'inherit' }}>
+                Dashboard
+              </span>
+            </SidebarLink>
+          </div>
+        )}
+
+        <div style={{ marginBottom: '30px' }}>
+          <div style={{ 
+            fontSize: '11px', 
+            fontWeight: '600', 
+            textTransform: 'uppercase', 
+            letterSpacing: '1px',
+            color: 'var(--text-tertiary)',
+            marginBottom: '10px',
+            padding: '0 10px'
+          }}>
+            TRACK
+          </div>
+            <SidebarLink to="/calendar" active={isActive('/calendar')}>
+              Timer
+            </SidebarLink>
+          </div>
+
+        {!isAdmin && (
+          <div style={{ marginBottom: '30px' }}>
+            <div style={{
+              fontSize: '11px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              color: 'var(--text-tertiary)',
+              marginBottom: '10px',
+              padding: '0 10px'
+            }}>
+              MANAGE
+            </div>
+            <SidebarLink to="/projects" active={isActive('/projects')}>
+              <span style={{ color: isActive('/projects') ? 'var(--logo-red)' : 'inherit' }}>Projects</span>
+            </SidebarLink>
+            <SidebarLink to="/customers" active={isActive('/customers')}>
+              Clients
+            </SidebarLink>
+            <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isActive('/service-tickets') ? 'var(--logo-red)' : 'inherit' }}>
+                Service Tickets
+                {showRejectedBadge && (
+                  <span
+                    title={`${rejectedTicketsCount} rejected ticket(s) need attention`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '20px',
+                      height: '20px',
+                      padding: '0 6px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: '#fff',
+                      backgroundColor: '#ef5350',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    {rejectedTicketsCount}
+                  </span>
+                )}
+              </span>
+            </SidebarLink>
+            {canAccessExpenses(user) && (
+              <SidebarLink to="/expenses" active={isActive('/expenses')}>
+                Expenses
+              </SidebarLink>
+            )}
+          </div>
+        )}
+
+        {isAdmin && (
+          <div style={{ marginBottom: '30px' }}>
+            <div style={{ 
+              fontSize: '11px', 
+              fontWeight: '600', 
+              textTransform: 'uppercase', 
+              letterSpacing: '1px',
+              color: 'var(--text-tertiary)',
+              marginBottom: '10px',
+              padding: '0 10px'
+            }}>
+              MANAGE
+            </div>
+            <SidebarLink to="/projects" active={isActive('/projects')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isActive('/projects') ? 'var(--logo-red)' : 'inherit' }}>
+                Projects
+                {showMissingProjectNumberBadge && (
+                  <span
+                    title={`${projectsMissingNumberCount} project(s) missing project number`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '18px',
+                      height: '18px',
+                      fontSize: '12px',
+                      color: '#10b981',
+                      flexShrink: 0,
+                    }}
+                    aria-hidden
+                  >
+                    ●
+                  </span>
+                )}
+              </span>
+            </SidebarLink>
+            <SidebarLink to="/customers" active={isActive('/customers')}>
+              Clients
+            </SidebarLink>
+            {canAccessInvoices(user) && (
+              <SidebarLink to="/invoices" active={isActive('/invoices')}>
+                Invoices
+              </SidebarLink>
+            )}
+            <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isActive('/service-tickets') ? 'var(--logo-red)' : 'inherit' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'inherit' }}>
+                  Service Tickets
+                  {showResubmittedBadge && (
+                    <span
+                      title={`${resubmittedTicketsCount} resubmitted ticket(s) in Submitted tab`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '18px',
+                        height: '18px',
+                        fontSize: '12px',
+                        color: '#eab308',
+                        flexShrink: 0,
+                      }}
+                      aria-hidden
+                    >
+                      ●
+                    </span>
+                  )}
+                </span>
+                {showRejectedBadge && (
+                  <span
+                    title={`${rejectedTicketsCount} rejected ticket(s) need attention`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '20px',
+                      height: '20px',
+                      padding: '0 6px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: '#fff',
+                      backgroundColor: '#ef5350',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    {rejectedTicketsCount}
+                  </span>
+                )}
+              </span>
+            </SidebarLink>
+            {canAccessExpenses(user) && (
+              <SidebarLink to="/expenses" active={isActive('/expenses')}>
+                Expenses
+              </SidebarLink>
+            )}
+            <SidebarLink to="/employees" active={isActive('/employees')}>
+              Employees
+            </SidebarLink>
+          </div>
+        )}
+
+        <div style={{ marginBottom: '30px' }}>
+          <div style={{ 
+            fontSize: '11px', 
+            fontWeight: '600', 
+            textTransform: 'uppercase', 
+            letterSpacing: '1px',
+            color: 'var(--text-tertiary)',
+            marginBottom: '10px',
+            padding: '0 10px'
+          }}>
+            ANALYZE
+          </div>
+          <SidebarLink to="/payroll" active={isActive('/payroll')}>
+            Payroll
+          </SidebarLink>
+          {isAdmin && (
+            <SidebarLink to="/employee-reports" active={isActive('/employee-reports')}>
+              Employee Reports
+            </SidebarLink>
+          )}
+          {isAdmin && (
+            <SidebarLink to="/profitability" active={isActive('/profitability')}>
+              Profitability
+            </SidebarLink>
+          )}
+        </div>
+
+        {!isAdmin && !isDemoMode && (
+          <div style={{ marginBottom: '30px' }}>
+            <div style={{
+              fontSize: '11px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              color: 'var(--text-tertiary)',
+              marginBottom: '10px',
+              padding: '0 10px',
+            }}>
+              SETTINGS
+            </div>
+            <SidebarLink to="/profile" active={isActive('/profile')}>
+              Profile
+            </SidebarLink>
+          </div>
+        )}
+
+        {isAdmin && !isDemoMode && (
+          <div style={{ marginBottom: '30px' }}>
+            <div style={{
+              fontSize: '11px',
+              fontWeight: '600',
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              color: 'var(--text-tertiary)',
+              marginBottom: '10px',
+              padding: '0 10px',
+            }}>
+              SETTINGS
+            </div>
+            <SidebarLink to="/profile" active={isActive('/profile')}>
+              Profile
+            </SidebarLink>
+            <SidebarLink to="/user-management" active={isActive('/user-management')}>
+              User Management
+            </SidebarLink>
+            <SidebarLink to="/changelog" active={isActive('/changelog')}>
+              Changelog
+            </SidebarLink>
+          </div>
+        )}
+      </div>
+
+      {/* Maintenance - admins only, above sign out */}
+      {isAdmin && (
+        <div style={{ padding: '0 15px 10px', flexShrink: 0 }}>
+          <SidebarLink to="/maintenance" active={isActive('/maintenance')}>
+            🔧 Maintenance
+          </SidebarLink>
+        </div>
+      )}
+
+      {/* Sign Out + theme toggle - single compact footer row */}
+      <div style={{
+        padding: '10px 15px 12px',
+        flexShrink: 0,
+        borderTop: '1px solid var(--border-color)',
+        backgroundColor: 'var(--bg-secondary)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+      }}>
+        <button
+          onClick={handleSignOut}
+          style={{
+            flex: 1,
+            padding: '10px 14px',
+            color: 'var(--text-primary)',
+            textDecoration: 'none',
+            borderRadius: '8px',
+            margin: 0,
+            backgroundColor: 'transparent',
+            fontWeight: '500',
+            fontSize: '14px',
+            transition: 'all 0.2s ease',
+            border: '1px solid var(--border-color)',
+            cursor: 'pointer',
+            textAlign: 'center',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+        >
+          Sign Out
+        </button>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+          style={{
+            position: 'relative',
+            width: '48px',
+            height: '26px',
+            borderRadius: '13px',
+            border: '1px solid var(--border-color)',
+            backgroundColor: 'var(--bg-secondary)',
+            cursor: 'pointer',
+            padding: 0,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            overflow: 'hidden',
+            boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06)',
+          }}
+        >
+          <span style={{
+            position: 'absolute',
+            left: '5px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '12px',
+            opacity: theme === 'dark' ? 1 : 0.5,
+            transition: 'opacity 0.2s',
+            zIndex: 1,
+          }}>🌙</span>
+          <span style={{
+            position: 'absolute',
+            right: '5px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '12px',
+            opacity: theme === 'light' ? 1 : 0.5,
+            transition: 'opacity 0.2s',
+            zIndex: 1,
+          }}>☀️</span>
+          <span style={{
+            position: 'absolute',
+            left: theme === 'dark' ? '3px' : 'calc(100% - 21px)',
+            top: '3px',
+            width: '18px',
+            height: '18px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--bg-primary)',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+            transition: 'left 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            zIndex: 2,
+          }} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SidebarLink({ to, active, children }: { to: string; active: boolean; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        display: 'block',
+        padding: '10px 16px',
+        color: active ? 'var(--logo-red)' : 'var(--text-primary)',
+        textDecoration: 'none',
+        borderRadius: '8px',
+        marginBottom: '4px',
+        marginLeft: '8px',
+        marginRight: '8px',
+        backgroundColor: active ? 'var(--primary-light)' : 'transparent',
+        fontWeight: active ? '600' : '400',
+        fontSize: '14px',
+        transition: 'all 0.2s ease',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.backgroundColor = 'transparent';
+        }
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+

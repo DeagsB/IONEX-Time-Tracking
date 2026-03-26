@@ -1,0 +1,815 @@
+import { useState, useEffect } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useDemoMode } from '../context/DemoModeContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { usersService, employeesService, serviceTicketsService } from '../services/supabaseServices';
+import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
+
+// Common timezone options
+const TIMEZONE_OPTIONS = [
+  { value: 'America/Edmonton', label: 'Mountain Time (Calgary)' },
+  { value: 'America/Vancouver', label: 'Pacific Time (Vancouver)' },
+  { value: 'America/Toronto', label: 'Eastern Time (Toronto)' },
+  { value: 'America/Winnipeg', label: 'Central Time (Winnipeg)' },
+  { value: 'America/St_Johns', label: 'Newfoundland Time (St. Johns)' },
+  { value: 'America/Halifax', label: 'Atlantic Time (Halifax)' },
+  { value: 'UTC', label: 'UTC' },
+];
+
+const DATE_FORMAT_OPTIONS = [
+  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
+  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' },
+];
+
+const TIME_FORMAT_OPTIONS = [
+  { value: '12h', label: '12-hour (3:00 PM)' },
+  { value: '24h', label: '24-hour (15:00)' },
+];
+
+interface ProfileData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  timezone: string;
+  dateFormat: string;
+  timeFormat: string;
+  createdAt?: string;
+}
+
+interface PasswordData {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export default function Profile() {
+  const { user, updateUser, refreshUserProfile, isAdmin, displayRole } = useAuth();
+  const { isDemoMode } = useDemoMode();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Profile form state
+  const [profileData, setProfileData] = useState<ProfileData>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    timezone: 'America/Edmonton',
+    dateFormat: 'MM/DD/YYYY',
+    timeFormat: '12h',
+  });
+  
+  // Password form state
+  const [passwordData, setPasswordData] = useState<PasswordData>({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  
+  // UI state
+  const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  
+  // Form validation state
+  const [profileErrors, setProfileErrors] = useState<Partial<ProfileData>>({});
+  const [passwordErrors, setPasswordErrors] = useState<Partial<PasswordData>>({});
+
+  const qboApiLocal = isQuickBooksApiLocal();
+  const { data: qboConnected, refetch: refetchQbo } = useQuery({
+    queryKey: ['qboStatus'],
+    queryFn: () => quickbooksClientService.checkStatus(),
+    enabled: isAdmin === true && !qboApiLocal,
+  });
+  const effectiveQboConnected = qboApiLocal ? false : (qboConnected ?? false);
+
+  const [qboConnectLoading, setQboConnectLoading] = useState(false);
+  const [qboConnectError, setQboConnectError] = useState<string | null>(null);
+
+  const [clearRejectedUserId, setClearRejectedUserId] = useState('');
+  const [clearRejectedMessage, setClearRejectedMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [clearRejectedLoading, setClearRejectedLoading] = useState(false);
+
+  const { data: employees } = useQuery({
+    queryKey: ['employees', 'profile-admin'],
+    queryFn: () => employeesService.getAll(false),
+    enabled: isAdmin === true,
+  });
+
+  // Handle QBO callback params (?qbo=success or ?qbo=error)
+  useEffect(() => {
+    const qbo = searchParams.get('qbo');
+    if (qbo === 'success') {
+      refetchQbo();
+      setSearchParams((p) => {
+        p.delete('qbo');
+        p.delete('message');
+        return p;
+      }, { replace: true });
+    }
+  }, [searchParams, refetchQbo, setSearchParams]);
+
+  // Load user profile data
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) return;
+      
+      try {
+        const data = await usersService.getUserProfile(user.id);
+        setProfileData({
+          firstName: data.first_name || user.firstName || '',
+          lastName: data.last_name || user.lastName || '',
+          email: data.email || user.email || '',
+          timezone: data.timezone || 'America/Edmonton',
+          dateFormat: data.date_format || 'MM/DD/YYYY',
+          timeFormat: data.time_format || '12h',
+          createdAt: data.created_at,
+        });
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        // Fall back to auth context data
+        setProfileData({
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          email: user.email || '',
+          timezone: 'America/Edmonton',
+          dateFormat: 'MM/DD/YYYY',
+          timeFormat: '12h',
+        });
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+    
+    loadProfile();
+  }, [user]);
+
+  // Profile update mutation
+  const profileMutation = useMutation({
+    mutationFn: async (data: ProfileData) => {
+      if (!user) throw new Error('Not authenticated');
+
+      // Update profile in users table (email change is hidden for now)
+      await usersService.updateProfile(user.id, {
+        first_name: data.firstName,
+        last_name: data.lastName,
+        timezone: data.timezone,
+        date_format: data.dateFormat,
+        time_format: data.timeFormat,
+      });
+
+      return data;
+    },
+    onSuccess: (data) => {
+      updateUser({
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+      });
+      setProfileMessage({ type: 'success', text: 'Profile updated successfully!' });
+      setTimeout(() => setProfileMessage(null), 5000);
+    },
+    onError: (error: Error) => {
+      setProfileMessage({ type: 'error', text: error.message || 'Failed to update profile' });
+    },
+  });
+
+  // Password update mutation
+  const passwordMutation = useMutation({
+    mutationFn: async (data: PasswordData) => {
+      if (!user) throw new Error('Not authenticated');
+      
+      // Verify current password
+      const isValid = await usersService.verifyCurrentPassword(user.email, data.currentPassword);
+      if (!isValid) {
+        throw new Error('Current password is incorrect');
+      }
+      
+      // Update password
+      await usersService.updatePassword(data.newPassword);
+      return true;
+    },
+    onSuccess: () => {
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordMessage({ type: 'success', text: 'Password changed successfully!' });
+      setTimeout(() => setPasswordMessage(null), 5000);
+    },
+    onError: (error: Error) => {
+      setPasswordMessage({ type: 'error', text: error.message || 'Failed to change password' });
+    },
+  });
+
+  // Validate profile form
+  const validateProfile = (): boolean => {
+    const errors: Partial<ProfileData> = {};
+    
+    if (!profileData.firstName.trim()) {
+      errors.firstName = 'First name is required';
+    }
+    
+    if (!profileData.lastName.trim()) {
+      errors.lastName = 'Last name is required';
+    }
+    
+    setProfileErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Validate password form
+  const validatePassword = (): boolean => {
+    const errors: Partial<PasswordData> = {};
+    
+    if (!passwordData.currentPassword) {
+      errors.currentPassword = 'Current password is required';
+    }
+    
+    if (!passwordData.newPassword) {
+      errors.newPassword = 'New password is required';
+    } else if (passwordData.newPassword.length < 6) {
+      errors.newPassword = 'Password must be at least 6 characters';
+    }
+    
+    if (!passwordData.confirmPassword) {
+      errors.confirmPassword = 'Please confirm your new password';
+    } else if (passwordData.newPassword !== passwordData.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+    
+    setPasswordErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Handle profile form submission
+  const handleProfileSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileMessage(null);
+    
+    if (validateProfile()) {
+      profileMutation.mutate(profileData);
+    }
+  };
+
+  // Handle password form submission
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMessage(null);
+    
+    if (validatePassword()) {
+      passwordMutation.mutate(passwordData);
+    }
+  };
+
+  // Format date for display
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return 'N/A';
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '10px 12px',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border-color)',
+    borderRadius: '6px',
+    color: 'var(--text-primary)',
+    fontSize: '14px',
+  };
+
+  const errorInputStyle: React.CSSProperties = {
+    ...inputStyle,
+    borderColor: '#ff4757',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    marginBottom: '6px',
+    fontSize: '13px',
+    fontWeight: '500',
+    color: 'var(--text-secondary)',
+  };
+
+  const errorTextStyle: React.CSSProperties = {
+    color: '#ff4757',
+    fontSize: '12px',
+    marginTop: '4px',
+  };
+
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: 'var(--bg-primary)',
+    border: '1px solid var(--border-color)',
+    borderRadius: '12px',
+    padding: '24px',
+    marginBottom: '24px',
+  };
+
+  const sectionTitleStyle: React.CSSProperties = {
+    fontSize: '18px',
+    fontWeight: '600',
+    marginBottom: '20px',
+    color: 'var(--text-primary)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  };
+
+  if (isLoadingProfile) {
+    return (
+      <div>
+        <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '24px' }}>Profile Settings</h2>
+        <div style={{ ...cardStyle, textAlign: 'center', padding: '48px' }}>
+          <div style={{ color: 'var(--text-secondary)' }}>Loading profile...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '24px' }}>Profile Settings</h2>
+
+      {/* Personal Information Section */}
+      <div style={cardStyle}>
+        <h3 style={sectionTitleStyle}>
+          <span style={{ fontSize: '20px' }}>👤</span>
+          Personal Information
+        </h3>
+        
+        <form onSubmit={handleProfileSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <label style={labelStyle}>First Name</label>
+              <input
+                type="text"
+                value={profileData.firstName}
+                onChange={(e) => setProfileData({ ...profileData, firstName: e.target.value })}
+                style={profileErrors.firstName ? errorInputStyle : inputStyle}
+                placeholder="Enter your first name"
+              />
+              {profileErrors.firstName && <div style={errorTextStyle}>{profileErrors.firstName}</div>}
+            </div>
+            
+            <div>
+              <label style={labelStyle}>Last Name</label>
+              <input
+                type="text"
+                value={profileData.lastName}
+                onChange={(e) => setProfileData({ ...profileData, lastName: e.target.value })}
+                style={profileErrors.lastName ? errorInputStyle : inputStyle}
+                placeholder="Enter your last name"
+              />
+              {profileErrors.lastName && <div style={errorTextStyle}>{profileErrors.lastName}</div>}
+            </div>
+          </div>
+          
+          <div style={{ marginBottom: '20px' }}>
+            <label style={labelStyle}>Email Address</label>
+            <div style={{ ...inputStyle, cursor: 'default', opacity: 0.9 }}>{profileData.email}</div>
+          </div>
+          
+          {profileMessage && (
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              backgroundColor: profileMessage.type === 'success' ? 'rgba(78, 205, 196, 0.1)' : 'rgba(255, 71, 87, 0.1)',
+              border: `1px solid ${profileMessage.type === 'success' ? '#4ecdc4' : '#ff4757'}`,
+              color: profileMessage.type === 'success' ? '#4ecdc4' : '#ff4757',
+            }}>
+              {profileMessage.text}
+            </div>
+          )}
+          
+          <button
+            type="submit"
+            disabled={profileMutation.isPending}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#4ecdc4',
+              color: '#1a1a2e',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: profileMutation.isPending ? 'not-allowed' : 'pointer',
+              opacity: profileMutation.isPending ? 0.7 : 1,
+            }}
+          >
+            {profileMutation.isPending ? 'Saving...' : 'Save Changes'}
+          </button>
+        </form>
+      </div>
+
+      {/* Preferences Section */}
+      <div style={cardStyle}>
+        <h3 style={sectionTitleStyle}>
+          <span style={{ fontSize: '20px' }}>⚙️</span>
+          Preferences
+        </h3>
+        
+        <form onSubmit={handleProfileSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '20px' }}>
+            <div>
+              <label style={labelStyle}>Timezone</label>
+              <select
+                value={profileData.timezone}
+                onChange={(e) => setProfileData({ ...profileData, timezone: e.target.value })}
+                style={inputStyle}
+              >
+                {TIMEZONE_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label style={labelStyle}>Date Format</label>
+              <select
+                value={profileData.dateFormat}
+                onChange={(e) => setProfileData({ ...profileData, dateFormat: e.target.value })}
+                style={inputStyle}
+              >
+                {DATE_FORMAT_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label style={labelStyle}>Time Format</label>
+              <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
+                {TIME_FORMAT_OPTIONS.map(opt => (
+                  <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="timeFormat"
+                      value={opt.value}
+                      checked={profileData.timeFormat === opt.value}
+                      onChange={(e) => setProfileData({ ...profileData, timeFormat: e.target.value })}
+                      style={{ accentColor: '#4ecdc4' }}
+                    />
+                    <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          <button
+            type="submit"
+            disabled={profileMutation.isPending}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#4ecdc4',
+              color: '#1a1a2e',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: profileMutation.isPending ? 'not-allowed' : 'pointer',
+              opacity: profileMutation.isPending ? 0.7 : 1,
+            }}
+          >
+            {profileMutation.isPending ? 'Saving...' : 'Save Preferences'}
+          </button>
+        </form>
+      </div>
+
+      {/* Password Change Section */}
+      <div style={cardStyle}>
+        <h3 style={sectionTitleStyle}>
+          <span style={{ fontSize: '20px' }}>🔒</span>
+          Change Password
+        </h3>
+        
+        <form onSubmit={handlePasswordSubmit}>
+          <div style={{ maxWidth: '400px' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={labelStyle}>Current Password</label>
+              <input
+                type="password"
+                value={passwordData.currentPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                style={passwordErrors.currentPassword ? errorInputStyle : inputStyle}
+                placeholder="Enter your current password"
+              />
+              {passwordErrors.currentPassword && <div style={errorTextStyle}>{passwordErrors.currentPassword}</div>}
+            </div>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <label style={labelStyle}>New Password</label>
+              <input
+                type="password"
+                value={passwordData.newPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                style={passwordErrors.newPassword ? errorInputStyle : inputStyle}
+                placeholder="Enter your new password"
+              />
+              {passwordErrors.newPassword && <div style={errorTextStyle}>{passwordErrors.newPassword}</div>}
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                Minimum 6 characters
+              </div>
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}>Confirm New Password</label>
+              <input
+                type="password"
+                value={passwordData.confirmPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                style={passwordErrors.confirmPassword ? errorInputStyle : inputStyle}
+                placeholder="Confirm your new password"
+              />
+              {passwordErrors.confirmPassword && <div style={errorTextStyle}>{passwordErrors.confirmPassword}</div>}
+            </div>
+          </div>
+          
+          {passwordMessage && (
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              maxWidth: '400px',
+              backgroundColor: passwordMessage.type === 'success' ? 'rgba(78, 205, 196, 0.1)' : 'rgba(255, 71, 87, 0.1)',
+              border: `1px solid ${passwordMessage.type === 'success' ? '#4ecdc4' : '#ff4757'}`,
+              color: passwordMessage.type === 'success' ? '#4ecdc4' : '#ff4757',
+            }}>
+              {passwordMessage.text}
+            </div>
+          )}
+          
+          <button
+            type="submit"
+            disabled={passwordMutation.isPending}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#ff6b6b',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontWeight: '600',
+              cursor: passwordMutation.isPending ? 'not-allowed' : 'pointer',
+              opacity: passwordMutation.isPending ? 0.7 : 1,
+            }}
+          >
+            {passwordMutation.isPending ? 'Changing Password...' : 'Change Password'}
+          </button>
+        </form>
+      </div>
+
+      {/* Account Information Section */}
+      <div style={cardStyle}>
+        <h3 style={sectionTitleStyle}>
+          <span style={{ fontSize: '20px' }}>ℹ️</span>
+          Account Information
+        </h3>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px' }}>
+          <div>
+            <div style={labelStyle}>User ID</div>
+            <div style={{
+              padding: '10px 12px',
+              backgroundColor: 'var(--bg-secondary)',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: 'var(--text-secondary)',
+              fontFamily: 'monospace',
+              wordBreak: 'break-all',
+            }}>
+              {user?.id || 'N/A'}
+            </div>
+          </div>
+          
+          <div>
+            <div style={labelStyle}>Role</div>
+            <div style={{
+              padding: '10px 12px',
+              backgroundColor: 'var(--bg-secondary)',
+              borderRadius: '6px',
+              fontSize: '14px',
+              color: 'var(--text-primary)',
+            }}>
+              <span
+                data-testid="profile-role"
+                data-role={displayRole}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  backgroundColor: displayRole === 'ADMIN' ? 'rgba(199, 112, 240, 0.2)' : 'rgba(78, 205, 196, 0.2)',
+                  color: displayRole === 'ADMIN' ? '#c770f0' : '#4ecdc4',
+                }}
+              >
+                {displayRole}
+              </span>
+            </div>
+          </div>
+          
+          <div>
+            <div style={labelStyle}>Account Created</div>
+            <div style={{
+              padding: '10px 12px',
+              backgroundColor: 'var(--bg-secondary)',
+              borderRadius: '6px',
+              fontSize: '14px',
+              color: 'var(--text-primary)',
+            }}>
+              {formatDate(profileData.createdAt)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* QuickBooks Connection - Admin only (Deagan Bespalko) */}
+      {isAdmin && (
+        <div style={cardStyle}>
+          <h3 style={sectionTitleStyle}>
+            <span style={{ fontSize: '20px' }}>📊</span>
+            QuickBooks Online
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+            Connect QuickBooks to create invoices from the Invoices page.
+          </p>
+          {(searchParams.get('qbo') === 'error' || qboConnectError) && (
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              backgroundColor: 'rgba(255, 71, 87, 0.1)',
+              border: '1px solid #ff4757',
+              color: '#ff4757',
+            }}>
+              {qboConnectError || searchParams.get('message') || 'QuickBooks connection failed.'}
+            </div>
+          )}
+          {effectiveQboConnected ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={{
+                padding: '6px 12px',
+                backgroundColor: 'rgba(78, 205, 196, 0.2)',
+                borderRadius: '6px',
+                color: '#4ecdc4',
+                fontWeight: '600',
+                fontSize: '14px',
+              }}>
+                ✓ Connected
+              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (qboApiLocal) return;
+                  const ok = await quickbooksClientService.disconnect();
+                  if (ok) refetchQbo();
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <>
+              {qboApiLocal && (
+                <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+                  QuickBooks status is not checked when using a local backend.
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={qboConnectLoading || qboApiLocal}
+                onClick={async () => {
+                  if (qboApiLocal) return;
+                  setQboConnectError(null);
+                  setQboConnectLoading(true);
+                  try {
+                    const url = await quickbooksClientService.getAuthUrl();
+                    if (url) {
+                      window.location.href = url;
+                    } else {
+                      setQboConnectError('Could not get QuickBooks authorization URL. Ensure the backend is running and configured (VITE_API_URL, QBO_CLIENT_ID, etc.).');
+                    }
+                  } catch (err) {
+                    setQboConnectError(err instanceof Error ? err.message : 'Failed to connect to QuickBooks.');
+                  } finally {
+                    setQboConnectLoading(false);
+                  }
+                }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: (qboConnectLoading || qboApiLocal) ? 'var(--bg-tertiary)' : '#0ea5e9',
+                  color: (qboConnectLoading || qboApiLocal) ? 'var(--text-tertiary)' : 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: '600',
+                  fontSize: '14px',
+                  cursor: (qboConnectLoading || qboApiLocal) ? 'not-allowed' : 'pointer',
+                  opacity: qboConnectLoading ? 0.7 : 1,
+                }}
+              >
+                {qboConnectLoading ? 'Connecting...' : 'Connect QuickBooks'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Clear stuck rejected notification - Admin only */}
+      {isAdmin && (
+        <div style={cardStyle}>
+          <h3 style={sectionTitleStyle}>
+            <span style={{ fontSize: '20px' }}>🔔</span>
+            Clear stuck rejected notification
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
+            If a user has a red rejected-ticket badge stuck on the Service Tickets sidebar, clear it by setting their rejected tickets back to draft.
+          </p>
+          {clearRejectedMessage && (
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              backgroundColor: clearRejectedMessage.type === 'success' ? 'rgba(78, 205, 196, 0.1)' : 'rgba(255, 71, 87, 0.1)',
+              border: `1px solid ${clearRejectedMessage.type === 'success' ? '#4ecdc4' : '#ff4757'}`,
+              color: clearRejectedMessage.type === 'success' ? '#4ecdc4' : '#ff4757',
+            }}>
+              {clearRejectedMessage.text}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ flexShrink: 0 }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>User</label>
+              <select
+                value={clearRejectedUserId}
+                onChange={(e) => { setClearRejectedUserId(e.target.value); setClearRejectedMessage(null); }}
+                style={{
+                  padding: '8px 12px',
+                  minWidth: '200px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '14px',
+                }}
+              >
+                <option value="">Select user</option>
+                {(employees ?? []).map((emp: { user_id: string; user?: { first_name?: string; last_name?: string; email?: string } }) => (
+                  <option key={emp.user_id} value={emp.user_id}>
+                    {[emp.user?.first_name, emp.user?.last_name].filter(Boolean).join(' ') || emp.user?.email || emp.user_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={!clearRejectedUserId || clearRejectedLoading}
+              onClick={async () => {
+                setClearRejectedMessage(null);
+                setClearRejectedLoading(true);
+                try {
+                  const count = await serviceTicketsService.clearRejectedTicketsForUser(clearRejectedUserId, isDemoMode);
+                  queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
+                  setClearRejectedMessage({
+                    type: 'success',
+                    text: count > 0
+                      ? `Cleared ${count} rejected ticket(s) for that user. Their sidebar notification will update on next load.`
+                      : 'That user had no rejected tickets to clear.',
+                  });
+                } catch (err) {
+                  setClearRejectedMessage({
+                    type: 'error',
+                    text: err instanceof Error ? err.message : 'Failed to clear rejected tickets.',
+                  });
+                } finally {
+                  setClearRejectedLoading(false);
+                }
+              }}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: clearRejectedUserId && !clearRejectedLoading ? '#ef5350' : 'var(--bg-tertiary)',
+                color: clearRejectedUserId && !clearRejectedLoading ? '#fff' : 'var(--text-tertiary)',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: '600',
+                fontSize: '14px',
+                cursor: clearRejectedUserId && !clearRejectedLoading ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {clearRejectedLoading ? 'Clearing...' : 'Clear rejected notification'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
