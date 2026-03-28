@@ -121,7 +121,7 @@ export interface EmployeeMetrics {
   expenseCost: number;
   /** Amount billed to customer for expenses (all ticket expenses: quantity × rate) */
   expenseBilled: number;
-  /** Breakdown by category: Per Diem, Mileage, Hotel, Other/Parts */
+  /** Breakdown by category: Per Diem, Mileage, Hotel, laptop rows, Other/Parts */
   expenseBreakdown: { category: string; billed: number; cost: number }[];
   totalCost: number; // laborCost + expenseCost
   netProfit: number; // totalRevenue - totalCost (includes expense billed in revenue)
@@ -231,8 +231,62 @@ export function applyGst(amount: number): number {
 }
 
 /** Apply GST to amount if includeGst is true; otherwise return amount unchanged. */
-function maybeApplyGst(amount: number, includeGst: boolean): number {
+export function maybeApplyGst(amount: number, includeGst: boolean): number {
   return includeGst ? applyGst(amount) : amount;
+}
+
+/** Display / aggregation order for Hours by Rate Type → Expenses sub-rows */
+export const EMPLOYEE_REPORT_EXPENSE_CATEGORY_ORDER = [
+  'Per Diem',
+  'Mileage',
+  'Hotel',
+  'Laptop/Basic Equipment',
+  'Laptop/Field Service',
+  'Other/Parts',
+] as const;
+
+export type EmployeeReportExpenseCategory = (typeof EMPLOYEE_REPORT_EXPENSE_CATEGORY_ORDER)[number];
+
+/** Bucket for employee-report expense breakdown (must match {@link EMPLOYEE_REPORT_EXPENSE_CATEGORY_ORDER}). */
+export function ticketExpenseCategoryForEmployeeReport(exp: {
+  expense_type?: string;
+  description?: string;
+}): EmployeeReportExpenseCategory {
+  const expType = (exp.expense_type || '').toLowerCase();
+  const desc = (exp.description || '').toLowerCase();
+  if (desc.includes('per diem')) return 'Per Diem';
+  if (expType === 'travel') return 'Mileage';
+  if (expType === 'hotel' || desc.includes('hotel')) return 'Hotel';
+  if (desc.includes('laptop/basic') || desc.includes('laptop basic')) return 'Laptop/Basic Equipment';
+  if (desc.includes('laptop/field') || (desc.includes('laptop') && desc.includes('field service')))
+    return 'Laptop/Field Service';
+  return 'Other/Parts';
+}
+
+function reimbRateForTicketExpenseCategory(
+  category: EmployeeReportExpenseCategory,
+  exp: { needs_reimbursement?: boolean },
+  employee?: EmployeeWithRates
+): number {
+  switch (category) {
+    case 'Per Diem':
+      return Number(employee?.per_diem_reimb_rate) || 1;
+    case 'Mileage':
+      return exp.needs_reimbursement === false ? 0 : Number(employee?.mileage_reimb_rate) || 0.9;
+    case 'Hotel':
+      return exp.needs_reimbursement === false ? 0 : Number(employee?.hotel_reimb_rate) || 1;
+    default:
+      return 1;
+  }
+}
+
+/** Same reimbursement rate rules as aggregateEmployeeMetrics (for drill-down line costs in UI). */
+export function reimbRateForEmployeeReportExpense(
+  exp: { expense_type?: string; description?: string; needs_reimbursement?: boolean },
+  employee?: EmployeeWithRates
+): number {
+  const category = ticketExpenseCategoryForEmployeeReport(exp);
+  return reimbRateForTicketExpenseCategory(category, exp, employee);
 }
 
 /** Employer CPP rate (matches employee portion) */
@@ -664,31 +718,8 @@ export function aggregateEmployeeMetrics(
       const billed = ticketExpenseBilledAmount(exp);
       expenseBilled += billed;
 
-      const expType = (exp.expense_type || '').toLowerCase();
-      const desc = (exp.description || '').toLowerCase();
-
-      let category: string;
-      let reimbRate = 0;
-
-      if (desc.includes('per diem')) {
-        category = 'Per Diem';
-        reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
-      } else if (expType === 'travel') {
-        category = 'Mileage';
-        reimbRate =
-          exp.needs_reimbursement === false
-            ? 0
-            : Number(employee?.mileage_reimb_rate) || 0.90;
-      } else if (expType === 'hotel' || desc.includes('hotel')) {
-        category = 'Hotel';
-        reimbRate =
-          exp.needs_reimbursement === false
-            ? 0
-            : Number(employee?.hotel_reimb_rate) || 1.00;
-      } else {
-        category = 'Other/Parts';
-        reimbRate = 1.00;
-      }
+      const category = ticketExpenseCategoryForEmployeeReport(exp);
+      const reimbRate = reimbRateForTicketExpenseCategory(category, exp, employee);
 
       const lineCost = ticketExpenseCostForMargin(exp, reimbRate);
       const entry = getOrCreate(category);
@@ -708,8 +739,10 @@ export function aggregateEmployeeMetrics(
     .filter(([, v]) => v.billed > 0)
     .map(([category, v]) => ({ category, billed: maybeApplyGst(v.billed, includeGst), cost: v.cost }))
     .sort((a, b) => {
-      const order = ['Per Diem', 'Mileage', 'Hotel', 'Other/Parts'];
-      return order.indexOf(a.category) - order.indexOf(b.category);
+      const order = EMPLOYEE_REPORT_EXPENSE_CATEGORY_ORDER as readonly string[];
+      const ia = order.indexOf(a.category);
+      const ib = order.indexOf(b.category);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
     });
 
   const totalCost = laborCost + expenseCost;

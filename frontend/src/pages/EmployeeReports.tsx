@@ -9,6 +9,10 @@ import {
   formatCurrency,
   formatPercentage,
   EmployeeMetrics,
+  maybeApplyGst,
+  ticketExpenseCategoryForEmployeeReport,
+  EMPLOYEE_REPORT_EXPENSE_CATEGORY_ORDER,
+  reimbRateForEmployeeReportExpense,
 } from '../utils/employeeReports';
 import {
   exportEmployeeReportsToExcel,
@@ -18,15 +22,10 @@ import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement'
 
 const formatHoursDecimal = (hours: number): string => hours.toFixed(2);
 
-function reimbRateForEmployeeExpense(exp: any, emp: any | undefined): number {
-  const expType = (exp.expense_type || '').toLowerCase();
-  const desc = (exp.description || '').toLowerCase();
-  const e = emp || {};
-  if (desc.includes('per diem')) return Number(e.per_diem_reimb_rate) || 1;
-  if (expType === 'travel') return exp.needs_reimbursement === false ? 0 : Number(e.mileage_reimb_rate) || 0.9;
-  if (expType === 'hotel' || desc.includes('hotel')) return exp.needs_reimbursement === false ? 0 : Number(e.hotel_reimb_rate) || 1;
-  return 1;
-}
+/** Laptop + misc: expandable line-item lists under the expense breakdown */
+const EXPENSE_BREAKDOWN_DRILLDOWN_CATEGORIES = new Set<string>(
+  EMPLOYEE_REPORT_EXPENSE_CATEGORY_ORDER.slice(3) as unknown as string[]
+);
 
 export default function EmployeeReports() {
   const { user, isAdmin } = useAuth();
@@ -38,14 +37,14 @@ export default function EmployeeReports() {
   const [expandedExpenseDateKeys, setExpandedExpenseDateKeys] = useState<Set<string>>(new Set());
   const [expandedExpenseTicketKeys, setExpandedExpenseTicketKeys] = useState<Set<string>>(new Set());
   const [expenseBreakdownExpanded, setExpenseBreakdownExpanded] = useState(false);
-  const [otherPartsExpanded, setOtherPartsExpanded] = useState(false);
+  const [expandedExpenseDrilldownKeys, setExpandedExpenseDrilldownKeys] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     if (expandedEmployee) {
       setExpensesSectionExpanded(true);
       setExpandedExpenseDateKeys(new Set());
       setExpandedExpenseTicketKeys(new Set());
       setExpenseBreakdownExpanded(false);
-      setOtherPartsExpanded(false);
+      setExpandedExpenseDrilldownKeys(new Set());
     }
   }, [expandedEmployee]);
   const [sortField, setSortField] = useState<keyof EmployeeMetrics>('totalHours');
@@ -616,26 +615,32 @@ export default function EmployeeReports() {
                             </tr>
                             {expenseBreakdownExpanded && (expandedMetrics.expenseBreakdown || []).length > 0 && (
                               (expandedMetrics.expenseBreakdown || []).map((row) => {
-                                const isOtherParts = row.category === 'Other/Parts';
-                                const otherPartsItems = isOtherParts ? (ticketExpenses as any[]).filter((exp: any) => {
-                                  const uid = exp.service_tickets?.user_id ?? exp.service_ticket?.user_id;
-                                  if (uid !== expandedMetrics.userId) return false;
-                                  const expType = (exp.expense_type || '').toLowerCase();
-                                  const desc = (exp.description || '').toLowerCase();
-                                  if (desc.includes('per diem')) return false;
-                                  if (expType === 'travel') return false;
-                                  if (expType === 'hotel' || desc.includes('hotel')) return false;
-                                  return true;
-                                }) : [];
-                                const hasOtherPartsItems = otherPartsItems.length > 0;
+                                const hasDrilldown = EXPENSE_BREAKDOWN_DRILLDOWN_CATEGORIES.has(row.category);
+                                const drilldownItems = hasDrilldown
+                                  ? (ticketExpenses as any[]).filter((exp: any) => {
+                                      const uid = exp.service_tickets?.user_id ?? exp.service_ticket?.user_id;
+                                      if (uid !== expandedMetrics.userId) return false;
+                                      return ticketExpenseCategoryForEmployeeReport(exp) === row.category;
+                                    })
+                                  : [];
+                                const hasDrilldownItems = drilldownItems.length > 0;
+                                const drilldownOpen = expandedExpenseDrilldownKeys.has(row.category);
+                                const toggleDrilldown = () => {
+                                  setExpandedExpenseDrilldownKeys((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(row.category)) next.delete(row.category);
+                                    else next.add(row.category);
+                                    return next;
+                                  });
+                                };
                                 return (
                                   <Fragment key={row.category}>
                                     <tr style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
                                       <td style={{ ...detailTdStyle, paddingLeft: '28px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                        {isOtherParts && hasOtherPartsItems ? (
+                                        {hasDrilldown && hasDrilldownItems ? (
                                           <button
                                             type="button"
-                                            onClick={() => setOtherPartsExpanded(v => !v)}
+                                            onClick={toggleDrilldown}
                                             style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'inherit', color: 'inherit' }}
                                           >
                                             <span style={{
@@ -643,7 +648,7 @@ export default function EmployeeReports() {
                                               fontSize: '10px',
                                               color: 'var(--text-tertiary)',
                                               transition: 'transform 0.2s ease',
-                                              transform: otherPartsExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                              transform: drilldownOpen ? 'rotate(90deg)' : 'rotate(0deg)',
                                             }}>&#9654;</span>
                                             {row.category}
                                           </button>
@@ -656,10 +661,11 @@ export default function EmployeeReports() {
                                       <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: row.cost > 0 ? '#e91e63' : undefined }}>{formatCurrency(row.cost)}</td>
                                       <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: (row.billed - row.cost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(row.billed - row.cost)}</td>
                                     </tr>
-                                    {isOtherParts && hasOtherPartsItems && otherPartsExpanded && otherPartsItems.map((exp: any) => {
+                                    {hasDrilldown && hasDrilldownItems && drilldownOpen && drilldownItems.map((exp: any) => {
                                       const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+                                      const billedShown = maybeApplyGst(amt, includeGst);
                                       const ticket = exp.service_tickets ?? exp.service_ticket;
-                                      const lineCost = ticketExpenseCostForMargin(exp, reimbRateForEmployeeExpense(exp, expandedEmpRecord));
+                                      const lineCost = ticketExpenseCostForMargin(exp, reimbRateForEmployeeReportExpense(exp, expandedEmpRecord));
                                       const ticketLabel = ticket?.ticket_number ? `#${ticket.ticket_number}` : '—';
                                       return (
                                         <tr key={exp.id} style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
@@ -668,9 +674,9 @@ export default function EmployeeReports() {
                                             {ticketLabel !== '—' && <span style={{ marginLeft: '6px', color: 'var(--text-tertiary)', fontSize: '11px' }}>({ticketLabel})</span>}
                                           </td>
                                           <td style={detailTdStyle} />
-                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px' }}>{formatCurrency(amt)}</td>
+                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px' }}>{formatCurrency(billedShown)}</td>
                                           <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px', color: lineCost > 0 ? '#e91e63' : undefined }}>{formatCurrency(lineCost)}</td>
-                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px', color: (amt - lineCost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(amt - lineCost)}</td>
+                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px', color: (billedShown - lineCost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(billedShown - lineCost)}</td>
                                         </tr>
                                       );
                                     })}
