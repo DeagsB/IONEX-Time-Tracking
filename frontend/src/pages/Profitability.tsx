@@ -1,10 +1,11 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, employeesService, timeEntriesService, payRateHistoryService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 import { calculateBurden, applyGst } from '../utils/employeeReports';
+import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement';
 import {
   buildSharedFieldsMapForProject,
   entryServiceTicketMatchKeys,
@@ -141,6 +142,21 @@ export default function Profitability() {
     return map;
   }, [employees]);
 
+  /** Aligns with Employee Reports: reimbursable lines use base × rate; billed-only equipment/hotel uses actual_cost or billed as COGS proxy. */
+  const ticketExpenseLineCost = useCallback(
+    (exp: any) => {
+      const emp = empByUserId.get(exp.service_tickets?.user_id);
+      const desc = (exp.description || '').toLowerCase();
+      const expType = (exp.expense_type || '').toLowerCase();
+      let reimbRate = 1;
+      if (desc.includes('per diem')) reimbRate = Number(emp?.per_diem_reimb_rate) || 1;
+      else if (expType === 'travel') reimbRate = exp.needs_reimbursement === false ? 0 : Number(emp?.mileage_reimb_rate) || 0.9;
+      else if (expType === 'hotel' || desc.includes('hotel')) reimbRate = exp.needs_reimbursement === false ? 0 : Number(emp?.hotel_reimb_rate) || 1;
+      return ticketExpenseCostForMargin(exp, reimbRate);
+    },
+    [empByUserId]
+  );
+
   // Build lookup: employee_id → sorted rate snapshots (ascending by effective_date)
   const rateHistoryByEmpId = useMemo(() => {
     const map = new Map<string, any[]>();
@@ -210,27 +226,6 @@ export default function Profitability() {
       laborByProject.set(entry.project_id, (laborByProject.get(entry.project_id) || 0) + hours * payRate);
     }
 
-    const getExpenseCost = (exp: any) => {
-      const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-      const emp = empByUserId.get(exp.service_tickets?.user_id);
-      const desc = (exp.description || exp.expense_type || '').toLowerCase();
-      const expType = (exp.expense_type || '').toLowerCase();
-      // Travel (Mileage/Truck Hours): needs_reimbursement=false = billed to client only, $0 internal mileage cost
-      if (expType === 'travel') {
-        if (exp.needs_reimbursement === false) return 0;
-        return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
-      }
-      if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
-      if (expType === 'hotel' || desc.includes('hotel')) {
-        if (exp.needs_reimbursement === false) return 0;
-        return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
-      }
-      // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
-      if (exp.actual_cost != null) return Number(exp.actual_cost);
-      if (!exp.needs_reimbursement) return 0;
-      return amt;
-    };
-
     const expenseByProject = new Map<string, number>();
     /** Customer-billed totals from ticket expense lines (same tickets as ticketExpenses query). */
     const expenseBilledByProject = new Map<string, number>();
@@ -238,7 +233,7 @@ export default function Profitability() {
       const ticket = exp.service_tickets;
       if (!ticket?.project_id) continue;
       const billed = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-      expenseByProject.set(ticket.project_id, (expenseByProject.get(ticket.project_id) || 0) + getExpenseCost(exp));
+      expenseByProject.set(ticket.project_id, (expenseByProject.get(ticket.project_id) || 0) + ticketExpenseLineCost(exp));
       expenseBilledByProject.set(ticket.project_id, (expenseBilledByProject.get(ticket.project_id) || 0) + billed);
     }
 
@@ -277,7 +272,7 @@ export default function Profitability() {
         ticketCount: ticketCountByProject.get(p.id) || 0,
       };
     });
-  }, [projects, serviceTickets, allTimeEntries, ticketExpenses, empByUserId, rateHistoryByEmpId, includeGst]);
+  }, [projects, serviceTickets, allTimeEntries, ticketExpenses, empByUserId, rateHistoryByEmpId, includeGst, ticketExpenseLineCost]);
 
   const filtered = useMemo(() => {
     let list = projectFinancials;
@@ -455,46 +450,13 @@ export default function Profitability() {
     return Array.from(map.values()).sort((a, b) => b.cost - a.cost);
   }, [expandedProjectId, allTimeEntries, empByUserId, rateHistoryByEmpId]);
 
-  const getExpenseCostForDisplay = (exp: any) => {
-    const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-    const emp = empByUserId.get(exp.service_tickets?.user_id);
-    const desc = (exp.description || exp.expense_type || '').toLowerCase();
-    const expType = (exp.expense_type || '').toLowerCase();
-    if (expType === 'travel') {
-      if (exp.needs_reimbursement === false) return 0;
-      return amt * (Number(emp?.mileage_reimb_rate) || 0.90);
-    }
-    if (desc.includes('per diem')) return amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
-    if (expType === 'hotel' || desc.includes('hotel')) {
-      if (exp.needs_reimbursement === false) return 0;
-      return amt * (Number(emp?.hotel_reimb_rate) || 1.00);
-    }
-    // Other/Parts: use actual_cost if set, else needs_reimbursement ? amt : 0
-    if (exp.actual_cost != null) return Number(exp.actual_cost);
-    if (!exp.needs_reimbursement) return 0;
-    return amt;
-  };
-
-  /** Equipment / other billout: $0 actual cost usually means "not entered", not zero COGS — don't treat full billed as markup. */
-  const isBilloutActualCostUnset = (exp: any, billedTotal: number): boolean => {
-    if (billedTotal <= 0) return false;
-    const desc = (exp.description || exp.expense_type || '').toLowerCase();
-    const expType = (exp.expense_type || '').toLowerCase();
-    if (expType === 'travel' || expType === 'hotel' || desc.includes('per diem') || desc.includes('hotel')) return false;
-    if (exp.needs_reimbursement) return false;
-    if (exp.actual_cost != null && Number(exp.actual_cost) > 0) return false;
-    return true;
-  };
-
   const expandedExpenses = useMemo(() => {
     if (!expandedProjectId) return [];
     return (ticketExpenses as any[])
       .filter((exp: any) => exp.service_tickets?.project_id === expandedProjectId)
       .map((exp: any) => {
         const billedTotal = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-        const cost = getExpenseCostForDisplay(exp);
-        const markupUnknown = isBilloutActualCostUnset(exp, billedTotal);
-        const profitKnown = markupUnknown ? 0 : billedTotal - cost;
+        const cost = ticketExpenseLineCost(exp);
         return {
           description: exp.description || exp.expense_type || 'Expense',
           type: exp.expense_type || '',
@@ -502,27 +464,15 @@ export default function Profitability() {
           rate: Number(exp.rate) || 0,
           total: billedTotal,
           cost,
-          profit: profitKnown,
-          markupUnknown,
+          profit: billedTotal - cost,
         };
       })
-      .filter((exp: any) => {
-        if (exp.total <= 0) return false;
-        if (exp.markupUnknown) return true;
-        return exp.profit > 0;
-      })
-      .sort((a: any, b: any) => {
-        if (a.markupUnknown !== b.markupUnknown) return a.markupUnknown ? 1 : -1;
-        return b.profit - a.profit;
-      });
-  }, [expandedProjectId, ticketExpenses, empByUserId]);
+      .filter((exp: any) => exp.total > 0)
+      .sort((a: any, b: any) => b.profit - a.profit);
+  }, [expandedProjectId, ticketExpenses, ticketExpenseLineCost]);
 
   const expandedExpenseMarkupKnownTotal = useMemo(
-    () => expandedExpenses.reduce((s, e: any) => s + (e.markupUnknown ? 0 : e.profit), 0),
-    [expandedExpenses]
-  );
-  const expandedExpenseMarkupUnknownCount = useMemo(
-    () => expandedExpenses.filter((e: any) => e.markupUnknown).length,
+    () => expandedExpenses.reduce((s, e: any) => s + e.profit, 0),
     [expandedExpenses]
   );
 
@@ -956,7 +906,7 @@ export default function Profitability() {
               </p>
             </DetailSection>
 
-            {/* Expenses with Markup (only items where billed > cost, e.g. mileage at 90% reimb) */}
+            {/* Billout lines: company/employee cost vs customer billed (markup = billed − cost) */}
             <div style={{ marginBottom: '24px' }}>
               <button
                 type="button"
@@ -980,21 +930,16 @@ export default function Profitability() {
                 }}
               >
                 <span style={{ fontSize: '10px', opacity: 0.8 }}>{expenseMarkupExpanded ? '▼' : '▶'}</span>
-                Expense Markup — ${fmt(expandedExpenseMarkupKnownTotal)}
-                {expandedExpenseMarkupUnknownCount > 0 ? (
-                  <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: '8px', fontSize: '12px' }}>
-                    ({expandedExpenseMarkupUnknownCount} line{expandedExpenseMarkupUnknownCount !== 1 ? 's' : ''} need
-                    Actual Cost)
-                  </span>
-                ) : null}
+                Expense billout &amp; cost — net markup ${fmt(expandedExpenseMarkupKnownTotal)}
               </button>
               {expenseMarkupExpanded && (
                 <div style={{ marginTop: '12px' }}>
                   {expandedExpenses.length === 0 ? (
                     <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
-                      No billout expenses on this project, or no markup where company cost is known.
+                      No billout expenses on this project.
                     </p>
                   ) : (
+                    <>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -1017,34 +962,21 @@ export default function Profitability() {
                             <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.rate)}</td>
                             <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.total)}</td>
                             <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e91e63' }}>
-                              {exp.markupUnknown ? (
-                                <span title="Enter what the company paid in Actual Cost ($) on the service ticket expense">
-                                  ${fmt(exp.cost)}*
-                                </span>
-                              ) : (
-                                `$${fmt(exp.cost)}`
-                              )}
+                              ${fmt(exp.cost)}
                             </td>
                             <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: exp.profit >= 0 ? '#4caf50' : '#e53935' }}>
-                              {exp.markupUnknown ? (
-                                <span style={{ color: 'var(--text-tertiary)' }} title="Markup = billed total − company cost">
-                                  —
-                                </span>
-                              ) : (
-                                `$${fmt(exp.profit)}`
-                              )}
+                              ${fmt(exp.profit)}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  )}
-                  {expandedExpenseMarkupUnknownCount > 0 && (
                     <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '10px', marginBottom: 0 }}>
-                      * Markup is billed total minus <strong>Actual Cost ($)</strong> on the service ticket — not the billed
-                      total alone. Enter your vendor/COGS amount there; top-line profit still includes the full customer
-                      billout and $0 cost until you do.
+                      Company cost uses <strong>Actual Cost ($)</strong> on the ticket line when set; otherwise reimbursable
+                      lines use reimbursement rules, and billed-only equipment/misc uses billed total as a pass-through COGS
+                      estimate (0 markup until vendor cost is entered).
                     </p>
+                    </>
                   )}
                 </div>
               )}

@@ -14,8 +14,19 @@ import {
   exportEmployeeReportsToExcel,
   exportEmployeeReportsToPDF,
 } from '../utils/exportEmployeeReports';
+import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement';
 
 const formatHoursDecimal = (hours: number): string => hours.toFixed(2);
+
+function reimbRateForEmployeeExpense(exp: any, emp: any | undefined): number {
+  const expType = (exp.expense_type || '').toLowerCase();
+  const desc = (exp.description || '').toLowerCase();
+  const e = emp || {};
+  if (desc.includes('per diem')) return Number(e.per_diem_reimb_rate) || 1;
+  if (expType === 'travel') return exp.needs_reimbursement === false ? 0 : Number(e.mileage_reimb_rate) || 0.9;
+  if (expType === 'hotel' || desc.includes('hotel')) return exp.needs_reimbursement === false ? 0 : Number(e.hotel_reimb_rate) || 1;
+  return 1;
+}
 
 export default function EmployeeReports() {
   const { user, isAdmin } = useAuth();
@@ -186,6 +197,11 @@ export default function EmployeeReports() {
     if (!expandedEmployee) return null;
     return sortedMetrics.find(m => m.userId === expandedEmployee) || null;
   }, [expandedEmployee, sortedMetrics]);
+
+  const expandedEmpRecord = useMemo(() => {
+    if (!expandedEmployee || !employees) return undefined;
+    return (employees as any[]).find((e: any) => e.user_id === expandedEmployee);
+  }, [expandedEmployee, employees]);
 
   const fmt = (n: number) => n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -606,10 +622,9 @@ export default function EmployeeReports() {
                                   if (uid !== expandedMetrics.userId) return false;
                                   const expType = (exp.expense_type || '').toLowerCase();
                                   const desc = (exp.description || '').toLowerCase();
-                                  if (expType === 'subsistence' && desc.includes('per diem')) return false;
+                                  if (desc.includes('per diem')) return false;
                                   if (expType === 'travel') return false;
                                   if (expType === 'hotel' || desc.includes('hotel')) return false;
-                                  if (!exp.needs_reimbursement) return false;
                                   return true;
                                 }) : [];
                                 const hasOtherPartsItems = otherPartsItems.length > 0;
@@ -644,7 +659,7 @@ export default function EmployeeReports() {
                                     {isOtherParts && hasOtherPartsItems && otherPartsExpanded && otherPartsItems.map((exp: any) => {
                                       const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
                                       const ticket = exp.service_tickets ?? exp.service_ticket;
-                                      const lineCost = exp.needs_reimbursement ? amt : 0;
+                                      const lineCost = ticketExpenseCostForMargin(exp, reimbRateForEmployeeExpense(exp, expandedEmpRecord));
                                       const ticketLabel = ticket?.ticket_number ? `#${ticket.ticket_number}` : '—';
                                       return (
                                         <tr key={exp.id} style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>

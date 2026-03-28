@@ -5,7 +5,7 @@ import {
   entryServiceTicketMatchKeys,
   dbServiceTicketMatchKeys,
 } from './serviceTickets';
-import { ticketExpenseBilledAmount, ticketExpenseReimbursementBase } from './ticketExpenseReimbursement';
+import { ticketExpenseBilledAmount, ticketExpenseCostForMargin } from './ticketExpenseReimbursement';
 
 export interface TimeEntry {
   id: string;
@@ -648,9 +648,8 @@ export function aggregateEmployeeMetrics(
 
   // Calculate expense cost and billed amount from service ticket expenses for this employee.
   // expenseBilled = total amount billed to customer (all expenses: quantity × rate).
-  // expenseCost = reimbursement cost: what we pay the employee = reimb_base × reimb_rate.
-  // reimb_base is actual_cost (incl. GST) for hotel/other receipt lines when set; else quantity × rate.
-  // Billed-only (needs_reimbursement=false): cost = 0. Reimbursable: cost = reimb_base × reimb_rate.
+  // expenseCost = employee reimbursement (reimb base × rate) and/or company COGS on billed-only lines
+  // (see ticketExpenseCostForMargin: actual_cost when set, else billed for parts/hotel; travel billed-only uses actual only).
   const expenseBreakdownMap = new Map<string, { billed: number; cost: number }>();
   const getOrCreate = (cat: string) => {
     if (!expenseBreakdownMap.has(cat)) expenseBreakdownMap.set(cat, { billed: 0, cost: 0 });
@@ -671,11 +670,7 @@ export function aggregateEmployeeMetrics(
       let category: string;
       let reimbRate = 0;
 
-      // Per Diem: reimbursable from employee settings.
-      // Travel: needs_reimbursement=false = company vehicle, billed only.
-      // Hotel (type or legacy description): needs_reimbursement=false = billed only.
-      // Other/Parts: only include if needs_reimbursement is set (company-paid parts are excluded from Employee Reports).
-      if (expType === 'subsistence' && desc.includes('per diem')) {
+      if (desc.includes('per diem')) {
         category = 'Per Diem';
         reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
       } else if (expType === 'travel') {
@@ -691,16 +686,15 @@ export function aggregateEmployeeMetrics(
             ? 0
             : Number(employee?.hotel_reimb_rate) || 1.00;
       } else {
-        if (!exp.needs_reimbursement) return; // Skip company-paid parts in Employee Reports
         category = 'Other/Parts';
         reimbRate = 1.00;
       }
 
-      const reimbBase = ticketExpenseReimbursementBase(exp);
+      const lineCost = ticketExpenseCostForMargin(exp, reimbRate);
       const entry = getOrCreate(category);
       entry.billed += billed;
-      entry.cost += reimbBase * reimbRate;
-      expenseCost += reimbBase * reimbRate;
+      entry.cost += lineCost;
+      expenseCost += lineCost;
     });
   }
 
@@ -1164,7 +1158,7 @@ export function calculateProjectBreakdown(
       const desc = (exp.description || '').toLowerCase();
 
       let reimbRate = 0;
-      if (expType === 'subsistence' && desc.includes('per diem')) {
+      if (desc.includes('per diem')) {
         reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
       } else if (expType === 'travel') {
         reimbRate =
@@ -1177,7 +1171,7 @@ export function calculateProjectBreakdown(
             ? 0
             : Number(employee?.hotel_reimb_rate) || 1.00;
       } else {
-        reimbRate = exp.needs_reimbursement ? 1.00 : 0;
+        reimbRate = 1.00;
       }
 
       if (!projectMap.has(projectId)) {
@@ -1190,9 +1184,8 @@ export function calculateProjectBreakdown(
         });
       }
       const data = projectMap.get(projectId)!;
-      const reimbBase = ticketExpenseReimbursementBase(exp);
       data.expenseBilled += billed;
-      data.expenseCost += reimbBase * reimbRate;
+      data.expenseCost += ticketExpenseCostForMargin(exp, reimbRate);
     });
   }
 

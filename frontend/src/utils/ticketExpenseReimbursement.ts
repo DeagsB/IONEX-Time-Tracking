@@ -32,3 +32,39 @@ export function ticketExpenseReimbursementBase(exp: {
   if (!isHotelOrMisc) return billed;
   return ac;
 }
+
+/**
+ * Cost side for profitability (labor + expense margin).
+ * - Reimbursable (needs_reimbursement !== false): {@link ticketExpenseReimbursementBase} × reimbRate (employee payout).
+ * - Billed-only (needs_reimbursement === false): company out-of-pocket — `actual_cost` when set; for Travel (company
+ *   vehicle) otherwise 0; for Hotel / Equipment / other billable lines otherwise **billed** (COGS proxy when receipt cost not entered).
+ */
+export function ticketExpenseCostForMargin(
+  exp: {
+    quantity?: number;
+    rate?: number;
+    actual_cost?: number | null;
+    expense_type?: string;
+    description?: string;
+    needs_reimbursement?: boolean;
+  },
+  reimbRate: number
+): number {
+  const billed = ticketExpenseBilledAmount(exp);
+  const billedOnly = exp.needs_reimbursement === false;
+
+  if (!billedOnly) {
+    const base = ticketExpenseReimbursementBase(exp);
+    return base * reimbRate;
+  }
+
+  const expType = (exp.expense_type || '').toLowerCase();
+  if (expType === 'travel') {
+    const ac = exp.actual_cost != null ? Number(exp.actual_cost) : NaN;
+    return ac > 0 && !Number.isNaN(ac) ? ac : 0;
+  }
+
+  const ac = exp.actual_cost != null ? Number(exp.actual_cost) : NaN;
+  if (ac > 0 && !Number.isNaN(ac)) return ac;
+  return billed;
+}
