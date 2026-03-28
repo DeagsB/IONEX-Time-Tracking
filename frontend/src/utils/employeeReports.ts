@@ -115,6 +115,7 @@ export interface EmployeeMetrics {
   billableHoursAllTickets: number;
   nonBillableHours: number;
   billableRatio: number;
+  /** Labor ticket revenue plus expense amounts billed to customer (GST per includeGst) */
   totalRevenue: number;
   laborCost: number;
   expenseCost: number;
@@ -123,8 +124,8 @@ export interface EmployeeMetrics {
   /** Breakdown by category: Per Diem, Mileage, Hotel, Other/Parts */
   expenseBreakdown: { category: string; billed: number; cost: number }[];
   totalCost: number; // laborCost + expenseCost
-  netProfit: number; // Revenue - Total Cost
-  profitMargin: number; // (Net Profit / Revenue) * 100
+  netProfit: number; // totalRevenue - totalCost (includes expense billed in revenue)
+  profitMargin: number; // (Net Profit / totalRevenue) * 100
   averageRate: number;
   averageCostPerHour: number;
   revenuePerHour: number;
@@ -379,6 +380,9 @@ export function aggregateEmployeeMetrics(
     const projectBreakdown = calculateProjectBreakdown([], employee, undefined, ticketExpenses, includeGst);
     const expenseBilled = projectBreakdown.reduce((s, p) => s + p.expenseBilled, 0);
     const expenseCost = projectBreakdown.reduce((s, p) => s + p.expenseCost, 0);
+    const totalRevenueExpensesOnly = expenseBilled;
+    const totalCostExpensesOnly = expenseCost;
+    const netProfitExpensesOnly = totalRevenueExpensesOnly - totalCostExpensesOnly;
     
     return {
       userId,
@@ -392,14 +396,14 @@ export function aggregateEmployeeMetrics(
       billableHoursAllTickets: 0,
       nonBillableHours: 0,
       billableRatio: 0,
-      totalRevenue: 0,
+      totalRevenue: totalRevenueExpensesOnly,
       laborCost: 0,
       expenseCost,
       expenseBilled,
       expenseBreakdown: [], // Category breakdown requires full aggregation; project breakdown has expenses
-      totalCost: 0,
-      netProfit: 0,
-      profitMargin: 0,
+      totalCost: totalCostExpensesOnly,
+      netProfit: netProfitExpensesOnly,
+      profitMargin: totalRevenueExpensesOnly > 0 ? (netProfitExpensesOnly / totalRevenueExpensesOnly) * 100 : 0,
       averageRate: 0,
       averageCostPerHour: 0,
       revenuePerHour: 0,
@@ -702,6 +706,9 @@ export function aggregateEmployeeMetrics(
 
   // Apply GST to billable expense amounts when includeGst is true
   expenseBilled = maybeApplyGst(expenseBilled, includeGst);
+
+  // Total revenue for KPIs / profit = labor (service ticket amounts) + amounts billed for expenses
+  totalRevenue += expenseBilled;
 
   const expenseBreakdown = Array.from(expenseBreakdownMap.entries())
     .filter(([, v]) => v.billed > 0)

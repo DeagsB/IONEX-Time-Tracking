@@ -549,9 +549,10 @@ export default function EmployeeReports() {
                     const bd = expandedMetrics.rateTypeBreakdown;
                     const visibleRows = [bd.internalTime, bd.shopTime, bd.fieldTime, bd.travelTime, bd.shopOvertime, bd.fieldOvertime].filter(r => r.hours > 0);
                     const sumHours = visibleRows.reduce((s, r) => s + r.hours, 0);
-                    const sumRevenue = visibleRows.reduce((s, r) => s + r.revenue, 0);
+                    const sumLaborRevenue = visibleRows.reduce((s, r) => s + r.revenue, 0);
                     const sumCost = visibleRows.reduce((s, r) => s + r.cost, 0) + expandedMetrics.expenseCost;
-                    const sumProfit = sumRevenue - sumCost;
+                    const sumRevenueTotal = sumLaborRevenue + (expandedMetrics.expenseBilled || 0);
+                    const sumProfit = sumRevenueTotal - sumCost;
                     const expenseMargin = (expandedMetrics.expenseBilled || 0) - expandedMetrics.expenseCost;
                     const hasExpenses = (expandedMetrics.expenseBilled || 0) > 0 || expandedMetrics.expenseCost > 0;
                     return (
@@ -670,7 +671,7 @@ export default function EmployeeReports() {
                             {formatHoursDecimal(sumHours)}
                           </td>
                           <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>
-                            {formatCurrency(sumRevenue)}
+                            {formatCurrency(sumRevenueTotal)}
                           </td>
                           <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>
                             {formatCurrency(sumCost)}
