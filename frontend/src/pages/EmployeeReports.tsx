@@ -19,6 +19,7 @@ import {
   exportEmployeeReportsToPDF,
 } from '../utils/exportEmployeeReports';
 import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement';
+import { ReportMethodologyCollapsible } from '../components/ReportMethodologyCollapsible';
 
 const formatHoursDecimal = (hours: number): string => hours.toFixed(2);
 
@@ -306,6 +307,8 @@ export default function EmployeeReports() {
           Include GST (5%) on billable amounts
         </label>
       </div>
+
+      <ReportMethodologyCollapsible variant="employee" />
 
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '28px' }}>

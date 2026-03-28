@@ -11,6 +11,7 @@ import {
   entryServiceTicketMatchKeys,
   dbServiceTicketMatchKeys,
 } from '../utils/serviceTickets';
+import { ReportMethodologyCollapsible } from '../components/ReportMethodologyCollapsible';
 
 interface ProjectFinancials {
   projectId: string;
@@ -541,6 +542,8 @@ export default function Profitability() {
           />
         </div>
       </div>
+
+      <ReportMethodologyCollapsible variant="profitability" />
 
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '28px' }}>
