@@ -320,7 +320,8 @@ export default function Profitability() {
       hours += p.totalHours;
       tickets += p.ticketCount;
     }
-    return { revenue, cost, profit: revenue - cost, hours, tickets };
+    const profit = Math.round((revenue - cost) * 100) / 100;
+    return { revenue, cost, profit, hours, tickets };
   }, [filtered]);
 
   const expandedProject = useMemo(() => {

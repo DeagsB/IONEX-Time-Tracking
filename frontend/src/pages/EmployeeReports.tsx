@@ -170,12 +170,13 @@ export default function EmployeeReports() {
         nonBillableHours: acc.nonBillableHours + m.nonBillableHours,
         totalRevenue: acc.totalRevenue + m.totalRevenue,
         totalCost: acc.totalCost + m.totalCost,
-        netProfit: acc.netProfit + m.netProfit,
         serviceTicketCount: acc.serviceTicketCount + m.serviceTicketCount,
       }),
-      { billableHours: 0, nonBillableHours: 0, totalRevenue: 0, totalCost: 0, netProfit: 0, serviceTicketCount: 0 }
+      { billableHours: 0, nonBillableHours: 0, totalRevenue: 0, totalCost: 0, serviceTicketCount: 0 }
     );
-    return { ...result, totalHours: result.billableHours + result.nonBillableHours };
+    // Match Revenue − Cost (not Σ per-employee netProfit) so KPIs reconcile and float noise stays sub-cent after rounding
+    const netProfit = Math.round((result.totalRevenue - result.totalCost) * 100) / 100;
+    return { ...result, totalHours: result.billableHours + result.nonBillableHours, netProfit };
   }, [sortedMetrics]);
 
   const handleSort = (field: keyof EmployeeMetrics) => {
