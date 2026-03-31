@@ -60,7 +60,8 @@ function payrollDollarsForEntry(
 
 function entryAttributionKey(entry: TimeEntry): string {
   if (entry.id) return `id:${entry.id}`;
-  return `row:${entry.user_id}|${entry.date}|${entry.project_id}|${Number(entry.hours) || 0}|${entry.rate_type ?? ''}|${entry.start_time ?? ''}|${entry.end_time ?? ''}`;
+  const desc = (entry.description ?? '').slice(0, 120);
+  return `row:${entry.user_id}|${entry.date}|${entry.project_id}|${Number(entry.hours) || 0}|${entry.rate_type ?? ''}|${desc}`;
 }
 
 /**
