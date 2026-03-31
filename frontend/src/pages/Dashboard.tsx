@@ -6,6 +6,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 import { timeEntriesService, employeesService, payRateHistoryService } from '../services/supabaseServices';
 import { calculateBurden } from '../utils/employeeReports';
+import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Legend,
@@ -15,6 +16,26 @@ const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+
+/** Sunday-start week key in local timezone (YYYY-MM-DD). Avoids UTC shift from toISOString(). */
+function localWeekStartKey(isoDateStr: string): string {
+  const d = new Date(`${isoDateStr.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return isoDateStr.slice(0, 10);
+  const weekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
+  const y = weekStart.getFullYear();
+  const m = String(weekStart.getMonth() + 1).padStart(2, '0');
+  const day = String(weekStart.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function dashExpenseReimbRate(exp: any, emp: any): number {
+  const desc = (exp.description || '').toLowerCase();
+  const expType = (exp.expense_type || '').toLowerCase();
+  if (desc.includes('per diem')) return Number(emp?.per_diem_reimb_rate) || 1;
+  if (expType === 'travel') return exp.needs_reimbursement === false ? 0 : Number(emp?.mileage_reimb_rate) || 0.9;
+  if (expType === 'hotel' || desc.includes('hotel')) return exp.needs_reimbursement === false ? 0 : Number(emp?.hotel_reimb_rate) || 1;
+  return 1;
+}
 
 export default function Dashboard() {
   const { isAdmin } = useAuth();
@@ -167,7 +188,7 @@ export default function Dashboard() {
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
-  // Cost per ticket from expenses (actual_cost or billed × reimb rate for reimbursable)
+  // Cost per ticket from expenses (aligned with Profitability / Employee Reports)
   const costByTicketId = useMemo(() => {
     const empByUserId = new Map<string, any>();
     for (const e of employees as any[]) {
@@ -176,27 +197,9 @@ export default function Dashboard() {
     const map = new Map<string, number>();
     for (const exp of ticketExpensesRaw as any[]) {
       const tid = exp.service_ticket_id;
-      const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
       const emp = empByUserId.get(exp.service_tickets?.user_id);
-      const desc = (exp.description || exp.expense_type || '').toLowerCase();
-      const expType = (exp.expense_type || '').toLowerCase();
-      let cost = 0;
-      if (expType === 'travel') {
-        if (exp.needs_reimbursement !== false) {
-          cost = amt * (Number(emp?.mileage_reimb_rate) || 0.90);
-        }
-      } else if (desc.includes('per diem')) {
-        cost = amt * (Number(emp?.per_diem_reimb_rate) || 1.00);
-      } else if (expType === 'hotel' || desc.includes('hotel')) {
-        if (exp.needs_reimbursement !== false) {
-          cost = amt * (Number(emp?.hotel_reimb_rate) || 1.00);
-        }
-      } else if (exp.actual_cost != null) {
-        cost = Number(exp.actual_cost);
-      } else if (exp.needs_reimbursement) {
-        cost = amt;
-      }
-      map.set(tid, (map.get(tid) || 0) + cost);
+      const lineCost = ticketExpenseCostForMargin(exp, dashExpenseReimbRate(exp, emp));
+      map.set(tid, (map.get(tid) || 0) + lineCost);
     }
     return map;
   }, [ticketExpensesRaw, employees]);
@@ -243,10 +246,7 @@ export default function Dashboard() {
         else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
         payRate = payRate * (1 + calculateBurden(emp));
       }
-      const d = new Date(entry.date);
-      const weekStart = new Date(d);
-      weekStart.setDate(d.getDate() - d.getDay());
-      const weekKey = weekStart.toISOString().slice(0, 10);
+      const weekKey = localWeekStartKey(entry.date);
       weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + hours * payRate);
     }
     return weekMap;
@@ -273,10 +273,7 @@ export default function Dashboard() {
         custMap.set(custName, (custMap.get(custName) || 0) + amt);
       }
 
-      const d = new Date(t.date);
-      const weekStart = new Date(d);
-      weekStart.setDate(d.getDate() - d.getDay());
-      const weekKey = weekStart.toISOString().slice(0, 10);
+      const weekKey = localWeekStartKey(t.date);
       weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + amt);
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + cost);
     }
@@ -286,17 +283,20 @@ export default function Dashboard() {
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + labor);
     }
 
-    const weeks = Array.from(weekMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
+    const weekKeysUnion = new Set<string>();
+    for (const k of weekMap.keys()) weekKeysUnion.add(k);
+    for (const k of weekCostMap.keys()) weekKeysUnion.add(k);
+
+    const weeks = Array.from(weekKeysUnion)
+      .sort((a, b) => a.localeCompare(b))
       .slice(-12)
-      .map(([week, total]) => {
-        const d = new Date(week);
+      .map((weekKey) => {
+        const d = new Date(`${weekKey}T12:00:00`);
         const label = `${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
-        const rev = Math.round(total);
-        const totalCost = Math.round(weekCostMap.get(week) || 0);
-        const profit = Math.max(0, rev - totalCost);
-        const costSegment = Math.min(totalCost, rev);
-        return { week: label, revenue: rev, cost: costSegment, profit };
+        const rev = Math.round(weekMap.get(weekKey) || 0);
+        const totalCost = Math.round(weekCostMap.get(weekKey) || 0);
+        const profit = rev - totalCost;
+        return { week: label, revenue: rev, totalCost, profit };
       });
 
     const customers = Array.from(custMap.entries())
@@ -399,11 +399,16 @@ export default function Dashboard() {
           borderRadius: '12px',
           padding: '24px',
         }}>
-          <h2 style={{ margin: '0 0 20px', fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)' }}>
+          <h2 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)' }}>
             Weekly Revenue &amp; Cost (Last 12 Weeks)
           </h2>
+          <p style={{ margin: '0 0 16px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
+            Revenue is summed by <strong>service ticket date</strong> week. Cost is ticket expenses (same week) plus{' '}
+            <strong>project labor</strong> from time-entry dates (may not match ticket weeks). Profit = revenue − cost.
+            Grouped bars avoid hiding losses (previously stacked profit was capped at $0).
+          </p>
           {revenueByWeek.length === 0 ? (
-            <p style={{ color: 'var(--text-secondary)' }}>No ticket data yet.</p>
+            <p style={{ color: 'var(--text-secondary)' }}>No ticket or labor data in this window.</p>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={revenueByWeek} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
@@ -414,6 +419,7 @@ export default function Dashboard() {
                   content={({ active, payload }) => {
                     if (!active || !payload?.length) return null;
                     const d = payload[0]?.payload;
+                    const p = Number(d?.profit ?? 0);
                     return (
                       <div style={{
                         padding: '10px 14px',
@@ -423,15 +429,17 @@ export default function Dashboard() {
                         fontSize: '13px',
                       }}>
                         <div style={{ fontWeight: '600', marginBottom: '6px' }}>{d?.week}</div>
-                        <div>Revenue: {fmt(d?.revenue ?? 0)}</div>
-                        <div style={{ color: '#ef4444' }}>Cost: {fmt(d?.cost ?? 0)}</div>
-                        <div style={{ color: '#10b981' }}>Profit: {fmt(d?.profit ?? 0)}</div>
+                        <div style={{ color: '#10b981' }}>Revenue: {fmt(d?.revenue ?? 0)}</div>
+                        <div style={{ color: '#ef4444' }}>Cost: {fmt(d?.totalCost ?? 0)}</div>
+                        <div style={{ color: p >= 0 ? '#10b981' : '#ef4444' }}>
+                          Profit: {fmt(p)}
+                        </div>
                       </div>
                     );
                   }}
                 />
-                <Bar dataKey="cost" stackId="a" fill="#ef4444" name="Cost" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="profit" stackId="a" fill="#10b981" name="Profit" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" fill="#10b981" name="Revenue" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="totalCost" fill="#ef4444" name="Cost" radius={[4, 4, 0, 0]} />
                 <Legend formatter={(value) => <span style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{value}</span>} />
               </BarChart>
             </ResponsiveContainer>
