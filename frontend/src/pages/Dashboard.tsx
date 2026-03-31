@@ -268,7 +268,7 @@ export default function Dashboard() {
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + cost);
     }
 
-    // Add labor attributed to each ticket’s service week (billable matched entries only)
+    // Labor: matched billable → ticket week; other project time → entry week
     for (const [weekKey, labor] of laborCostByTicketWeek) {
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + labor);
     }
@@ -442,9 +442,9 @@ export default function Dashboard() {
           </h2>
           <p style={{ margin: '0 0 16px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
             Revenue is summed by <strong>service ticket date</strong> week (Mon–Sun). Ticket expenses attach to that same ticket week.{' '}
-            <strong>Payroll labor</strong> uses the same rules as Profitability: billable entries matched to a ticket (same date, user,
-            project, location &amp; PO/AFE), then counted in <em>that ticket’s</em> week — not the raw calendar week of random project
-            hours. Project time with no matching ticket on that date is omitted. Profit = revenue − cost. Grouped bars avoid hiding losses.
+            <strong>Payroll labor:</strong> billable hours matched to a ticket (same Profitability rules) go to <em>that ticket’s</em>{' '}
+            week; <strong>non-billable</strong> project time and <strong>unmatched</strong> billable project time go to the{' '}
+            <strong>time-entry date</strong> week so total project payroll is included. Profit = revenue − cost. Grouped bars avoid hiding losses.
           </p>
           {revenueByWeek.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)' }}>No ticket or labor data in this window.</p>

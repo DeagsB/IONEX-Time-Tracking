@@ -1,6 +1,7 @@
 /**
- * Payroll cost attributed to service-ticket *service date* weeks (not time-entry calendar weeks).
- * Matches Profitability / Employee Reports: same day, user, project, location & PO/AFE grouping, billable only.
+ * Payroll cost for the dashboard weekly chart:
+ * 1) Billable entries matched to a service ticket → that ticket’s *service date* week (Profitability rules).
+ * 2) All other project time (non-billable + unmatched billable) → the time entry’s calendar week (full cost picture).
  */
 
 import {
@@ -57,9 +58,13 @@ function payrollDollarsForEntry(
   return hours * payRate;
 }
 
+function entryAttributionKey(entry: TimeEntry): string {
+  if (entry.id) return `id:${entry.id}`;
+  return `row:${entry.user_id}|${entry.date}|${entry.project_id}|${Number(entry.hours) || 0}|${entry.rate_type ?? ''}|${entry.start_time ?? ''}|${entry.end_time ?? ''}`;
+}
+
 /**
- * Sum payroll cost per Monday week key, using each ticket’s service `date` week (not entry.date week).
- * Only billable entries that match a ticket row (location / PO rules) are included — same as Profitability.
+ * Sum payroll cost per Monday week key: matched billable labor on ticket weeks, then remaining project labor on entry weeks.
  */
 export function laborCostByTicketServiceWeek(
   ticketsRaw: any[],
@@ -76,8 +81,9 @@ export function laborCostByTicketServiceWeek(
   const rateHistoryByEmpId = buildRateHistoryByEmpId(rateHistory);
 
   const entries = allTimeEntries as TimeEntry[];
-  if (entries.length === 0 || ticketsRaw.length === 0) return weekMap;
+  if (entries.length === 0) return weekMap;
 
+  const attributedKeys = new Set<string>();
   const sharedMaps = buildSharedMapsByProject(entries);
 
   for (const t of ticketsRaw) {
@@ -99,10 +105,25 @@ export function laborCostByTicketServiceWeek(
     const matched = entriesMatchingServiceTicket(entries, ticket, sharedMaps);
     const wk = weekStartKeyFromDate(ticket.date);
     for (const entry of matched) {
+      attributedKeys.add(entryAttributionKey(entry));
       const emp = empByUserId.get(entry.user_id);
       const dollars = payrollDollarsForEntry(entry, emp, rateHistoryByEmpId);
       weekMap.set(wk, (weekMap.get(wk) || 0) + dollars);
     }
+  }
+
+  // Non-billable and billable-but-unmatched project time → cost in the week the hours were logged
+  for (const entry of entries) {
+    if (!entry.project_id) continue;
+    const hours = Number(entry.hours) || 0;
+    if (hours <= 0) continue;
+    if (attributedKeys.has(entryAttributionKey(entry))) continue;
+
+    const emp = empByUserId.get(entry.user_id);
+    const dollars = payrollDollarsForEntry(entry, emp, rateHistoryByEmpId);
+    if (dollars <= 0) continue;
+    const wk = weekStartKeyFromDate(String(entry.date).slice(0, 10));
+    weekMap.set(wk, (weekMap.get(wk) || 0) + dollars);
   }
 
   return weekMap;

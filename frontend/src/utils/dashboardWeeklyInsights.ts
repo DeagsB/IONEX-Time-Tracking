@@ -246,7 +246,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
           id: 'wow-profit-loss',
           tone: 'attention',
           title: `Latest chart week in the red (${b.week})`,
-          detail: `Revenue ${fmtMoney(b.revenue)} vs cost ${fmtMoney(b.totalCost)} on that bar (ticket expenses plus labor matched to those tickets; see dashboard chart footnote).`,
+          detail: `Revenue ${fmtMoney(b.revenue)} vs cost ${fmtMoney(b.totalCost)} on that bar (ticket expenses, ticket-matched labor, and other project payroll by work week; see chart footnote).`,
           actionLabel: 'Profitability',
           actionPath: '/profitability',
         });
