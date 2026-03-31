@@ -332,7 +332,7 @@ function isBillable(entry: TimeEntry): boolean {
 }
 
 /** Precompute shared location/PO maps per project (same as Service Tickets grouping). */
-function buildSharedMapsByProject(entries: TimeEntry[]): Map<string, ReturnType<typeof buildSharedFieldsMapForProject>> {
+export function buildSharedMapsByProject(entries: TimeEntry[]): Map<string, ReturnType<typeof buildSharedFieldsMapForProject>> {
   const byProject = new Map<string, TimeEntry[]>();
   entries.forEach((e) => {
     if (!e.project_id) return;
@@ -347,7 +347,7 @@ function buildSharedMapsByProject(entries: TimeEntry[]): Map<string, ReturnType<
 }
 
 /** Time entries that belong on this service ticket (not all same-day rows for user+project). */
-function entriesMatchingServiceTicket(
+export function entriesMatchingServiceTicket(
   entries: TimeEntry[],
   ticket: ServiceTicketHours,
   sharedMapsByProject: Map<string, ReturnType<typeof buildSharedFieldsMapForProject>>

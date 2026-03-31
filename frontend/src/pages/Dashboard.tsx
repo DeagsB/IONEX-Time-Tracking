@@ -5,8 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 import { timeEntriesService, employeesService, payRateHistoryService } from '../services/supabaseServices';
-import { calculateBurden } from '../utils/employeeReports';
 import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement';
+import { laborCostByTicketServiceWeek } from '../utils/dashboardChartLabor';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
@@ -113,7 +113,7 @@ export default function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from(ticketTable)
-        .select('id, date, total_amount, total_hours, workflow_status, ticket_number, customer_id, project_id, is_discarded, customers(name)')
+        .select('id, date, total_amount, total_hours, workflow_status, ticket_number, customer_id, project_id, user_id, location, header_overrides, is_discarded, customers(name)')
         .or('is_discarded.eq.false,is_discarded.is.null');
       if (error) throw error;
       return (data || []).filter((t: any) => {
@@ -193,53 +193,18 @@ export default function Dashboard() {
     return map;
   }, [ticketExpensesRaw, employees]);
 
-  // Labor cost by week (from time entries: hours × pay rate × burden)
-  const laborCostByWeek = useMemo(() => {
-    const empByUserId = new Map<string, any>();
-    for (const e of employees as any[]) {
-      if (e.user_id) empByUserId.set(e.user_id, e);
-    }
-    const rateHistoryByEmpId = new Map<string, any[]>();
-    for (const r of rateHistory as any[]) {
-      const list = rateHistoryByEmpId.get(r.employee_id) || [];
-      list.push(r);
-      rateHistoryByEmpId.set(r.employee_id, list);
-    }
-    rateHistoryByEmpId.forEach((list) => list.sort((a: any, b: any) => (a.effective_date || '').localeCompare(b.effective_date || '')));
-
-    const getRatesForDate = (emp: any, date: string) => {
-      const history = rateHistoryByEmpId.get(emp?.id);
-      if (!history?.length) return emp;
-      let match = history[0];
-      for (const h of history) {
-        if ((h.effective_date || '') <= date) match = h;
-        else break;
-      }
-      return match;
-    };
-
-    const weekMap = new Map<string, number>();
-    for (const entry of allTimeEntries as any[]) {
-      if (!entry.project_id || !entry.hours) continue;
-      const hours = Number(entry.hours) || 0;
-      const emp = empByUserId.get(entry.user_id);
-      let payRate = 0;
-      const rateType = entry.rate_type || 'Shop Time';
-      if (emp) {
-        const rates = getRatesForDate(emp, entry.date);
-        if (rateType === 'Internal') payRate = Number(rates.internal_rate) || Number(rates.shop_pay_rate) || 0;
-        else if (rateType === 'Shop Time') payRate = Number(rates.shop_pay_rate) || 0;
-        else if (rateType === 'Field Time') payRate = Number(rates.field_pay_rate) || 0;
-        else if (rateType === 'Travel Time') payRate = Number(rates.shop_pay_rate) || 0;
-        else if (rateType === 'Shop Overtime') payRate = Number(rates.shop_ot_pay_rate) || 0;
-        else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
-        payRate = payRate * (1 + calculateBurden(emp));
-      }
-      const weekKey = localMondayWeekStartKey(entry.date);
-      weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + hours * payRate);
-    }
-    return weekMap;
-  }, [allTimeEntries, employees, rateHistory]);
+  // Labor cost by ticket *service date* week (matches Profitability entry↔ticket matching; not raw entry.date weeks)
+  const laborCostByTicketWeek = useMemo(
+    () =>
+      laborCostByTicketServiceWeek(
+        ticketsRaw as any[],
+        allTimeEntries as any[],
+        employees as any[],
+        rateHistory as any[],
+        localMondayWeekStartKey,
+      ),
+    [ticketsRaw, allTimeEntries, employees, rateHistory],
+  );
 
   const {
     mtdRevenue,
@@ -303,8 +268,8 @@ export default function Dashboard() {
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + cost);
     }
 
-    // Add labor cost to each week
-    for (const [weekKey, labor] of laborCostByWeek) {
+    // Add labor attributed to each ticket’s service week (billable matched entries only)
+    for (const [weekKey, labor] of laborCostByTicketWeek) {
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + labor);
     }
 
@@ -346,7 +311,7 @@ export default function Dashboard() {
       monthBeforeLastLabel: twoMoStartD.toLocaleString('en', { month: 'long', year: 'numeric' }),
       currentMonthLabel: new Date(y, mo, 1).toLocaleString('en', { month: 'long', year: 'numeric' }),
     };
-  }, [ticketsRaw, costByTicketId, laborCostByWeek, calendarDayKey]);
+  }, [ticketsRaw, costByTicketId, laborCostByTicketWeek, calendarDayKey]);
 
   // ─── Action items (with search params to open Employee Overview on target page) ───
   const actionItems = [
@@ -476,9 +441,10 @@ export default function Dashboard() {
             Weekly Revenue &amp; Cost (Last 12 Weeks)
           </h2>
           <p style={{ margin: '0 0 16px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
-            Revenue is summed by <strong>service ticket date</strong> week. Cost is ticket expenses (same week) plus{' '}
-            <strong>project labor</strong> from time-entry dates (may not match ticket weeks). Profit = revenue − cost.
-            Grouped bars avoid hiding losses (previously stacked profit was capped at $0).
+            Revenue is summed by <strong>service ticket date</strong> week (Mon–Sun). Ticket expenses attach to that same ticket week.{' '}
+            <strong>Payroll labor</strong> uses the same rules as Profitability: billable entries matched to a ticket (same date, user,
+            project, location &amp; PO/AFE), then counted in <em>that ticket’s</em> week — not the raw calendar week of random project
+            hours. Project time with no matching ticket on that date is omitted. Profit = revenue − cost. Grouped bars avoid hiding losses.
           </p>
           {revenueByWeek.length === 0 ? (
             <p style={{ color: 'var(--text-secondary)' }}>No ticket or labor data in this window.</p>

@@ -216,7 +216,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
         id: 'chart-week-in-progress',
         tone: 'neutral',
         title: `Latest chart week still in progress (${b.week})`,
-        detail: `WoW % and “in the red” are skipped here: ticket revenue for the current week builds through the week, while labor cost often lands earlier, so comparing this bar to the full prior week (${a.week}) is misleading. Rolling trends above use completed weeks when possible.`,
+        detail: `WoW % and “in the red” are skipped here: this week’s bar only has ticket-dated revenue and matched labor so far, while ${a.week} is a full week—so side‑by‑side % and profit are not comparable yet. Rolling trends above exclude the open week when possible.`,
       });
     } else {
       const pr = pctChange(b.revenue, a.revenue);
@@ -246,7 +246,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
           id: 'wow-profit-loss',
           tone: 'attention',
           title: `Latest chart week in the red (${b.week})`,
-          detail: `Revenue ${fmtMoney(b.revenue)} vs cost ${fmtMoney(b.totalCost)} on that bar. Costs include ticket expenses and project labor (may sit in different weeks than ticket revenue).`,
+          detail: `Revenue ${fmtMoney(b.revenue)} vs cost ${fmtMoney(b.totalCost)} on that bar (ticket expenses plus labor matched to those tickets; see dashboard chart footnote).`,
           actionLabel: 'Profitability',
           actionPath: '/profitability',
         });
