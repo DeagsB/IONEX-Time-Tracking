@@ -570,10 +570,21 @@ export default function WeekView() {
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // Calculate week total
+  // Week total must match the sum of daily totals: use clock overlap per day (same as getDayTotal),
+  // not raw entry.hours — otherwise overnight / cross-week entries double-count outside visible days.
   const getWeekTotal = () => {
     if (!timeEntries) return '00:00:00';
-    const totalSeconds = timeEntries.reduce((sum: number, e: any) => sum + Number(e.hours) * 3600, 0);
+    let totalSeconds = 0;
+    for (const { date } of weekDays) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`;
+      totalSeconds += timeEntries.reduce(
+        (sum: number, e: any) => sum + getEntryHoursOnDate(e, dateStr) * 3600,
+        0
+      );
+    }
     return formatTime(Math.floor(totalSeconds));
   };
 
