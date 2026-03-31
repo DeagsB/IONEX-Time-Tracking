@@ -315,9 +315,6 @@ export default function Dashboard() {
   const weeklyInsights = useMemo(
     () =>
       buildDashboardWeeklyInsights({
-        now: new Date(),
-        ticketsRaw: ticketsRaw as any[],
-        allTimeEntries: allTimeEntries as any[],
         revenueByWeek,
         uninvoicedWip,
         pendingLiability,
@@ -331,8 +328,6 @@ export default function Dashboard() {
         mtdRevenue,
       }),
     [
-      ticketsRaw,
-      allTimeEntries,
       revenueByWeek,
       uninvoicedWip,
       pendingLiability,
@@ -486,8 +481,8 @@ export default function Dashboard() {
             Insights of the week
           </h2>
           <p style={{ margin: '0 0 18px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-            Calendar week (Mon–Sun, same as payroll/calendar) for tickets and time; chart bars use ticket-week revenue vs costs. Red highlights need follow-up;
-            green is momentum. Use the links to jump to the right screen.
+            WIP, weekly chart trends, and admin queues—not live “this week” logging. Red highlights need follow-up; green is momentum.
+            Use the links to jump to the right screen.
           </p>
           <DashboardWeeklyInsights insights={weeklyInsights} />
         </div>

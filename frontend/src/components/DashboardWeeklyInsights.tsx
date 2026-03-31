@@ -84,7 +84,7 @@ export default function DashboardWeeklyInsights({ insights }: { insights: Dashbo
   if (insights.length === 0) {
     return (
       <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-        Load ticket and time data to see weekly insights.
+        No insights yet—add ticket or chart data, or clear queues to see summaries here.
       </p>
     );
   }
@@ -131,13 +131,13 @@ export default function DashboardWeeklyInsights({ insights }: { insights: Dashbo
       )}
       {section(
         "What's going well",
-        'Revenue momentum, healthy WIP, or strong utilization.',
+        'Chart momentum, healthy WIP, or a clear action queue.',
         positive,
         attention.length ? 18 : 0,
       )}
       {section(
         'Context & snapshot',
-        'Week-over-week movement and reference numbers (not necessarily problems).',
+        'Chart trends and reference numbers (not necessarily problems).',
         neutral,
         attention.length || positive.length ? 18 : 0,
       )}

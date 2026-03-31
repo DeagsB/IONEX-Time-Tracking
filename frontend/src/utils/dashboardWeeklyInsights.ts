@@ -3,8 +3,6 @@
  * Tones: attention = needs follow-up, positive = momentum / healthy, neutral = context.
  */
 
-import { getMondaySundayWeekBounds } from './localMondayWeek';
-
 export type DashboardInsightTone = 'attention' | 'positive' | 'neutral';
 
 export type DashboardInsight = {
@@ -15,17 +13,6 @@ export type DashboardInsight = {
   actionLabel?: string;
   actionPath?: string;
 };
-
-function inRange(ymd: string | undefined, start: string, end: string): boolean {
-  if (!ymd) return false;
-  const x = ymd.slice(0, 10);
-  return x >= start && x <= end;
-}
-
-function isInternalEntry(entry: any): boolean {
-  const rt = String(entry?.rate_type || '').toLowerCase();
-  return rt === 'internal' || rt.includes('internal');
-}
 
 function fmtMoney(n: number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -42,9 +29,6 @@ function sortInsights(list: DashboardInsight[]): DashboardInsight[] {
 }
 
 export type BuildDashboardInsightsInput = {
-  now: Date;
-  ticketsRaw: any[];
-  allTimeEntries: any[];
   revenueByWeek: { week: string; revenue: number; totalCost: number; profit: number }[];
   uninvoicedWip: number;
   pendingLiability: number;
@@ -60,9 +44,6 @@ export type BuildDashboardInsightsInput = {
 
 export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput): DashboardInsight[] {
   const {
-    now,
-    ticketsRaw,
-    allTimeEntries,
     revenueByWeek,
     uninvoicedWip,
     pendingLiability,
@@ -76,121 +57,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
     mtdRevenue,
   } = input;
 
-  const { weekStart, weekEnd, prevWeekStart, prevWeekEnd, label } = getMondaySundayWeekBounds(now);
   const insights: DashboardInsight[] = [];
-
-  // —— Activity: tickets & time (this week vs prior week) ——
-  let ticketRevThis = 0;
-  let ticketRevPrev = 0;
-  let ticketCountThis = 0;
-  let ticketCountPrev = 0;
-  let invoicedThis = 0;
-  let invoicedPrev = 0;
-
-  for (const t of ticketsRaw) {
-    const amt = Number(t.total_amount) || 0;
-    const d = t.date;
-    if (inRange(d, weekStart, weekEnd)) {
-      ticketRevThis += amt;
-      ticketCountThis += 1;
-      if (t.ticket_number) invoicedThis += 1;
-    } else if (inRange(d, prevWeekStart, prevWeekEnd)) {
-      ticketRevPrev += amt;
-      ticketCountPrev += 1;
-      if (t.ticket_number) invoicedPrev += 1;
-    }
-  }
-
-  let billableHThis = 0;
-  let totalHThis = 0;
-  let billableHPrev = 0;
-  let totalHPrev = 0;
-  let projectHThis = 0;
-
-  for (const e of allTimeEntries as any[]) {
-    const h = Number(e.hours) || 0;
-    if (h <= 0) continue;
-    if (inRange(e.date, weekStart, weekEnd)) {
-      totalHThis += h;
-      if (e.project_id) projectHThis += h;
-      if (e.project_id && !isInternalEntry(e)) billableHThis += h;
-    } else if (inRange(e.date, prevWeekStart, prevWeekEnd)) {
-      totalHPrev += h;
-      if (e.project_id && !isInternalEntry(e)) billableHPrev += h;
-    }
-  }
-
-  const utilThis = totalHThis > 0 ? (billableHThis / totalHThis) * 100 : null;
-  const utilPrev = totalHPrev > 0 ? (billableHPrev / totalHPrev) * 100 : null;
-
-  insights.push({
-    id: 'snapshot-week',
-    tone: 'neutral',
-    title: `This week (${label})`,
-    detail: `${ticketCountThis} service ticket${ticketCountThis !== 1 ? 's' : ''} dated this week (${fmtMoney(ticketRevThis)} billed on tickets). ${invoicedThis} ticket${invoicedThis !== 1 ? 's' : ''} already have invoice numbers. ${totalHThis.toFixed(1)}h logged on the calendar (${projectHThis.toFixed(1)}h on a project).`,
-  });
-
-  const revWoW = pctChange(ticketRevThis, ticketRevPrev);
-  if (revWoW != null && ticketCountPrev + ticketCountThis > 0) {
-    const up = revWoW >= 1;
-    const down = revWoW <= -1;
-    insights.push({
-      id: 'wow-ticket-revenue',
-      tone: down ? 'attention' : up ? 'positive' : 'neutral',
-      title: down ? 'Ticket revenue dipped vs last week' : up ? 'Ticket revenue up vs last week' : 'Ticket revenue steady vs last week',
-      detail: `Ticket-dated revenue ${fmtMoney(ticketRevThis)} this week vs ${fmtMoney(ticketRevPrev)} last week (${revWoW >= 0 ? '+' : ''}${revWoW.toFixed(0)}%). Ticket count: ${ticketCountThis} vs ${ticketCountPrev}.`,
-    });
-  }
-
-  if (utilThis != null && totalHThis >= 8) {
-    if (utilThis >= 72) {
-      insights.push({
-        id: 'util-strong',
-        tone: 'positive',
-        title: 'Strong billable focus this week',
-        detail: `About ${utilThis.toFixed(0)}% of logged hours were on-project and non-internal (${billableHThis.toFixed(1)}h of ${totalHThis.toFixed(1)}h).`,
-      });
-    } else if (utilThis < 48) {
-      insights.push({
-        id: 'util-low',
-        tone: 'attention',
-        title: 'Low billable mix this week',
-        detail: `Only ${utilThis.toFixed(0)}% of hours were on-project non-internal (${billableHThis.toFixed(1)}h of ${totalHThis.toFixed(1)}h). Internal and overhead are normal—check if project time is missing from the calendar.`,
-        actionLabel: 'Open calendar',
-        actionPath: '/calendar',
-      });
-    }
-  }
-
-  if (utilThis != null && utilPrev != null && totalHThis >= 8 && totalHPrev >= 8) {
-    const delta = utilThis - utilPrev;
-    if (delta >= 8) {
-      insights.push({
-        id: 'util-wow-up',
-        tone: 'positive',
-        title: 'Billable mix improved vs last week',
-        detail: `Billable share of hours rose by ${delta.toFixed(0)} percentage points week over week.`,
-      });
-    } else if (delta <= -8) {
-      insights.push({
-        id: 'util-wow-down',
-        tone: 'neutral',
-        title: 'Billable mix softer vs last week',
-        detail: `Billable share of hours fell by ${Math.abs(delta).toFixed(0)} percentage points—often seasonal or project phase.`,
-      });
-    }
-  }
-
-  if (invoicedThis >= 3) {
-    insights.push({
-      id: 'invoicing-cadence',
-      tone: 'positive',
-      title: 'Healthy invoicing cadence',
-      detail: `${invoicedThis} tickets dated this week already carry invoice numbers—good flow from field to billing.`,
-      actionLabel: 'Service tickets',
-      actionPath: '/service-tickets',
-    });
-  }
 
   // —— Chart weeks (last bar = most recent week in chart) ——
   if (revenueByWeek.length >= 1) {
