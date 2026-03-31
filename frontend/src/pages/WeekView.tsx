@@ -7,7 +7,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { timeEntriesService, projectsService, employeesService, customersService, serviceTicketsService } from '../services/supabaseServices';
 import SearchableSelect, { SearchableSelectRef } from '../components/SearchableSelect';
 import { supabase } from '../lib/supabaseClient';
-import { getEntryHoursOnDate } from '../utils/timeEntryUtils';
+import { getEntryHoursOnDate, getEntryOverlapSecondsOnDate } from '../utils/timeEntryUtils';
 import { getProjectApproverPoAfe, getProjectHeaderFields } from '../utils/serviceTickets';
 
 interface TimeEntry {
@@ -581,11 +581,11 @@ export default function WeekView() {
       const d = String(date.getDate()).padStart(2, '0');
       const dateStr = `${y}-${m}-${d}`;
       totalSeconds += timeEntries.reduce(
-        (sum: number, e: any) => sum + getEntryHoursOnDate(e, dateStr) * 3600,
+        (sum: number, e: any) => sum + getEntryOverlapSecondsOnDate(e, dateStr),
         0
       );
     }
-    return formatTime(Math.floor(totalSeconds));
+    return formatTime(totalSeconds);
   };
 
   // Get day total (includes overnight rollover: only hours that fall on this date)
@@ -596,10 +596,10 @@ export default function WeekView() {
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
     const totalSeconds = timeEntries.reduce(
-      (sum: number, e: any) => sum + getEntryHoursOnDate(e, dateStr) * 3600,
+      (sum: number, e: any) => sum + getEntryOverlapSecondsOnDate(e, dateStr),
       0
     );
-    return formatTime(Math.floor(totalSeconds));
+    return formatTime(totalSeconds);
   };
 
   // Get unique projects from entries
@@ -1918,7 +1918,10 @@ export default function WeekView() {
                     const year = date.getFullYear();
                     const isCurrentYear = year === new Date().getFullYear();
 
-                    const dayTotalSeconds = Math.round(dayEntries.reduce((sum: number, d) => sum + d.hoursOnThisDay * 3600, 0));
+                    const dayTotalSeconds = dayEntries.reduce(
+                      (sum: number, d) => sum + getEntryOverlapSecondsOnDate(d.entry, dateStr),
+                      0
+                    );
                     const dayTotalHours = Math.floor(dayTotalSeconds / 3600);
                     const dayTotalMinutes = Math.floor((dayTotalSeconds % 3600) / 60);
                     const dayTotalSecs = Math.floor(dayTotalSeconds % 60);
@@ -1970,7 +1973,7 @@ export default function WeekView() {
 
                           // Format duration
                           const formatDuration = (hours: number) => {
-                            const totalSeconds = Math.floor(hours * 3600);
+                            const totalSeconds = Math.round(hours * 3600);
                             const h = Math.floor(totalSeconds / 3600);
                             const m = Math.floor((totalSeconds % 3600) / 60);
                             const s = totalSeconds % 60;
