@@ -321,7 +321,7 @@ export default function Dashboard() {
         const rev = Math.round(weekMap.get(weekKey) || 0);
         const totalCost = Math.round(weekCostMap.get(weekKey) || 0);
         const profit = rev - totalCost;
-        return { week: label, revenue: rev, totalCost, profit };
+        return { week: label, weekStartKey: weekKey, revenue: rev, totalCost, profit };
       });
 
     const sortedCust = Array.from(custMap.entries()).sort((a, b) => b[1] - a[1]);
@@ -363,6 +363,7 @@ export default function Dashboard() {
     () =>
       buildDashboardWeeklyInsights({
         revenueByWeek,
+        currentWeekStartKey: localMondayWeekStartKey(calendarDayKey),
         uninvoicedWip,
         pendingLiability,
         topUnbilledCustomer,
@@ -376,6 +377,7 @@ export default function Dashboard() {
       }),
     [
       revenueByWeek,
+      calendarDayKey,
       uninvoicedWip,
       pendingLiability,
       topUnbilledCustomer,
