@@ -1,5 +1,5 @@
 /**
- * Financial dashboard insights: week-over-week chart bars, rolling 4-week ticket revenue,
+ * Financial dashboard insights: week-over-week chart bars, rolling 4-week invoiced ticket revenue,
  * completed-month MoM, MTD vs same calendar days last month, plus WIP / liability $ signals.
  */
 
@@ -77,21 +77,21 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
     lastBar != null &&
     lastBar.weekStartKey === currentWeekStartKey;
 
-  // —— Completed month vs prior month (ticket revenue) ——
+  // —— Completed month vs prior month (invoiced ticket revenue) ——
   if (lastMonthRevenue > 0 || monthBeforeLastRevenue > 0) {
     const mom = pctChange(lastMonthRevenue, monthBeforeLastRevenue);
     let tone: DashboardInsightTone = 'neutral';
-    let title = `Ticket revenue: ${lastMonthLabel}`;
+    let title = `Invoiced revenue: ${lastMonthLabel}`;
     if (monthBeforeLastRevenue <= 0 && lastMonthRevenue > 0) {
       tone = 'positive';
-      title = `Ticket revenue picked up in ${lastMonthLabel}`;
+      title = `Invoiced revenue picked up in ${lastMonthLabel}`;
     } else if (mom != null) {
       if (mom <= -7) {
         tone = 'attention';
-        title = `Ticket revenue slipped: ${lastMonthLabel} vs ${monthBeforeLastLabel}`;
+        title = `Invoiced revenue slipped: ${lastMonthLabel} vs ${monthBeforeLastLabel}`;
       } else if (mom >= 5) {
         tone = 'positive';
-        title = `Ticket revenue grew: ${lastMonthLabel} vs ${monthBeforeLastLabel}`;
+        title = `Invoiced revenue grew: ${lastMonthLabel} vs ${monthBeforeLastLabel}`;
       }
     }
     const momLine =
@@ -104,7 +104,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
       id: 'mom-ticket-revenue',
       tone,
       title,
-      detail: `${fmtMoney(lastMonthRevenue)} on approved-path tickets dated in ${lastMonthLabel}${momLine} Pre-GST rollup; use Employee Reports if you bill GST-inclusive.`,
+      detail: `${fmtMoney(lastMonthRevenue)} on invoiced service tickets dated in ${lastMonthLabel}${momLine} Pre-GST rollup; use Employee Reports if you bill GST-inclusive.`,
       actionLabel: 'Employee reports',
       actionPath: '/employee-reports',
     });
@@ -117,7 +117,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
     let title = `${currentMonthLabel} pace vs ${lastMonthLabel} (same days)`;
     if (priorMonthSamePeriodRevenue <= 0 && mtdRevenue > 0) {
       tone = 'positive';
-      title = `${currentMonthLabel} has ticket revenue building`;
+      title = `${currentMonthLabel} has invoiced revenue building`;
     } else if (pace != null && priorMonthSamePeriodRevenue > 0) {
       if (pace <= -12) {
         tone = 'attention';
@@ -131,7 +131,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
       id: 'mtd-pace',
       tone,
       title,
-      detail: `${fmtMoney(mtdRevenue)} MTD ticket revenue vs ${fmtMoney(priorMonthSamePeriodRevenue)} on the same calendar days in ${lastMonthLabel}${pace != null && priorMonthSamePeriodRevenue > 0 ? ` (${pace >= 0 ? '+' : ''}${pace.toFixed(0)}%).` : '.'}`,
+      detail: `${fmtMoney(mtdRevenue)} MTD invoiced revenue vs ${fmtMoney(priorMonthSamePeriodRevenue)} on the same calendar days in ${lastMonthLabel}${pace != null && priorMonthSamePeriodRevenue > 0 ? ` (${pace >= 0 ? '+' : ''}${pace.toFixed(0)}%).` : '.'}`,
       actionLabel: 'Employee reports',
       actionPath: '/employee-reports',
     });
@@ -179,13 +179,13 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
       if (revCh != null && revCh <= -10) {
         tone = 'attention';
         title = latestWeekIsInProgress
-          ? 'Completed chart weeks: ticket revenue down vs the prior block'
-          : 'Ticket-week revenue down over the last month of bars';
+          ? 'Completed chart weeks: invoiced revenue down vs the prior block'
+          : 'Invoiced revenue down over the last month of bars';
       } else if (revCh != null && revCh >= 6 && prof4 >= profPrev4 - 1) {
         tone = 'positive';
         title = latestWeekIsInProgress
-          ? 'Completed chart weeks: ticket revenue up vs the prior block'
-          : 'Ticket-week revenue up over the last month of bars';
+          ? 'Completed chart weeks: invoiced revenue up vs the prior block'
+          : 'Invoiced revenue up over the last month of bars';
       } else if (prof4 < 0 && profPrev4 >= 0) {
         tone = 'attention';
         title = latestWeekIsInProgress
@@ -201,7 +201,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
         id: 'roll-4w',
         tone,
         title,
-        detail: `Summed from the weekly chart above (ticket-date revenue vs costs): ${revPart}${profPart}.`,
+        detail: `Summed from the weekly chart above (invoiced ticket-date revenue vs payroll + receipts): ${revPart}${profPart}.`,
       });
     }
   }
@@ -216,7 +216,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
         id: 'chart-week-in-progress',
         tone: 'neutral',
         title: `Latest chart week still in progress (${b.week})`,
-        detail: `WoW % and “in the red” are skipped here: this week’s bar only has ticket-dated revenue and matched labor so far, while ${a.week} is a full week—so side‑by‑side % and profit are not comparable yet. Rolling trends above exclude the open week when possible.`,
+        detail: `WoW % and “in the red” are skipped here: this week’s bar only has invoiced ticket-dated revenue and costs so far, while ${a.week} is a full week—so side‑by‑side % and profit are not comparable yet. Rolling trends above exclude the open week when possible.`,
       });
     } else {
       const pr = pctChange(b.revenue, a.revenue);
@@ -233,10 +233,10 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
           tone,
           title:
             pr != null && pr <= -8
-              ? 'Latest chart week: ticket revenue dropped vs prior bar'
-              : pr != null && pr >= 5
-                ? 'Latest chart week: ticket revenue up vs prior bar'
-                : 'Latest chart week: ticket revenue vs prior bar',
+            ? 'Latest chart week: invoiced revenue dropped vs prior bar'
+            : pr != null && pr >= 5
+              ? 'Latest chart week: invoiced revenue up vs prior bar'
+              : 'Latest chart week: invoiced revenue vs prior bar',
           detail: `${fmtMoney(a.revenue)} (${a.week}) → ${fmtMoney(b.revenue)} (${b.week})${pr != null ? ` (${pr >= 0 ? '+' : ''}${pr.toFixed(0)}%).` : '.'}`,
         });
       }
@@ -246,7 +246,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
           id: 'wow-profit-loss',
           tone: 'attention',
           title: `Latest chart week in the red (${b.week})`,
-          detail: `Revenue ${fmtMoney(b.revenue)} vs cost ${fmtMoney(b.totalCost)} on that bar (ticket expenses, ticket-matched labor, and other project payroll by work week; see chart footnote).`,
+          detail: `Invoiced revenue ${fmtMoney(b.revenue)} vs cost ${fmtMoney(b.totalCost)} on that bar (payroll + approved/paid employee receipts by week; see chart footnote).`,
           actionLabel: 'Profitability',
           actionPath: '/profitability',
         });

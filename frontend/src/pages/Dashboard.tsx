@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 import { timeEntriesService, employeesService, payRateHistoryService } from '../services/supabaseServices';
-import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement';
 import { laborCostByTicketServiceWeek } from '../utils/dashboardChartLabor';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -17,13 +16,9 @@ import { localMondayWeekStartKey } from '../utils/localMondayWeek';
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-function dashExpenseReimbRate(exp: any, emp: any): number {
-  const desc = (exp.description || '').toLowerCase();
-  const expType = (exp.expense_type || '').toLowerCase();
-  if (desc.includes('per diem')) return Number(emp?.per_diem_reimb_rate) || 1;
-  if (expType === 'travel') return exp.needs_reimbursement === false ? 0 : Number(emp?.mileage_reimb_rate) || 0.9;
-  if (expType === 'hotel' || desc.includes('hotel')) return exp.needs_reimbursement === false ? 0 : Number(emp?.hotel_reimb_rate) || 1;
-  return 1;
+function isInvoicedTicket(t: { ticket_number?: string | null }): boolean {
+  const n = t.ticket_number;
+  return n != null && String(n).trim() !== '';
 }
 
 export default function Dashboard() {
@@ -107,7 +102,7 @@ export default function Dashboard() {
     enabled: isAdmin,
   });
 
-  // ─── Financial: All non-draft/rejected tickets (for MTD Revenue, Uninvoiced WIP, revenue chart) ───
+  // ─── Financial: All non-draft/rejected tickets (invoiced revenue, WIP, chart, labor matching) ───
   const { data: ticketsRaw = [] } = useQuery({
     queryKey: ['dash-tickets-financials', isDemoMode],
     queryFn: async () => {
@@ -122,22 +117,6 @@ export default function Dashboard() {
       });
     },
     enabled: isAdmin,
-  });
-
-  // ─── Ticket expenses for cost (actual_cost) by ticket ───
-  const { data: ticketExpensesRaw = [] } = useQuery({
-    queryKey: ['dash-ticket-expenses', ticketsRaw.length, isDemoMode],
-    queryFn: async () => {
-      const ticketIds = (ticketsRaw as any[]).map((t: any) => t.id).filter(Boolean);
-      if (ticketIds.length === 0) return [];
-      const { data, error } = await supabase
-        .from('service_ticket_expenses')
-        .select('service_ticket_id, actual_cost, quantity, rate, needs_reimbursement, expense_type, description, service_tickets!inner(user_id)')
-        .in('service_ticket_id', ticketIds);
-      if (error) return [];
-      return data || [];
-    },
-    enabled: isAdmin && (ticketsRaw as any[]).length > 0,
   });
 
   // ─── Time entries for labor cost ───
@@ -177,21 +156,28 @@ export default function Dashboard() {
   const _today = new Date();
   const calendarDayKey = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, '0')}-${String(_today.getDate()).padStart(2, '0')}`;
 
-  // Cost per ticket from expenses (aligned with Profitability / Employee Reports)
-  const costByTicketId = useMemo(() => {
-    const empByUserId = new Map<string, any>();
-    for (const e of employees as any[]) {
-      if (e.user_id) empByUserId.set(e.user_id, e);
-    }
-    const map = new Map<string, number>();
-    for (const exp of ticketExpensesRaw as any[]) {
-      const tid = exp.service_ticket_id;
-      const emp = empByUserId.get(exp.service_tickets?.user_id);
-      const lineCost = ticketExpenseCostForMargin(exp, dashExpenseReimbRate(exp, emp));
-      map.set(tid, (map.get(tid) || 0) + lineCost);
-    }
-    return map;
-  }, [ticketExpensesRaw, employees]);
+  const chartUserExpenseStartDate = useMemo(() => {
+    const d = new Date(`${calendarDayKey}T12:00:00`);
+    d.setDate(d.getDate() - 150);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }, [calendarDayKey]);
+
+  const { data: chartUserExpensesRaw = [] } = useQuery({
+    queryKey: ['dash-chart-user-expenses', chartUserExpenseStartDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_expenses')
+        .select('expense_date, amount, gst')
+        .in('status', ['approved', 'paid'])
+        .gte('expense_date', chartUserExpenseStartDate);
+      if (error) return [];
+      return data || [];
+    },
+    enabled: isAdmin,
+  });
 
   // Labor cost by ticket *service date* week (matches Profitability entry↔ticket matching; not raw entry.date weeks)
   const laborCostByTicketWeek = useMemo(
@@ -246,29 +232,42 @@ export default function Dashboard() {
     let monthBeforeRev = 0;
     let priorMonthPace = 0;
 
+    const weekUserExpenseMap = new Map<string, number>();
+    for (const r of chartUserExpensesRaw as any[]) {
+      const ed = r.expense_date;
+      if (!ed) continue;
+      const line = (Number(r.amount) || 0) + (Number(r.gst) || 0);
+      if (line <= 0) continue;
+      const wk = localMondayWeekStartKey(String(ed).slice(0, 10));
+      weekUserExpenseMap.set(wk, (weekUserExpenseMap.get(wk) || 0) + line);
+    }
+
     for (const t of ticketsRaw as any[]) {
       const amt = Number(t.total_amount) || 0;
-      const cost = costByTicketId.get(t.id) || 0;
+      const invoiced = isInvoicedTicket(t);
 
-      if (t.date >= monthStart) mtd += amt;
-      if (t.date >= lmStart && t.date <= lmEnd) lastMonthRev += amt;
-      if (t.date >= bmStart && t.date <= bmEnd) monthBeforeRev += amt;
-      if (t.date >= lmStart && t.date <= pmPartialEnd) priorMonthPace += amt;
+      if (invoiced) {
+        if (t.date >= monthStart) mtd += amt;
+        if (t.date >= lmStart && t.date <= lmEnd) lastMonthRev += amt;
+        if (t.date >= bmStart && t.date <= bmEnd) monthBeforeRev += amt;
+        if (t.date >= lmStart && t.date <= pmPartialEnd) priorMonthPace += amt;
 
-      const hasTicketNumber = !!t.ticket_number;
-      if (!hasTicketNumber) {
+        const weekKey = localMondayWeekStartKey(t.date);
+        weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + amt);
+      }
+
+      if (!invoiced) {
         wip += amt;
 
         const custName = t.customers?.name || 'Unknown';
         custMap.set(custName, (custMap.get(custName) || 0) + amt);
       }
-
-      const weekKey = localMondayWeekStartKey(t.date);
-      weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + amt);
-      weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + cost);
     }
 
-    // Labor: matched billable → ticket week; other project time → entry week
+    for (const [weekKey, line] of weekUserExpenseMap) {
+      weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + line);
+    }
+
     for (const [weekKey, labor] of laborCostByTicketWeek) {
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + labor);
     }
@@ -311,7 +310,7 @@ export default function Dashboard() {
       monthBeforeLastLabel: twoMoStartD.toLocaleString('en', { month: 'long', year: 'numeric' }),
       currentMonthLabel: new Date(y, mo, 1).toLocaleString('en', { month: 'long', year: 'numeric' }),
     };
-  }, [ticketsRaw, costByTicketId, laborCostByTicketWeek, calendarDayKey]);
+  }, [ticketsRaw, chartUserExpensesRaw, laborCostByTicketWeek, calendarDayKey]);
 
   // ─── Action items (with search params to open Employee Overview on target page) ───
   const actionItems = [
@@ -372,7 +371,7 @@ export default function Dashboard() {
 
       {/* ── KPI Cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <KpiCard label="MTD Revenue" value={fmt(mtdRevenue)} color="#10b981" />
+        <KpiCard label="MTD Invoiced" value={fmt(mtdRevenue)} color="#10b981" />
         <KpiCard label="Uninvoiced WIP" value={fmt(uninvoicedWip)} color="#3b82f6" />
         <KpiCard label="Pending Liability" value={fmt(pendingLiability)} color="#f59e0b" />
         <KpiCard label="Action Items" value={String(totalActionItems)} color={totalActionItems > 0 ? '#ef4444' : '#10b981'} />
@@ -438,16 +437,17 @@ export default function Dashboard() {
           padding: '24px',
         }}>
           <h2 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)' }}>
-            Weekly Revenue &amp; Cost (Last 12 Weeks)
+            Weekly Invoiced Revenue &amp; Cost (Last 12 Weeks)
           </h2>
           <p style={{ margin: '0 0 16px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
-            Revenue is summed by <strong>service ticket date</strong> week (Mon–Sun). Ticket expenses attach to that same ticket week.{' '}
-            <strong>Payroll labor:</strong> billable hours matched to a ticket (same Profitability rules) go to <em>that ticket’s</em>{' '}
-            week; <strong>non-billable</strong> project time and <strong>unmatched</strong> billable project time go to the{' '}
-            <strong>time-entry date</strong> week so total project payroll is included. Profit = revenue − cost. Grouped bars avoid hiding losses.
+            <strong>Revenue</strong> is only <strong>invoiced</strong> service tickets (has invoice / ticket number), summed by{' '}
+            <strong>service ticket date</strong> week (Mon–Sun). <strong>Cost</strong> is <strong>payroll</strong> (loaded labor: ticket-matched
+            billable hours on the ticket’s week, plus other project time on the time-entry week) plus <strong>employee-reported expenses</strong>{' '}
+            (approved or paid employee receipts, by <strong>expense date</strong> week). Service-ticket line-item materials are not in
+            this cost bar. Profit = revenue − cost.
           </p>
           {revenueByWeek.length === 0 ? (
-            <p style={{ color: 'var(--text-secondary)' }}>No ticket or labor data in this window.</p>
+            <p style={{ color: 'var(--text-secondary)' }}>No invoiced revenue or payroll/expense cost in this window.</p>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={revenueByWeek} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
@@ -468,8 +468,8 @@ export default function Dashboard() {
                         fontSize: '13px',
                       }}>
                         <div style={{ fontWeight: '600', marginBottom: '6px' }}>{d?.week}</div>
-                        <div style={{ color: '#10b981' }}>Revenue: {fmt(d?.revenue ?? 0)}</div>
-                        <div style={{ color: '#ef4444' }}>Cost: {fmt(d?.totalCost ?? 0)}</div>
+                        <div style={{ color: '#10b981' }}>Invoiced revenue: {fmt(d?.revenue ?? 0)}</div>
+                        <div style={{ color: '#ef4444' }}>Payroll + receipts: {fmt(d?.totalCost ?? 0)}</div>
                         <div style={{ color: p >= 0 ? '#10b981' : '#ef4444' }}>
                           Profit: {fmt(p)}
                         </div>
@@ -477,8 +477,8 @@ export default function Dashboard() {
                     );
                   }}
                 />
-                <Bar dataKey="revenue" fill="#10b981" name="Revenue" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="totalCost" fill="#ef4444" name="Cost" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" fill="#10b981" name="Invoiced revenue" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="totalCost" fill="#ef4444" name="Payroll + receipts" radius={[4, 4, 0, 0]} />
                 <Legend formatter={(value) => <span style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{value}</span>} />
               </BarChart>
             </ResponsiveContainer>
@@ -496,8 +496,9 @@ export default function Dashboard() {
             Financial insights
           </h2>
           <p style={{ margin: '0 0 18px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-            Week-over-week chart bars, rolling four-week totals, full-month ticket revenue vs the month before, and MTD vs the same
-            calendar days last month. Red = worth a closer look; green = momentum. Ops queues stay in Action Items above.
+            Week-over-week chart bars use <strong>invoiced</strong> ticket revenue vs payroll plus approved/paid employee expenses. Rolling
+            four-week totals, full-month invoiced revenue vs the month before, and MTD vs the same calendar days last month. Red = worth a
+            closer look; green = momentum. Ops queues stay in Action Items above.
           </p>
           <DashboardWeeklyInsights insights={weeklyInsights} />
         </div>
