@@ -3,6 +3,8 @@
  * Tones: attention = needs follow-up, positive = momentum / healthy, neutral = context.
  */
 
+import { getMondaySundayWeekBounds } from './localMondayWeek';
+
 export type DashboardInsightTone = 'attention' | 'positive' | 'neutral';
 
 export type DashboardInsight = {
@@ -13,43 +15,6 @@ export type DashboardInsight = {
   actionLabel?: string;
   actionPath?: string;
 };
-
-function toYmd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** Sunday–Saturday bounds in local time, plus the prior full week. */
-export function getLocalWeekBounds(anchor: Date): {
-  weekStart: string;
-  weekEnd: string;
-  prevWeekStart: string;
-  prevWeekEnd: string;
-  label: string;
-} {
-  const d = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
-  const dow = d.getDay();
-  const ws = new Date(d);
-  ws.setDate(d.getDate() - dow);
-  const we = new Date(ws);
-  we.setDate(ws.getDate() + 6);
-  const pws = new Date(ws);
-  pws.setDate(ws.getDate() - 7);
-  const pwe = new Date(ws);
-  pwe.setDate(ws.getDate() - 1);
-  const weekStart = toYmd(ws);
-  const weekEnd = toYmd(we);
-  const label = `${ws.toLocaleString('en', { month: 'short', day: 'numeric' })} – ${we.toLocaleString('en', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-  return {
-    weekStart,
-    weekEnd,
-    prevWeekStart: toYmd(pws),
-    prevWeekEnd: toYmd(pwe),
-    label,
-  };
-}
 
 function inRange(ymd: string | undefined, start: string, end: string): boolean {
   if (!ymd) return false;
@@ -111,7 +76,7 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
     mtdRevenue,
   } = input;
 
-  const { weekStart, weekEnd, prevWeekStart, prevWeekEnd, label } = getLocalWeekBounds(now);
+  const { weekStart, weekEnd, prevWeekStart, prevWeekEnd, label } = getMondaySundayWeekBounds(now);
   const insights: DashboardInsight[] = [];
 
   // —— Activity: tickets & time (this week vs prior week) ——

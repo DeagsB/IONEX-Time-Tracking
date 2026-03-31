@@ -6,6 +6,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
 import { ticketExpenseReimbursementBase } from '../utils/ticketExpenseReimbursement';
+import { startOfWeekMonday } from '../utils/localMondayWeek';
 
 interface TimeEntry {
   id: string;
@@ -156,15 +157,16 @@ const getPresetRange = (preset: string): { start: string; end: string } | null =
       return { start: formatDate(start), end: formatDate(end) };
     }
     case 'thisWeek':
-      start = new Date(today);
-      start.setDate(today.getDate() - today.getDay());
+      start = startOfWeekMonday(today);
       return { start: formatDate(start), end: formatDate(today) };
-    case 'lastWeek':
-      start = new Date(today);
-      start.setDate(today.getDate() - today.getDay() - 7);
+    case 'lastWeek': {
+      const thisMonday = startOfWeekMonday(today);
+      start = new Date(thisMonday);
+      start.setDate(thisMonday.getDate() - 7);
       end = new Date(start);
       end.setDate(start.getDate() + 6);
       return { start: formatDate(start), end: formatDate(end) };
+    }
     case 'last2Weeks':
       start = new Date(today);
       start.setDate(today.getDate() - 14);
@@ -860,15 +862,16 @@ export default function Payroll() {
         return;
       }
       case 'thisWeek':
-        start = new Date(today);
-        start.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+        start = startOfWeekMonday(today);
         break;
-      case 'lastWeek':
-        start = new Date(today);
-        start.setDate(today.getDate() - today.getDay() - 7);
+      case 'lastWeek': {
+        const thisMonday = startOfWeekMonday(today);
+        start = new Date(thisMonday);
+        start.setDate(thisMonday.getDate() - 7);
         end = new Date(start);
         end.setDate(start.getDate() + 6);
         break;
+      }
       case 'last2Weeks':
         start = new Date(today);
         start.setDate(today.getDate() - 14);

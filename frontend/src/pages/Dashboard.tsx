@@ -12,20 +12,10 @@ import {
 } from 'recharts';
 import DashboardWeeklyInsights from '../components/DashboardWeeklyInsights';
 import { buildDashboardWeeklyInsights } from '../utils/dashboardWeeklyInsights';
+import { localMondayWeekStartKey } from '../utils/localMondayWeek';
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
-
-/** Sunday-start week key in local timezone (YYYY-MM-DD). Avoids UTC shift from toISOString(). */
-function localWeekStartKey(isoDateStr: string): string {
-  const d = new Date(`${isoDateStr.slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return isoDateStr.slice(0, 10);
-  const weekStart = new Date(d.getFullYear(), d.getMonth(), d.getDate() - d.getDay());
-  const y = weekStart.getFullYear();
-  const m = String(weekStart.getMonth() + 1).padStart(2, '0');
-  const day = String(weekStart.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 function dashExpenseReimbRate(exp: any, emp: any): number {
   const desc = (exp.description || '').toLowerCase();
@@ -245,7 +235,7 @@ export default function Dashboard() {
         else if (rateType === 'Field Overtime') payRate = Number(rates.field_ot_pay_rate) || 0;
         payRate = payRate * (1 + calculateBurden(emp));
       }
-      const weekKey = localWeekStartKey(entry.date);
+      const weekKey = localMondayWeekStartKey(entry.date);
       weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + hours * payRate);
     }
     return weekMap;
@@ -272,7 +262,7 @@ export default function Dashboard() {
         custMap.set(custName, (custMap.get(custName) || 0) + amt);
       }
 
-      const weekKey = localWeekStartKey(t.date);
+      const weekKey = localMondayWeekStartKey(t.date);
       weekMap.set(weekKey, (weekMap.get(weekKey) || 0) + amt);
       weekCostMap.set(weekKey, (weekCostMap.get(weekKey) || 0) + cost);
     }
@@ -496,7 +486,7 @@ export default function Dashboard() {
             Insights of the week
           </h2>
           <p style={{ margin: '0 0 18px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-            Calendar week (Sun–Sat) for tickets and time; chart bars use ticket-week revenue vs costs. Red highlights need follow-up;
+            Calendar week (Mon–Sun, same as payroll/calendar) for tickets and time; chart bars use ticket-week revenue vs costs. Red highlights need follow-up;
             green is momentum. Use the links to jump to the right screen.
           </p>
           <DashboardWeeklyInsights insights={weeklyInsights} />
