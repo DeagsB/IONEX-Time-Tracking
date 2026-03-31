@@ -8,14 +8,13 @@ import { timeEntriesService, employeesService, payRateHistoryService } from '../
 import { calculateBurden } from '../utils/employeeReports';
 import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  PieChart, Pie, Cell, Legend,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts';
+import DashboardWeeklyInsights from '../components/DashboardWeeklyInsights';
+import { buildDashboardWeeklyInsights } from '../utils/dashboardWeeklyInsights';
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 });
-
-const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
 /** Sunday-start week key in local timezone (YYYY-MM-DD). Avoids UTC shift from toISOString(). */
 function localWeekStartKey(isoDateStr: string): string {
@@ -252,7 +251,7 @@ export default function Dashboard() {
     return weekMap;
   }, [allTimeEntries, employees, rateHistory]);
 
-  const { mtdRevenue, uninvoicedWip, revenueByWeek, unbilledByCustomer } = useMemo(() => {
+  const { mtdRevenue, uninvoicedWip, revenueByWeek, topUnbilledCustomer } = useMemo(() => {
     let mtd = 0;
     let wip = 0;
     const weekMap = new Map<string, number>();
@@ -299,12 +298,17 @@ export default function Dashboard() {
         return { week: label, revenue: rev, totalCost, profit };
       });
 
-    const customers = Array.from(custMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, value]) => ({ name: name.length > 20 ? name.slice(0, 18) + '...' : name, value: Math.round(value) }));
+    const sortedCust = Array.from(custMap.entries()).sort((a, b) => b[1] - a[1]);
+    const top =
+      sortedCust[0] != null
+        ? {
+            name:
+              sortedCust[0][0].length > 28 ? sortedCust[0][0].slice(0, 26) + '…' : sortedCust[0][0],
+            value: Math.round(sortedCust[0][1]),
+          }
+        : null;
 
-    return { mtdRevenue: mtd, uninvoicedWip: wip, revenueByWeek: weeks, unbilledByCustomer: customers };
+    return { mtdRevenue: mtd, uninvoicedWip: wip, revenueByWeek: weeks, topUnbilledCustomer: top };
   }, [ticketsRaw, monthStart, costByTicketId, laborCostByWeek]);
 
   // ─── Action items (with search params to open Employee Overview on target page) ───
@@ -317,6 +321,41 @@ export default function Dashboard() {
   ];
 
   const totalActionItems = actionItems.reduce((s, i) => s + i.count, 0);
+
+  const weeklyInsights = useMemo(
+    () =>
+      buildDashboardWeeklyInsights({
+        now: new Date(),
+        ticketsRaw: ticketsRaw as any[],
+        allTimeEntries: allTimeEntries as any[],
+        revenueByWeek,
+        uninvoicedWip,
+        pendingLiability,
+        topUnbilledCustomer,
+        awaitingReviewCount,
+        resubmittedCount,
+        pendingExpenseCount,
+        missingNumberCount,
+        openBugCount,
+        totalActionItems,
+        mtdRevenue,
+      }),
+    [
+      ticketsRaw,
+      allTimeEntries,
+      revenueByWeek,
+      uninvoicedWip,
+      pendingLiability,
+      topUnbilledCustomer,
+      awaitingReviewCount,
+      resubmittedCount,
+      pendingExpenseCount,
+      missingNumberCount,
+      openBugCount,
+      totalActionItems,
+      mtdRevenue,
+    ],
+  );
 
   if (!isAdmin) return null;
 
@@ -446,50 +485,21 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Top Unbilled Customers (Donut) */}
+        {/* Insights of the week */}
         <div style={{
           backgroundColor: 'var(--bg-primary)',
           border: '1px solid var(--border-color)',
           borderRadius: '12px',
           padding: '24px',
         }}>
-          <h2 style={{ margin: '0 0 20px', fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)' }}>
-            Top Unbilled Customers
+          <h2 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)' }}>
+            Insights of the week
           </h2>
-          {unbilledByCustomer.length === 0 ? (
-            <p style={{ color: 'var(--text-secondary)' }}>No uninvoiced tickets.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={unbilledByCustomer}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={2}
-                >
-                  {unbilledByCustomer.map((_, idx) => (
-                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value: unknown) => fmt(Number(value ?? 0))}
-                  contentStyle={{
-                    backgroundColor: 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '8px',
-                    fontSize: '13px',
-                  }}
-                />
-                <Legend
-                  formatter={(value: string) => <span style={{ color: 'var(--text-primary)', fontSize: '12px' }}>{value}</span>}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
+          <p style={{ margin: '0 0 18px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+            Calendar week (Sun–Sat) for tickets and time; chart bars use ticket-week revenue vs costs. Red highlights need follow-up;
+            green is momentum. Use the links to jump to the right screen.
+          </p>
+          <DashboardWeeklyInsights insights={weeklyInsights} />
         </div>
       </div>
     </div>
