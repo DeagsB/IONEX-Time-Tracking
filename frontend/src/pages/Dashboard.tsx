@@ -174,8 +174,8 @@ export default function Dashboard() {
   });
 
   // ─── Derived financial metrics ───
-  const now = new Date();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const _today = new Date();
+  const calendarDayKey = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, '0')}-${String(_today.getDate()).padStart(2, '0')}`;
 
   // Cost per ticket from expenses (aligned with Profitability / Employee Reports)
   const costByTicketId = useMemo(() => {
@@ -241,18 +241,54 @@ export default function Dashboard() {
     return weekMap;
   }, [allTimeEntries, employees, rateHistory]);
 
-  const { mtdRevenue, uninvoicedWip, revenueByWeek, topUnbilledCustomer } = useMemo(() => {
+  const {
+    mtdRevenue,
+    uninvoicedWip,
+    revenueByWeek,
+    topUnbilledCustomer,
+    lastMonthRevenue,
+    monthBeforeLastRevenue,
+    priorMonthSamePeriodRevenue,
+    lastMonthLabel,
+    monthBeforeLastLabel,
+    currentMonthLabel,
+  } = useMemo(() => {
+    const today = new Date(`${calendarDayKey}T12:00:00`);
+    const y = today.getFullYear();
+    const mo = today.getMonth();
+    const monthStart = `${y}-${String(mo + 1).padStart(2, '0')}-01`;
+
     let mtd = 0;
     let wip = 0;
     const weekMap = new Map<string, number>();
     const weekCostMap = new Map<string, number>();
     const custMap = new Map<string, number>();
+    const fmtYmd = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const lastMonthStartD = new Date(y, mo - 1, 1);
+    const lastMonthEndD = new Date(y, mo, 0);
+    const twoMoStartD = new Date(y, mo - 2, 1);
+    const twoMoEndD = new Date(y, mo - 1, 0);
+    const lmStart = fmtYmd(lastMonthStartD);
+    const lmEnd = fmtYmd(lastMonthEndD);
+    const bmStart = fmtYmd(twoMoStartD);
+    const bmEnd = fmtYmd(twoMoEndD);
+    const dom = today.getDate();
+    const capDay = Math.min(dom, lastMonthEndD.getDate());
+    const pmPartialEnd = fmtYmd(new Date(y, mo - 1, capDay));
+
+    let lastMonthRev = 0;
+    let monthBeforeRev = 0;
+    let priorMonthPace = 0;
 
     for (const t of ticketsRaw as any[]) {
       const amt = Number(t.total_amount) || 0;
       const cost = costByTicketId.get(t.id) || 0;
 
       if (t.date >= monthStart) mtd += amt;
+      if (t.date >= lmStart && t.date <= lmEnd) lastMonthRev += amt;
+      if (t.date >= bmStart && t.date <= bmEnd) monthBeforeRev += amt;
+      if (t.date >= lmStart && t.date <= pmPartialEnd) priorMonthPace += amt;
 
       const hasTicketNumber = !!t.ticket_number;
       if (!hasTicketNumber) {
@@ -298,8 +334,19 @@ export default function Dashboard() {
           }
         : null;
 
-    return { mtdRevenue: mtd, uninvoicedWip: wip, revenueByWeek: weeks, topUnbilledCustomer: top };
-  }, [ticketsRaw, monthStart, costByTicketId, laborCostByWeek]);
+    return {
+      mtdRevenue: mtd,
+      uninvoicedWip: wip,
+      revenueByWeek: weeks,
+      topUnbilledCustomer: top,
+      lastMonthRevenue: Math.round(lastMonthRev),
+      monthBeforeLastRevenue: Math.round(monthBeforeRev),
+      priorMonthSamePeriodRevenue: Math.round(priorMonthPace),
+      lastMonthLabel: lastMonthStartD.toLocaleString('en', { month: 'long', year: 'numeric' }),
+      monthBeforeLastLabel: twoMoStartD.toLocaleString('en', { month: 'long', year: 'numeric' }),
+      currentMonthLabel: new Date(y, mo, 1).toLocaleString('en', { month: 'long', year: 'numeric' }),
+    };
+  }, [ticketsRaw, costByTicketId, laborCostByWeek, calendarDayKey]);
 
   // ─── Action items (with search params to open Employee Overview on target page) ───
   const actionItems = [
@@ -319,26 +366,26 @@ export default function Dashboard() {
         uninvoicedWip,
         pendingLiability,
         topUnbilledCustomer,
-        awaitingReviewCount,
-        resubmittedCount,
-        pendingExpenseCount,
-        missingNumberCount,
-        openBugCount,
-        totalActionItems,
         mtdRevenue,
+        lastMonthRevenue,
+        monthBeforeLastRevenue,
+        priorMonthSamePeriodRevenue,
+        lastMonthLabel,
+        monthBeforeLastLabel,
+        currentMonthLabel,
       }),
     [
       revenueByWeek,
       uninvoicedWip,
       pendingLiability,
       topUnbilledCustomer,
-      awaitingReviewCount,
-      resubmittedCount,
-      pendingExpenseCount,
-      missingNumberCount,
-      openBugCount,
-      totalActionItems,
       mtdRevenue,
+      lastMonthRevenue,
+      monthBeforeLastRevenue,
+      priorMonthSamePeriodRevenue,
+      lastMonthLabel,
+      monthBeforeLastLabel,
+      currentMonthLabel,
     ],
   );
 
@@ -478,11 +525,11 @@ export default function Dashboard() {
           padding: '24px',
         }}>
           <h2 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)' }}>
-            Insights of the week
+            Financial insights
           </h2>
           <p style={{ margin: '0 0 18px', fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-            WIP, weekly chart trends, and admin queues—not live “this week” logging. Red highlights need follow-up; green is momentum.
-            Use the links to jump to the right screen.
+            Week-over-week chart bars, rolling four-week totals, full-month ticket revenue vs the month before, and MTD vs the same
+            calendar days last month. Red = worth a closer look; green = momentum. Ops queues stay in Action Items above.
           </p>
           <DashboardWeeklyInsights insights={weeklyInsights} />
         </div>

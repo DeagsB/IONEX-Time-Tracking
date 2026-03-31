@@ -1,6 +1,6 @@
 /**
- * Rule-based weekly insights for the admin dashboard (tickets, time, WIP, queues).
- * Tones: attention = needs follow-up, positive = momentum / healthy, neutral = context.
+ * Financial dashboard insights: week-over-week chart bars, rolling 4-week ticket revenue,
+ * completed-month MoM, MTD vs same calendar days last month, plus WIP / liability $ signals.
  */
 
 export type DashboardInsightTone = 'attention' | 'positive' | 'neutral';
@@ -33,13 +33,13 @@ export type BuildDashboardInsightsInput = {
   uninvoicedWip: number;
   pendingLiability: number;
   topUnbilledCustomer: { name: string; value: number } | null;
-  awaitingReviewCount: number;
-  resubmittedCount: number;
-  pendingExpenseCount: number;
-  missingNumberCount: number;
-  openBugCount: number;
-  totalActionItems: number;
   mtdRevenue: number;
+  lastMonthRevenue: number;
+  monthBeforeLastRevenue: number;
+  priorMonthSamePeriodRevenue: number;
+  lastMonthLabel: string;
+  monthBeforeLastLabel: string;
+  currentMonthLabel: string;
 };
 
 export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput): DashboardInsight[] {
@@ -48,78 +48,208 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
     uninvoicedWip,
     pendingLiability,
     topUnbilledCustomer,
-    awaitingReviewCount,
-    resubmittedCount,
-    pendingExpenseCount,
-    missingNumberCount,
-    openBugCount,
-    totalActionItems,
     mtdRevenue,
+    lastMonthRevenue,
+    monthBeforeLastRevenue,
+    priorMonthSamePeriodRevenue,
+    lastMonthLabel,
+    monthBeforeLastLabel,
+    currentMonthLabel,
   } = input;
 
   const insights: DashboardInsight[] = [];
 
-  // —— Chart weeks (last bar = most recent week in chart) ——
-  if (revenueByWeek.length >= 1) {
-    const latest = revenueByWeek[revenueByWeek.length - 1];
-    if (latest.profit < 0) {
-      insights.push({
-        id: 'chart-week-loss',
-        tone: 'attention',
-        title: `Latest chart week in the red (${latest.week})`,
-        detail: `Revenue ${fmtMoney(latest.revenue)} vs cost ${fmtMoney(latest.totalCost)} on the weekly chart (ticket-week revenue vs mixed costs). Review Project Profitability for project-level detail.`,
-        actionLabel: 'Profitability',
-        actionPath: '/profitability',
-      });
-    } else if (latest.revenue > 0 && latest.profit / latest.revenue >= 0.18) {
-      insights.push({
-        id: 'chart-week-margin',
-        tone: 'positive',
-        title: `Solid margin in the latest chart week (${latest.week})`,
-        detail: `Roughly ${((latest.profit / latest.revenue) * 100).toFixed(0)}% margin on that bar (${fmtMoney(latest.profit)} on ${fmtMoney(latest.revenue)}).`,
-      });
+  // —— Completed month vs prior month (ticket revenue) ——
+  if (lastMonthRevenue > 0 || monthBeforeLastRevenue > 0) {
+    const mom = pctChange(lastMonthRevenue, monthBeforeLastRevenue);
+    let tone: DashboardInsightTone = 'neutral';
+    let title = `Ticket revenue: ${lastMonthLabel}`;
+    if (monthBeforeLastRevenue <= 0 && lastMonthRevenue > 0) {
+      tone = 'positive';
+      title = `Ticket revenue picked up in ${lastMonthLabel}`;
+    } else if (mom != null) {
+      if (mom <= -7) {
+        tone = 'attention';
+        title = `Ticket revenue slipped: ${lastMonthLabel} vs ${monthBeforeLastLabel}`;
+      } else if (mom >= 5) {
+        tone = 'positive';
+        title = `Ticket revenue grew: ${lastMonthLabel} vs ${monthBeforeLastLabel}`;
+      }
     }
+    const momLine =
+      monthBeforeLastRevenue > 0 && mom != null
+        ? ` (${mom >= 0 ? '+' : ''}${mom.toFixed(0)}% vs ${monthBeforeLastLabel}).`
+        : monthBeforeLastRevenue > 0
+          ? ` (vs ${fmtMoney(monthBeforeLastRevenue)} in ${monthBeforeLastLabel}).`
+          : '.';
+    insights.push({
+      id: 'mom-ticket-revenue',
+      tone,
+      title,
+      detail: `${fmtMoney(lastMonthRevenue)} on approved-path tickets dated in ${lastMonthLabel}${momLine} Pre-GST rollup; use Employee Reports if you bill GST-inclusive.`,
+      actionLabel: 'Employee reports',
+      actionPath: '/employee-reports',
+    });
   }
 
+  // —— MTD vs same calendar days in last completed month ——
+  if (mtdRevenue > 0 || priorMonthSamePeriodRevenue > 0) {
+    const pace = pctChange(mtdRevenue, priorMonthSamePeriodRevenue);
+    let tone: DashboardInsightTone = 'neutral';
+    let title = `${currentMonthLabel} pace vs ${lastMonthLabel} (same days)`;
+    if (priorMonthSamePeriodRevenue <= 0 && mtdRevenue > 0) {
+      tone = 'positive';
+      title = `${currentMonthLabel} has ticket revenue building`;
+    } else if (pace != null && priorMonthSamePeriodRevenue > 0) {
+      if (pace <= -12) {
+        tone = 'attention';
+        title = `${currentMonthLabel} is behind last month’s pace`;
+      } else if (pace >= 8) {
+        tone = 'positive';
+        title = `${currentMonthLabel} is ahead of last month’s pace`;
+      }
+    }
+    insights.push({
+      id: 'mtd-pace',
+      tone,
+      title,
+      detail: `${fmtMoney(mtdRevenue)} MTD ticket revenue vs ${fmtMoney(priorMonthSamePeriodRevenue)} on the same calendar days in ${lastMonthLabel}${pace != null && priorMonthSamePeriodRevenue > 0 ? ` (${pace >= 0 ? '+' : ''}${pace.toFixed(0)}%).` : '.'}`,
+      actionLabel: 'Employee reports',
+      actionPath: '/employee-reports',
+    });
+  }
+
+  // —— Rolling 4 chart weeks vs prior 4 (ticket-week bars) ——
+  if (revenueByWeek.length >= 8) {
+    let rev4 = 0;
+    let prof4 = 0;
+    let revPrev4 = 0;
+    let profPrev4 = 0;
+    const n = revenueByWeek.length;
+    for (let i = n - 4; i < n; i++) {
+      rev4 += revenueByWeek[i].revenue;
+      prof4 += revenueByWeek[i].profit;
+    }
+    for (let i = n - 8; i < n - 4; i++) {
+      revPrev4 += revenueByWeek[i].revenue;
+      profPrev4 += revenueByWeek[i].profit;
+    }
+    const revCh = pctChange(rev4, revPrev4);
+    const profCh = pctChange(prof4, profPrev4);
+    let tone: DashboardInsightTone = 'neutral';
+    let title = 'Last 4 chart weeks vs the 4 before';
+    if (revCh != null && revCh <= -10) {
+      tone = 'attention';
+      title = 'Ticket-week revenue down over the last month of bars';
+    } else if (revCh != null && revCh >= 6 && prof4 >= profPrev4 - 1) {
+      tone = 'positive';
+      title = 'Ticket-week revenue up over the last month of bars';
+    } else if (prof4 < 0 && profPrev4 >= 0) {
+      tone = 'attention';
+      title = 'Chart weeks recently flipped to net cost vs revenue';
+    }
+    const revPart = revCh != null ? `${revCh >= 0 ? '+' : ''}${revCh.toFixed(0)}% revenue` : 'revenue change n/a';
+    const profPart =
+      profPrev4 !== 0 || prof4 !== 0
+        ? `; profit ${fmtMoney(profPrev4)} → ${fmtMoney(prof4)}${profCh != null ? ` (${profCh >= 0 ? '+' : ''}${profCh.toFixed(0)}%)` : ''}`
+        : '';
+    insights.push({
+      id: 'roll-4w',
+      tone,
+      title,
+      detail: `Summed from the weekly chart above (ticket-date revenue vs costs): ${revPart}${profPart}.`,
+    });
+  }
+
+  // —— Latest two chart weeks (WoW) ——
   if (revenueByWeek.length >= 2) {
     const a = revenueByWeek[revenueByWeek.length - 2];
     const b = revenueByWeek[revenueByWeek.length - 1];
     const pr = pctChange(b.revenue, a.revenue);
     const pp = pctChange(b.profit, a.profit);
-    if (pr != null && Math.abs(pr) >= 5) {
+
+    if (a.revenue > 0 || b.revenue > 0) {
+      let tone: DashboardInsightTone = 'neutral';
+      if (pr != null) {
+        if (pr <= -8) tone = 'attention';
+        else if (pr >= 5) tone = 'positive';
+      }
       insights.push({
-        id: 'chart-wow-revenue',
-        tone: pr < 0 ? 'neutral' : 'positive',
-        title: pr < 0 ? 'Weekly chart: revenue cooled' : 'Weekly chart: revenue accelerated',
-        detail: `Bar revenue moved from ${fmtMoney(a.revenue)} (${a.week}) to ${fmtMoney(b.revenue)} (${b.week}), about ${pr >= 0 ? '+' : ''}${pr.toFixed(0)}%.`,
+        id: 'wow-revenue',
+        tone,
+        title:
+          pr != null && pr <= -8
+            ? 'Latest chart week: ticket revenue dropped vs prior bar'
+            : pr != null && pr >= 5
+              ? 'Latest chart week: ticket revenue up vs prior bar'
+              : 'Latest chart week: ticket revenue vs prior bar',
+        detail: `${fmtMoney(a.revenue)} (${a.week}) → ${fmtMoney(b.revenue)} (${b.week})${pr != null ? ` (${pr >= 0 ? '+' : ''}${pr.toFixed(0)}%).` : '.'}`,
       });
     }
-    if (pp != null && b.profit > 0 && a.profit > 0 && Math.abs(pp) >= 15) {
+
+    if (b.profit < 0) {
       insights.push({
-        id: 'chart-wow-profit',
-        tone: pp > 0 ? 'positive' : 'neutral',
-        title: pp > 0 ? 'Weekly chart: profit improved' : 'Weekly chart: profit eased',
-        detail: `Bar profit went from ${fmtMoney(a.profit)} to ${fmtMoney(b.profit)} week over week (${pp >= 0 ? '+' : ''}${pp.toFixed(0)}%).`,
+        id: 'wow-profit-loss',
+        tone: 'attention',
+        title: `Latest chart week in the red (${b.week})`,
+        detail: `Revenue ${fmtMoney(b.revenue)} vs cost ${fmtMoney(b.totalCost)} on that bar. Costs include ticket expenses and project labor (may sit in different weeks than ticket revenue).`,
+        actionLabel: 'Profitability',
+        actionPath: '/profitability',
+      });
+    } else if (a.profit > 0 && b.profit > 0 && pp != null && pp <= -20) {
+      insights.push({
+        id: 'wow-profit-slip',
+        tone: 'attention',
+        title: 'Latest chart week: profit squeezed vs prior bar',
+        detail: `Profit went from ${fmtMoney(a.profit)} (${a.week}) to ${fmtMoney(b.profit)} (${b.week}) (${pp.toFixed(0)}%).`,
+        actionLabel: 'Profitability',
+        actionPath: '/profitability',
+      });
+    } else if (a.revenue > 0 && b.profit / b.revenue >= 0.18 && b.profit > a.profit) {
+      insights.push({
+        id: 'wow-margin-strong',
+        tone: 'positive',
+        title: `Healthy margin on the latest chart week (${b.week})`,
+        detail: `Roughly ${((b.profit / b.revenue) * 100).toFixed(0)}% margin (${fmtMoney(b.profit)} on ${fmtMoney(b.revenue)}), up from ${fmtMoney(a.profit)} the week before.`,
+      });
+    }
+  } else if (revenueByWeek.length === 1) {
+    const latest = revenueByWeek[0];
+    if (latest.profit < 0) {
+      insights.push({
+        id: 'single-bar-loss',
+        tone: 'attention',
+        title: `Only chart week so far is in the red (${latest.week})`,
+        detail: `Revenue ${fmtMoney(latest.revenue)} vs cost ${fmtMoney(latest.totalCost)}.`,
+        actionLabel: 'Profitability',
+        actionPath: '/profitability',
+      });
+    } else if (latest.revenue > 0 && latest.profit / latest.revenue >= 0.18) {
+      insights.push({
+        id: 'single-bar-margin',
+        tone: 'positive',
+        title: `Solid margin on the latest chart week (${latest.week})`,
+        detail: `Roughly ${((latest.profit / latest.revenue) * 100).toFixed(0)}% margin (${fmtMoney(latest.profit)} on ${fmtMoney(latest.revenue)}).`,
       });
     }
   }
 
-  // —— WIP & customers ——
-  if (uninvoicedWip >= 40_000) {
+  // —— WIP & cash-adjacent (not ops queues) ——
+  if (uninvoicedWip >= 50_000) {
     insights.push({
       id: 'wip-high',
       tone: 'attention',
       title: 'Large uninvoiced WIP',
-      detail: `${fmtMoney(uninvoicedWip)} sits on submitted tickets without invoice numbers—cash and clarity improve when these are numbered and sent.`,
+      detail: `${fmtMoney(uninvoicedWip)} on submitted tickets without invoice numbers ties up clarity and cash timing.`,
       actionLabel: 'Service tickets',
       actionPath: '/service-tickets?overview=open&tab=submitted',
     });
-  } else if (uninvoicedWip > 0 && uninvoicedWip < 8_000) {
+  } else if (uninvoicedWip > 0 && uninvoicedWip < 12_000) {
     insights.push({
-      id: 'wip-low',
+      id: 'wip-contained',
       tone: 'positive',
-      title: 'Uninvoiced WIP is contained',
-      detail: `Only ${fmtMoney(uninvoicedWip)} remains on tickets without numbers—pipeline looks tight.`,
+      title: 'Uninvoiced WIP is relatively small',
+      detail: `${fmtMoney(uninvoicedWip)} remains without invoice numbers.`,
     });
   } else if (uninvoicedWip > 0) {
     insights.push({
@@ -127,114 +257,48 @@ export function buildDashboardWeeklyInsights(input: BuildDashboardInsightsInput)
       tone: 'neutral',
       title: 'Uninvoiced WIP',
       detail: `${fmtMoney(uninvoicedWip)} on tickets still waiting for invoice numbers.`,
-      actionLabel: 'Review tickets',
-      actionPath: '/service-tickets',
-    });
-  }
-
-  if (topUnbilledCustomer && topUnbilledCustomer.value >= 5_000) {
-    insights.push({
-      id: 'top-unbilled-customer',
-      tone: topUnbilledCustomer.value >= 25_000 ? 'attention' : 'neutral',
-      title: topUnbilledCustomer.value >= 25_000 ? 'One customer dominates unbilled WIP' : 'Largest unbilled customer',
-      detail: `${topUnbilledCustomer.name}: about ${fmtMoney(topUnbilledCustomer.value)} without an invoice number yet.`,
       actionLabel: 'Service tickets',
       actionPath: '/service-tickets',
     });
   }
 
-  if (pendingLiability >= 1_000) {
+  if (topUnbilledCustomer && topUnbilledCustomer.value >= 40_000) {
+    insights.push({
+      id: 'top-unbilled',
+      tone: 'attention',
+      title: 'Concentrated unbilled WIP',
+      detail: `${topUnbilledCustomer.name}: about ${fmtMoney(topUnbilledCustomer.value)} without an invoice number.`,
+      actionLabel: 'Service tickets',
+      actionPath: '/service-tickets',
+    });
+  } else if (topUnbilledCustomer && topUnbilledCustomer.value >= 15_000) {
+    insights.push({
+      id: 'top-unbilled-context',
+      tone: 'neutral',
+      title: 'Largest unbilled customer',
+      detail: `${topUnbilledCustomer.name}: about ${fmtMoney(topUnbilledCustomer.value)} in uninvoiced WIP.`,
+      actionLabel: 'Service tickets',
+      actionPath: '/service-tickets',
+    });
+  }
+
+  if (pendingLiability >= 5_000) {
     insights.push({
       id: 'pending-liability',
       tone: 'attention',
+      title: 'Elevated pending receipt liability',
+      detail: `${fmtMoney(pendingLiability)} in employee receipts still pending approval.`,
+      actionLabel: 'Expenses',
+      actionPath: '/expenses?overview=open&tab=pending',
+    });
+  } else if (pendingLiability >= 500) {
+    insights.push({
+      id: 'pending-liability-context',
+      tone: 'neutral',
       title: 'Pending receipt liability',
-      detail: `${fmtMoney(pendingLiability)} in employee-submitted receipts still pending approval—approve or return to close the loop.`,
+      detail: `${fmtMoney(pendingLiability)} awaiting expense approval.`,
       actionLabel: 'Expenses',
       actionPath: '/expenses?overview=open&tab=pending',
-    });
-  }
-
-  // —— Queues & data quality ——
-  if (totalActionItems >= 10) {
-    insights.push({
-      id: 'action-backlog',
-      tone: 'attention',
-      title: 'Heavy admin backlog',
-      detail: `${totalActionItems} open action items across tickets, expenses, projects, and bugs. Triage the dashboard cards above to unblock the team.`,
-    });
-  } else if (totalActionItems === 0) {
-    insights.push({
-      id: 'action-clear',
-      tone: 'positive',
-      title: 'Action queue is clear',
-      detail: 'No tickets awaiting numbering, pending receipt batches, missing project numbers, or open bugs in the counts we track.',
-    });
-  }
-
-  if (awaitingReviewCount > 0) {
-    insights.push({
-      id: 'awaiting-review',
-      tone: awaitingReviewCount >= 5 ? 'attention' : 'neutral',
-      title: `${awaitingReviewCount} ticket${awaitingReviewCount !== 1 ? 's' : ''} awaiting review`,
-      detail: 'Submitted tickets still need a ticket / invoice number before they leave WIP.',
-      actionLabel: 'Review queue',
-      actionPath: '/service-tickets?overview=open&tab=submitted',
-    });
-  }
-
-  if (resubmittedCount > 0) {
-    insights.push({
-      id: 'resubmitted',
-      tone: 'attention',
-      title: `${resubmittedCount} resubmitted ticket${resubmittedCount !== 1 ? 's' : ''}`,
-      detail: 'Previously rejected tickets are back in the workflow—worth a quick pass so billing is not delayed.',
-      actionLabel: 'Service tickets',
-      actionPath: '/service-tickets?overview=open&tab=submitted',
-    });
-  }
-
-  if (pendingExpenseCount > 0) {
-    insights.push({
-      id: 'pending-receipts',
-      tone: 'neutral',
-      title: `${pendingExpenseCount} pending expense approval${pendingExpenseCount !== 1 ? 's' : ''}`,
-      detail: 'Employee receipts waiting in the expenses queue.',
-      actionLabel: 'Expenses',
-      actionPath: '/expenses?overview=open&tab=pending',
-    });
-  }
-
-  if (missingNumberCount > 0) {
-    insights.push({
-      id: 'missing-project-numbers',
-      tone: 'attention',
-      title: `${missingNumberCount} active project${missingNumberCount !== 1 ? 's' : ''} missing job numbers`,
-      detail: 'Projects without numbers are harder to match on tickets and reports.',
-      actionLabel: 'Projects',
-      actionPath: '/projects?overview=open&missing=1',
-    });
-  }
-
-  if (openBugCount > 0) {
-    insights.push({
-      id: 'open-bugs',
-      tone: 'neutral',
-      title: `${openBugCount} open bug report${openBugCount !== 1 ? 's' : ''}`,
-      detail: 'Track software issues reported from the field or office.',
-      actionLabel: 'Bugs',
-      actionPath: '/service-tickets?overview=open&tab=submitted',
-    });
-  }
-
-  // —— MTD ——
-  if (mtdRevenue > 0) {
-    insights.push({
-      id: 'mtd',
-      tone: 'neutral',
-      title: 'Month-to-date ticket revenue',
-      detail: `${fmtMoney(mtdRevenue)} from approved-path tickets dated this month (pre-GST in this rollup; see Employee Reports if you use GST-inclusive views).`,
-      actionLabel: 'Employee reports',
-      actionPath: '/employee-reports',
     });
   }
 

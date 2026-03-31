@@ -84,7 +84,7 @@ export default function DashboardWeeklyInsights({ insights }: { insights: Dashbo
   if (insights.length === 0) {
     return (
       <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-        No insights yet—add ticket or chart data, or clear queues to see summaries here.
+        No financial insights yet—need ticket-dated revenue in the chart or in prior months.
       </p>
     );
   }
@@ -124,20 +124,20 @@ export default function DashboardWeeklyInsights({ insights }: { insights: Dashbo
       }}
     >
       {section(
-        'Needs attention',
-        'Queues, margin pressure, or data gaps worth acting on this week.',
+        'Needs a closer look',
+        'Meaningful month or week dips, margin pressure on the chart, or large WIP / liability.',
         attention,
         0,
       )}
       {section(
         "What's going well",
-        'Chart momentum, healthy WIP, or a clear action queue.',
+        'MoM or MTD pace up, rolling / WoW revenue strong, contained WIP, or healthy margins on recent bars.',
         positive,
         attention.length ? 18 : 0,
       )}
       {section(
-        'Context & snapshot',
-        'Chart trends and reference numbers (not necessarily problems).',
+        'Context',
+        'Neutral reads—still useful for a quick financial snapshot.',
         neutral,
         attention.length || positive.length ? 18 : 0,
       )}
