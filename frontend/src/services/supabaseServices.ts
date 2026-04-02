@@ -2107,6 +2107,42 @@ export const serviceTicketExpensesService = {
     return data || [];
   },
 
+  /**
+   * Hotel lines that need reimbursement (caller filters to own tickets via userId; match receipts client-side).
+   */
+  async getHotelReimbursementLinesForUser(userId: string) {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .select(`
+        id,
+        service_ticket_id,
+        expense_type,
+        description,
+        quantity,
+        rate,
+        actual_cost,
+        reimbursement_status,
+        created_at,
+        service_tickets!inner (
+          id,
+          user_id,
+          date,
+          ticket_number,
+          is_discarded
+        )
+      `)
+      .eq('needs_reimbursement', true)
+      .eq('expense_type', 'Hotel')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).filter(
+      (r: any) =>
+        !r.service_tickets?.is_discarded &&
+        String(r.service_tickets?.user_id ?? '') === String(userId)
+    );
+  },
+
   async updateReimbursementStatus(id: string, status: 'pending' | 'approved' | 'rejected' | 'paid') {
     const updatePayload: Record<string, unknown> = { reimbursement_status: status };
     if (status === 'approved') {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, Fragment, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { userExpensesService, serviceTicketExpensesService, employeesService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 import { optimizeImage } from '../utils/imageOptimizer';
@@ -125,6 +125,20 @@ export default function Expenses() {
     queryFn: () => userExpensesService.getAll(),
   });
 
+  const { data: hotelReimbLinesRaw = [] } = useQuery({
+    queryKey: ['hotelTicketLinesNeedingReceipt', user?.id],
+    queryFn: () => serviceTicketExpensesService.getHotelReimbursementLinesForUser(user!.id),
+    enabled: !!user?.id,
+  });
+
+  const hotelLinesStillNeedReceipt = useMemo(() => {
+    return (hotelReimbLinesRaw as any[]).filter((row) => {
+      const tid = row.service_ticket_id;
+      const onTicket = expenses.filter((e: any) => e.service_ticket_id === tid);
+      return !ticketExpenseLineHasAttachedReceipt(row.description, onTicket);
+    });
+  }, [hotelReimbLinesRaw, expenses]);
+
   const { data: allTicketRecords = [] } = useQuery({
     queryKey: ['ticketsForExpensePicker', isDemoMode, isAdmin, user?.id],
     queryFn: async () => {
@@ -209,6 +223,7 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
       queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
     },
     onError: (err: unknown) => {
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
@@ -327,6 +342,7 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+      queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
       setEditingExpense(null);
     } catch (err: any) {
       alert('Failed to save: ' + (err.message || 'Unknown error'));
@@ -369,6 +385,7 @@ export default function Expenses() {
 
         queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       }
+      queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
     } catch (err: any) {
       alert('Failed to update status: ' + (err.message || 'Unknown error'));
     } finally {
@@ -503,6 +520,7 @@ export default function Expenses() {
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
       setReceiptFile(null);
       setReceiptPreviewUrl(null);
       setReceiptForm(initialReceiptForm);
@@ -555,6 +573,7 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+      queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
       setMarkupModalTicket(null);
       setApplyExpenseId(null);
     } catch (err: any) {
@@ -610,6 +629,64 @@ export default function Expenses() {
       <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 24px', color: 'var(--text-primary)' }}>
         Internal Expenses & Receipts
       </h1>
+
+      {hotelLinesStillNeedReceipt.length > 0 && (
+        <div
+          style={{
+            marginBottom: '24px',
+            padding: '16px 18px',
+            borderRadius: '10px',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+          }}
+          role="region"
+          aria-label="Hotel lines waiting for a receipt"
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#b45309', marginBottom: '6px' }}>
+                Receipt still needed — service ticket hotel
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '640px' }}>
+                These hotel lines are on your tickets and marked for reimbursement, but no receipt is linked yet. Open the ticket and use <strong>Attach receipt</strong> on the line when you have the bill.
+              </p>
+            </div>
+            <Link
+              to="/service-tickets"
+              style={{
+                flexShrink: 0,
+                padding: '8px 14px',
+                borderRadius: '6px',
+                backgroundColor: 'var(--primary-color)',
+                color: 'white',
+                fontSize: '13px',
+                fontWeight: '600',
+                textDecoration: 'none',
+                alignSelf: 'center',
+              }}
+            >
+              Open Service Tickets
+            </Link>
+          </div>
+          <ul style={{ margin: '14px 0 0', paddingLeft: '20px', fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.6 }}>
+            {hotelLinesStillNeedReceipt.map((row: any) => {
+              const tn = row.service_tickets?.ticket_number || '—';
+              const dt = row.service_tickets?.date || '';
+              const billed = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
+              return (
+                <li key={row.id} style={{ marginBottom: '6px' }}>
+                  <span style={{ fontWeight: '600' }}>{row.description || 'Hotel'}</span>
+                  {' · '}
+                  Ticket <span style={{ fontFamily: 'monospace' }}>{tn}</span>
+                  {dt ? ` · ${dt}` : ''}
+                  {' · '}
+                  Billed to client <span style={{ fontWeight: '600' }}>${billed.toFixed(2)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* Admin: Employee Overview (like Service Tickets) */}
       {isAdmin && expenseEmployeeSummary.length > 0 && (
@@ -1564,6 +1641,7 @@ export default function Expenses() {
                         queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
                         queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
                         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+                        queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
                         setEditingExpense({ ...editingExpense, service_ticket_id: null, service_tickets: null, markup_amount: null });
                       } catch (err: any) {
                         alert('Failed to unapply: ' + (err.message || 'Unknown error'));

@@ -613,6 +613,17 @@ export default function ServiceTickets() {
   const [attachReceiptContext, setAttachReceiptContext] = useState<
     { serviceTicketExpenseId?: string; pendingTempId?: string } | null
   >(null);
+
+  /** Hotel receipt flow: markup = amount billed on ticket line − receipt total (incl. GST). */
+  const hotelReceiptAutoInfo = useMemo(() => {
+    const p = pendingReimbursementExpense;
+    if (!p || p.expense_type !== 'Hotel') return { active: false as const };
+    const clientBilled = (Number(p.quantity) || 1) * (Number(p.rate) || 0);
+    const expTotal = (parseFloat(receiptForm.amount) || 0) + (parseFloat(receiptForm.gst) || 0);
+    const markup = Math.round((clientBilled - expTotal) * 100) / 100;
+    return { active: true as const, clientBilled, expTotal, markup };
+  }, [pendingReimbursementExpense, receiptForm.amount, receiptForm.gst]);
+
   /** Hotel/Other + reimbursement: optional in-form receipt drop opens the modal. Travel, Equipment, and Hotel + reimbursement: Add saves the ticket line; Hotel can attach receipt later. */
   const inFormReimbursementReceiptInputRef = useRef<HTMLInputElement>(null);
   const receiptModalFileInputRef = useRef<HTMLInputElement>(null);
@@ -649,7 +660,7 @@ export default function ServiceTickets() {
         actual_cost: Number(editingExpense.actual_cost) || 0,
         unit: editingExpense.unit?.trim() || undefined,
       });
-      const prefillAmount = et === 'Expenses' ? '' : amt > 0 ? String(amt) : '';
+      const prefillAmount = et === 'Hotel' || et === 'Expenses' ? '' : amt > 0 ? String(amt) : '';
       setReceiptForm({
         description: editingExpense.description.trim(),
         amount: prefillAmount,
@@ -2247,7 +2258,6 @@ export default function ServiceTickets() {
         alert('Ticket record is not ready. Close and reopen the ticket, then try again.');
         return;
       }
-      const billed = (Number(expense.quantity) || 0) * (Number(expense.rate) || 0);
       const isOther = expense.expense_type === 'Expenses';
       setPendingReimbursementExpense({
         expense_type: isOther ? 'Expenses' : 'Hotel',
@@ -2267,7 +2277,7 @@ export default function ServiceTickets() {
       }
       setReceiptForm({
         description: expense.description,
-        amount: isOther ? '' : billed > 0 ? String(billed) : '',
+        amount: '',
         gst: '',
         markupType: 'dollar',
         markupValue: '',
@@ -5957,8 +5967,7 @@ export default function ServiceTickets() {
                           {!(
                             !editingExpense.id &&
                             editingExpense.needs_reimbursement &&
-                            (editingExpense.expense_type === 'Hotel' ||
-                              editingExpense.expense_type === 'Expenses')
+                            editingExpense.expense_type === 'Expenses'
                           ) && (
                             <div
                               style={{
@@ -6016,7 +6025,9 @@ export default function ServiceTickets() {
                                 />
                                 {editingExpense.expense_type === 'Hotel' && (
                                   <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-                                    Hotel lines bill as 1 × this amount (quantity is fixed at 1).
+                                    {editingExpense.needs_reimbursement && !editingExpense.id
+                                      ? 'What the client is charged on this ticket. When you attach the actual receipt, markup is calculated as this amount minus receipt total (including GST).'
+                                      : 'Hotel lines bill as 1 × this amount (quantity is fixed at 1).'}
                                   </div>
                                 )}
                               </div>
@@ -6183,6 +6194,15 @@ export default function ServiceTickets() {
                                     editingExpense.expense_type === 'Equipment' ||
                                     editingExpense.expense_type === 'Hotel')
                                 ) {
+                                  if (
+                                    editingExpense.expense_type === 'Hotel' &&
+                                    !(Number(editingExpense.rate) > 0)
+                                  ) {
+                                    setTicketExpenseFormIssues({
+                                      save: 'Enter the amount billed to the client (what to charge on this ticket) before adding.',
+                                    });
+                                    return;
+                                  }
                                   clearTicketExpenseFormIssues();
                                   try {
                                     const isHotelAdd = editingExpense.expense_type === 'Hotel';
@@ -6658,11 +6678,15 @@ export default function ServiceTickets() {
                     <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
                         {attachReceiptContext
-                          ? 'Attach receipt to this ticket line'
+                          ? pendingReimbursementExpense?.expense_type === 'Hotel'
+                            ? 'Attach receipt — hotel (auto markup)'
+                            : 'Attach receipt to this ticket line'
                           : pendingReimbursementExpense
                             ? pendingReimbursementExpense.expense_type === 'Expenses'
                               ? 'Other expense — receipt, cost and markup'
-                              : 'Upload Receipt for Reimbursement'
+                              : pendingReimbursementExpense.expense_type === 'Hotel'
+                                ? 'Hotel — receipt and auto markup'
+                                : 'Upload Receipt for Reimbursement'
                             : 'New Receipt Expense'}
                       </h3>
                       {receiptUploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{receiptUploadError}</div>}
@@ -6678,31 +6702,69 @@ export default function ServiceTickets() {
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
                         <input type="number" step="0.01" value={receiptForm.gst} onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
                       </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Markup</label>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <input type="number" step="0.01" min="0" value={receiptForm.markupValue} onChange={(e) => setReceiptForm({ ...receiptForm, markupValue: e.target.value })} placeholder="0" style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
-                          <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                            <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'dollar' })} style={{ padding: '8px 12px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'dollar' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'dollar' ? 'white' : 'var(--text-secondary)' }}>$</button>
-                            <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'percent' })} style={{ padding: '8px 12px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
-                          </div>
-                        </div>
-                        {(() => {
-                          const amt = parseFloat(receiptForm.amount) || 0;
-                          const gst = parseFloat(receiptForm.gst) || 0;
-                          const expTotal = amt + gst;
-                          const val = parseFloat(receiptForm.markupValue) || 0;
-                          const markup = receiptForm.markupType === 'percent' ? (expTotal * val) / 100 : val;
-                          const total = expTotal + markup;
-                          if (markup > 0) return (
-                            <div style={{ marginTop: '6px', padding: '8px 10px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Markup: </span><span style={{ fontWeight: '600', color: '#2196F3' }}>${markup.toFixed(2)}</span>
-                              <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>Total on ticket: </span><span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>${total.toFixed(2)}</span>
+                      {hotelReceiptAutoInfo.active && (
+                        <div
+                          style={{
+                            padding: '10px 12px',
+                            backgroundColor: 'rgba(33, 150, 243, 0.08)',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            lineHeight: 1.45,
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          <div style={{ fontWeight: '600', marginBottom: '4px' }}>Billed to client (ticket line)</div>
+                          {hotelReceiptAutoInfo.clientBilled > 0 ? (
+                            <div>${hotelReceiptAutoInfo.clientBilled.toFixed(2)} — unchanged when you save; markup fills the gap to the receipt.</div>
+                          ) : (
+                            <div style={{ color: '#f59e0b' }}>
+                              This line has no billed amount yet. Cancel, edit the hotel line with an amount billed to the client, then attach the receipt again.
                             </div>
-                          );
-                          return null;
-                        })()}
-                      </div>
+                          )}
+                        </div>
+                      )}
+                      {hotelReceiptAutoInfo.active ? (
+                        <div>
+                          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Markup (automatic)</label>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', lineHeight: 1.4 }}>
+                            Billed to client minus receipt subtotal and GST. Negative if the receipt is higher than what you billed.
+                          </div>
+                          {hotelReceiptAutoInfo.clientBilled > 0 && (
+                            <div style={{ padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Auto markup: </span>
+                              <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>${hotelReceiptAutoInfo.markup.toFixed(2)}</span>
+                              <span style={{ marginLeft: '10px', color: 'var(--text-secondary)' }}>Receipt total: </span>
+                              <span style={{ fontWeight: '600' }}>${hotelReceiptAutoInfo.expTotal.toFixed(2)}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Markup</label>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input type="number" step="0.01" min="0" value={receiptForm.markupValue} onChange={(e) => setReceiptForm({ ...receiptForm, markupValue: e.target.value })} placeholder="0" style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                            <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                              <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'dollar' })} style={{ padding: '8px 12px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'dollar' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'dollar' ? 'white' : 'var(--text-secondary)' }}>$</button>
+                              <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'percent' })} style={{ padding: '8px 12px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
+                            </div>
+                          </div>
+                          {(() => {
+                            const amt = parseFloat(receiptForm.amount) || 0;
+                            const gst = parseFloat(receiptForm.gst) || 0;
+                            const expTotal = amt + gst;
+                            const val = parseFloat(receiptForm.markupValue) || 0;
+                            const markup = receiptForm.markupType === 'percent' ? (expTotal * val) / 100 : val;
+                            const total = expTotal + markup;
+                            if (markup > 0) return (
+                              <div style={{ marginTop: '6px', padding: '8px 10px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
+                                <span style={{ color: 'var(--text-secondary)' }}>Markup: </span><span style={{ fontWeight: '600', color: '#2196F3' }}>${markup.toFixed(2)}</span>
+                                <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>Total on ticket: </span><span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>${total.toFixed(2)}</span>
+                              </div>
+                            );
+                            return null;
+                          })()}
+                        </div>
+                      )}
                       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
                         <button onClick={() => {
                           setShowReceiptModal(false);
@@ -6734,9 +6796,26 @@ export default function ServiceTickets() {
                               const amt = parseFloat(receiptForm.amount);
                               const gst = parseFloat(receiptForm.gst) || 0;
                               const expTotal = amt + gst;
-                              const markupVal = parseFloat(receiptForm.markupValue) || 0;
-                              const markup = receiptForm.markupType === 'percent' ? (expTotal * markupVal) / 100 : markupVal;
-                              const totalWithMarkup = expTotal + markup;
+                              const useHotelAutoMarkup = pendingAtSave?.expense_type === 'Hotel';
+                              let markup: number;
+                              let totalWithMarkup: number;
+                              if (useHotelAutoMarkup && pendingAtSave) {
+                                const clientBilled =
+                                  (Number(pendingAtSave.quantity) || 1) * (Number(pendingAtSave.rate) || 0);
+                                if (!(clientBilled > 0)) {
+                                  setReceiptUploadError(
+                                    'This hotel line has no amount billed to the client. Edit the ticket line first, then attach the receipt again.'
+                                  );
+                                  setIsUploadingReceipt(false);
+                                  return;
+                                }
+                                markup = Math.round((clientBilled - expTotal) * 100) / 100;
+                                totalWithMarkup = clientBilled;
+                              } else {
+                                const markupVal = parseFloat(receiptForm.markupValue) || 0;
+                                markup = receiptForm.markupType === 'percent' ? (expTotal * markupVal) / 100 : markupVal;
+                                totalWithMarkup = expTotal + markup;
+                              }
                               let storagePath: string | undefined;
                               if (receiptFile) {
                                 const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
@@ -6750,7 +6829,7 @@ export default function ServiceTickets() {
                                 gst: parseFloat(receiptForm.gst) || 0,
                                 is_billable: true,
                                 service_ticket_id: currentTicketRecordId || undefined,
-                                markup_amount: markup > 0 ? markup : undefined,
+                                markup_amount: useHotelAutoMarkup ? markup : markup > 0 ? markup : undefined,
                                 status: isAdmin ? 'approved' : 'pending',
                               });
                               if (currentTicketRecordId && createdReceipt?.id) {
@@ -6803,6 +6882,7 @@ export default function ServiceTickets() {
                               }
                               queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
                               queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+                              queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
                               setShowReceiptModal(false);
                               setPendingReimbursementExpense(null);
                               setAttachReceiptContext(null);
