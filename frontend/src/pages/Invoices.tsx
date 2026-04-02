@@ -65,6 +65,13 @@ const PDF_EXPORT_RATE_ORDER = [
   'Field Overtime',
 ] as const;
 
+/**
+ * TEMPORARY workflow: main list shows every batch (marked + unmarked) so you can refresh locks without rows
+ * vanishing. Set to `false` when finished, or `git revert` the commit that introduced this flag — then the
+ * main list is uninvoiced-only again (with the “all marked” empty state).
+ */
+const TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST = true;
+
 function serviceTicketEditHref(recordId: string) {
   const p = new URLSearchParams();
   p.set('openRecord', recordId);
@@ -803,6 +810,25 @@ function snapshotTicketIdsForInvoicedMark(
     if (rid && String(rid).trim()) return String(rid).trim();
     return t.id;
   });
+}
+
+/** Union of existing mark ticket IDs and current grid row IDs so re-saving never drops locks. */
+function mergeMarkSnapshotForGroup(
+  group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
+  existing: FrozenGroupSnapshot | null | undefined
+): FrozenGroupSnapshot {
+  const fresh = snapshotTicketIdsForInvoicedMark(group.tickets as (ServiceTicket & { recordId?: string })[]);
+  const merged = new Set<string>();
+  if (existing?.ticketIds && Array.isArray(existing.ticketIds)) {
+    for (const id of existing.ticketIds) {
+      if (typeof id === 'string' && id.trim()) merged.add(id.trim());
+    }
+  }
+  for (const id of fresh) merged.add(id);
+  return {
+    key: group.key,
+    ticketIds: [...merged].sort(),
+  };
 }
 
 function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string {
@@ -1738,81 +1764,19 @@ export default function Invoices() {
     },
   });
 
-  const [snapshotRepairSummary, setSnapshotRepairSummary] = useState<string | null>(null);
-
-  /**
-   * Merge ticket row ids from the current grouped view into each DB mark. Fixes marks saved with an
-   * incomplete ticketIds list (e.g. period batch marked when some rows were missing recordId).
-   * Run with All customers, All projects, and a date range covering every ticket that should stay locked.
-   */
-  const repairInvoicedLockSnapshotsMutation = useMutation({
-    mutationFn: async (args: {
-      groups: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[];
-      rows: InvoicedBatchMarkRow[];
-    }) => {
-      let updated = 0;
-      for (const row of args.rows) {
-        const raw = row.key_snapshot;
-        if (!raw || typeof raw !== 'object') continue;
-        const snap = raw as FrozenGroupSnapshot;
-        if (!Array.isArray(snap.ticketIds)) continue;
-        const group = args.groups.find((g) => getGroupId(g) === row.group_id);
-        const fromGroup = group
-          ? snapshotTicketIdsForInvoicedMark(group.tickets as (ServiceTicket & { recordId?: string })[])
-          : [];
-        const mergedSet = new Set<string>();
-        for (const id of snap.ticketIds) {
-          if (typeof id === 'string' && id.trim()) mergedSet.add(id.trim());
-        }
-        for (const id of fromGroup) mergedSet.add(id);
-        const merged = [...mergedSet].sort();
-        const prevSorted = [...snap.ticketIds]
-          .map((x) => String(x).trim())
-          .filter(Boolean)
-          .sort();
-        if (merged.join(',') === prevSorted.join(',')) continue;
-        const keyForSnap: InvoiceGroupKeyWithPeriod =
-          group?.key ??
-          (snap.key && typeof snap.key === 'object' && snap.key !== null
-            ? (snap.key as InvoiceGroupKeyWithPeriod)
-            : {
-                projectId: '',
-                approverCode: '',
-                approver: '',
-                poAfe: '',
-                location: '',
-                cc: '',
-                other: '',
-              });
-        await invoicedBatchMarksService.upsert(row.group_id, {
-          key: keyForSnap,
-          ticketIds: merged,
-        });
-        updated += 1;
-      }
-      return { updated };
-    },
-    onSuccess: async (data) => {
-      setSnapshotRepairSummary(
-        data.updated === 0
-          ? 'No changes needed — every mark already includes all ticket IDs visible for matching batches in the current filters, or no batch matched the mark’s group id in this view.'
-          : `Updated ${data.updated} invoiced batch mark(s) with merged service ticket IDs. Service Tickets should lock those rows after refresh.`
-      );
-      await queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
-      await queryClient.invalidateQueries({ queryKey: ['lockedServiceTicketIdsForMe'] });
-    },
-    onError: (err) => {
-      setSnapshotRepairSummary(null);
-      setExportError(err instanceof Error ? err.message : 'Could not repair invoiced lock snapshots');
-    },
-  });
+  const getMergedMarkSnapshot = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+    const groupId = getGroupId(group);
+    const row = invoicedMarkRows.find((r) => r.group_id === groupId);
+    const prevFromDb =
+      row?.key_snapshot && typeof row.key_snapshot === 'object'
+        ? (row.key_snapshot as FrozenGroupSnapshot)
+        : undefined;
+    return mergeMarkSnapshotForGroup(group, prevFromDb);
+  };
 
   const handleMarkAsInvoiced = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
     const groupId = getGroupId(group);
-    const snapshot: FrozenGroupSnapshot = {
-      key: group.key,
-      ticketIds: snapshotTicketIdsForInvoicedMark(group.tickets as (ServiceTicket & { recordId?: string })[]),
-    };
+    const snapshot = getMergedMarkSnapshot(group);
     if (isDemoMode) {
       setLegacyMarkedInvoicedIds((prev) => {
         const next = new Set(prev);
@@ -1821,7 +1785,8 @@ export default function Invoices() {
         return next;
       });
       setFrozenInvoicedGroups((prev) => {
-        const next = { ...prev, [groupId]: snapshot };
+        const mergedSnap = mergeMarkSnapshotForGroup(group, prev[groupId]);
+        const next = { ...prev, [groupId]: mergedSnap };
         try {
           localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
         } catch {
@@ -1847,10 +1812,7 @@ export default function Invoices() {
     file: File
   ) => {
     const groupId = getGroupId(group);
-    const snapshot: FrozenGroupSnapshot = {
-      key: group.key,
-      ticketIds: snapshotTicketIdsForInvoicedMark(group.tickets as (ServiceTicket & { recordId?: string })[]),
-    };
+    const snapshot = getMergedMarkSnapshot(group);
     if (file.type !== 'application/pdf') return;
     setUploadingInvoiceGroupId(groupId);
     setExportError(null);
@@ -1928,18 +1890,21 @@ export default function Invoices() {
   }, [invoicedMarkRows]);
 
   useEffect(() => {
+    const sameTicketIdSets = (a: string[], b: string[]) =>
+      [...a].sort().join('\0') === [...b].sort().join('\0');
     let updated = false;
     const next: Record<string, FrozenGroupSnapshot> = { ...frozenInvoicedGroups };
     for (const g of groupedTickets) {
       const gid = getGroupId(g);
       if (effectiveMarkedInvoicedIds.has(gid)) {
-        const snap: FrozenGroupSnapshot = {
-          key: g.key,
-          ticketIds: snapshotTicketIdsForInvoicedMark(g.tickets as (ServiceTicket & { recordId?: string })[]),
-        };
         const existing = next[gid];
-        if (!existing || existing.ticketIds.join(',') !== snap.ticketIds.join(',') || JSON.stringify(existing.key) !== JSON.stringify(snap.key)) {
-          next[gid] = snap;
+        const merged = mergeMarkSnapshotForGroup(g, existing);
+        if (
+          !existing ||
+          !sameTicketIdSets(existing.ticketIds, merged.ticketIds) ||
+          JSON.stringify(existing.key) !== JSON.stringify(merged.key)
+        ) {
+          next[gid] = merged;
           updated = true;
         }
       }
@@ -1972,10 +1937,15 @@ export default function Invoices() {
     return [...fromCurrent, ...fromFrozen];
   }, [groupedTickets, effectiveMarkedInvoicedIds, frozenInvoicedGroups, ticketsForCustomer]);
 
-  const visibleGroups = useMemo(
+  /** Batches not yet marked — used for bulk export / QBO only */
+  const uninvoicedGroups = useMemo(
     () => groupedTickets.filter((g) => !effectiveMarkedInvoicedIds.has(getGroupId(g))),
     [groupedTickets, effectiveMarkedInvoicedIds]
   );
+
+  const mainListGroups = TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST
+    ? groupedTickets
+    : uninvoicedGroups;
 
   const invoicedGroupIds = useMemo(() => invoicedGroups.map((g) => getGroupId(g)), [invoicedGroups]);
   const { data: savedInvoiceMetadata } = useQuery({
@@ -2091,18 +2061,18 @@ export default function Invoices() {
 
   const handleExportForInvoicing = async () => {
     setExportError(null);
-    const total = visibleGroups.reduce((sum, g) => sum + g.tickets.length, 0);
+    const total = uninvoicedGroups.reduce((sum, g) => sum + g.tickets.length, 0);
     let processed = 0;
 
     setExportProgress({ current: 0, total, label: 'Preparing...' });
 
     try {
-      for (let i = 0; i < visibleGroups.length; i++) {
-        const { key, tickets: groupTickets } = visibleGroups[i];
+      for (let i = 0; i < uninvoicedGroups.length; i++) {
+        const { key, tickets: groupTickets } = uninvoicedGroups[i];
         setExportProgress({
           current: processed,
           total,
-          label: `Processing group ${i + 1}/${visibleGroups.length} (${groupTickets.length} ticket(s))`,
+          label: `Processing group ${i + 1}/${uninvoicedGroups.length} (${groupTickets.length} ticket(s))`,
         });
 
         const blobs: Blob[] = [];
@@ -2146,12 +2116,12 @@ export default function Invoices() {
     if (qboApiLocal) return;
     setQboError(null);
     setQboCreatedIds([]);
-    const total = visibleGroups.length;
+    const total = uninvoicedGroups.length;
     setQboProgress({ current: 0, total, label: 'Connecting to QuickBooks...' });
 
     try {
-      for (let i = 0; i < visibleGroups.length; i++) {
-        const { key, tickets: groupTickets } = visibleGroups[i];
+      for (let i = 0; i < uninvoicedGroups.length; i++) {
+        const { key, tickets: groupTickets } = uninvoicedGroups[i];
         setQboProgress({
           current: i,
           total,
@@ -2491,61 +2461,6 @@ export default function Invoices() {
           Only tickets in this date range (matching Service Tickets Approved tab) are shown.
         </span>
         </div>
-        {isAdmin && !isDemoMode && (
-          <div
-            style={{
-              marginTop: '14px',
-              paddingTop: '14px',
-              borderTop: '1px solid var(--border-color)',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '12px',
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setSnapshotRepairSummary(null);
-                setExportError(null);
-                repairInvoicedLockSnapshotsMutation.mutate({
-                  groups: groupedTickets,
-                  rows: invoicedMarkRows,
-                });
-              }}
-              disabled={
-                repairInvoicedLockSnapshotsMutation.isPending ||
-                invoicedMarkRows.length === 0 ||
-                groupedTickets.length === 0
-              }
-              style={{
-                padding: '8px 14px',
-                backgroundColor: 'var(--bg-tertiary)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor:
-                  repairInvoicedLockSnapshotsMutation.isPending ||
-                  invoicedMarkRows.length === 0 ||
-                  groupedTickets.length === 0
-                    ? 'not-allowed'
-                    : 'pointer',
-                opacity:
-                  invoicedMarkRows.length === 0 || groupedTickets.length === 0 ? 0.55 : 1,
-              }}
-              title="Merges service_tickets.id values from matching batches in the current view into each invoiced_batch_marks row"
-            >
-              {repairInvoicedLockSnapshotsMutation.isPending ? 'Repairing lock lists…' : 'Repair invoiced lock lists'}
-            </button>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '720px', lineHeight: 1.45 }}>
-              If some tickets in an invoiced batch still edit, run this after setting <strong>All customers</strong>,{' '}
-              <strong>All projects</strong>, and dates that include <em>every</em> ticket that should stay locked. This
-              merges IDs from the grid into each mark without removing IDs already stored.
-            </span>
-          </div>
-        )}
       </div>
 
       {exportProgress && (
@@ -2591,23 +2506,6 @@ export default function Invoices() {
           }}
         >
           {exportError}
-        </div>
-      )}
-
-      {snapshotRepairSummary && (
-        <div
-          style={{
-            marginBottom: '24px',
-            padding: '12px',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            border: '1px solid #10b981',
-            borderRadius: '8px',
-            color: 'var(--text-primary)',
-            fontSize: '14px',
-            lineHeight: 1.45,
-          }}
-        >
-          {snapshotRepairSummary}
         </div>
       )}
 
@@ -2874,6 +2772,35 @@ export default function Invoices() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => handleMarkAsInvoiced(group)}
+                          disabled={
+                            !!exportProgress ||
+                            !!qboProgress ||
+                            markInvoicedMutation.isPending ||
+                            uploadingInvoiceGroupId === groupId
+                          }
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor:
+                              exportProgress ||
+                              qboProgress ||
+                              markInvoicedMutation.isPending ||
+                              uploadingInvoiceGroupId === groupId
+                                ? 'not-allowed'
+                                : 'pointer',
+                          }}
+                          title="Re-save merged lock list for this batch (same as main list)"
+                        >
+                          {markInvoicedMutation.isPending ? 'Saving…' : 'Mark as invoiced'}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleUnmarkAsInvoiced(groupId)}
                           disabled={!!exportProgress || !!qboProgress || unmarkInvoicedMutation.isPending}
                           style={{
@@ -2910,12 +2837,7 @@ export default function Invoices() {
                           if (!isDemoMode) {
                             await markInvoicedMutation.mutateAsync({
                               groupId,
-                              snapshot: {
-                                key: group.key,
-                                ticketIds: snapshotTicketIdsForInvoicedMark(
-                                  group.tickets as (ServiceTicket & { recordId?: string })[]
-                                ),
-                              },
+                              snapshot: getMergedMarkSnapshot(group),
                             });
                           }
                           const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
@@ -2954,12 +2876,7 @@ export default function Invoices() {
                             if (!isDemoMode) {
                               await markInvoicedMutation.mutateAsync({
                                 groupId,
-                                snapshot: {
-                                  key: group.key,
-                                  ticketIds: snapshotTicketIdsForInvoicedMark(
-                                    group.tickets as (ServiceTicket & { recordId?: string })[]
-                                  ),
-                                },
+                                snapshot: getMergedMarkSnapshot(group),
                               });
                             }
                             const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
@@ -3120,7 +3037,7 @@ export default function Invoices() {
           </div>
           )}
         </div>
-      ) : visibleGroups.length === 0 ? (
+      ) : !TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST && uninvoicedGroups.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All groups have been marked as invoiced.
           {invoicedGroups.length > 0 && (
@@ -3149,16 +3066,29 @@ export default function Invoices() {
         <>
           <div style={{ marginBottom: '14px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 6px', color: 'var(--text-primary)' }}>
-              Uninvoiced batches
+              {TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST ? 'Batches in date range' : 'Uninvoiced batches'}
             </h2>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '900px' }}>
-              These groups are not marked as invoiced yet. <strong>Mark as invoiced</strong> saves the batch and locks the listed service tickets in Service Tickets until you unmark here. You do not need to attach a PDF first; you can add one later from the invoiced view if you want.
+              {TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST ? (
+                <>
+                  Every batch is listed here whether or not it is marked invoiced. <strong>Mark as invoiced</strong> updates
+                  the server lock (merged ticket list) and does not remove the batch from this list. Use{' '}
+                  <strong>See invoiced</strong> for a focused view. <strong>Export for invoicing</strong> and{' '}
+                  <strong>Create in QuickBooks</strong> only include batches not yet marked.
+                </>
+              ) : (
+                <>
+                  These groups are not marked as invoiced yet. <strong>Mark as invoiced</strong> saves the batch and locks
+                  the listed service tickets in Service Tickets until you unmark here. You do not need to attach a PDF first;
+                  you can add one later from the invoiced view if you want.
+                </>
+              )}
             </p>
           </div>
           <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={handleExportForInvoicing}
-              disabled={!!exportProgress || !!qboProgress || visibleGroups.length === 0}
+              disabled={!!exportProgress || !!qboProgress || uninvoicedGroups.length === 0}
               style={{
                 padding: '10px 20px',
                 backgroundColor: 'var(--primary-color)',
@@ -3174,7 +3104,7 @@ export default function Invoices() {
             </button>
             <button
               onClick={handleCreateInQuickBooks}
-              disabled={!effectiveQboConnected || !!exportProgress || !!qboProgress || visibleGroups.length === 0}
+              disabled={!effectiveQboConnected || !!exportProgress || !!qboProgress || uninvoicedGroups.length === 0}
               style={{
                 padding: '10px 20px',
                 backgroundColor: effectiveQboConnected ? '#0ea5e9' : 'var(--bg-tertiary)',
@@ -3195,7 +3125,26 @@ export default function Invoices() {
               </span>
             )}
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              {visibleGroups.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {visibleGroups.length} group(s)
+              {TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST ? (
+                <>
+                  {groupedTickets.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {groupedTickets.length}{' '}
+                  batch(es)
+                  {uninvoicedGroups.length < groupedTickets.length && (
+                    <>
+                      {' · '}
+                      <span style={{ color: 'var(--text-tertiary)' }}>
+                        Export/QBO: {uninvoicedGroups.reduce((s, g) => s + g.tickets.length, 0)} ticket(s) in{' '}
+                        {uninvoicedGroups.length} not-yet-marked batch(es)
+                      </span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  {uninvoicedGroups.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {uninvoicedGroups.length}{' '}
+                  group(s)
+                </>
+              )}
             </span>
             <button
               onClick={() => setShowInvoiced(true)}
@@ -3217,7 +3166,7 @@ export default function Invoices() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {visibleGroups.map((group) => {
+            {mainListGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
               const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
