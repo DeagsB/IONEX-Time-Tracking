@@ -2436,7 +2436,7 @@ export const userExpensesService = {
     notes: string;
     gst: number;
     is_billable: boolean;
-    markup_amount: number;
+    markup_amount: number | null;
     status: 'pending' | 'approved' | 'rejected' | 'paid';
   }>) {
     const payload = { ...updates };
@@ -2553,10 +2553,14 @@ export const userExpensesService = {
     return data;
   },
 
-  async delete(id: string) {
+  /**
+   * Delete a user_expenses row. By default removes the receipt file from storage when present.
+   * Use `keepReceiptInStorage` when deleting duplicate split rows that share the same file with another expense.
+   */
+  async delete(id: string, options?: { keepReceiptInStorage?: boolean }) {
     const { data: expense } = await supabase.from('user_expenses').select('receipt_url, service_ticket_id, description').eq('id', id).single();
 
-    if (expense?.receipt_url) {
+    if (expense?.receipt_url && !options?.keepReceiptInStorage) {
       const pathSegments = expense.receipt_url.split('/');
       const fileName = pathSegments[pathSegments.length - 1];
       const folderName = pathSegments[pathSegments.length - 2];

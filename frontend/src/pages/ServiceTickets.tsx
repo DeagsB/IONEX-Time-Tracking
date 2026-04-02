@@ -42,6 +42,20 @@ function formatDateOnlyLocal(dateStr: string): string {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** Distribute a combined cost (subtotal + GST) into amount/gst using the same ratio as split receipt rows. */
+function splitLumpAllocatedIntoAmountGst(
+  allocated: number,
+  prevAmountSum: number,
+  prevGstSum: number
+): { amount: number; gst: number } {
+  const t = Math.round((prevAmountSum + prevGstSum) * 100) / 100;
+  const target = Math.round(allocated * 100) / 100;
+  if (!(t > 0) || Number.isNaN(target)) return { amount: Math.max(0, target), gst: 0 };
+  const amount = Math.round(target * (prevAmountSum / t) * 100) / 100;
+  const gst = Math.round((target - amount) * 100) / 100;
+  return { amount, gst };
+}
+
 /** DB fields needed to rebuild service rows the same way as the ticket panel (list/search preview). */
 type TicketRecordForRowPreview = {
   edited_descriptions?: Record<string, string[]> | null;
@@ -521,6 +535,16 @@ export default function ServiceTickets() {
     /** When this line came from a receipt (modal or suggested), unlink this user_expense if removed from ticket */
     linkedUserExpenseId?: string;
   }>>([]);
+
+  const [suggestedLumpModal, setSuggestedLumpModal] = useState<{
+    rows: any[];
+    receiptUrl: string | null;
+    receiptTotal: number;
+    displayDescription: string;
+  } | null>(null);
+  const [lumpAllocatedCost, setLumpAllocatedCost] = useState('');
+  const [lumpBillToClient, setLumpBillToClient] = useState('');
+  const [lumpApplySaving, setLumpApplySaving] = useState(false);
 
   /** Inline validation for the ticket expense add/edit form (replaces blocking alerts). */
   const [ticketExpenseFormIssues, setTicketExpenseFormIssues] = useState<
@@ -2838,6 +2862,152 @@ export default function ServiceTickets() {
     queryFn: () => userExpensesService.getUnappliedBillable(ticketOwnerUserId),
     enabled: !!selectedTicketId && !!ticketOwnerUserId,
   });
+
+  const groupedUnappliedBillableReceipts = useMemo(() => {
+    type G = {
+      key: string;
+      receiptUrl: string | null;
+      rows: any[];
+      totalAmount: number;
+      totalGst: number;
+      receiptTotal: number;
+      displayDescription: string;
+      sortDate: string;
+    };
+    const map = new Map<string, G>();
+    for (const r of unappliedBillableReceipts as any[]) {
+      const url = (r.receipt_url && String(r.receipt_url).trim()) || '';
+      const key = url || `id:${r.id}`;
+      const amt = parseFloat(r.amount) || 0;
+      const gst = parseFloat(r.gst) || 0;
+      let g = map.get(key);
+      if (!g) {
+        g = {
+          key,
+          receiptUrl: url || null,
+          rows: [],
+          totalAmount: 0,
+          totalGst: 0,
+          receiptTotal: 0,
+          displayDescription: String(r.description || 'Receipt'),
+          sortDate: String(r.expense_date || ''),
+        };
+        map.set(key, g);
+      }
+      g.rows.push(r);
+      g.totalAmount += amt;
+      g.totalGst += gst;
+      g.receiptTotal += amt + gst;
+      const ed = String(r.expense_date || '');
+      if (ed > g.sortDate) g.sortDate = ed;
+    }
+    for (const g of map.values()) {
+      if (g.rows.length > 1) {
+        const base = String(g.rows[0].description || 'Receipt');
+        g.displayDescription = `${base} · combined (${g.rows.length})`;
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.sortDate.localeCompare(a.sortDate));
+  }, [unappliedBillableReceipts]);
+
+  const applySuggestedLumpToTicket = useCallback(async () => {
+    if (!suggestedLumpModal || !currentTicketRecordId) return;
+    const allocated = Math.round(parseFloat(lumpAllocatedCost) * 100) / 100;
+    const bill = Math.round(parseFloat(lumpBillToClient) * 100) / 100;
+    if (!(allocated > 0)) {
+      alert('Enter a receipt cost greater than zero.');
+      return;
+    }
+    if (bill < 0 || Number.isNaN(bill)) {
+      alert('Amount to bill the client must be zero or greater.');
+      return;
+    }
+    const markup = Math.round((bill - allocated) * 100) / 100;
+    const rows = [...suggestedLumpModal.rows].sort((a: any, b: any) =>
+      String(a.created_at || a.id || '').localeCompare(String(b.created_at || b.id || ''))
+    );
+    const primary = rows[0];
+    const sumA = rows.reduce((s, r: any) => s + (parseFloat(r.amount) || 0), 0);
+    const sumG = rows.reduce((s, r: any) => s + (parseFloat(r.gst) || 0), 0);
+    const { amount, gst } = splitLumpAllocatedIntoAmountGst(allocated, sumA, sumG);
+    const remainder = Math.round((suggestedLumpModal.receiptTotal - allocated) * 100) / 100;
+
+    if (rows.length === 1 && remainder > 0.02) {
+      alert(
+        'This receipt is a single expense line. Enter the full receipt total as cost, or split the receipt on the Expenses page first if you need to apply part of it here and keep the rest unapplied.'
+      );
+      return;
+    }
+
+    setLumpApplySaving(true);
+    try {
+      if (rows.length === 1) {
+        await userExpensesService.update(String(primary.id), {
+          amount,
+          gst,
+          service_ticket_id: currentTicketRecordId,
+          markup_amount: markup,
+        });
+      } else if (remainder > 0.02) {
+        const { amount: remAmt, gst: remGst } = splitLumpAllocatedIntoAmountGst(remainder, sumA, sumG);
+        const survivor = rows[1];
+        for (let i = 2; i < rows.length; i++) {
+          await userExpensesService.delete(String(rows[i].id), { keepReceiptInStorage: true });
+        }
+        await userExpensesService.update(String(primary.id), {
+          amount,
+          gst,
+          service_ticket_id: currentTicketRecordId,
+          markup_amount: markup,
+        });
+        await userExpensesService.update(String(survivor.id), {
+          amount: remAmt,
+          gst: remGst,
+          service_ticket_id: null,
+          markup_amount: null,
+        });
+      } else {
+        for (let i = 1; i < rows.length; i++) {
+          await userExpensesService.delete(String(rows[i].id), { keepReceiptInStorage: true });
+        }
+        await userExpensesService.update(String(primary.id), {
+          amount,
+          gst,
+          service_ticket_id: currentTicketRecordId,
+          markup_amount: markup,
+        });
+      }
+      setPendingAddExpenses((prev) => [
+        ...prev,
+        {
+          expense_type: 'Expenses' as const,
+          description: String(primary.description || 'Receipt'),
+          quantity: 1,
+          rate: bill,
+          actual_cost: allocated,
+          unit: '',
+          tempId: `receipt-${primary.id}`,
+          linkedUserExpenseId: primary.id,
+        },
+      ]);
+      setSuggestedLumpModal(null);
+      setLumpAllocatedCost('');
+      setLumpBillToClient('');
+      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+    } catch (err: any) {
+      alert('Failed to apply receipt: ' + (err.message || 'Unknown error'));
+    } finally {
+      setLumpApplySaving(false);
+    }
+  }, [
+    suggestedLumpModal,
+    currentTicketRecordId,
+    lumpAllocatedCost,
+    lumpBillToClient,
+    queryClient,
+  ]);
 
   // Receipts attached to the currently open ticket
   const { data: attachedReceipts = [] } = useQuery({
@@ -6025,46 +6195,32 @@ export default function ServiceTickets() {
                       </div>
                       
                       {/* Suggested billable receipts from Expenses page */}
-                      {(!isLockedForEditing || allowDeferredReceiptAttachWhenLocked) && unappliedBillableReceipts.length > 0 && (
+                      {(!isLockedForEditing || allowDeferredReceiptAttachWhenLocked) && groupedUnappliedBillableReceipts.length > 0 && (
                         <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.06)', border: '1px solid rgba(33, 150, 243, 0.2)', borderRadius: '6px' }}>
                           <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(33, 150, 243, 0.8)', marginBottom: '8px' }}>Suggested Billable Receipts</div>
-                          {unappliedBillableReceipts.map((r: any) => (
-                            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(33, 150, 243, 0.1)' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '8px', lineHeight: 1.4 }}>
+                            Rows that share the same receipt file are shown as one total. Use <strong>Add to Ticket</strong> to choose how much of that receipt applies as cost on this ticket; markup is billed minus cost.
+                          </div>
+                          {groupedUnappliedBillableReceipts.map((g) => (
+                            <div key={g.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(33, 150, 243, 0.1)' }}>
                               <div>
-                                <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '500' }}>{r.description}</span>
-                                <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--text-tertiary)' }}>${parseFloat(r.amount).toFixed(2)}</span>
+                                <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '500' }}>{g.displayDescription}</span>
+                                <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                                  ${g.receiptTotal.toFixed(2)}
+                                  {g.totalGst > 0 ? ' (incl. GST)' : ''}
+                                </span>
                               </div>
                               <button
-                                onClick={async () => {
-                                  const markupStr = prompt('Enter markup on total (e.g. 10 for $10, 10% for percentage, or 0 for none):') || '0';
-                                  let markup = 0;
-                                  const expTotal = parseFloat(r.amount) + parseFloat(r.gst || 0);
-                                  if (markupStr.includes('%')) {
-                                    const pct = parseFloat(markupStr.replace('%', ''));
-                                    markup = (expTotal * pct) / 100;
-                                  } else {
-                                    markup = parseFloat(markupStr) || 0;
-                                  }
-                                  const totalWithMarkup = expTotal + markup;
-                                  try {
-                                    await userExpensesService.update(r.id, { service_ticket_id: currentTicketRecordId, markup_amount: markup });
-                                    setPendingAddExpenses((prev) => [
-                                      ...prev,
-                                      {
-                                        expense_type: 'Expenses' as const,
-                                        description: r.description,
-                                        quantity: 1,
-                                        rate: totalWithMarkup,
-                                        unit: '',
-                                        tempId: `receipt-${r.id}`,
-                                        linkedUserExpenseId: r.id,
-                                      },
-                                    ]);
-                                    queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
-                                    queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
-                                  } catch (err: any) {
-                                    alert('Failed to apply receipt: ' + (err.message || 'Unknown error'));
-                                  }
+                                type="button"
+                                onClick={() => {
+                                  setSuggestedLumpModal({
+                                    rows: g.rows,
+                                    receiptUrl: g.receiptUrl,
+                                    receiptTotal: g.receiptTotal,
+                                    displayDescription: g.displayDescription,
+                                  });
+                                  setLumpAllocatedCost(g.receiptTotal.toFixed(2));
+                                  setLumpBillToClient(g.receiptTotal.toFixed(2));
                                 }}
                                 style={{ padding: '4px 10px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                               >
@@ -8624,6 +8780,159 @@ export default function ServiceTickets() {
                   {isCreatingTicket ? 'Creating...' : 'Create Service Ticket'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {suggestedLumpModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10009,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !lumpApplySaving) {
+              setSuggestedLumpModal(null);
+              setLumpAllocatedCost('');
+              setLumpBillToClient('');
+            }
+          }}
+        >
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '12px',
+              width: '90%',
+              maxWidth: '420px',
+              padding: '24px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Apply receipt to ticket</h3>
+            <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+              <strong>{suggestedLumpModal.displayDescription}</strong>
+              <br />
+              Receipt total (subtotal + GST): <strong>${suggestedLumpModal.receiptTotal.toFixed(2)}</strong>
+              {suggestedLumpModal.rows.length > 1 && (
+                <span style={{ display: 'block', marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                  Extra lines from the same uploaded file are merged into one expense when you confirm.
+                </span>
+              )}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  Receipt cost on this ticket ($)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={lumpAllocatedCost}
+                  onChange={(e) => setLumpAllocatedCost(e.target.value)}
+                  disabled={lumpApplySaving}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  Amount to bill client ($)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={lumpBillToClient}
+                  onChange={(e) => setLumpBillToClient(e.target.value)}
+                  disabled={lumpApplySaving}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  backgroundColor: 'rgba(33, 150, 243, 0.08)',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <span style={{ color: 'var(--text-secondary)' }}>Markup (auto): </span>
+                <strong>
+                  $
+                  {(
+                    Math.round(
+                      ((parseFloat(lumpBillToClient) || 0) - (parseFloat(lumpAllocatedCost) || 0)) * 100
+                    ) / 100
+                  ).toFixed(2)}
+                </strong>
+                <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--text-tertiary)' }}>billed − receipt cost</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                disabled={lumpApplySaving}
+                onClick={() => {
+                  setSuggestedLumpModal(null);
+                  setLumpAllocatedCost('');
+                  setLumpBillToClient('');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-secondary)',
+                  fontSize: '13px',
+                  cursor: lumpApplySaving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={lumpApplySaving}
+                onClick={() => void applySuggestedLumpToTicket()}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: 'var(--primary-color)',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  cursor: lumpApplySaving ? 'not-allowed' : 'pointer',
+                  opacity: lumpApplySaving ? 0.7 : 1,
+                }}
+              >
+                {lumpApplySaving ? 'Saving…' : 'Add to ticket'}
+              </button>
             </div>
           </div>
         </div>

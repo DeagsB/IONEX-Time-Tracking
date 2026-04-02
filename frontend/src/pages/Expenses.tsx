@@ -10,6 +10,21 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { extractReceiptAutoFill } from '../utils/receiptAutoFill';
 
+function normalizeExpenseTableDateKey(raw: string): string {
+  const t = String(raw || '').trim();
+  return t.split('T')[0].split(' ')[0] || '—';
+}
+
+function formatExpenseGroupDateLabel(dateKey: string): string {
+  if (dateKey === '—') return 'No date';
+  return new Date(`${dateKey}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 /** Split a receipt line total into subtotal + GST using the same ratio as the full bill. */
 function splitTotalIntoAmountGst(
   lineTotal: number,
@@ -91,6 +106,8 @@ export default function Expenses() {
 
   // Admin approval
   const [adminStatusFilter, setAdminStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'paid' | 'all'>('pending');
+  const [collapsedMyExpenseDateKeys, setCollapsedMyExpenseDateKeys] = useState<Set<string>>(() => new Set());
+  const [collapsedAdminExpenseDateKeys, setCollapsedAdminExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
 
   // Admin employee overview (like Service Tickets)
@@ -837,6 +854,68 @@ export default function Expenses() {
     if (!user?.id) return expenses;
     return expenses.filter((e: any) => e.user_id === user.id);
   }, [expenses, user?.id]);
+
+  const myExpensesGroupedByDate = useMemo(() => {
+    const sorted = [...myExpenses].sort((a: any, b: any) => {
+      const ka = normalizeExpenseTableDateKey(String(a.expense_date || ''));
+      const kb = normalizeExpenseTableDateKey(String(b.expense_date || ''));
+      if (ka !== kb) return kb.localeCompare(ka);
+      const ta = String(a.created_at || a.id || '');
+      const tb = String(b.created_at || b.id || '');
+      return tb.localeCompare(ta);
+    });
+    const groups: { dateKey: string; items: any[] }[] = [];
+    let lastKey = '';
+    for (const exp of sorted) {
+      const k = normalizeExpenseTableDateKey(String(exp.expense_date || ''));
+      if (k !== lastKey) {
+        groups.push({ dateKey: k, items: [] });
+        lastKey = k;
+      }
+      groups[groups.length - 1].items.push(exp);
+    }
+    return groups;
+  }, [myExpenses]);
+
+  const adminFilteredExpensesGroupedByDate = useMemo(() => {
+    const sorted = [...adminFilteredExpenses].sort((a: any, b: any) => {
+      const ka = normalizeExpenseTableDateKey(String(a._date || ''));
+      const kb = normalizeExpenseTableDateKey(String(b._date || ''));
+      if (ka !== kb) return kb.localeCompare(ka);
+      const sa = `${a._employeeName || ''}|${a.description || ''}|${a.id}`;
+      const sb = `${b._employeeName || ''}|${b.description || ''}|${b.id}`;
+      return sa.localeCompare(sb);
+    });
+    const groups: { dateKey: string; items: any[] }[] = [];
+    let lastKey = '';
+    for (const exp of sorted) {
+      const k = normalizeExpenseTableDateKey(String(exp._date || ''));
+      if (k !== lastKey) {
+        groups.push({ dateKey: k, items: [] });
+        lastKey = k;
+      }
+      groups[groups.length - 1].items.push(exp);
+    }
+    return groups;
+  }, [adminFilteredExpenses]);
+
+  const toggleMyExpenseDateGroup = (dateKey: string) => {
+    setCollapsedMyExpenseDateKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateKey)) next.delete(dateKey);
+      else next.add(dateKey);
+      return next;
+    });
+  };
+
+  const toggleAdminExpenseDateGroup = (dateKey: string) => {
+    setCollapsedAdminExpenseDateKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateKey)) next.delete(dateKey);
+      else next.add(dateKey);
+      return next;
+    });
+  };
 
   // Admin employee overview: per-employee counts (pending, approved, rejected, paid)
   const expenseEmployeeSummary = useMemo(() => {
@@ -2302,7 +2381,51 @@ export default function Expenses() {
               </tr>
             </thead>
             <tbody>
-              {myExpenses.map((exp: any) => (
+              {myExpenses.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
+                    No expenses found. Drop a receipt above to get started.
+                  </td>
+                </tr>
+              ) : (
+                myExpensesGroupedByDate.map(({ dateKey, items }) => {
+                  const collapsed = collapsedMyExpenseDateKeys.has(dateKey);
+                  return (
+                    <Fragment key={dateKey}>
+                      <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                        <td colSpan={8} style={{ padding: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => toggleMyExpenseDateGroup(dateKey)}
+                            aria-expanded={!collapsed}
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '10px 16px',
+                              border: 'none',
+                              background: 'transparent',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              fontSize: '14px',
+                              fontWeight: '600',
+                              color: 'var(--text-primary)',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
+                              {collapsed ? '▶' : '▼'}
+                            </span>
+                            <span>{formatExpenseGroupDateLabel(dateKey)}</span>
+                            <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-tertiary)' }}>
+                              ({items.length} {items.length === 1 ? 'expense' : 'expenses'})
+                            </span>
+                          </button>
+                        </td>
+                      </tr>
+                      {!collapsed &&
+                        items.map((exp: any) => (
                 <tr
                   key={exp.id}
                   onClick={() => handleStartEdit(exp)}
@@ -2310,7 +2433,7 @@ export default function Expenses() {
                   onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-secondary)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = ''; }}
                 >
-                  <td style={{ padding: '12px 16px', fontSize: '14px' }}>{new Date(exp.expense_date + 'T12:00:00').toLocaleDateString()}</td>
+                  <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--text-tertiary)' }}>—</td>
                   <td style={{ padding: '12px 16px', fontSize: '14px' }}>
                     <div style={{ fontWeight: '500' }}>{exp.description}</div>
                     {exp.receipt_url && (
@@ -2384,13 +2507,10 @@ export default function Expenses() {
                     </button>
                   </td>
                 </tr>
-              ))}
-              {myExpenses.length === 0 && (
-                <tr>
-                  <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                    No expenses found. Drop a receipt above to get started.
-                  </td>
-                </tr>
+                        ))}
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -2443,7 +2563,51 @@ export default function Expenses() {
                 </tr>
               </thead>
               <tbody>
-                {adminFilteredExpenses.map((exp: any) => {
+                {adminFilteredExpenses.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
+                      No {adminStatusFilter === 'all' ? '' : adminStatusFilter} expenses found.
+                    </td>
+                  </tr>
+                ) : (
+                  adminFilteredExpensesGroupedByDate.map(({ dateKey, items }) => {
+                    const collapsed = collapsedAdminExpenseDateKeys.has(dateKey);
+                    return (
+                      <Fragment key={dateKey}>
+                        <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                          <td colSpan={9} style={{ padding: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleAdminExpenseDateGroup(dateKey)}
+                              aria-expanded={!collapsed}
+                              style={{
+                                width: '100%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '8px 14px',
+                                border: 'none',
+                                background: 'transparent',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                fontSize: '13px',
+                                fontWeight: '600',
+                                color: 'var(--text-primary)',
+                                fontFamily: 'inherit',
+                              }}
+                            >
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
+                                {collapsed ? '▶' : '▼'}
+                              </span>
+                              <span>{formatExpenseGroupDateLabel(dateKey)}</span>
+                              <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-tertiary)' }}>
+                                ({items.length} {items.length === 1 ? 'item' : 'items'})
+                              </span>
+                            </button>
+                          </td>
+                        </tr>
+                        {!collapsed &&
+                          items.map((exp: any) => {
                   const isUpdating = updatingExpenseId === exp.id;
                   const status = exp._status;
                   const source = exp._source;
@@ -2463,7 +2627,7 @@ export default function Expenses() {
                         {exp._employeeName || '-'}
                         {source === 'ticket' && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Ticket Expense</div>}
                       </td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px' }}>{exp._date ? new Date(exp._date + 'T12:00:00').toLocaleDateString() : '-'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--text-tertiary)' }}>—</td>
                       <td style={{ padding: '10px 14px', fontSize: '13px' }}>
                         <div style={{ fontWeight: '500' }}>{exp.description}</div>
                         {source === 'receipt' && exp.receipt_url && (
@@ -2540,12 +2704,9 @@ export default function Expenses() {
                     </tr>
                   );
                 })}
-                {adminFilteredExpenses.length === 0 && (
-                  <tr>
-                    <td colSpan={9} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                      No {adminStatusFilter === 'all' ? '' : adminStatusFilter} expenses found.
-                    </td>
-                  </tr>
+                      </Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>
