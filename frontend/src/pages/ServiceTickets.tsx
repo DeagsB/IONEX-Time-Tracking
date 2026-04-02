@@ -3568,6 +3568,10 @@ export default function ServiceTickets() {
 
   const openTicketPanelRef = useRef(openTicketPanel);
   openTicketPanelRef.current = openTicketPanel;
+  /** True while a pending-open widen fetch is in flight */
+  const pendingOpenInflightRef = useRef(false);
+  /** Pending record id we already expanded the date range for (wait for existingTickets refetch) */
+  const pendingOpenWidenedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (existingTickets === undefined) return;
@@ -3577,28 +3581,96 @@ export default function ServiceTickets() {
     } catch {
       return;
     }
-    if (!pending) return;
+    if (!pending) {
+      pendingOpenWidenedForRef.current = null;
+      return;
+    }
 
     const found = tickets.find(
       (t: ServiceTicket & { _matchedRecordId?: string }) =>
         t.id === pending || t._matchedRecordId === pending
     );
-    if (!found) {
+    if (found) {
+      pendingOpenWidenedForRef.current = null;
       try {
         sessionStorage.removeItem(PENDING_OPEN_RECORD_KEY);
       } catch {
         /* ignore */
       }
+      const rec =
+        existingTickets?.find((et) => et.id === (found as { _matchedRecordId?: string })._matchedRecordId) ||
+        existingTickets?.find((et) => et.id === found.id);
+      if (rec) {
+        if ((rec as { is_discarded?: boolean }).is_discarded) {
+          setShowDiscarded(true);
+        } else {
+          setShowDiscarded(false);
+          setActiveTab('all');
+        }
+      }
+      void openTicketPanelRef.current(found);
       return;
     }
 
-    try {
-      sessionStorage.removeItem(PENDING_OPEN_RECORD_KEY);
-    } catch {
-      /* ignore */
+    if (pendingOpenWidenedForRef.current === pending) {
+      return;
     }
-    void openTicketPanelRef.current(found);
-  }, [tickets, existingTickets]);
+
+    if (pendingOpenInflightRef.current) return;
+
+    pendingOpenInflightRef.current = true;
+    const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+    void (async () => {
+      try {
+        const { data: rec, error } = await supabase
+          .from(tableName)
+          .select('id, date, user_id, is_discarded')
+          .eq('id', pending)
+          .maybeSingle();
+
+        if (error || !rec) {
+          pendingOpenWidenedForRef.current = null;
+          try {
+            sessionStorage.removeItem(PENDING_OPEN_RECORD_KEY);
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+
+        if (!isAdmin && user?.id && rec.user_id !== user.id) {
+          pendingOpenWidenedForRef.current = null;
+          try {
+            sessionStorage.removeItem(PENDING_OPEN_RECORD_KEY);
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+
+        if ((rec as { is_discarded?: boolean }).is_discarded) {
+          setShowDiscarded(true);
+        }
+
+        const recDate = (rec as { date: string }).date;
+        if (recDate >= startDate && recDate <= endDate) {
+          pendingOpenWidenedForRef.current = null;
+          try {
+            sessionStorage.removeItem(PENDING_OPEN_RECORD_KEY);
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+
+        pendingOpenWidenedForRef.current = pending;
+        setStartDate((d) => (recDate < d ? recDate : d));
+        setEndDate((d) => (recDate > d ? recDate : d));
+      } finally {
+        pendingOpenInflightRef.current = false;
+      }
+    })();
+  }, [tickets, existingTickets, isDemoMode, isAdmin, user?.id, startDate, endDate]);
 
   return (
     <div>
