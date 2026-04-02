@@ -7,6 +7,10 @@ import { supabase } from '../lib/supabaseClient';
 import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
 import { ticketExpenseReimbursementBase } from '../utils/ticketExpenseReimbursement';
 import { linkedUserExpenseRedundantWithTicketExpenseLine } from '../utils/ticketExpenseReceiptMatch';
+import {
+  ticketExpenseRequiresLinkedReceiptForPayroll,
+  ticketExpenseHasPayrollEligibleLinkedReceipt,
+} from '../utils/ticketExpensePayrollEligibility';
 import { startOfWeekMonday } from '../utils/localMondayWeek';
 
 interface TimeEntry {
@@ -454,6 +458,26 @@ export default function Payroll() {
       ),
   });
 
+  const payrollTicketIdsForReceiptCheck = useMemo(
+    () => [...new Set((ticketExpenses as any[]).map((e: any) => e.service_ticket_id).filter(Boolean))],
+    [ticketExpenses]
+  );
+
+  const { data: payrollLinkedApprovedReceipts = [] } = useQuery({
+    queryKey: ['payrollLinkedApprovedReceipts', payrollTicketIdsForReceiptCheck.slice().sort().join(',')],
+    queryFn: async () => {
+      if (payrollTicketIdsForReceiptCheck.length === 0) return [];
+      const { data, error } = await supabase
+        .from('user_expenses')
+        .select('service_ticket_id, description, status')
+        .in('service_ticket_id', payrollTicketIdsForReceiptCheck)
+        .in('status', ['approved', 'paid']);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: payrollTicketIdsForReceiptCheck.length > 0,
+  });
+
   const { data: receiptExpenses = [] } = useQuery({
     queryKey: ['payrollReceiptExpenses', startDate, endDate, isAdmin, user?.id],
     queryFn: async () => {
@@ -566,6 +590,14 @@ export default function Payroll() {
       const userId = exp.service_tickets?.user_id;
       if (!userId) continue;
 
+      if (
+        exp.needs_reimbursement &&
+        ticketExpenseRequiresLinkedReceiptForPayroll(exp) &&
+        !ticketExpenseHasPayrollEligibleLinkedReceipt(exp, payrollLinkedApprovedReceipts as any[])
+      ) {
+        continue;
+      }
+
       const employee = empByUserId.get(userId);
       const qty = Number(exp.quantity) || 0;
       const rate = Number(exp.rate) || 0;
@@ -594,7 +626,11 @@ export default function Payroll() {
       } else if (expType === 'subsistence' && desc.includes('per diem')) {
         reimbRate = Number(employee?.per_diem_reimb_rate) || 1.00;
         category = 'Per Diem';
-      } else if (exp.needs_reimbursement && ['approved', 'paid'].includes(exp.reimbursement_status)) {
+      } else if (
+        exp.needs_reimbursement &&
+        (['approved', 'paid'].includes(exp.reimbursement_status) ||
+          ticketExpenseHasPayrollEligibleLinkedReceipt(exp, payrollLinkedApprovedReceipts as any[]))
+      ) {
         reimbRate = 1.00;
         category = 'Other Expense';
       } else {
@@ -638,7 +674,7 @@ export default function Payroll() {
     }
 
     return map;
-  }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees]);
+  }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts]);
 
   const grandTotalReimbursements = useMemo(() => {
     const employeeIds = new Set(employeeHours.map((e) => e.userId));

@@ -2228,6 +2228,7 @@ export const serviceTicketExpensesService = {
     unit?: string;
     needs_reimbursement?: boolean;
     reimbursement_status?: string;
+    reimbursement_approved_at?: string | null;
   }) {
     const payload =
       updates.expense_type !== undefined

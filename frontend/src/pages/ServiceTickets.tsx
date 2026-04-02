@@ -15,6 +15,7 @@ import {
   receiptHasMatchingTicketExpenseLine,
   ticketExpenseLineHasAttachedReceipt,
 } from '../utils/ticketExpenseReceiptMatch';
+import { initialReimbursementStatusForTicketExpense } from '../utils/ticketExpensePayrollEligibility';
 
 // Workflow status types and labels
 const WORKFLOW_STATUSES = {
@@ -975,7 +976,12 @@ export default function ServiceTickets() {
             unit: exp.unit,
             actual_cost: exp.actual_cost,
             needs_reimbursement: exp.needs_reimbursement || false,
-            reimbursement_status: exp.needs_reimbursement ? (isAdmin ? 'approved' : 'pending') : undefined,
+            reimbursement_status: initialReimbursementStatusForTicketExpense({
+              needs_reimbursement: !!(exp.needs_reimbursement),
+              expense_type: exp.expense_type,
+              description: exp.description,
+              isAdmin,
+            }),
           });
         }
         setPendingAddExpenses([]);
@@ -2788,7 +2794,7 @@ export default function ServiceTickets() {
   const deferredReceiptPendingCount = useMemo(() => {
     const lines = [
       ...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))),
-      ...pendingAddExpenses,
+      ...pendingAddExpenses.map((e) => ({ ...e, id: e.tempId })),
     ];
     let n = 0;
     for (const expense of lines) {
@@ -3172,6 +3178,7 @@ export default function ServiceTickets() {
       // Save expenses
       if (createExpenses.length > 0) {
         for (const exp of createExpenses) {
+          const nr = exp.needs_reimbursement ?? false;
           await serviceTicketExpensesService.create({
             service_ticket_id: ticketId,
             expense_type: exp.expense_type,
@@ -3179,7 +3186,13 @@ export default function ServiceTickets() {
             quantity: exp.quantity,
             rate: exp.rate,
             unit: exp.unit || '',
-            needs_reimbursement: exp.needs_reimbursement ?? false,
+            needs_reimbursement: nr,
+            reimbursement_status: initialReimbursementStatusForTicketExpense({
+              needs_reimbursement: nr,
+              expense_type: exp.expense_type,
+              description: exp.description,
+              isAdmin,
+            }),
           });
         }
       }
@@ -6393,7 +6406,12 @@ export default function ServiceTickets() {
                                       unit: isHotelAdd ? undefined : editingExpense.unit?.trim() || undefined,
                                       actual_cost: Number(editingExpense.actual_cost) || 0,
                                       needs_reimbursement: true,
-                                      reimbursement_status: isAdmin ? 'approved' : 'pending',
+                                      reimbursement_status: initialReimbursementStatusForTicketExpense({
+                                        needs_reimbursement: true,
+                                        expense_type: editingExpense.expense_type,
+                                        description: editingExpense.description,
+                                        isAdmin,
+                                      }),
                                     });
                                     setEditingExpense(null);
                                   } catch (err: unknown) {
@@ -7047,6 +7065,8 @@ export default function ServiceTickets() {
                                     rate: totalWithMarkup,
                                     actual_cost: expTotal,
                                     needs_reimbursement: true,
+                                    reimbursement_status: 'approved',
+                                    reimbursement_approved_at: new Date().toISOString(),
                                   });
                                   queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
                                 } else if (attachCtxAtSave?.pendingTempId && pendingAtSave) {

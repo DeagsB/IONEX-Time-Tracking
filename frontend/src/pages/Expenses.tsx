@@ -376,6 +376,8 @@ export default function Expenses() {
           rate: line.billed,
           actual_cost: line.cost,
           needs_reimbursement: true,
+          reimbursement_status: 'approved',
+          reimbursement_approved_at: new Date().toISOString(),
         });
       }
 
