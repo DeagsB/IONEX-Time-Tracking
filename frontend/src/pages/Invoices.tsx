@@ -65,13 +65,6 @@ const PDF_EXPORT_RATE_ORDER = [
   'Field Overtime',
 ] as const;
 
-/**
- * TEMPORARY workflow: main list shows every batch (marked + unmarked) so you can refresh locks without rows
- * vanishing. Set to `false` when finished, or `git revert` the commit that introduced this flag — then the
- * main list is uninvoiced-only again (with the “all marked” empty state).
- */
-const TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST = true;
-
 function serviceTicketEditHref(recordId: string) {
   const p = new URLSearchParams();
   p.set('openRecord', recordId);
@@ -829,6 +822,48 @@ function mergeMarkSnapshotForGroup(
     key: group.key,
     ticketIds: [...merged].sort(),
   };
+}
+
+function ticketIdsSetFromMarkRow(row: InvoicedBatchMarkRow): Set<string> {
+  const raw = row.key_snapshot?.ticketIds;
+  if (!Array.isArray(raw)) return new Set();
+  return new Set(
+    raw.map((x) => (typeof x === 'string' ? x.trim() : String(x ?? '').trim())).filter(Boolean)
+  );
+}
+
+function markRowCoversAllTicketsInGroup(
+  row: InvoicedBatchMarkRow,
+  group: { tickets: ServiceTicket[] }
+): boolean {
+  if (group.tickets.length === 0) return false;
+  const have = ticketIdsSetFromMarkRow(row);
+  return group.tickets.every((t) => {
+    const rid = String((t as ServiceTicket & { recordId?: string }).recordId ?? '').trim();
+    const cid = String(t.id ?? '').trim();
+    return (rid && have.has(rid)) || (cid && have.has(cid));
+  });
+}
+
+/**
+ * DB row for this batch: exact group_id match first, else any mark whose snapshot lists every ticket in the batch.
+ * Fixes UI drift when getGroupId() changes (e.g. project id source) but invoiced_batch_marks still use the old key.
+ */
+function findMarkRowForGroup(
+  group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
+  rows: InvoicedBatchMarkRow[]
+): InvoicedBatchMarkRow | undefined {
+  const gid = getGroupId(group);
+  const exact = rows.find((r) => r.group_id === gid);
+  if (exact) return exact;
+  return rows.find((r) => markRowCoversAllTicketsInGroup(r, group));
+}
+
+function resolvedPersistGroupId(
+  group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
+  rows: InvoicedBatchMarkRow[]
+): string {
+  return findMarkRowForGroup(group, rows)?.group_id ?? getGroupId(group);
 }
 
 function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string {
@@ -1765,8 +1800,7 @@ export default function Invoices() {
   });
 
   const getMergedMarkSnapshot = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
-    const groupId = getGroupId(group);
-    const row = invoicedMarkRows.find((r) => r.group_id === groupId);
+    const row = findMarkRowForGroup(group, invoicedMarkRows);
     const prevFromDb =
       row?.key_snapshot && typeof row.key_snapshot === 'object'
         ? (row.key_snapshot as FrozenGroupSnapshot)
@@ -1775,18 +1809,18 @@ export default function Invoices() {
   };
 
   const handleMarkAsInvoiced = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
-    const groupId = getGroupId(group);
+    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
     const snapshot = getMergedMarkSnapshot(group);
     if (isDemoMode) {
       setLegacyMarkedInvoicedIds((prev) => {
         const next = new Set(prev);
-        next.add(groupId);
+        next.add(persistId);
         persistMarkedInvoiceIdsToLocalStorage(next);
         return next;
       });
       setFrozenInvoicedGroups((prev) => {
-        const mergedSnap = mergeMarkSnapshotForGroup(group, prev[groupId]);
-        const next = { ...prev, [groupId]: mergedSnap };
+        const mergedSnap = mergeMarkSnapshotForGroup(group, prev[persistId]);
+        const next = { ...prev, [persistId]: mergedSnap };
         try {
           localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
         } catch {
@@ -1797,7 +1831,7 @@ export default function Invoices() {
       return;
     }
     markInvoicedMutation.mutate(
-      { groupId, snapshot },
+      { groupId: persistId, snapshot },
       {
         onError: (err) => {
           setExportError(err instanceof Error ? err.message : 'Could not save marked as invoiced');
@@ -1811,27 +1845,27 @@ export default function Invoices() {
     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
     file: File
   ) => {
-    const groupId = getGroupId(group);
+    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
     const snapshot = getMergedMarkSnapshot(group);
     if (file.type !== 'application/pdf') return;
-    setUploadingInvoiceGroupId(groupId);
+    setUploadingInvoiceGroupId(persistId);
     setExportError(null);
     try {
       let fileForUi: File;
       if (isDemoMode) {
         fileForUi = file;
-        setInvoiceFileForGroup(groupId, file);
+        setInvoiceFileForGroup(persistId, file);
         handleMarkAsInvoiced(group);
       } else {
         // Persist mark first so ticket IDs are always in invoiced_batch_marks before the PDF row.
         // Otherwise a successful upload + failed mark left batches "invoiced" in the UI with no DB/UI lock.
-        await markInvoicedMutation.mutateAsync({ groupId, snapshot });
-        const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
+        await markInvoicedMutation.mutateAsync({ groupId: persistId, snapshot });
+        const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
         fileForUi = new File([file], storedName, { type: file.type });
-        setInvoiceFileForGroup(groupId, fileForUi);
+        setInvoiceFileForGroup(persistId, fileForUi);
         await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
       }
-      await handleDownloadBatchWithInvoice(group, groupId, fileForUi);
+      await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
     } catch (err) {
       setExportError(
         err instanceof Error ? err.message : 'Could not attach invoice and mark as invoiced'
@@ -1896,7 +1930,9 @@ export default function Invoices() {
     const next: Record<string, FrozenGroupSnapshot> = { ...frozenInvoicedGroups };
     for (const g of groupedTickets) {
       const gid = getGroupId(g);
-      if (effectiveMarkedInvoicedIds.has(gid)) {
+      const invoiced =
+        findMarkRowForGroup(g, invoicedMarkRows) != null || effectiveMarkedInvoicedIds.has(gid);
+      if (invoiced) {
         const existing = next[gid];
         const merged = mergeMarkSnapshotForGroup(g, existing);
         if (
@@ -1917,12 +1953,22 @@ export default function Invoices() {
         // ignore
       }
     }
-  }, [groupedTickets, effectiveMarkedInvoicedIds, frozenInvoicedGroups]);
+  }, [groupedTickets, effectiveMarkedInvoicedIds, frozenInvoicedGroups, invoicedMarkRows]);
 
   const invoicedGroups = useMemo(() => {
-    const fromCurrent = groupedTickets.filter((g) => effectiveMarkedInvoicedIds.has(getGroupId(g)));
+    const fromCurrent = groupedTickets.filter(
+      (g) =>
+        findMarkRowForGroup(g, invoicedMarkRows) != null || effectiveMarkedInvoicedIds.has(getGroupId(g))
+    );
+    const coveredDbGroupIds = new Set<string>();
+    for (const g of groupedTickets) {
+      const row = findMarkRowForGroup(g, invoicedMarkRows);
+      if (row) coveredDbGroupIds.add(row.group_id);
+    }
     const currentGroupIds = new Set(fromCurrent.map((g) => getGroupId(g)));
-    const markedIdsNotInCurrent = [...effectiveMarkedInvoicedIds].filter((id) => !currentGroupIds.has(id));
+    const markedIdsNotInCurrent = [...effectiveMarkedInvoicedIds].filter(
+      (id) => !currentGroupIds.has(id) && !coveredDbGroupIds.has(id)
+    );
     const fromFrozen: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
     for (const id of markedIdsNotInCurrent) {
       const snap = frozenInvoicedGroups[id];
@@ -1935,19 +1981,25 @@ export default function Invoices() {
       fromFrozen.push({ key: snap.key, tickets });
     }
     return [...fromCurrent, ...fromFrozen];
-  }, [groupedTickets, effectiveMarkedInvoicedIds, frozenInvoicedGroups, ticketsForCustomer]);
+  }, [
+    groupedTickets,
+    effectiveMarkedInvoicedIds,
+    invoicedMarkRows,
+    frozenInvoicedGroups,
+    ticketsForCustomer,
+  ]);
 
-  /** Batches not yet marked — used for bulk export / QBO only */
+  /** Batches not yet marked — main pending list, bulk export, and QuickBooks */
   const uninvoicedGroups = useMemo(
-    () => groupedTickets.filter((g) => !effectiveMarkedInvoicedIds.has(getGroupId(g))),
-    [groupedTickets, effectiveMarkedInvoicedIds]
+    () =>
+      groupedTickets.filter(
+        (g) =>
+          findMarkRowForGroup(g, invoicedMarkRows) == null &&
+          !effectiveMarkedInvoicedIds.has(getGroupId(g))
+      ),
+    [groupedTickets, effectiveMarkedInvoicedIds, invoicedMarkRows]
   );
 
-  const mainListGroups = TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST
-    ? groupedTickets
-    : uninvoicedGroups;
-
-  const invoicedGroupIds = useMemo(() => invoicedGroups.map((g) => getGroupId(g)), [invoicedGroups]);
   const { data: savedInvoiceMetadata } = useQuery({
     queryKey: ['invoicedBatchInvoices', [...invoicedGroupIdsFromDb].sort().join(',')],
     queryFn: () => invoicedBatchInvoicesService.getMetadataByGroupIds(invoicedGroupIdsFromDb),
@@ -2289,9 +2341,9 @@ export default function Invoices() {
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
         {isCNRL
           ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets. Marked-as-invoiced state is stored in the database (admins only).'
-          : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, monthly, or one batch per project) for invoicing. Marked-as-invoiced is saved to the database with a snapshot of the batch so status stays consistent across devices (admins only).'}
+          : 'Approved service tickets grouped by project using the filters below (daily, weekly, bi-weekly, monthly, or one batch per project). Marked-as-invoiced is saved to the database with a snapshot of the batch so status stays consistent across devices (admins only).'}
         {' '}
-        <strong>Uninvoiced</strong> batches are listed below; <strong>Mark as invoiced</strong> locks those service tickets until you unmark (no invoice PDF required). Use <strong>See invoiced</strong> for batches already marked—they stay locked the same way, with or without a linked PDF.
+        <strong>Only pending (not yet invoiced) batches</strong> appear in the list below. <strong>Mark as invoiced</strong> locks those service tickets until you unmark (no invoice PDF required). Use <strong>See invoiced</strong> for batches already marked—they stay locked the same way, with or without a linked PDF.
       </p>
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
@@ -2458,7 +2510,7 @@ export default function Invoices() {
           />
         </div>
         <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
-          Only tickets in this date range (matching Service Tickets Approved tab) are shown.
+          Filters pick which approved tickets can form pending batches (same idea as Service Tickets → Approved). Marked batches are not listed here—use See invoiced.
         </span>
         </div>
       </div>
@@ -2612,6 +2664,7 @@ export default function Invoices() {
             {invoicedGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
+              const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
               const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
               const breakdownLines = key.periodKey && !isCnrlPeriodGroup
                 ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId)
@@ -2657,7 +2710,7 @@ export default function Invoices() {
                   );
                   return !(key.poAfe || '').trim();
                 });
-              const isBreakdownExpanded = invoicedBreakdownExpanded.has(groupId);
+              const isBreakdownExpanded = invoicedBreakdownExpanded.has(persistId);
               const uniquePoAfeFromBreakdown = [...new Set(breakdownLines.map((l) => l.poAfe).filter(Boolean))];
               const headerPoAfe =
                 uniquePoAfeFromBreakdown.length === 0
@@ -2672,7 +2725,7 @@ export default function Invoices() {
               })();
               return (
                 <div
-                  key={groupId}
+                  key={persistId}
                   style={{
                     padding: '16px',
                     backgroundColor: 'var(--bg-secondary)',
@@ -2772,7 +2825,7 @@ export default function Invoices() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleUnmarkAsInvoiced(groupId)}
+                          onClick={() => handleUnmarkAsInvoiced(persistId)}
                           disabled={!!exportProgress || !!qboProgress || unmarkInvoicedMutation.isPending}
                           style={{
                             padding: '6px 12px',
@@ -2802,38 +2855,38 @@ export default function Invoices() {
                         e.currentTarget.style.borderColor = '';
                         const file = e.dataTransfer?.files?.[0];
                         if (file?.type !== 'application/pdf') return;
-                        setUploadingInvoiceGroupId(groupId);
+                        setUploadingInvoiceGroupId(persistId);
                         setExportError(null);
                         try {
                           if (!isDemoMode) {
                             await markInvoicedMutation.mutateAsync({
-                              groupId,
+                              groupId: persistId,
                               snapshot: getMergedMarkSnapshot(group),
                             });
                           }
-                          const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
+                          const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
                           const fileForUi = new File([file], storedName, { type: file.type });
-                          setInvoiceFileForGroup(groupId, fileForUi);
+                          setInvoiceFileForGroup(persistId, fileForUi);
                           await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                          await handleDownloadBatchWithInvoice(group, groupId, fileForUi);
+                          await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
                         } catch (err) {
                           setExportError(err instanceof Error ? err.message : 'Upload failed');
                         } finally {
                           setUploadingInvoiceGroupId(null);
                         }
                       }}
-                      onClick={() => document.getElementById(`invoice-file-${groupId}`)?.click()}
+                      onClick={() => document.getElementById(`invoice-file-${persistId}`)?.click()}
                       style={{
                         border: '2px dashed var(--border-color)',
                         borderRadius: '8px',
                         padding: '12px 16px',
-                        cursor: uploadingInvoiceGroupId === groupId ? 'wait' : 'pointer',
+                        cursor: uploadingInvoiceGroupId === persistId ? 'wait' : 'pointer',
                         backgroundColor: 'var(--bg-tertiary)',
                         marginBottom: '8px',
                       }}
                     >
                       <input
-                        id={`invoice-file-${groupId}`}
+                        id={`invoice-file-${persistId}`}
                         type="file"
                         accept=".pdf,application/pdf"
                         style={{ display: 'none' }}
@@ -2841,20 +2894,20 @@ export default function Invoices() {
                           const file = e.target.files?.[0];
                           e.target.value = '';
                           if (!file) return;
-                          setUploadingInvoiceGroupId(groupId);
+                          setUploadingInvoiceGroupId(persistId);
                           setExportError(null);
                           try {
                             if (!isDemoMode) {
                               await markInvoicedMutation.mutateAsync({
-                                groupId,
+                                groupId: persistId,
                                 snapshot: getMergedMarkSnapshot(group),
                               });
                             }
-                            const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
+                            const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
                             const fileForUi = new File([file], storedName, { type: file.type });
-                            setInvoiceFileForGroup(groupId, fileForUi);
+                            setInvoiceFileForGroup(persistId, fileForUi);
                             await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                            await handleDownloadBatchWithInvoice(group, groupId, fileForUi);
+                            await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
                           } catch (err) {
                             setExportError(err instanceof Error ? err.message : 'Upload failed');
                           } finally {
@@ -2862,20 +2915,20 @@ export default function Invoices() {
                           }
                         }}
                       />
-                      {uploadingInvoiceGroupId === groupId ? (
+                      {uploadingInvoiceGroupId === persistId ? (
                         <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Uploading…</span>
-                      ) : invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId] ? (
+                      ) : invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId] ? (
                         <span style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span title={invoiceFilesByGroupId[groupId]?.name ?? savedInvoiceMetadata?.[groupId]?.filename}>
-                            {invoiceFilesByGroupId[groupId]?.name ?? savedInvoiceMetadata?.[groupId]?.filename}
+                          <span title={invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}>
+                            {invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
                           </span>
                           <button
                             type="button"
                             onClick={async (e) => {
                               e.stopPropagation();
-                              setInvoiceFileForGroup(groupId, null);
+                              setInvoiceFileForGroup(persistId, null);
                               try {
-                                await invoicedBatchInvoicesService.deleteInvoice(groupId);
+                                await invoicedBatchInvoicesService.deleteInvoice(persistId);
                                 await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
                               } catch (err) {
                                 setExportError(err instanceof Error ? err.message : 'Remove failed');
@@ -2901,21 +2954,21 @@ export default function Invoices() {
                       )}
                     </div>
                     <button
-                      onClick={() => handleDownloadBatchWithInvoice(group, groupId)}
-                      disabled={!(invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]) || !!exportProgress || !!qboProgress || downloadingWithInvoiceGroupId === groupId}
+                      onClick={() => handleDownloadBatchWithInvoice(group, persistId)}
+                      disabled={!(invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) || !!exportProgress || !!qboProgress || downloadingWithInvoiceGroupId === persistId}
                       style={{
                         padding: '6px 12px',
-                        backgroundColor: (invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]) ? 'var(--primary-color)' : 'var(--bg-tertiary)',
-                        color: (invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]) ? 'white' : 'var(--text-tertiary)',
+                        backgroundColor: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                        color: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) ? 'white' : 'var(--text-tertiary)',
                         border: '1px solid var(--border-color)',
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: 600,
-                        cursor: (invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]) && !exportProgress && !qboProgress && downloadingWithInvoiceGroupId !== groupId ? 'pointer' : 'not-allowed',
+                        cursor: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) && !exportProgress && !qboProgress && downloadingWithInvoiceGroupId !== persistId ? 'pointer' : 'not-allowed',
                       }}
                       title="Merge invoice PDF (first) with this batch and download"
                     >
-                      {downloadingWithInvoiceGroupId === groupId ? 'Generating…' : 'Download batch with invoice'}
+                      {downloadingWithInvoiceGroupId === persistId ? 'Generating…' : 'Download batch with invoice'}
                     </button>
                   </div>
                   {/* Dropdown to show/hide detailed breakdown */}
@@ -2924,8 +2977,8 @@ export default function Invoices() {
                     onClick={() => {
                       setInvoicedBreakdownExpanded((prev) => {
                         const next = new Set(prev);
-                        if (next.has(groupId)) next.delete(groupId);
-                        else next.add(groupId);
+                        if (next.has(persistId)) next.delete(persistId);
+                        else next.add(persistId);
                         return next;
                       });
                     }}
@@ -3008,7 +3061,7 @@ export default function Invoices() {
           </div>
           )}
         </div>
-      ) : !TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST && uninvoicedGroups.length === 0 ? (
+      ) : uninvoicedGroups.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All groups have been marked as invoiced.
           {invoicedGroups.length > 0 && (
@@ -3037,23 +3090,11 @@ export default function Invoices() {
         <>
           <div style={{ marginBottom: '14px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 6px', color: 'var(--text-primary)' }}>
-              {TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST ? 'Batches in date range' : 'Uninvoiced batches'}
+              Pending
             </h2>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '900px' }}>
-              {TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST ? (
-                <>
-                  Every batch is listed here whether or not it is marked invoiced. <strong>Mark as invoiced</strong> updates
-                  the server lock (merged ticket list) and does not remove the batch from this list. Use{' '}
-                  <strong>See invoiced</strong> for a focused view. <strong>Export for invoicing</strong> and{' '}
-                  <strong>Create in QuickBooks</strong> only include batches not yet marked.
-                </>
-              ) : (
-                <>
-                  These groups are not marked as invoiced yet. <strong>Mark as invoiced</strong> saves the batch and locks
-                  the listed service tickets in Service Tickets until you unmark here. You do not need to attach a PDF first;
-                  you can add one later from the invoiced view if you want.
-                </>
-              )}
+              Batches here are not marked as invoiced yet. <strong>Mark as invoiced</strong> saves the batch and locks the
+              listed service tickets until you unmark. You do not need a PDF first; you can attach one later from See invoiced.
             </p>
           </div>
           <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -3096,26 +3137,7 @@ export default function Invoices() {
               </span>
             )}
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              {TEMP_INVOICES_SHOW_ALL_BATCHES_ON_MAIN_LIST ? (
-                <>
-                  {groupedTickets.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {groupedTickets.length}{' '}
-                  batch(es)
-                  {uninvoicedGroups.length < groupedTickets.length && (
-                    <>
-                      {' · '}
-                      <span style={{ color: 'var(--text-tertiary)' }}>
-                        Export/QBO: {uninvoicedGroups.reduce((s, g) => s + g.tickets.length, 0)} ticket(s) in{' '}
-                        {uninvoicedGroups.length} not-yet-marked batch(es)
-                      </span>
-                    </>
-                  )}
-                </>
-              ) : (
-                <>
-                  {uninvoicedGroups.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {uninvoicedGroups.length}{' '}
-                  group(s)
-                </>
-              )}
+              {uninvoicedGroups.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {uninvoicedGroups.length} group(s)
             </span>
             <button
               onClick={() => setShowInvoiced(true)}
@@ -3137,7 +3159,7 @@ export default function Invoices() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {mainListGroups.map((group) => {
+            {uninvoicedGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
               const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
