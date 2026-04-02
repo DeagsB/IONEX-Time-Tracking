@@ -1026,6 +1026,14 @@ export default function ServiceTickets() {
       for (const expenseId of pendingDeleteExpenseIds) {
         const expense = expenses.find((e) => e.id === expenseId);
         if (expense && recordId) {
+          const clearedReceiptOnly = await userExpensesService.removeReceiptFromTicketLine(
+            recordId,
+            expense.description || '',
+            expenseId
+          );
+          if (clearedReceiptOnly) {
+            continue;
+          }
           await userExpensesService.unlinkReceiptsForDeletedExpense(recordId, expense.description || '');
         }
         await serviceTicketExpensesService.delete(expenseId);
@@ -6964,6 +6972,7 @@ export default function ServiceTickets() {
                                 fontSize: '11px',
                                 cursor: 'pointer',
                               }}
+                              title="If this line has a receipt, Save removes the receipt and turns off reimbursement but keeps the line. Otherwise the line is removed."
                             >
                               Delete
                             </button>

@@ -2653,6 +2653,63 @@ export const userExpensesService = {
     return true;
   },
 
+  /**
+   * When the user removes a receipt from a ticket expense line: clear receipt file (if unreferenced),
+   * clear receipt_url/markup on linked user_expenses, set ticket line to not reimbursable.
+   * Does not remove the service_ticket_expenses row.
+   * @returns true if at least one linked user_expense had a receipt and was cleared
+   */
+  async removeReceiptFromTicketLine(
+    serviceTicketId: string,
+    description: string,
+    serviceTicketExpenseId: string
+  ): Promise<boolean> {
+    const d = (description || '').trim();
+    if (!d) return false;
+
+    const { data: receipts, error: selErr } = await supabase
+      .from('user_expenses')
+      .select('id, receipt_url')
+      .eq('service_ticket_id', serviceTicketId)
+      .ilike('description', d);
+    if (selErr) throw selErr;
+    if (!receipts?.length) return false;
+
+    const rows = receipts as { id: string; receipt_url?: string | null }[];
+    const withReceipt = rows.filter((r) => String(r.receipt_url || '').trim());
+    if (withReceipt.length === 0) return false;
+
+    const idsToClear = withReceipt.map((r) => r.id);
+    const urls = [...new Set(withReceipt.map((r) => String(r.receipt_url).trim()).filter(Boolean))];
+
+    for (const url of urls) {
+      const { data: refs } = await supabase.from('user_expenses').select('id').eq('receipt_url', url);
+      const others = (refs || []).filter((r) => !idsToClear.includes(r.id));
+      if (others.length === 0) {
+        const pathSegments = url.split('/');
+        const fileName = pathSegments[pathSegments.length - 1];
+        const folderName = pathSegments[pathSegments.length - 2];
+        if (fileName && folderName) {
+          await supabase.storage.from(RECEIPTS_BUCKET).remove([`${folderName}/${fileName}`]);
+        }
+      }
+    }
+
+    const { error: upErr } = await supabase
+      .from('user_expenses')
+      .update({ receipt_url: null, markup_amount: null })
+      .in('id', idsToClear);
+    if (upErr) throw upErr;
+
+    await serviceTicketExpensesService.update(serviceTicketExpenseId, {
+      needs_reimbursement: false,
+      reimbursement_status: null,
+      reimbursement_approved_at: null,
+    });
+
+    return true;
+  },
+
   async unapplyFromTicket(id: string) {
     const { data: expense, error: fetchErr } = await supabase
       .from('user_expenses')
