@@ -6,6 +6,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
 import { ticketExpenseReimbursementBase } from '../utils/ticketExpenseReimbursement';
+import { linkedUserExpenseRedundantWithTicketExpenseLine } from '../utils/ticketExpenseReceiptMatch';
 import { startOfWeekMonday } from '../utils/localMondayWeek';
 
 interface TimeEntry {
@@ -619,6 +620,7 @@ export default function Payroll() {
 
     // Process receipt expenses (subtotal + GST = employee out-of-pocket); includes catch-up for current period
     for (const exp of receiptExpensesForReimbursements as any[]) {
+      if (linkedUserExpenseRedundantWithTicketExpenseLine(exp, ticketExpenses as any[])) continue;
       const userId = exp.user_id;
       if (!userId) continue;
 

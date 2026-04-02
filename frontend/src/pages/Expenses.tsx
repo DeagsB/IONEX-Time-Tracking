@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { userExpensesService, serviceTicketExpensesService, employeesService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 import { optimizeImage } from '../utils/imageOptimizer';
+import { ticketExpenseLineHasAttachedReceipt } from '../utils/ticketExpenseReceiptMatch';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 
@@ -387,21 +388,28 @@ export default function Expenses() {
       _amount: parseFloat(exp.amount),
       _date: exp.expense_date,
     }));
-    const ticketItems = ticketReimbExpenses.map((exp: any) => {
-      const uid = exp.service_tickets?.user_id;
-      const emp = employees?.find((e: any) => e.user_id === uid);
-      const empName = emp?.user ? `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim() : 'Unknown';
-      return {
-        ...exp,
-        _source: 'ticket' as const,
-        _status: exp.reimbursement_status || 'pending',
-        _userId: uid,
-        _employeeName: empName,
-        _ticketNumber: exp.service_tickets?.ticket_number || null,
-        _amount: (Number(exp.quantity) || 0) * (Number(exp.rate) || 0),
-        _date: exp.service_tickets?.date || exp.created_at?.split('T')[0],
-      };
-    });
+    const ticketItems = ticketReimbExpenses
+      .filter((exp: any) => {
+        const tid = exp.service_ticket_id;
+        if (!tid) return true;
+        const receiptsOnTicket = expenses.filter((r: any) => r.service_ticket_id === tid);
+        return !ticketExpenseLineHasAttachedReceipt(exp.description, receiptsOnTicket);
+      })
+      .map((exp: any) => {
+        const uid = exp.service_tickets?.user_id;
+        const emp = employees?.find((e: any) => e.user_id === uid);
+        const empName = emp?.user ? `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim() : 'Unknown';
+        return {
+          ...exp,
+          _source: 'ticket' as const,
+          _status: exp.reimbursement_status || 'pending',
+          _userId: uid,
+          _employeeName: empName,
+          _ticketNumber: exp.service_tickets?.ticket_number || null,
+          _amount: (Number(exp.quantity) || 0) * (Number(exp.rate) || 0),
+          _date: exp.service_tickets?.date || exp.created_at?.split('T')[0],
+        };
+      });
     return [...receiptItems, ...ticketItems].sort((a, b) => new Date(b._date).getTime() - new Date(a._date).getTime());
   }, [expenses, ticketReimbExpenses, employees]);
 
