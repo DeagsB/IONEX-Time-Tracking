@@ -25,6 +25,36 @@ function formatExpenseGroupDateLabel(dateKey: string): string {
   });
 }
 
+type SharedReceiptRowInput = { id: string; receipt_url?: string | null; amount?: unknown; gst?: unknown };
+
+/** Same-day (or same-group) rows that share one uploaded receipt file → line index + combined subtotal+GST. */
+function sharedReceiptLabelMetaForGroup(
+  items: SharedReceiptRowInput[]
+): Map<string, { index: number; total: number; combinedTotal: number }> {
+  const byUrl = new Map<string, string[]>();
+  for (const exp of items) {
+    const u = (exp.receipt_url && String(exp.receipt_url).trim()) || '';
+    if (!u) continue;
+    if (!byUrl.has(u)) byUrl.set(u, []);
+    byUrl.get(u)!.push(String(exp.id));
+  }
+  const combinedByUrl = new Map<string, number>();
+  for (const exp of items) {
+    const u = (exp.receipt_url && String(exp.receipt_url).trim()) || '';
+    if (!u) continue;
+    const a = parseFloat(String(exp.amount)) || 0;
+    const g = parseFloat(String(exp.gst)) || 0;
+    combinedByUrl.set(u, (combinedByUrl.get(u) || 0) + a + g);
+  }
+  const meta = new Map<string, { index: number; total: number; combinedTotal: number }>();
+  for (const [url, ids] of byUrl.entries()) {
+    if (ids.length < 2) continue;
+    const combinedTotal = Math.round((combinedByUrl.get(url) || 0) * 100) / 100;
+    ids.forEach((id, i) => meta.set(id, { index: i + 1, total: ids.length, combinedTotal }));
+  }
+  return meta;
+}
+
 /** Split a receipt line total into subtotal + GST using the same ratio as the full bill. */
 function splitTotalIntoAmountGst(
   lineTotal: number,
@@ -2390,6 +2420,7 @@ export default function Expenses() {
               ) : (
                 myExpensesGroupedByDate.map(({ dateKey, items }) => {
                   const collapsed = collapsedMyExpenseDateKeys.has(dateKey);
+                  const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(items);
                   return (
                     <Fragment key={dateKey}>
                       <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
@@ -2436,6 +2467,28 @@ export default function Expenses() {
                   <td style={{ padding: '12px 16px', fontSize: '14px', color: 'var(--text-tertiary)' }}>—</td>
                   <td style={{ padding: '12px 16px', fontSize: '14px' }}>
                     <div style={{ fontWeight: '500' }}>{exp.description}</div>
+                    {(() => {
+                      const part = sharedReceiptMeta.get(String(exp.id));
+                      if (!part) return null;
+                      return (
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            color: '#5b21b6',
+                            marginTop: '4px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                            display: 'inline-block',
+                            maxWidth: '100%',
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {`Same receipt · $${part.combinedTotal.toFixed(2)} combined (subtotal + GST) · line ${part.index} of ${part.total}`}
+                        </div>
+                      );
+                    })()}
                     {exp.receipt_url && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
@@ -2572,6 +2625,7 @@ export default function Expenses() {
                 ) : (
                   adminFilteredExpensesGroupedByDate.map(({ dateKey, items }) => {
                     const collapsed = collapsedAdminExpenseDateKeys.has(dateKey);
+                    const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(items);
                     return (
                       <Fragment key={dateKey}>
                         <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
@@ -2630,6 +2684,28 @@ export default function Expenses() {
                       <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--text-tertiary)' }}>—</td>
                       <td style={{ padding: '10px 14px', fontSize: '13px' }}>
                         <div style={{ fontWeight: '500' }}>{exp.description}</div>
+                        {source === 'receipt' && (() => {
+                          const part = sharedReceiptMeta.get(String(exp.id));
+                          if (!part) return null;
+                          return (
+                            <div
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: '600',
+                                color: '#5b21b6',
+                                marginTop: '4px',
+                                padding: '2px 6px',
+                                borderRadius: '5px',
+                                backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                                display: 'inline-block',
+                                maxWidth: '100%',
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              {`Same receipt · $${part.combinedTotal.toFixed(2)} combined · line ${part.index} of ${part.total}`}
+                            </div>
+                          );
+                        })()}
                         {source === 'receipt' && exp.receipt_url && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
