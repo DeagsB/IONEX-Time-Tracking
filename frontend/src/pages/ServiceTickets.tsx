@@ -2,7 +2,19 @@ import { useState, useMemo, useEffect, useCallback, useRef, Fragment } from 'rea
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { serviceTicketsService, customersService, employeesService, serviceTicketExpensesService, projectsService, timeEntriesService, userExpensesService, type ServiceTicketExpenseRow } from '../services/supabaseServices';
+import {
+  serviceTicketsService,
+  customersService,
+  employeesService,
+  serviceTicketExpensesService,
+  projectsService,
+  timeEntriesService,
+  userExpensesService,
+  invoicedBatchMarksService,
+  collectLockedServiceTicketIdsFromMarks,
+  fetchLockedServiceTicketIdsForCurrentUser,
+  type ServiceTicketExpenseRow,
+} from '../services/supabaseServices';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { groupEntriesIntoTickets, formatTicketDate, generateTicketDisplayId, ServiceTicket, getRateTypeSortOrder, applyHeaderOverridesToTicket, buildApproverPoAfe, getProjectHeaderFields, getTicketBillingKey, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -599,7 +611,7 @@ export default function ServiceTickets() {
   type EditableTicketSnapshot = NonNullable<typeof editableTicket>;
   const initialEditableTicketRef = useRef<EditableTicketSnapshot | null>(null);
   const initialServiceRowsRef = useRef<ServiceRow[]>([]);
-  const [isLockedForEditing, setIsLockedForEditing] = useState(false); // True when admin has approved
+  const [workflowLockedForEditing, setWorkflowLockedForEditing] = useState(false); // Submitted / approved / trash (non-admin rules)
   const [showLockNotification, setShowLockNotification] = useState(false);
   const [lockNotificationEntered, setLockNotificationEntered] = useState(false);
   const [lockNotificationExiting, setLockNotificationExiting] = useState(false);
@@ -608,25 +620,6 @@ export default function ServiceTickets() {
   const ticketPanelBackdropRef = useRef<HTMLDivElement>(null);
   const ticketPanelMouseDownOnBackdropRef = useRef(false);
   const justSavedRef = useRef(false); // Skip sync effect overwriting service rows for a moment after save
-
-  const showLockedReason = () => {
-    if (!isLockedForEditing) return;
-    if (lockNotificationTimeoutRef.current) clearTimeout(lockNotificationTimeoutRef.current);
-    if (lockNotificationExitRef.current) clearTimeout(lockNotificationExitRef.current);
-    setLockNotificationExiting(false);
-    setLockNotificationEntered(false);
-    setShowLockNotification(true);
-    lockNotificationTimeoutRef.current = setTimeout(() => {
-      lockNotificationTimeoutRef.current = null;
-      setLockNotificationExiting(true);
-      lockNotificationExitRef.current = setTimeout(() => {
-        lockNotificationExitRef.current = null;
-        setShowLockNotification(false);
-        setLockNotificationExiting(false);
-        setLockNotificationEntered(false);
-      }, 300);
-    }, 4500);
-  };
 
   useEffect(() => {
     return () => {
@@ -2001,6 +1994,55 @@ export default function ServiceTickets() {
     },
   });
 
+  const { data: invoicedMarkRows = [] } = useQuery({
+    queryKey: ['invoicedBatchMarks'],
+    queryFn: () => invoicedBatchMarksService.getAll(),
+    enabled: isAdmin && !isDemoMode,
+  });
+
+  const { data: myLockedTicketIdsRaw = [] } = useQuery({
+    queryKey: ['lockedServiceTicketIdsForMe'],
+    queryFn: () => fetchLockedServiceTicketIdsForCurrentUser(),
+    enabled: !isDemoMode && !!user?.id && !isAdmin,
+  });
+
+  const invoicedBatchLockedIdSet = useMemo(() => {
+    if (isDemoMode) return new Set<string>();
+    if (isAdmin) {
+      return collectLockedServiceTicketIdsFromMarks(invoicedMarkRows);
+    }
+    return new Set(myLockedTicketIdsRaw);
+  }, [isDemoMode, isAdmin, invoicedMarkRows, myLockedTicketIdsRaw]);
+
+  const isInvoicedBatchLocked = useMemo(
+    () => !!(currentTicketRecordId && invoicedBatchLockedIdSet.has(currentTicketRecordId)),
+    [currentTicketRecordId, invoicedBatchLockedIdSet]
+  );
+
+  const effectiveLockedForEditing = useMemo(
+    () => workflowLockedForEditing || isInvoicedBatchLocked,
+    [workflowLockedForEditing, isInvoicedBatchLocked]
+  );
+
+  const showLockedReason = useCallback(() => {
+    if (!effectiveLockedForEditing) return;
+    if (lockNotificationTimeoutRef.current) clearTimeout(lockNotificationTimeoutRef.current);
+    if (lockNotificationExitRef.current) clearTimeout(lockNotificationExitRef.current);
+    setLockNotificationExiting(false);
+    setLockNotificationEntered(false);
+    setShowLockNotification(true);
+    lockNotificationTimeoutRef.current = setTimeout(() => {
+      lockNotificationTimeoutRef.current = null;
+      setLockNotificationExiting(true);
+      lockNotificationExitRef.current = setTimeout(() => {
+        lockNotificationExitRef.current = null;
+        setShowLockNotification(false);
+        setLockNotificationExiting(false);
+        setLockNotificationEntered(false);
+      }, 300);
+    }, 4500);
+  }, [effectiveLockedForEditing]);
+
   /**
    * Service tickets come from two sources:
    *
@@ -2481,9 +2523,11 @@ export default function ServiceTickets() {
     if (!selectedTicket) return false;
     const rec = findMatchingTicketRecord(selectedTicket);
     if ((rec as { is_discarded?: boolean } | null)?.is_discarded) return false;
+    const rid = rec?.id;
+    if (rid && invoicedBatchLockedIdSet.has(rid)) return false;
     if (isAdmin) return true;
     return !!(user?.id && selectedTicket.userId === user.id);
-  }, [selectedTicket, existingTickets, isAdmin, user?.id]);
+  }, [selectedTicket, existingTickets, isAdmin, user?.id, invoicedBatchLockedIdSet]);
 
   // Get or create service ticket record ID when a ticket is selected
   const getOrCreateTicketRecord = async (ticket: ServiceTicket): Promise<string> => {
@@ -3466,7 +3510,7 @@ export default function ServiceTickets() {
     const isFrozen = isAdminApproved || (ws && !['draft', 'rejected'].includes(ws));
     const isDiscardedTicket = !!(existingRecord as any)?.is_discarded;
     const isUserSubmitted = !isAdminApproved && ws === 'approved';
-    setIsLockedForEditing(isDiscardedTicket || (isAdminApproved && !isAdmin) || (isUserSubmitted && !isAdmin));
+    setWorkflowLockedForEditing(isDiscardedTicket || (isAdminApproved && !isAdmin) || (isUserSubmitted && !isAdmin));
 
     setCurrentTicketRecordId(existingRecord?.id || null);
 
@@ -5509,9 +5553,9 @@ export default function ServiceTickets() {
 
             <div
               style={{ padding: '24px', position: 'relative' }}
-              onClick={isLockedForEditing ? showLockedReason : undefined}
-              role={isLockedForEditing ? 'button' : undefined}
-              aria-label={isLockedForEditing ? 'Ticket is locked; click to see why' : undefined}
+              onClick={effectiveLockedForEditing ? showLockedReason : undefined}
+              role={effectiveLockedForEditing ? 'button' : undefined}
+              aria-label={effectiveLockedForEditing ? 'Ticket is locked; click to see why' : undefined}
             >
               {/* Rejection note at top when user opens a rejected ticket in Drafts */}
               {selectedTicket && (() => {
@@ -5543,7 +5587,7 @@ export default function ServiceTickets() {
                 );
               })()}
               {/* Admin editing approved ticket - info banner (edits don't affect time entries) */}
-              {isAdmin && !isLockedForEditing && selectedTicket && (() => {
+              {isAdmin && !effectiveLockedForEditing && selectedTicket && (() => {
                 const rec = findMatchingTicketRecord(selectedTicket);
                 const hasTicketNumber = !!rec?.ticket_number;
                 const isDiscarded = !!(rec as any)?.is_discarded;
@@ -5569,8 +5613,30 @@ export default function ServiceTickets() {
                   </div>
                 );
               })()}
-              {/* Locked banner - when ticket is admin-approved or trashed (non-admin) */}
-              {isLockedForEditing && selectedTicket && (() => {
+              {/* Invoiced batch: read-only for everyone until unmarked on Invoices */}
+              {isInvoicedBatchLocked && selectedTicket && (
+                <div style={{
+                  backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                  border: '1px solid #7c3aed',
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                }}>
+                  <span style={{ fontSize: '18px' }}>🔒</span>
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#5b21b6' }}>Marked as invoiced</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      This ticket is in a batch that was marked as invoiced. It cannot be edited so billing stays aligned with what was exported.
+                      An admin can unmark the batch on the Invoices page if a correction is required.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Locked banner - workflow (submitted / approved / trash) without invoiced-only lock */}
+              {workflowLockedForEditing && !isInvoicedBatchLocked && selectedTicket && (() => {
                 const lockRec = findMatchingTicketRecord(selectedTicket);
                 const isTrashed = !!(lockRec as any)?.is_discarded;
                 const isSubmittedLock = !isTrashed && lockRec?.workflow_status === 'approved' && !lockRec?.ticket_number;
@@ -5638,6 +5704,9 @@ export default function ServiceTickets() {
                     </div>
                     <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                       {(() => {
+                        if (isInvoicedBatchLocked) {
+                          return 'This ticket is in an invoiced batch and cannot be edited. An admin can unmark the batch on the Invoices page if needed.';
+                        }
                         const notifRec = selectedTicket ? findMatchingTicketRecord(selectedTicket) : null;
                         const isTrashedNotif = !!(notifRec as any)?.is_discarded;
                         const isSubmittedNotif = !isTrashedNotif && notifRec?.workflow_status === 'approved' && !notifRec?.ticket_number;
@@ -5655,14 +5724,14 @@ export default function ServiceTickets() {
                 const inputStyle: React.CSSProperties = {
                   width: '100%',
                   padding: '8px 12px',
-                  backgroundColor: isLockedForEditing ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
+                  backgroundColor: effectiveLockedForEditing ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
                   border: '1px solid var(--border-color)',
                   borderRadius: '6px',
-                  color: isLockedForEditing ? 'var(--text-secondary)' : 'var(--text-primary)',
+                  color: effectiveLockedForEditing ? 'var(--text-secondary)' : 'var(--text-primary)',
                   fontSize: '14px',
                   outline: 'none',
-                  cursor: isLockedForEditing ? 'not-allowed' : 'text',
-                  opacity: isLockedForEditing ? 0.7 : 1,
+                  cursor: effectiveLockedForEditing ? 'not-allowed' : 'text',
+                  opacity: effectiveLockedForEditing ? 0.7 : 1,
                 };
                 const labelStyle: React.CSSProperties = {
                   display: 'block',
@@ -5740,8 +5809,8 @@ export default function ServiceTickets() {
                             <input
                               style={{ ...inputStyle, ...(isHeaderFieldDirty('customerName') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.customerName}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, customerName: e.target.value })}
-                              readOnly={isLockedForEditing}
+                              onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, customerName: e.target.value })}
+                              readOnly={effectiveLockedForEditing}
                             />
                           </div>
                           <div>
@@ -5749,8 +5818,8 @@ export default function ServiceTickets() {
                             <input
                               style={{ ...inputStyle, ...(isHeaderFieldDirty('address') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.address}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, address: e.target.value })}
-                              readOnly={isLockedForEditing}
+                              onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, address: e.target.value })}
+                              readOnly={effectiveLockedForEditing}
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
@@ -5759,8 +5828,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('cityState') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.cityState}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, cityState: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, cityState: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                             <div>
@@ -5768,8 +5837,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('zipCode') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.zipCode}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, zipCode: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, zipCode: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                           </div>
@@ -5778,8 +5847,8 @@ export default function ServiceTickets() {
                             <input
                               style={{ ...inputStyle, ...(isHeaderFieldDirty('contactName') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.contactName}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, contactName: e.target.value })}
-                              readOnly={isLockedForEditing}
+                              onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, contactName: e.target.value })}
+                              readOnly={effectiveLockedForEditing}
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -5788,8 +5857,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('phone') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.phone}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, phone: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, phone: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                             <div>
@@ -5797,8 +5866,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('email') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.email}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, email: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, email: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                           </div>
@@ -5814,8 +5883,8 @@ export default function ServiceTickets() {
                             <input
                               style={{ ...inputStyle, ...(isHeaderFieldDirty('techName') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.techName}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, techName: e.target.value })}
-                              readOnly={isLockedForEditing}
+                              onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, techName: e.target.value })}
+                              readOnly={effectiveLockedForEditing}
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -5824,8 +5893,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('projectNumber') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.projectNumber}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, projectNumber: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, projectNumber: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                             <div>
@@ -5834,8 +5903,8 @@ export default function ServiceTickets() {
                                 type="date"
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('date') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.date}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, date: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, date: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                           </div>
@@ -5844,8 +5913,8 @@ export default function ServiceTickets() {
                             <input
                               style={{ ...inputStyle, ...(isHeaderFieldDirty('serviceLocation') ? pendingChangeHighlight : {}) }}
                               value={editableTicket.serviceLocation}
-                              onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, serviceLocation: e.target.value })}
-                              readOnly={isLockedForEditing}
+                              onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, serviceLocation: e.target.value })}
+                              readOnly={effectiveLockedForEditing}
                             />
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
@@ -5854,8 +5923,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('poAfe') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.poAfe}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, poAfe: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, poAfe: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                             <div>
@@ -5863,8 +5932,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('approver') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.approver}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, approver: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, approver: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                           </div>
@@ -5874,8 +5943,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('cc') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.cc}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, cc: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, cc: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                             <div>
@@ -5883,8 +5952,8 @@ export default function ServiceTickets() {
                               <input
                                 style={{ ...inputStyle, ...(isHeaderFieldDirty('other') ? pendingChangeHighlight : {}) }}
                                 value={editableTicket.other}
-                                onChange={(e) => !isLockedForEditing && setEditableTicket({ ...editableTicket, other: e.target.value })}
-                                readOnly={isLockedForEditing}
+                                onChange={(e) => !effectiveLockedForEditing && setEditableTicket({ ...editableTicket, other: e.target.value })}
+                                readOnly={effectiveLockedForEditing}
                               />
                             </div>
                           </div>
@@ -5896,7 +5965,7 @@ export default function ServiceTickets() {
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={sectionTitleStyle}>Service Description</h3>
-                        {!isLockedForEditing && (
+                        {!effectiveLockedForEditing && (
                           <button
                             onClick={() => {
                               const newRow: ServiceRow = {
@@ -5968,12 +6037,12 @@ export default function ServiceTickets() {
                             <textarea
                               value={row.description}
                               onChange={(e) => {
-                                if (isLockedForEditing) { showLockedReason(); return; }
+                                if (effectiveLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, description: e.target.value };
                                 updateServiceRows(newRows);
                               }}
-                              readOnly={isLockedForEditing}
+                              readOnly={effectiveLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 minHeight: '60px',
@@ -5989,12 +6058,12 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.st || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) { showLockedReason(); return; }
+                                if (effectiveLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, st: parseFloat(e.target.value) || 0 };
                                 updateServiceRows(newRows);
                               }}
-                              readOnly={isLockedForEditing}
+                              readOnly={effectiveLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
@@ -6009,12 +6078,12 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.tt || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) { showLockedReason(); return; }
+                                if (effectiveLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, tt: parseFloat(e.target.value) || 0 };
                                 updateServiceRows(newRows);
                               }}
-                              readOnly={isLockedForEditing}
+                              readOnly={effectiveLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
@@ -6029,12 +6098,12 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.ft || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) { showLockedReason(); return; }
+                                if (effectiveLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, ft: parseFloat(e.target.value) || 0 };
                                 updateServiceRows(newRows);
                               }}
-                              readOnly={isLockedForEditing}
+                              readOnly={effectiveLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
@@ -6049,18 +6118,18 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.so || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) { showLockedReason(); return; }
+                                if (effectiveLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, so: parseFloat(e.target.value) || 0 };
                                 updateServiceRows(newRows);
                               }}
-                              readOnly={isLockedForEditing}
+                              readOnly={effectiveLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
                                 textAlign: 'center',
                                 fontSize: '13px',
-                                backgroundColor: isLockedForEditing ? 'var(--bg-secondary)' : 'rgba(255, 152, 0, 0.1)',
+                                backgroundColor: effectiveLockedForEditing ? 'var(--bg-secondary)' : 'rgba(255, 152, 0, 0.1)',
                               }}
                               title="Shop Overtime"
                             />
@@ -6070,22 +6139,22 @@ export default function ServiceTickets() {
                               min="0"
                               value={row.fo || ''}
                               onChange={(e) => {
-                                if (isLockedForEditing) { showLockedReason(); return; }
+                                if (effectiveLockedForEditing) { showLockedReason(); return; }
                                 const newRows = [...serviceRows];
                                 newRows[index] = { ...row, fo: parseFloat(e.target.value) || 0 };
                                 updateServiceRows(newRows);
                               }}
-                              readOnly={isLockedForEditing}
+                              readOnly={effectiveLockedForEditing}
                               style={{
                                 ...inputStyle,
                                 padding: '6px 4px',
                                 textAlign: 'center',
                                 fontSize: '13px',
-                                backgroundColor: isLockedForEditing ? 'var(--bg-secondary)' : 'rgba(255, 152, 0, 0.1)',
+                                backgroundColor: effectiveLockedForEditing ? 'var(--bg-secondary)' : 'rgba(255, 152, 0, 0.1)',
                               }}
                               title="Field Overtime"
                             />
-                            {!isLockedForEditing && (
+                            {!effectiveLockedForEditing && (
                             <button
                               onClick={() => {
                                 const newRows = serviceRows.filter((_, i) => i !== index);
@@ -6163,7 +6232,7 @@ export default function ServiceTickets() {
                         </div>
                         
                         {/* EDITED notice - below legend. Only show when entries actually differ from time entries and ticket is editable (not locked) */}
-                        {!isLockedForEditing && isTicketEdited && Object.keys(editedEntryOverrides).length > 0 && (
+                        {!effectiveLockedForEditing && isTicketEdited && Object.keys(editedEntryOverrides).length > 0 && (
                           <div style={{ marginTop: '12px' }}>
                             <span style={{ 
                               fontSize: '11px', 
@@ -6184,7 +6253,7 @@ export default function ServiceTickets() {
                     <div style={sectionStyle}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={sectionTitleStyle}>Expenses</h3>
-                        {currentTicketRecordId && !isLockedForEditing && (
+                        {currentTicketRecordId && !effectiveLockedForEditing && (
                           <button
                             onClick={() => {
                               clearTicketExpenseFormIssues();
@@ -6214,7 +6283,7 @@ export default function ServiceTickets() {
                       </div>
                       
                       {/* Suggested billable receipts from Expenses page */}
-                      {(!isLockedForEditing || allowDeferredReceiptAttachWhenLocked) && groupedUnappliedBillableReceipts.length > 0 && (
+                      {(!effectiveLockedForEditing || allowDeferredReceiptAttachWhenLocked) && groupedUnappliedBillableReceipts.length > 0 && (
                         <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.06)', border: '1px solid rgba(33, 150, 243, 0.2)', borderRadius: '6px' }}>
                           <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(33, 150, 243, 0.8)', marginBottom: '8px' }}>Suggested Billable Receipts</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '8px', lineHeight: 1.4 }}>
@@ -6759,7 +6828,7 @@ export default function ServiceTickets() {
                         const idStr = String(expense.id ?? '');
                         const linkedUe = (expense as { linkedUserExpenseId?: string }).linkedUserExpenseId;
                         const showDeferredReceiptAttach =
-                          (!isLockedForEditing || allowDeferredReceiptAttachWhenLocked) &&
+                          (!effectiveLockedForEditing || allowDeferredReceiptAttachWhenLocked) &&
                           expense.needs_reimbursement &&
                           (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses') &&
                           !idStr.startsWith('receipt-') &&
@@ -6815,7 +6884,7 @@ export default function ServiceTickets() {
                           <div style={{ textAlign: 'right', color: 'var(--text-primary)', fontWeight: '700' }}>
                             ${(expense.quantity * expense.rate).toFixed(2)}
                           </div>
-                          {!isLockedForEditing && (
+                          {!effectiveLockedForEditing && (
                           <div style={{ display: 'flex', gap: '6px' }}>
                             <button
                               onClick={() => {
@@ -6998,7 +7067,7 @@ export default function ServiceTickets() {
                                         </div>
                                       )}
                                     </div>
-                                    {!isLockedForEditing && (
+                                    {!effectiveLockedForEditing && (
                                       <div style={{ display: 'flex', gap: '6px', flexShrink: 0, marginLeft: '8px' }}>
                                         <button
                                           onClick={() => handleStartReceiptEdit(r)}
@@ -7040,7 +7109,7 @@ export default function ServiceTickets() {
                   {editableTicket && (
                     <div style={{ ...sectionStyle, marginTop: '20px' }}>
                       <h3 style={sectionTitleStyle}>Notes for the Approver (Internal Use Only)</h3>
-                      {isLockedForEditing ? (
+                      {effectiveLockedForEditing ? (
                         <div style={{ padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '14px', color: 'var(--text-primary)', minHeight: '48px', whiteSpace: 'pre-wrap' }}>
                           {editableTicket.approverNotes || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No notes provided.</span>}
                         </div>
@@ -7744,7 +7813,7 @@ export default function ServiceTickets() {
                   })()}
                 </div>
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                {hasPendingChanges && !isLockedForEditing && (
+                {hasPendingChanges && !effectiveLockedForEditing && (
                   <button
                     onClick={async () => {
                       await performSave();
@@ -7930,7 +7999,7 @@ export default function ServiceTickets() {
                               await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
                               // Unlock panel when withdrawing submission, close panel when submitting
                               if (isTicketApproved) {
-                                setIsLockedForEditing(false);
+                                setWorkflowLockedForEditing(false);
                               } else {
                                 // Close panel after successfully submitting for approval
                                 closePanel();

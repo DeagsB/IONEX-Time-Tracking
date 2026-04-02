@@ -2906,3 +2906,27 @@ export const invoicedBatchMarksService = {
     if (error) throw error;
   },
 };
+
+/** All service_tickets.id values listed in any invoiced batch mark (admin Service Tickets lock UI). */
+export function collectLockedServiceTicketIdsFromMarks(rows: InvoicedBatchMarkRow[]): Set<string> {
+  const s = new Set<string>();
+  for (const r of rows) {
+    const ids = r.key_snapshot?.ticketIds;
+    if (!Array.isArray(ids)) continue;
+    for (const id of ids) {
+      if (typeof id === 'string' && id.length > 0) s.add(id);
+    }
+  }
+  return s;
+}
+
+/** Ticket IDs for the current user that appear in an invoiced batch (RLS-safe RPC). */
+export async function fetchLockedServiceTicketIdsForCurrentUser(): Promise<string[]> {
+  const { data, error } = await supabase.rpc('locked_service_ticket_ids_for_current_user');
+  if (error) throw error;
+  if (!data) return [];
+  const arr = Array.isArray(data) ? data : [];
+  return arr
+    .map((row: { ticket_id?: string }) => row?.ticket_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}

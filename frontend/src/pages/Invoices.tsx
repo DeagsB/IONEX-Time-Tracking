@@ -1583,6 +1583,7 @@ export default function Invoices() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+      queryClient.invalidateQueries({ queryKey: ['lockedServiceTicketIdsForMe'] });
     },
   });
 
@@ -1631,6 +1632,7 @@ export default function Invoices() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
       queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+      queryClient.invalidateQueries({ queryKey: ['lockedServiceTicketIdsForMe'] });
     },
   });
 
