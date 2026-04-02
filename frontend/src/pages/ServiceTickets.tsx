@@ -324,7 +324,7 @@ function parseLinkedUserExpenseIdFromReceiptTempId(tempId: string | undefined): 
 }
 
 export default function ServiceTickets() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isDeveloper } = useAuth();
   const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2002,25 +2002,28 @@ export default function ServiceTickets() {
     },
   });
 
+  /** Same as Invoices: admins and developers can read invoiced_batch_marks (RLS). Do not gate on isAdmin alone — developer "User" toggle would use RPC-only and miss other employees' tickets in shared invoiced batches. */
+  const loadFullInvoicedBatchMarks = !!user && !isDemoMode && (isAdmin || isDeveloper);
+
   const { data: invoicedMarkRows = [] } = useQuery({
     queryKey: ['invoicedBatchMarks'],
     queryFn: () => invoicedBatchMarksService.getAll(),
-    enabled: isAdmin && !isDemoMode,
+    enabled: loadFullInvoicedBatchMarks,
   });
 
   const { data: myLockedTicketIdsRaw = [] } = useQuery({
     queryKey: ['lockedServiceTicketIdsForMe'],
     queryFn: () => fetchLockedServiceTicketIdsForCurrentUser(),
-    enabled: !isDemoMode && !!user?.id && !isAdmin,
+    enabled: !isDemoMode && !!user?.id && !loadFullInvoicedBatchMarks,
   });
 
   const invoicedBatchLockedIdSet = useMemo(() => {
     if (isDemoMode) return new Set<string>();
-    if (isAdmin) {
+    if (loadFullInvoicedBatchMarks) {
       return collectLockedServiceTicketIdsFromMarks(invoicedMarkRows);
     }
     return new Set(myLockedTicketIdsRaw);
-  }, [isDemoMode, isAdmin, invoicedMarkRows, myLockedTicketIdsRaw]);
+  }, [isDemoMode, loadFullInvoicedBatchMarks, invoicedMarkRows, myLockedTicketIdsRaw]);
 
   /** Match DB row id (new marks) or legacy composite ticket id stored in older snapshots. */
   const isInvoicedBatchLocked = useMemo(() => {
