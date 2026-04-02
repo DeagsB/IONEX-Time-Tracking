@@ -988,6 +988,7 @@ function buildPoAfeBreakdown(
 export default function Invoices() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
+  const queryClient = useQueryClient();
 
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number; label: string } | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -1623,7 +1624,6 @@ export default function Invoices() {
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
-  const queryClient = useQueryClient();
 
   const markProjectCompletedMutation = useMutation({
     mutationFn: (projectId: string) => projectsService.update(projectId, { status: 'completed' }),
