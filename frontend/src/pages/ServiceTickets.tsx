@@ -16,6 +16,7 @@ import {
   ticketExpenseLineHasAttachedReceipt,
 } from '../utils/ticketExpenseReceiptMatch';
 import { initialReimbursementStatusForTicketExpense } from '../utils/ticketExpensePayrollEligibility';
+import { extractReceiptAutoFill } from '../utils/receiptAutoFill';
 
 // Workflow status types and labels
 const WORKFLOW_STATUSES = {
@@ -634,9 +635,19 @@ export default function ServiceTickets() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [receiptForm, setReceiptForm] = useState({ description: '', amount: '', gst: '', markupType: 'dollar' as 'dollar' | 'percent', markupValue: '', is_billable: false });
+  const [receiptForm, setReceiptForm] = useState({
+    description: '',
+    amount: '',
+    gst: '',
+    expense_date: new Date().toISOString().split('T')[0],
+    markupType: 'dollar' as 'dollar' | 'percent',
+    markupValue: '',
+    is_billable: false,
+  });
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
+  const [receiptAutofillNote, setReceiptAutofillNote] = useState<string | null>(null);
+  const [receiptAutofillBusy, setReceiptAutofillBusy] = useState(false);
   // When user adds expense with Needs Reimbursement, we prompt for receipt before adding
   const [pendingReimbursementExpense, setPendingReimbursementExpense] = useState<{
     expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
@@ -664,6 +675,34 @@ export default function ServiceTickets() {
   /** Hotel/Other + reimbursement: optional in-form receipt drop opens the modal. Travel, Equipment, and Hotel + reimbursement: Add saves the ticket line; Hotel can attach receipt later. */
   const inFormReimbursementReceiptInputRef = useRef<HTMLInputElement>(null);
   const receiptModalFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!receiptFile || (!receiptFile.type.startsWith('image/') && receiptFile.type !== 'application/pdf')) {
+      setReceiptAutofillBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setReceiptAutofillBusy(true);
+    setReceiptAutofillNote(null);
+    void extractReceiptAutoFill(receiptFile).then((r) => {
+      if (cancelled) return;
+      setReceiptAutofillBusy(false);
+      setReceiptForm((prev) => ({
+        ...prev,
+        ...(r.amount ? { amount: r.amount } : {}),
+        ...(r.gst !== '' ? { gst: r.gst } : {}),
+        expense_date: r.expenseDate || prev.expense_date,
+      }));
+      const parts: string[] = [];
+      if (r.method === 'pdf-text') parts.push('Filled from PDF text.');
+      else if (r.method === 'ocr') parts.push('Filled using photo text recognition; please verify amounts.');
+      if (r.hint) parts.push(r.hint);
+      setReceiptAutofillNote(parts.length ? parts.join(' ') : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [receiptFile]);
 
   const openReimbursementReceiptModalFromExpenseForm = useCallback(
     (file: File) => {
@@ -702,10 +741,13 @@ export default function ServiceTickets() {
         description: editingExpense.description.trim(),
         amount: prefillAmount,
         gst: '',
+        expense_date: new Date().toISOString().split('T')[0],
         markupType: 'dollar',
         markupValue: '',
         is_billable: true,
       });
+      setReceiptAutofillNote(null);
+      setReceiptAutofillBusy(false);
       setReceiptFile(file);
       setReceiptPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
@@ -721,10 +763,16 @@ export default function ServiceTickets() {
 
   const handleStartReceiptEdit = (receipt: any) => {
     setEditingReceipt(receipt);
+    const rawDate = receipt.expense_date;
+    const dateOnly =
+      typeof rawDate === 'string'
+        ? rawDate.split('T')[0].split(' ')[0]
+        : '';
     setEditReceiptForm({
       description: receipt.description || '',
       amount: String(parseFloat(receipt.amount)),
       gst: String(parseFloat(receipt.gst || 0)),
+      expense_date: dateOnly || new Date().toISOString().split('T')[0],
     });
     setEditReceiptPreviewUrl(null);
     if (receipt.receipt_url) {
@@ -746,6 +794,8 @@ export default function ServiceTickets() {
         description: editReceiptForm.description.trim(),
         amount: parseFloat(editReceiptForm.amount),
         gst: parseFloat(editReceiptForm.gst) || 0,
+        expense_date:
+          editReceiptForm.expense_date.trim() || new Date().toISOString().split('T')[0],
       });
       queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
@@ -1089,6 +1139,8 @@ export default function ServiceTickets() {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
+    setReceiptAutofillNote(null);
+    setReceiptAutofillBusy(false);
     clearTicketExpenseFormIssues();
     setEditableTicket(null);
     setSubmitError(null);
@@ -2321,10 +2373,13 @@ export default function ServiceTickets() {
         description: expense.description,
         amount: '',
         gst: '',
+        expense_date: new Date().toISOString().split('T')[0],
         markupType: 'dollar',
         markupValue: '',
         is_billable: true,
       });
+      setReceiptAutofillNote(null);
+      setReceiptAutofillBusy(false);
       setReceiptFile(null);
       setReceiptPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
@@ -2815,7 +2870,12 @@ export default function ServiceTickets() {
 
   // Editing an attached receipt from the service ticket
   const [editingReceipt, setEditingReceipt] = useState<any>(null);
-  const [editReceiptForm, setEditReceiptForm] = useState({ description: '', amount: '', gst: '' });
+  const [editReceiptForm, setEditReceiptForm] = useState({
+    description: '',
+    amount: '',
+    gst: '',
+    expense_date: new Date().toISOString().split('T')[0],
+  });
   const [isSavingReceipt, setIsSavingReceipt] = useState(false);
   const [editReceiptPreviewUrl, setEditReceiptPreviewUrl] = useState<string | null>(null);
   const [editReceiptPreviewIsPdf, setEditReceiptPreviewIsPdf] = useState(false);
@@ -2879,6 +2939,8 @@ export default function ServiceTickets() {
           if (prev) URL.revokeObjectURL(prev);
           return null;
         });
+        setReceiptAutofillNote(null);
+        setReceiptAutofillBusy(false);
         clearTicketExpenseFormIssues();
       } else if (freshTicket !== selectedTicket) {
         const wouldClearEntries = freshTicket.entries.length === 0 && selectedTicket.entries.length > 0;
@@ -3230,6 +3292,8 @@ export default function ServiceTickets() {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
+    setReceiptAutofillNote(null);
+    setReceiptAutofillBusy(false);
     clearTicketExpenseFormIssues();
     setPendingDeleteExpenseIds(new Set());
     setPendingAddExpenses([]);
@@ -6844,6 +6908,8 @@ export default function ServiceTickets() {
                   if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                   setReceiptPreviewUrl(null);
                   setReceiptFile(null);
+                  setReceiptAutofillNote(null);
+                  setReceiptAutofillBusy(false);
                 }}>
                   <div onClick={(e) => e.stopPropagation()} style={{
                     backgroundColor: 'var(--bg-primary)', borderRadius: '10px', width: '90%', maxWidth: '800px',
@@ -6913,9 +6979,24 @@ export default function ServiceTickets() {
                             : 'New Receipt Expense'}
                       </h3>
                       {receiptUploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{receiptUploadError}</div>}
+                      {receiptAutofillBusy && (
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reading receipt…</div>
+                      )}
+                      {receiptAutofillNote && !receiptAutofillBusy && (
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{receiptAutofillNote}</div>
+                      )}
                       <div>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Name / Description</label>
                         <input type="text" value={receiptForm.description} onChange={(e) => setReceiptForm({ ...receiptForm, description: e.target.value })} placeholder="e.g. Hotel, Fuel, Parts..." style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Expense date</label>
+                        <input
+                          type="date"
+                          value={receiptForm.expense_date}
+                          onChange={(e) => setReceiptForm({ ...receiptForm, expense_date: e.target.value })}
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                        />
                       </div>
                       <div>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
@@ -6996,6 +7077,8 @@ export default function ServiceTickets() {
                           if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                           setReceiptPreviewUrl(null);
                           setReceiptFile(null);
+                          setReceiptAutofillNote(null);
+                          setReceiptAutofillBusy(false);
                         }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
                         <button
                           disabled={isUploadingReceipt}
@@ -7047,7 +7130,9 @@ export default function ServiceTickets() {
                               const createdReceipt = await userExpensesService.create({
                                 description: receiptForm.description.trim(),
                                 amount: amt,
-                                expense_date: new Date().toISOString().split('T')[0],
+                                expense_date:
+                                  receiptForm.expense_date.trim() ||
+                                  new Date().toISOString().split('T')[0],
                                 receipt_url: storagePath,
                                 gst: parseFloat(receiptForm.gst) || 0,
                                 is_billable: true,
@@ -7114,6 +7199,8 @@ export default function ServiceTickets() {
                               if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
                               setReceiptPreviewUrl(null);
                               setReceiptFile(null);
+                              setReceiptAutofillNote(null);
+                              setReceiptAutofillBusy(false);
                             } catch (err: any) {
                               setReceiptUploadError(err.message || 'Failed to save receipt');
                             } finally {
@@ -8584,6 +8671,15 @@ export default function ServiceTickets() {
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Description</label>
                   <input type="text" value={editReceiptForm.description} onChange={(e) => setEditReceiptForm({ ...editReceiptForm, description: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Expense date</label>
+                  <input
+                    type="date"
+                    value={editReceiptForm.expense_date}
+                    onChange={(e) => setEditReceiptForm({ ...editReceiptForm, expense_date: e.target.value })}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                  />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>

@@ -8,6 +8,24 @@ import { ticketExpenseLineHasAttachedReceipt } from '../utils/ticketExpenseRecei
 import { allocateProportionalCents } from '../utils/allocateProportionalCents';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
+import { extractReceiptAutoFill } from '../utils/receiptAutoFill';
+
+/** Split a receipt line total into subtotal + GST using the same ratio as the full bill. */
+function splitTotalIntoAmountGst(
+  lineTotal: number,
+  billSubtotal: number,
+  billGst: number
+): { amount: number; gst: number } {
+  const t = Math.round(lineTotal * 100) / 100;
+  if (!(t >= 0) || Number.isNaN(t)) return { amount: 0, gst: 0 };
+  const billTotal = billSubtotal + billGst;
+  if (!(billTotal > 0)) {
+    return { amount: t, gst: 0 };
+  }
+  const amount = Math.round(t * (billSubtotal / billTotal) * 100) / 100;
+  const gst = Math.round((t - amount) * 100) / 100;
+  return { amount, gst };
+}
 
 interface ReceiptFormState {
   description: string;
@@ -46,6 +64,12 @@ export default function Expenses() {
   const [receiptForm, setReceiptForm] = useState<ReceiptFormState>(initialReceiptForm);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [receiptAutofillNote, setReceiptAutofillNote] = useState<string | null>(null);
+  const [receiptAutofillBusy, setReceiptAutofillBusy] = useState(false);
+  const [hotelAttachAutofillNote, setHotelAttachAutofillNote] = useState<string | null>(null);
+  const [hotelAttachAutofillBusy, setHotelAttachAutofillBusy] = useState(false);
+  const [splitAutofillNote, setSplitAutofillNote] = useState<string | null>(null);
+  const [splitAutofillBusy, setSplitAutofillBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -153,7 +177,12 @@ export default function Expenses() {
   } | null>(null);
   const [hotelAttachFile, setHotelAttachFile] = useState<File | null>(null);
   const [hotelAttachPreviewUrl, setHotelAttachPreviewUrl] = useState<string | null>(null);
-  const [hotelAttachForm, setHotelAttachForm] = useState({ description: '', amount: '', gst: '' });
+  const [hotelAttachForm, setHotelAttachForm] = useState({
+    description: '',
+    amount: '',
+    gst: '',
+    expense_date: new Date().toISOString().split('T')[0],
+  });
   const [hotelAttachError, setHotelAttachError] = useState<string | null>(null);
   const [hotelAttachSaving, setHotelAttachSaving] = useState(false);
   const hotelAttachFileInputRef = useRef<HTMLInputElement>(null);
@@ -164,10 +193,17 @@ export default function Expenses() {
   const [splitSelectedLineIds, setSplitSelectedLineIds] = useState<Set<string>>(() => new Set());
   const [splitFile, setSplitFile] = useState<File | null>(null);
   const [splitPreviewUrl, setSplitPreviewUrl] = useState<string | null>(null);
-  const [splitForm, setSplitForm] = useState({ amount: '', gst: '' });
+  const [splitForm, setSplitForm] = useState({
+    amount: '',
+    gst: '',
+    expense_date: new Date().toISOString().split('T')[0],
+  });
   const [splitError, setSplitError] = useState<string | null>(null);
   const [splitSaving, setSplitSaving] = useState(false);
   const splitFileInputRef = useRef<HTMLInputElement>(null);
+  /** Step 3: per-line total receipt cost (subtotal + tax) allocated to each ticket; keyed by service_ticket_expenses.id */
+  const [splitManualCostOverrides, setSplitManualCostOverrides] = useState<Record<string, string>>({});
+  const prevSplitAllocKeyRef = useRef('');
 
   const hotelAttachAuto = useMemo(() => {
     if (!hotelAttachTarget) return null;
@@ -183,7 +219,14 @@ export default function Expenses() {
     setHotelAttachTarget(null);
     setHotelAttachFile(null);
     setHotelAttachPreviewUrl(null);
-    setHotelAttachForm({ description: '', amount: '', gst: '' });
+    setHotelAttachForm({
+      description: '',
+      amount: '',
+      gst: '',
+      expense_date: new Date().toISOString().split('T')[0],
+    });
+    setHotelAttachAutofillNote(null);
+    setHotelAttachAutofillBusy(false);
     setHotelAttachError(null);
     setHotelAttachSaving(false);
   };
@@ -200,9 +243,12 @@ export default function Expenses() {
       description: String(row.description || 'Hotel'),
       amount: '',
       gst: '',
+      expense_date: new Date().toISOString().split('T')[0],
     });
     setHotelAttachFile(null);
     setHotelAttachPreviewUrl(null);
+    setHotelAttachAutofillNote(null);
+    setHotelAttachAutofillBusy(false);
     setHotelAttachError(null);
   };
 
@@ -239,7 +285,8 @@ export default function Expenses() {
       await userExpensesService.create({
         description: hotelAttachForm.description.trim(),
         amount: amt,
-        expense_date: new Date().toISOString().split('T')[0],
+        expense_date:
+          hotelAttachForm.expense_date.trim() || new Date().toISOString().split('T')[0],
         receipt_url: storagePath,
         gst,
         is_billable: true,
@@ -280,9 +327,17 @@ export default function Expenses() {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
-    setSplitForm({ amount: '', gst: '' });
+    setSplitForm({
+      amount: '',
+      gst: '',
+      expense_date: new Date().toISOString().split('T')[0],
+    });
+    setSplitAutofillNote(null);
+    setSplitAutofillBusy(false);
     setSplitError(null);
     setSplitSaving(false);
+    setSplitManualCostOverrides({});
+    prevSplitAllocKeyRef.current = '';
     setSplitWizardOpen(true);
   };
 
@@ -293,9 +348,17 @@ export default function Expenses() {
     setSplitSelectedLineIds(new Set());
     setSplitFile(null);
     setSplitPreviewUrl(null);
-    setSplitForm({ amount: '', gst: '' });
+    setSplitForm({
+      amount: '',
+      gst: '',
+      expense_date: new Date().toISOString().split('T')[0],
+    });
+    setSplitAutofillNote(null);
+    setSplitAutofillBusy(false);
     setSplitError(null);
     setSplitSaving(false);
+    setSplitManualCostOverrides({});
+    prevSplitAllocKeyRef.current = '';
   };
 
   const splitSelectedRows = useMemo(() => {
@@ -333,19 +396,64 @@ export default function Expenses() {
     });
   }, [splitSelectedRows, splitForm.amount, splitForm.gst]);
 
+  const splitAllocKey = useMemo(() => {
+    if (!splitAllocationPreview) return '';
+    return `${splitForm.amount}|${splitForm.gst}|${splitAllocationPreview.map((l) => String(l.row.id)).sort().join(',')}`;
+  }, [splitAllocationPreview, splitForm.amount, splitForm.gst]);
+
+  useEffect(() => {
+    if (splitWizardStep !== 3 || !splitAllocationPreview || !splitAllocKey) return;
+    if (prevSplitAllocKeyRef.current === splitAllocKey) return;
+    prevSplitAllocKeyRef.current = splitAllocKey;
+    const next: Record<string, string> = {};
+    for (const l of splitAllocationPreview) {
+      next[String(l.row.id)] = l.cost.toFixed(2);
+    }
+    setSplitManualCostOverrides(next);
+  }, [splitWizardStep, splitAllocKey, splitAllocationPreview]);
+
+  const splitEffectiveAllocation = useMemo(() => {
+    if (!splitAllocationPreview) return null;
+    const billSub = parseFloat(splitForm.amount) || 0;
+    const billGst = parseFloat(splitForm.gst) || 0;
+    const totalBill = Math.round((billSub + billGst) * 100) / 100;
+    const lines = splitAllocationPreview.map((line) => {
+      const id = String(line.row.id);
+      const raw = splitManualCostOverrides[id];
+      let cost: number;
+      if (raw === undefined || String(raw).trim() === '') {
+        cost = line.cost;
+      } else {
+        cost = Math.max(0, Math.round((parseFloat(raw) || 0) * 100) / 100);
+      }
+      const { amount, gst } = splitTotalIntoAmountGst(cost, billSub, billGst);
+      const markup = Math.round((line.billed - cost) * 100) / 100;
+      return { ...line, cost, amount, gst, markup };
+    });
+    const sumAllocated = Math.round(lines.reduce((s, l) => s + l.cost, 0) * 100) / 100;
+    const remainder = Math.round((totalBill - sumAllocated) * 100) / 100;
+    return { lines, totalBill, sumAllocated, remainder };
+  }, [splitAllocationPreview, splitManualCostOverrides, splitForm.amount, splitForm.gst]);
+
   const handleSplitWizardSave = async () => {
-    if (!splitAllocationPreview || splitAllocationPreview.length < 2 || !splitFile) return;
+    if (!splitEffectiveAllocation || splitEffectiveAllocation.lines.length < 2 || !splitFile) return;
     const amt = parseFloat(splitForm.amount) || 0;
     const gst = parseFloat(splitForm.gst) || 0;
     if (amt <= 0) {
       setSplitError('Enter the receipt subtotal (before tax) from the hotel bill.');
       return;
     }
-    for (const line of splitAllocationPreview) {
+    for (const line of splitEffectiveAllocation.lines) {
       if (!(line.billed > 0)) {
         setSplitError('Every selected line must have an amount billed to the client.');
         return;
       }
+    }
+    if (splitEffectiveAllocation.sumAllocated > splitEffectiveAllocation.totalBill + 0.02) {
+      setSplitError(
+        `Allocated total ($${splitEffectiveAllocation.sumAllocated.toFixed(2)}) cannot exceed the bill ($${splitEffectiveAllocation.totalBill.toFixed(2)}).`
+      );
+      return;
     }
 
     setSplitSaving(true);
@@ -353,9 +461,10 @@ export default function Expenses() {
     try {
       const optimized = await optimizeImage(splitFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
       const storagePath = await userExpensesService.uploadReceipt(optimized);
-      const expenseDate = new Date().toISOString().split('T')[0];
+      const expenseDate =
+        splitForm.expense_date.trim() || new Date().toISOString().split('T')[0];
 
-      for (const line of splitAllocationPreview) {
+      for (const line of splitEffectiveAllocation.lines) {
         const desc = String(line.row.description || 'Hotel').trim();
         const markup = Math.round((line.billed - line.cost) * 100) / 100;
         await userExpensesService.create({
@@ -381,10 +490,30 @@ export default function Expenses() {
         });
       }
 
-      const sumAmt = splitAllocationPreview.reduce((s, l) => s + l.amount, 0);
-      const sumGst = splitAllocationPreview.reduce((s, l) => s + l.gst, 0);
-      const sumCost = splitAllocationPreview.reduce((s, l) => s + l.cost, 0);
-      if (Math.abs(sumAmt - amt) > 0.02 || Math.abs(sumGst - gst) > 0.02) {
+      if (splitEffectiveAllocation.remainder > 0.02) {
+        const { amount: remAmt, gst: remGst } = splitTotalIntoAmountGst(
+          splitEffectiveAllocation.remainder,
+          amt,
+          gst
+        );
+        await userExpensesService.create({
+          description: 'Hotel — portion not billed to client (same receipt)',
+          amount: remAmt,
+          expense_date: expenseDate,
+          receipt_url: storagePath,
+          gst: remGst,
+          is_billable: false,
+          status: isAdmin ? 'approved' : 'pending',
+        });
+      }
+
+      const sumAmt = splitEffectiveAllocation.lines.reduce((s, l) => s + l.amount, 0);
+      const sumGst = splitEffectiveAllocation.lines.reduce((s, l) => s + l.gst, 0);
+      let sumCost = splitEffectiveAllocation.lines.reduce((s, l) => s + l.cost, 0);
+      if (splitEffectiveAllocation.remainder > 0.02) {
+        sumCost += splitEffectiveAllocation.remainder;
+      }
+      if (Math.abs(sumAmt - amt) > 0.05 || Math.abs(sumGst - gst) > 0.05) {
         console.warn('Split receipt rounding drift', { sumAmt, amt, sumGst, gst, sumCost });
       }
 
@@ -754,6 +883,7 @@ export default function Expenses() {
   const handleFileDrop = (file: File) => {
     setReceiptFile(file);
     setReceiptForm(initialReceiptForm);
+    setReceiptAutofillNote(null);
     setUploadError(null);
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -761,6 +891,94 @@ export default function Expenses() {
     };
     reader.readAsDataURL(file);
   };
+
+  useEffect(() => {
+    if (!receiptFile || (!receiptFile.type.startsWith('image/') && receiptFile.type !== 'application/pdf')) {
+      setReceiptAutofillBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setReceiptAutofillBusy(true);
+    setReceiptAutofillNote(null);
+    void extractReceiptAutoFill(receiptFile).then((r) => {
+      if (cancelled) return;
+      setReceiptAutofillBusy(false);
+      setReceiptForm((prev) => ({
+        ...prev,
+        ...(r.amount ? { amount: r.amount } : {}),
+        ...(r.gst !== '' ? { gst: r.gst } : {}),
+        expense_date: r.expenseDate || prev.expense_date,
+      }));
+      const parts: string[] = [];
+      if (r.method === 'pdf-text') parts.push('Filled from PDF text.');
+      else if (r.method === 'ocr') parts.push('Filled using photo text recognition; please verify amounts.');
+      if (r.hint) parts.push(r.hint);
+      setReceiptAutofillNote(parts.length ? parts.join(' ') : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [receiptFile]);
+
+  useEffect(() => {
+    if (!hotelAttachFile || (!hotelAttachFile.type.startsWith('image/') && hotelAttachFile.type !== 'application/pdf')) {
+      setHotelAttachAutofillBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setHotelAttachAutofillBusy(true);
+    setHotelAttachAutofillNote(null);
+    void extractReceiptAutoFill(hotelAttachFile).then((r) => {
+      if (cancelled) return;
+      setHotelAttachAutofillBusy(false);
+      setHotelAttachForm((prev) => ({
+        ...prev,
+        ...(r.amount ? { amount: r.amount } : {}),
+        ...(r.gst !== '' ? { gst: r.gst } : {}),
+        expense_date: r.expenseDate || prev.expense_date,
+      }));
+      const parts: string[] = [];
+      if (r.method === 'pdf-text') parts.push('Filled from PDF text.');
+      else if (r.method === 'ocr') parts.push('Filled using photo text recognition; please verify amounts.');
+      if (r.hint) parts.push(r.hint);
+      setHotelAttachAutofillNote(parts.length ? parts.join(' ') : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hotelAttachFile]);
+
+  useEffect(() => {
+    if (
+      !splitWizardOpen ||
+      !splitFile ||
+      (!splitFile.type.startsWith('image/') && splitFile.type !== 'application/pdf')
+    ) {
+      setSplitAutofillBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setSplitAutofillBusy(true);
+    setSplitAutofillNote(null);
+    void extractReceiptAutoFill(splitFile).then((r) => {
+      if (cancelled) return;
+      setSplitAutofillBusy(false);
+      setSplitForm((prev) => ({
+        ...prev,
+        ...(r.amount ? { amount: r.amount } : {}),
+        ...(r.gst !== '' ? { gst: r.gst } : {}),
+        expense_date: r.expenseDate || prev.expense_date,
+      }));
+      const parts: string[] = [];
+      if (r.method === 'pdf-text') parts.push('Filled from PDF text.');
+      else if (r.method === 'ocr') parts.push('Filled using photo text recognition; please verify amounts.');
+      if (r.hint) parts.push(r.hint);
+      setSplitAutofillNote(parts.length ? parts.join(' ') : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [splitWizardOpen, splitFile]);
 
   const handleSubmitReceipt = async () => {
     if (!receiptForm.description.trim()) { setUploadError('Name / description is required'); return; }
@@ -789,6 +1007,8 @@ export default function Expenses() {
       setReceiptFile(null);
       setReceiptPreviewUrl(null);
       setReceiptForm(initialReceiptForm);
+      setReceiptAutofillNote(null);
+      setReceiptAutofillBusy(false);
     } catch (err: any) {
       setUploadError(err.message || 'Failed to save expense');
     } finally {
@@ -1152,6 +1372,12 @@ export default function Expenses() {
                 Billed amount on the ticket stays the same. Markup is calculated as billed to client minus receipt subtotal and GST.
               </p>
               {hotelAttachError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{hotelAttachError}</div>}
+              {hotelAttachAutofillBusy && (
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reading receipt…</div>
+              )}
+              {hotelAttachAutofillNote && !hotelAttachAutofillBusy && (
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{hotelAttachAutofillNote}</div>
+              )}
               <div>
                 <label style={labelStyle}>Description</label>
                 <input
@@ -1181,6 +1407,15 @@ export default function Expenses() {
                   onChange={(e) => setHotelAttachForm({ ...hotelAttachForm, gst: e.target.value })}
                   style={inputStyle}
                   placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Expense date</label>
+                <input
+                  type="date"
+                  value={hotelAttachForm.expense_date}
+                  onChange={(e) => setHotelAttachForm({ ...hotelAttachForm, expense_date: e.target.value })}
+                  style={inputStyle}
                 />
               </div>
               {hotelAttachAuto && hotelAttachAuto.clientBilled > 0 && (
@@ -1294,6 +1529,12 @@ export default function Expenses() {
                   <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                     Upload the combined hotel bill or invoice (PDF or photo). Enter the <strong>room subtotal</strong> and <strong>GST / taxes</strong> exactly as shown on the bill (before credits). The next step chooses which ticket lines belong to this stay.
                   </p>
+                  {splitAutofillBusy && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reading receipt…</div>
+                  )}
+                  {splitAutofillNote && !splitAutofillBusy && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{splitAutofillNote}</div>
+                  )}
                   <input
                     ref={splitFileInputRef}
                     type="file"
@@ -1364,6 +1605,15 @@ export default function Expenses() {
                       onChange={(e) => setSplitForm({ ...splitForm, gst: e.target.value })}
                       style={inputStyle}
                       placeholder="e.g. 114.48"
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Expense date</label>
+                    <input
+                      type="date"
+                      value={splitForm.expense_date}
+                      onChange={(e) => setSplitForm({ ...splitForm, expense_date: e.target.value })}
+                      style={inputStyle}
                     />
                   </div>
                 </div>
@@ -1441,54 +1691,124 @@ export default function Expenses() {
               {splitWizardStep === 3 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    Each ticket gets a share of the bill matching its share of <strong>total billed to client</strong>. The same receipt file is attached to each internal expense. Markup per line = billed − that line&apos;s share of the bill.
+                    <strong>Your share of bill</strong> is the portion of the receipt (room subtotal + tax from step 1) you assign to each ticket. Edit the amounts to match how the hotel charge maps to client billings.{' '}
+                    <strong>Markup</strong> = billed to client − that share. If the allocated total is less than the full bill, the rest is saved as a separate <strong>non-billable</strong> expense (reimbursement only, not tied to a ticket).
                   </p>
-                  {!splitAllocationPreview ? (
+                  {!splitEffectiveAllocation ? (
                     <div style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>
                       Go back and check subtotal, tax, and selected lines (each needs a positive billed amount).
                     </div>
                   ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                        <thead>
-                          <tr style={{ textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase', borderBottom: '1px solid var(--border-color)' }}>
-                            <th style={{ padding: '8px 6px' }}>Ticket</th>
-                            <th style={{ padding: '8px 6px' }}>Line</th>
-                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>% of billed</th>
-                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Billed</th>
-                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Your share of bill</th>
-                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Markup</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {splitAllocationPreview.map((line) => {
-                            const tn = line.row.service_tickets?.ticket_number || '—';
-                            return (
-                              <tr key={String(line.row.id)} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                <td style={{ padding: '8px 6px', fontFamily: 'monospace' }}>{tn}</td>
-                                <td style={{ padding: '8px 6px' }}>{line.row.description || 'Hotel'}</td>
-                                <td style={{ padding: '8px 6px', textAlign: 'right' }}>{line.pct.toFixed(1)}%</td>
-                                <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: '600' }}>${line.billed.toFixed(2)}</td>
-                                <td style={{ padding: '8px 6px', textAlign: 'right' }}>${line.cost.toFixed(2)}</td>
-                                <td style={{ padding: '8px 6px', textAlign: 'right', color: line.markup >= 0 ? '#15803d' : '#b91c1c' }}>${line.markup.toFixed(2)}</td>
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!splitAllocationPreview) return;
+                            prevSplitAllocKeyRef.current = '';
+                            const next: Record<string, string> = {};
+                            for (const l of splitAllocationPreview) {
+                              next[String(l.row.id)] = l.cost.toFixed(2);
+                            }
+                            setSplitManualCostOverrides(next);
+                            prevSplitAllocKeyRef.current = splitAllocKey;
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            background: 'var(--bg-secondary)',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                          }}
+                        >
+                          Reset to proportional split
+                        </button>
+                      </div>
+                      {splitEffectiveAllocation.sumAllocated > splitEffectiveAllocation.totalBill + 0.02 && (
+                        <div style={{ color: '#b91c1c', fontSize: '13px', fontWeight: '600' }}>
+                          Allocated ${splitEffectiveAllocation.sumAllocated.toFixed(2)} exceeds bill $
+                          {splitEffectiveAllocation.totalBill.toFixed(2)} — reduce amounts or fix step 1 totals.
+                        </div>
+                      )}
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                          <thead>
+                            <tr style={{ textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase', borderBottom: '1px solid var(--border-color)' }}>
+                              <th style={{ padding: '8px 6px' }}>Ticket</th>
+                              <th style={{ padding: '8px 6px' }}>Line</th>
+                              <th style={{ padding: '8px 6px', textAlign: 'right' }}>% of billed</th>
+                              <th style={{ padding: '8px 6px', textAlign: 'right' }}>Billed</th>
+                              <th style={{ padding: '8px 6px', textAlign: 'right' }}>Your share of bill</th>
+                              <th style={{ padding: '8px 6px', textAlign: 'right' }}>Markup</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {splitEffectiveAllocation.lines.map((line) => {
+                              const tn = line.row.service_tickets?.ticket_number || '—';
+                              const id = String(line.row.id);
+                              return (
+                                <tr key={id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                  <td style={{ padding: '8px 6px', fontFamily: 'monospace' }}>{tn}</td>
+                                  <td style={{ padding: '8px 6px' }}>{line.row.description || 'Hotel'}</td>
+                                  <td style={{ padding: '8px 6px', textAlign: 'right' }}>{line.pct.toFixed(1)}%</td>
+                                  <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: '600' }}>${line.billed.toFixed(2)}</td>
+                                  <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                                    <span style={{ color: 'var(--text-tertiary)', marginRight: '4px' }}>$</span>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min={0}
+                                      value={splitManualCostOverrides[id] ?? line.cost.toFixed(2)}
+                                      onChange={(e) => {
+                                        setSplitManualCostOverrides((prev) => ({
+                                          ...prev,
+                                          [id]: e.target.value,
+                                        }));
+                                      }}
+                                      style={{
+                                        width: '88px',
+                                        padding: '4px 6px',
+                                        borderRadius: '4px',
+                                        border: '1px solid var(--border-color)',
+                                        fontSize: '13px',
+                                        textAlign: 'right',
+                                      }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '8px 6px', textAlign: 'right', color: line.markup >= 0 ? '#15803d' : '#b91c1c' }}>${line.markup.toFixed(2)}</td>
+                                </tr>
+                              );
+                            })}
+                            {splitEffectiveAllocation.remainder > 0.02 && (
+                              <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(245, 158, 11, 0.08)' }}>
+                                <td colSpan={3} style={{ padding: '8px 6px', fontStyle: 'italic', color: 'var(--text-secondary)' }}>
+                                  Unallocated (not billed to client)
+                                </td>
+                                <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-tertiary)' }}>—</td>
+                                <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: '600' }}>
+                                  ${splitEffectiveAllocation.remainder.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-tertiary)' }}>—</td>
                               </tr>
-                            );
-                          })}
-                          <tr style={{ fontWeight: '700', borderTop: '2px solid var(--border-color)' }}>
-                            <td colSpan={3} style={{ padding: '10px 6px' }}>Totals</td>
-                            <td style={{ padding: '10px 6px', textAlign: 'right' }}>
-                              ${splitAllocationPreview.reduce((s, l) => s + l.billed, 0).toFixed(2)}
-                            </td>
-                            <td style={{ padding: '10px 6px', textAlign: 'right' }}>
-                              ${splitAllocationPreview.reduce((s, l) => s + l.cost, 0).toFixed(2)}
-                            </td>
-                            <td style={{ padding: '10px 6px', textAlign: 'right' }}>
-                              ${splitAllocationPreview.reduce((s, l) => s + l.markup, 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
+                            )}
+                            <tr style={{ fontWeight: '700', borderTop: '2px solid var(--border-color)' }}>
+                              <td colSpan={3} style={{ padding: '10px 6px' }}>Totals</td>
+                              <td style={{ padding: '10px 6px', textAlign: 'right' }}>
+                                ${splitEffectiveAllocation.lines.reduce((s, l) => s + l.billed, 0).toFixed(2)}
+                              </td>
+                              <td style={{ padding: '10px 6px', textAlign: 'right' }}>
+                                ${splitEffectiveAllocation.sumAllocated.toFixed(2)} / ${splitEffectiveAllocation.totalBill.toFixed(2)}
+                              </td>
+                              <td style={{ padding: '10px 6px', textAlign: 'right' }}>
+                                ${splitEffectiveAllocation.lines.reduce((s, l) => s + l.markup, 0).toFixed(2)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
                   )}
                 </div>
               )}
@@ -1571,7 +1891,12 @@ export default function Expenses() {
               ) : (
                 <button
                   type="button"
-                  disabled={splitSaving || !splitAllocationPreview || !splitFile}
+                  disabled={
+                    splitSaving ||
+                    !splitEffectiveAllocation ||
+                    !splitFile ||
+                    splitEffectiveAllocation.sumAllocated > splitEffectiveAllocation.totalBill + 0.02
+                  }
                   onClick={() => void handleSplitWizardSave()}
                   style={{
                     padding: '10px 18px',
@@ -1580,8 +1905,20 @@ export default function Expenses() {
                     backgroundColor: 'var(--primary-color)',
                     color: 'white',
                     fontWeight: '600',
-                    cursor: splitSaving || !splitAllocationPreview || !splitFile ? 'not-allowed' : 'pointer',
-                    opacity: splitSaving || !splitAllocationPreview || !splitFile ? 0.6 : 1,
+                    cursor:
+                      splitSaving ||
+                      !splitEffectiveAllocation ||
+                      !splitFile ||
+                      splitEffectiveAllocation.sumAllocated > splitEffectiveAllocation.totalBill + 0.02
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      splitSaving ||
+                      !splitEffectiveAllocation ||
+                      !splitFile ||
+                      splitEffectiveAllocation.sumAllocated > splitEffectiveAllocation.totalBill + 0.02
+                        ? 0.6
+                        : 1,
                   }}
                 >
                   {splitSaving ? 'Saving…' : 'Save all lines'}
@@ -1886,6 +2223,12 @@ export default function Expenses() {
           <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>New Receipt Expense</h3>
             {uploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{uploadError}</div>}
+            {receiptAutofillBusy && (
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reading receipt…</div>
+            )}
+            {receiptAutofillNote && !receiptAutofillBusy && (
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{receiptAutofillNote}</div>
+            )}
 
             <div>
               <label style={labelStyle}>Name / Description</label>
@@ -1916,7 +2259,14 @@ export default function Expenses() {
 
             <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '12px' }}>
               <button
-                onClick={() => { setReceiptFile(null); setReceiptPreviewUrl(null); setReceiptForm(initialReceiptForm); setUploadError(null); }}
+                onClick={() => {
+                  setReceiptFile(null);
+                  setReceiptPreviewUrl(null);
+                  setReceiptForm(initialReceiptForm);
+                  setUploadError(null);
+                  setReceiptAutofillNote(null);
+                  setReceiptAutofillBusy(false);
+                }}
                 style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}
               >
                 Cancel
