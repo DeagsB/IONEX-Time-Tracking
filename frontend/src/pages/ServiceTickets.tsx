@@ -2391,6 +2391,15 @@ export default function ServiceTickets() {
     return found || null;
   };
 
+  /** Owner (or admin) may attach a deferred hotel/other receipt after submit/approve; ticket stays locked for other edits. */
+  const allowDeferredReceiptAttachWhenLocked = useMemo(() => {
+    if (!selectedTicket) return false;
+    const rec = findMatchingTicketRecord(selectedTicket);
+    if ((rec as { is_discarded?: boolean } | null)?.is_discarded) return false;
+    if (isAdmin) return true;
+    return !!(user?.id && selectedTicket.userId === user.id);
+  }, [selectedTicket, existingTickets, isAdmin, user?.id]);
+
   // Get or create service ticket record ID when a ticket is selected
   const getOrCreateTicketRecord = async (ticket: ServiceTicket): Promise<string> => {
     // Try to find existing ticket record
@@ -2775,6 +2784,28 @@ export default function ServiceTickets() {
     queryFn: () => userExpensesService.getByServiceTicketId(currentTicketRecordId!),
     enabled: !!currentTicketRecordId,
   });
+
+  const deferredReceiptPendingCount = useMemo(() => {
+    const lines = [
+      ...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))),
+      ...pendingAddExpenses,
+    ];
+    let n = 0;
+    for (const expense of lines) {
+      const idStr = String(expense.id ?? '');
+      const linkedUe = (expense as { linkedUserExpenseId?: string }).linkedUserExpenseId;
+      if (
+        expense.needs_reimbursement &&
+        (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses') &&
+        !idStr.startsWith('receipt-') &&
+        !linkedUe &&
+        !ticketExpenseLineHasAttachedReceipt(expense.description, attachedReceipts)
+      ) {
+        n += 1;
+      }
+    }
+    return n;
+  }, [expenses, pendingAddExpenses, pendingDeleteExpenseIds, attachedReceipts]);
 
   // Editing an attached receipt from the service ticket
   const [editingReceipt, setEditingReceipt] = useState<any>(null);
@@ -5917,7 +5948,7 @@ export default function ServiceTickets() {
                       </div>
                       
                       {/* Suggested billable receipts from Expenses page */}
-                      {!isLockedForEditing && unappliedBillableReceipts.length > 0 && (
+                      {(!isLockedForEditing || allowDeferredReceiptAttachWhenLocked) && unappliedBillableReceipts.length > 0 && (
                         <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.06)', border: '1px solid rgba(33, 150, 243, 0.2)', borderRadius: '6px' }}>
                           <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(33, 150, 243, 0.8)', marginBottom: '8px' }}>Suggested Billable Receipts</div>
                           {unappliedBillableReceipts.map((r: any) => (
@@ -6471,7 +6502,7 @@ export default function ServiceTickets() {
                         const idStr = String(expense.id ?? '');
                         const linkedUe = (expense as { linkedUserExpenseId?: string }).linkedUserExpenseId;
                         const showDeferredReceiptAttach =
-                          !isLockedForEditing &&
+                          (!isLockedForEditing || allowDeferredReceiptAttachWhenLocked) &&
                           expense.needs_reimbursement &&
                           (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses') &&
                           !idStr.startsWith('receipt-') &&
@@ -6493,8 +6524,25 @@ export default function ServiceTickets() {
                           }}
                         >
                           <div>
-                            <span style={{ color: 'var(--primary-color)', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase' }}>
+                            <span style={{ color: 'var(--primary-color)', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                               {serviceTicketExpenseTypeLabel(expense.expense_type)}
+                              {showDeferredReceiptAttach && (
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: '700',
+                                    textTransform: 'none',
+                                    letterSpacing: '0.02em',
+                                    color: '#e65100',
+                                    backgroundColor: 'rgba(255, 152, 0, 0.18)',
+                                    border: '1px solid rgba(255, 152, 0, 0.45)',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                  }}
+                                >
+                                  Receipt pending
+                                </span>
+                              )}
                             </span>
                             <div style={{ color: 'var(--text-primary)', marginTop: '2px' }}>
                               {expense.description}
@@ -6666,7 +6714,17 @@ export default function ServiceTickets() {
                               <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '6px' }}>Attached Receipts</div>
                               {attachedReceipts.length === 0 ? (
                                 <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
-                                  None linked yet. Use “+ Add to Ticket” on suggested billable receipts above, or link from the Expenses page—they appear here once tied to this ticket.
+                                  {deferredReceiptPendingCount > 0 && allowDeferredReceiptAttachWhenLocked ? (
+                                    <>
+                                      <span style={{ color: '#ff9800', fontWeight: '600' }}>Receipt pending</span> for{' '}
+                                      {deferredReceiptPendingCount === 1 ? 'a line' : `${deferredReceiptPendingCount} lines`} above.
+                                      Use <strong>Attach receipt</strong> on the highlighted row (or suggested billable receipts / Expenses page).
+                                    </>
+                                  ) : (
+                                    <>
+                                      None linked yet. Use “+ Add to Ticket” on suggested billable receipts above, or link from the Expenses page—they appear here once tied to this ticket.
+                                    </>
+                                  )}
                                 </p>
                               ) : (
                                 attachedReceipts.map((r: any) => {

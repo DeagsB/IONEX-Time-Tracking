@@ -158,7 +158,7 @@ export default function Expenses() {
   const [hotelAttachSaving, setHotelAttachSaving] = useState(false);
   const hotelAttachFileInputRef = useRef<HTMLInputElement>(null);
 
-  /** One folio (e.g. guest bill) shared across multiple ticket hotel lines */
+  /** One hotel bill / receipt file shared across multiple service-ticket hotel lines */
   const [splitWizardOpen, setSplitWizardOpen] = useState(false);
   const [splitWizardStep, setSplitWizardStep] = useState<1 | 2 | 3>(1);
   const [splitSelectedLineIds, setSplitSelectedLineIds] = useState<Set<string>>(() => new Set());
@@ -338,7 +338,7 @@ export default function Expenses() {
     const amt = parseFloat(splitForm.amount) || 0;
     const gst = parseFloat(splitForm.gst) || 0;
     if (amt <= 0) {
-      setSplitError('Enter the receipt subtotal (before tax) from the folio.');
+      setSplitError('Enter the receipt subtotal (before tax) from the hotel bill.');
       return;
     }
     for (const line of splitAllocationPreview) {
@@ -911,7 +911,7 @@ export default function Expenses() {
                 Receipt still needed — service ticket hotel
               </div>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
-                Use <strong>Add receipt</strong> for a single ticket. If the hotel emailed one <strong>guest folio</strong> that covers several nights (each night on its own service ticket), use <strong>Split folio across tickets</strong> — we split the folio subtotal and tax by how much you billed on each ticket, attach the same PDF to each, and set markup per line automatically.
+                Use <strong>Add receipt</strong> for a single ticket. If the hotel sent <strong>one bill</strong> that covers several nights (each night on its own service ticket), use <strong>Split hotel bill across tickets</strong> — we split the room subtotal and tax by how much you billed on each ticket, attach the same PDF to each, and set markup per line automatically.
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, alignSelf: 'center' }}>
@@ -930,7 +930,7 @@ export default function Expenses() {
                     cursor: 'pointer',
                   }}
                 >
-                  Split folio across tickets
+                  Split hotel bill across tickets
                 </button>
               )}
               <Link
@@ -1260,7 +1260,7 @@ export default function Expenses() {
               }}
             >
               <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                Split one hotel folio across tickets
+                Split one hotel bill across tickets
               </h3>
               <button
                 type="button"
@@ -1290,7 +1290,7 @@ export default function Expenses() {
               {splitWizardStep === 1 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    Upload the combined guest folio or invoice PDF. Enter the <strong>room subtotal</strong> and <strong>GST / taxes</strong> exactly as shown on the folio (before credits). The next step chooses which ticket lines belong to this stay.
+                    Upload the combined hotel bill or invoice (PDF or photo). Enter the <strong>room subtotal</strong> and <strong>GST / taxes</strong> exactly as shown on the bill (before credits). The next step chooses which ticket lines belong to this stay.
                   </p>
                   <input
                     ref={splitFileInputRef}
@@ -1322,18 +1322,18 @@ export default function Expenses() {
                         color: 'var(--text-secondary)',
                       }}
                     >
-                      Choose folio (image or PDF)
+                      Choose receipt file (image or PDF)
                     </button>
                   ) : (
                     <div style={{ borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-tertiary)', minHeight: '200px' }}>
                       {splitFile?.type === 'application/pdf' ? (
                         <iframe
                           src={splitPreviewUrl}
-                          title="Folio PDF"
+                          title="Receipt PDF"
                           style={{ width: '100%', height: '280px', border: 'none' }}
                         />
                       ) : (
-                        <img src={splitPreviewUrl} alt="Folio" style={{ maxWidth: '100%', maxHeight: '280px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+                        <img src={splitPreviewUrl} alt="Receipt preview" style={{ maxWidth: '100%', maxHeight: '280px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
                       )}
                       <div style={{ padding: '8px' }}>
                         <button type="button" onClick={() => splitFileInputRef.current?.click()} style={{ fontSize: '12px', color: 'var(--primary-color)', border: 'none', background: 'none', cursor: 'pointer' }}>
@@ -1343,7 +1343,7 @@ export default function Expenses() {
                     </div>
                   )}
                   <div>
-                    <label style={labelStyle}>Folio subtotal before tax ($)</label>
+                    <label style={labelStyle}>Bill subtotal before tax ($)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1354,7 +1354,7 @@ export default function Expenses() {
                     />
                   </div>
                   <div>
-                    <label style={labelStyle}>Tax on folio ($)</label>
+                    <label style={labelStyle}>Tax on bill ($)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1370,7 +1370,7 @@ export default function Expenses() {
               {splitWizardStep === 2 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    Select every service-ticket hotel line that this folio covers (for example each night on its own ticket). Allocation uses each line&apos;s <strong>billed to client</strong> amount as the weight.
+                    Select every service-ticket hotel line that this bill covers (for example each night on its own ticket). Allocation uses each line&apos;s <strong>billed to client</strong> amount as the weight.
                   </p>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <button
@@ -1439,7 +1439,7 @@ export default function Expenses() {
               {splitWizardStep === 3 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    Each ticket gets a share of the folio matching its share of <strong>total billed to client</strong>. The same receipt file is attached to each internal expense. Markup per line = billed − that line&apos;s share of the folio.
+                    Each ticket gets a share of the bill matching its share of <strong>total billed to client</strong>. The same receipt file is attached to each internal expense. Markup per line = billed − that line&apos;s share of the bill.
                   </p>
                   {!splitAllocationPreview ? (
                     <div style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>
@@ -1454,7 +1454,7 @@ export default function Expenses() {
                             <th style={{ padding: '8px 6px' }}>Line</th>
                             <th style={{ padding: '8px 6px', textAlign: 'right' }}>% of billed</th>
                             <th style={{ padding: '8px 6px', textAlign: 'right' }}>Billed</th>
-                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Your folio cost</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Your share of bill</th>
                             <th style={{ padding: '8px 6px', textAlign: 'right' }}>Markup</th>
                           </tr>
                         </thead>
@@ -1528,11 +1528,11 @@ export default function Expenses() {
                     setSplitError(null);
                     if (splitWizardStep === 1) {
                       if (!splitFile) {
-                        setSplitError('Choose the folio file first.');
+                        setSplitError('Choose the receipt file first.');
                         return;
                       }
                       if (!(parseFloat(splitForm.amount) > 0)) {
-                        setSplitError('Enter the folio subtotal before tax.');
+                        setSplitError('Enter the bill subtotal before tax.');
                         return;
                       }
                       setSplitWizardStep(2);
