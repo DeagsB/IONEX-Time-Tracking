@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, canAccessInvoices } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import {
   serviceTicketsService,
@@ -1514,10 +1514,13 @@ export default function Invoices() {
     queryFn: () => invoicedBatchInvoicesService.getAllInvoicedGroupIds(),
   });
 
+  /** Load all DB marks for anyone on Invoices (admin + developer). Do not gate on isAdmin: developer "User" toggle cleared isAdmin but marks-only batches would disappear from "See invoiced". */
+  const loadInvoicedBatchMarks = !!user && !isDemoMode && canAccessInvoices(user);
+
   const { data: invoicedMarkRows = [] } = useQuery({
     queryKey: ['invoicedBatchMarks'],
     queryFn: () => invoicedBatchMarksService.getAll(),
-    enabled: isAdmin && !!user && !isDemoMode,
+    enabled: loadInvoicedBatchMarks,
   });
 
   const dbMarkedIdSet = useMemo(
