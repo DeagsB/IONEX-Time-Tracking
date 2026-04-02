@@ -2251,6 +2251,8 @@ export default function Invoices() {
         {isCNRL
           ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets. Marked-as-invoiced state is stored in the database (admins only).'
           : 'Approved service tickets grouped by project and selected date range (daily, weekly, bi-weekly, monthly, or one batch per project) for invoicing. Marked-as-invoiced is saved to the database with a snapshot of the batch so status stays consistent across devices (admins only).'}
+        {' '}
+        <strong>Uninvoiced</strong> batches are listed below; <strong>Mark as invoiced</strong> locks those service tickets until you unmark (no invoice PDF required). Use <strong>See invoiced</strong> for batches already marked—they stay locked the same way, with or without a linked PDF.
       </p>
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
@@ -2553,9 +2555,14 @@ export default function Invoices() {
             >
               ← Back to pending
             </button>
-            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              {invoicedGroups.length} invoiced group(s)
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Invoiced batches (locked)
+              </span>
+              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                {invoicedGroups.length} group(s) — service tickets in these batches cannot be edited until unmarked. A linked invoice PDF is optional.
+              </span>
+            </div>
           </div>
           {invoicedGroups.length === 0 ? (
             <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
@@ -2978,7 +2985,9 @@ export default function Invoices() {
           {invoicedGroups.length > 0 && (
             <div style={{ marginTop: '16px' }}>
               <button
+                type="button"
                 onClick={() => setShowInvoiced(true)}
+                title="View batches already marked as invoiced (service tickets locked until unmarked; PDF optional)"
                 style={{
                   padding: '8px 16px',
                   backgroundColor: 'var(--bg-tertiary)',
@@ -2990,13 +2999,21 @@ export default function Invoices() {
                   cursor: 'pointer',
                 }}
               >
-                See invoiced ({invoicedGroups.length})
+                See invoiced — locked ({invoicedGroups.length})
               </button>
             </div>
           )}
         </div>
       ) : (
         <>
+          <div style={{ marginBottom: '14px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 6px', color: 'var(--text-primary)' }}>
+              Uninvoiced batches
+            </h2>
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '900px' }}>
+              These groups are not marked as invoiced yet. <strong>Mark as invoiced</strong> saves the batch and locks the listed service tickets in Service Tickets until you unmark here. You do not need to attach a PDF first; you can add one later from the invoiced view if you want.
+            </p>
+          </div>
           <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={handleExportForInvoicing}
@@ -3052,9 +3069,9 @@ export default function Invoices() {
                 cursor: 'pointer',
                 marginLeft: 'auto',
               }}
-              title="View groups marked as invoiced"
+              title="View batches already marked as invoiced (service tickets locked until unmarked; PDF optional)"
             >
-              See invoiced ({invoicedGroups.length})
+              See invoiced — locked ({invoicedGroups.length})
             </button>
           </div>
 
@@ -3219,7 +3236,7 @@ export default function Invoices() {
                             ? 'not-allowed'
                             : 'pointer',
                       }}
-                      title="Mark as invoiced, or drop an invoice PDF here to attach, mark, and download the merged batch (invoice + service tickets)"
+                      title="Save this batch as invoiced and lock these service tickets until unmarked (no PDF required). Or drop an invoice PDF here to attach, mark, and download the merged batch."
                     >
                       {uploadingInvoiceGroupId === groupId
                         ? 'Attaching…'
