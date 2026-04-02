@@ -64,6 +64,49 @@ function sharedReceiptLabelMetaForGroup(
   return meta;
 }
 
+/**
+ * One entry per receipt file that has 2+ lines in this date group, in list order.
+ * Sums match the per-line badges (`combinedTotal` from shared receipt meta).
+ */
+function sharedReceiptGroupTotalsInOrder(
+  items: SharedReceiptRowInput[],
+  receiptLineMeta: Map<string, { index: number; total: number; combinedTotal: number }>
+): Array<{ url: string; lineCount: number; amountSum: number; gstSum: number; combinedTotal: number }> {
+  const byUrl = new Map<string, SharedReceiptRowInput[]>();
+  for (const exp of items) {
+    const u = (exp.receipt_url && String(exp.receipt_url).trim()) || '';
+    if (!u) continue;
+    if (!byUrl.has(u)) byUrl.set(u, []);
+    byUrl.get(u)!.push(exp);
+  }
+  const out: Array<{ url: string; lineCount: number; amountSum: number; gstSum: number; combinedTotal: number }> = [];
+  const seen = new Set<string>();
+  for (const exp of items) {
+    const id = String(exp.id);
+    if (!receiptLineMeta.has(id)) continue;
+    const u = (exp.receipt_url && String(exp.receipt_url).trim()) || '';
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    const rows = byUrl.get(u)!;
+    let amountSum = 0;
+    let gstSum = 0;
+    for (const r of rows) {
+      amountSum += parseFloat(String(r.amount)) || 0;
+      gstSum += parseFloat(String(r.gst)) || 0;
+    }
+    amountSum = Math.round(amountSum * 100) / 100;
+    gstSum = Math.round(gstSum * 100) / 100;
+    out.push({
+      url: u,
+      lineCount: rows.length,
+      amountSum,
+      gstSum,
+      combinedTotal: receiptLineMeta.get(id)!.combinedTotal,
+    });
+  }
+  return out;
+}
+
 /** Split a receipt line total into subtotal + GST using the same ratio as the full bill. */
 function splitTotalIntoAmountGst(
   lineTotal: number,
@@ -2473,6 +2516,7 @@ export default function Expenses() {
                 myExpensesGroupedByDate.map(({ dateKey, items }) => {
                   const collapsed = collapsedMyExpenseDateKeys.has(dateKey);
                   const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(items);
+                  const receiptGroupTotals = sharedReceiptGroupTotalsInOrder(items, sharedReceiptMeta);
                   return (
                     <Fragment key={dateKey}>
                       <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
@@ -2508,7 +2552,63 @@ export default function Expenses() {
                         </td>
                       </tr>
                       {!collapsed &&
-                        items.map((exp: any) => (
+                        items.flatMap((exp: any, rowIdx: number) => {
+                          const u = (exp.receipt_url && String(exp.receipt_url).trim()) || '';
+                          const isFirstOfSharedReceipt =
+                            u &&
+                            sharedReceiptMeta.has(String(exp.id)) &&
+                            !items.slice(0, rowIdx).some(
+                              (x: any) =>
+                                (x.receipt_url && String(x.receipt_url).trim()) === u &&
+                                sharedReceiptMeta.has(String(x.id))
+                            );
+                          const groupRow =
+                            isFirstOfSharedReceipt &&
+                            receiptGroupTotals.find((g) => g.url === u);
+                          const summaryTr = groupRow ? (
+                            <tr
+                              key={`receipt-total-${dateKey}-${exp.id}`}
+                              style={{
+                                backgroundColor: 'rgba(124, 58, 237, 0.07)',
+                                borderBottom: '1px solid var(--border-color)',
+                              }}
+                              aria-label="Receipt total for split lines"
+                            >
+                              <td colSpan={2} style={{ padding: '8px 16px', fontSize: '12px', color: '#4c1d95', lineHeight: 1.45 }}>
+                                <span style={{ fontWeight: 700 }}>Receipt total</span>
+                                <span style={{ fontWeight: 500, color: 'var(--text-secondary)', marginLeft: '8px' }}>
+                                  {groupRow.lineCount} lines · Subtotal ${groupRow.amountSum.toFixed(2)} · GST $
+                                  {groupRow.gstSum.toFixed(2)} · Total ${groupRow.combinedTotal.toFixed(2)}
+                                </span>
+                              </td>
+                              <td
+                                style={{
+                                  padding: '8px 16px',
+                                  textAlign: 'right',
+                                  fontWeight: 700,
+                                  fontSize: '13px',
+                                  color: '#4c1d95',
+                                }}
+                              >
+                                ${groupRow.amountSum.toFixed(2)}
+                              </td>
+                              <td
+                                style={{
+                                  padding: '8px 16px',
+                                  textAlign: 'right',
+                                  fontWeight: 700,
+                                  fontSize: '13px',
+                                  color: '#4c1d95',
+                                }}
+                              >
+                                ${groupRow.gstSum.toFixed(2)}
+                              </td>
+                              <td colSpan={4} style={{ padding: '8px 16px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                                —
+                              </td>
+                            </tr>
+                          ) : null;
+                          const expenseTr = (
                 <tr
                   key={exp.id}
                   onClick={() => handleStartEdit(exp)}
@@ -2612,7 +2712,9 @@ export default function Expenses() {
                     </button>
                   </td>
                 </tr>
-                        ))}
+                          );
+                          return summaryTr ? [summaryTr, expenseTr] : [expenseTr];
+                        })}
                     </Fragment>
                   );
                 })
@@ -2678,6 +2780,7 @@ export default function Expenses() {
                   adminFilteredExpensesGroupedByDate.map(({ dateKey, items }) => {
                     const collapsed = collapsedAdminExpenseDateKeys.has(dateKey);
                     const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(items);
+                    const receiptGroupTotals = sharedReceiptGroupTotalsInOrder(items, sharedReceiptMeta);
                     return (
                       <Fragment key={dateKey}>
                         <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
@@ -2713,11 +2816,66 @@ export default function Expenses() {
                           </td>
                         </tr>
                         {!collapsed &&
-                          items.map((exp: any) => {
+                          items.flatMap((exp: any, rowIdx: number) => {
                   const isUpdating = updatingExpenseId === exp.id;
                   const status = exp._status;
                   const source = exp._source;
-                  return (
+                  const u = (exp.receipt_url && String(exp.receipt_url).trim()) || '';
+                  const isFirstOfSharedReceipt =
+                    u &&
+                    sharedReceiptMeta.has(String(exp.id)) &&
+                    !items.slice(0, rowIdx).some(
+                      (x: any) =>
+                        (x.receipt_url && String(x.receipt_url).trim()) === u &&
+                        sharedReceiptMeta.has(String(x.id))
+                    );
+                  const groupRow =
+                    isFirstOfSharedReceipt &&
+                    receiptGroupTotals.find((g) => g.url === u);
+                  const summaryTr = groupRow ? (
+                    <tr
+                      key={`admin-receipt-total-${dateKey}-${exp.id}`}
+                      style={{
+                        backgroundColor: 'rgba(124, 58, 237, 0.07)',
+                        borderBottom: '1px solid var(--border-color)',
+                      }}
+                      aria-label="Receipt total for split lines"
+                    >
+                      <td colSpan={3} style={{ padding: '6px 14px', fontSize: '11px', color: '#4c1d95', lineHeight: 1.45 }}>
+                        <span style={{ fontWeight: 700 }}>Receipt total</span>
+                        <span style={{ fontWeight: 500, color: 'var(--text-secondary)', marginLeft: '8px' }}>
+                          {groupRow.lineCount} lines · Subtotal ${groupRow.amountSum.toFixed(2)} · GST $
+                          {groupRow.gstSum.toFixed(2)} · Total ${groupRow.combinedTotal.toFixed(2)}
+                        </span>
+                      </td>
+                      <td
+                        style={{
+                          padding: '6px 14px',
+                          textAlign: 'right',
+                          fontWeight: 700,
+                          fontSize: '12px',
+                          color: '#4c1d95',
+                        }}
+                      >
+                        ${groupRow.amountSum.toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          padding: '6px 14px',
+                          textAlign: 'right',
+                          fontWeight: 700,
+                          fontSize: '12px',
+                          color: '#4c1d95',
+                        }}
+                      >
+                        ${groupRow.gstSum.toFixed(2)}
+                      </td>
+                      <td colSpan={4} style={{ padding: '6px 14px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                        —
+                      </td>
+                    </tr>
+                  ) : null;
+                  const expenseTr = (
                     <tr
                       key={`${source}-${exp.id}`}
                       style={{
@@ -2831,6 +2989,7 @@ export default function Expenses() {
                       </td>
                     </tr>
                   );
+                  return summaryTr ? [summaryTr, expenseTr] : [expenseTr];
                 })}
                       </Fragment>
                     );
