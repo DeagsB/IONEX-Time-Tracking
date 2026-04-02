@@ -2581,10 +2581,82 @@ export const userExpensesService = {
     if (error) throw error;
   },
 
+  /**
+   * Merge multiple unapplied rows that share the same receipt file into one (sum amount+GST).
+   * Keeps the oldest row by created_at; deletes others without removing storage.
+   * Returns true if at least two rows were consolidated.
+   */
+  async mergeUnappliedRowsSharingReceiptUrl(receiptUrl: string): Promise<boolean> {
+    const url = String(receiptUrl || '').trim();
+    if (!url) return false;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    const { data: rows, error } = await supabase
+      .from('user_expenses')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('receipt_url', url)
+      .is('service_ticket_id', null)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    if (!rows || rows.length <= 1) return false;
+
+    const splitHint =
+      /(remainder \(same receipt\)|portion not billed to client|·\s*combined\s*\(\d+\))/i;
+    const pickMergedDescription = (): string => {
+      for (const r of rows as any[]) {
+        const d = String(r.description || '').trim();
+        if (d && !splitHint.test(d)) return d;
+      }
+      const d0 = String((rows[0] as any).description || 'Receipt').trim();
+      return (
+        d0
+          .replace(/\s*—\s*remainder \(same receipt\)\s*$/i, '')
+          .replace(/\s*—\s*portion not billed to client \(same receipt\)\s*$/i, '')
+          .replace(/\s*·\s*combined \(\d+\)\s*$/i, '')
+          .trim() || 'Receipt'
+      );
+    };
+
+    const totalAmount =
+      Math.round((rows as any[]).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0) * 100) / 100;
+    const totalGst =
+      Math.round((rows as any[]).reduce((s, r) => s + (parseFloat(r.gst) || 0), 0) * 100) / 100;
+    const anyBillable = (rows as any[]).some((r) => r.is_billable);
+    const statuses = (rows as any[]).map((r) => String(r.status || 'pending'));
+    const mergedStatus: 'pending' | 'approved' | 'rejected' | 'paid' = statuses.includes('pending')
+      ? 'pending'
+      : statuses.includes('rejected')
+        ? 'rejected'
+        : statuses.includes('paid')
+          ? 'paid'
+          : 'approved';
+
+    const primary = rows[0] as any;
+    const primaryId = String(primary.id);
+
+    await userExpensesService.update(primaryId, {
+      amount: totalAmount,
+      gst: totalGst,
+      description: pickMergedDescription(),
+      is_billable: anyBillable,
+      status: mergedStatus,
+      markup_amount: null,
+    });
+
+    for (let i = 1; i < rows.length; i++) {
+      await userExpensesService.delete(String((rows[i] as any).id), { keepReceiptInStorage: true });
+    }
+    return true;
+  },
+
   async unapplyFromTicket(id: string) {
     const { data: expense, error: fetchErr } = await supabase
       .from('user_expenses')
-      .select('service_ticket_id, description')
+      .select('service_ticket_id, description, receipt_url')
       .eq('id', id)
       .single();
     if (fetchErr) throw fetchErr;
@@ -2597,6 +2669,11 @@ export const userExpensesService = {
       .update({ service_ticket_id: null, markup_amount: null })
       .eq('id', id);
     if (updateErr) throw updateErr;
+
+    const ru = (expense as { receipt_url?: string | null }).receipt_url;
+    if (ru && String(ru).trim()) {
+      await userExpensesService.mergeUnappliedRowsSharingReceiptUrl(String(ru).trim());
+    }
   },
 
   async _removeLinkedTicketExpense(serviceTicketId: string, description: string) {
@@ -2622,7 +2699,7 @@ export const userExpensesService = {
     if (!d) return;
     const { data: receipts } = await supabase
       .from('user_expenses')
-      .select('id')
+      .select('id, receipt_url')
       .eq('service_ticket_id', serviceTicketId)
       .ilike('description', d);
 
@@ -2631,6 +2708,16 @@ export const userExpensesService = {
         .from('user_expenses')
         .update({ service_ticket_id: null, markup_amount: null })
         .in('id', receipts.map((r) => r.id));
+      const urls = [
+        ...new Set(
+          receipts
+            .map((r: any) => String(r.receipt_url || '').trim())
+            .filter(Boolean)
+        ),
+      ];
+      for (const url of urls) {
+        await userExpensesService.mergeUnappliedRowsSharingReceiptUrl(url);
+      }
     }
   },
 

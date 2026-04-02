@@ -830,8 +830,12 @@ export default function Expenses() {
           const expense = expenses.find((e: any) => e.id === itemId);
           if (expense?.service_ticket_id) {
             await userExpensesService._removeLinkedTicketExpense(expense.service_ticket_id, expense.description);
-            await userExpensesService.update(itemId, { service_ticket_id: null, markup_amount: 0 });
+            await userExpensesService.update(itemId, { service_ticket_id: null, markup_amount: null });
             queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+            const ru = expense.receipt_url && String(expense.receipt_url).trim();
+            if (ru) {
+              await userExpensesService.mergeUnappliedRowsSharingReceiptUrl(ru);
+            }
           }
         }
 

@@ -2932,10 +2932,8 @@ export default function ServiceTickets() {
     const { amount, gst } = splitLumpAllocatedIntoAmountGst(allocated, sumA, sumG);
     const remainder = Math.round((suggestedLumpModal.receiptTotal - allocated) * 100) / 100;
 
-    if (rows.length === 1 && remainder > 0.02) {
-      alert(
-        'This receipt is a single expense line. Enter the full receipt total as cost, or split the receipt on the Expenses page first if you need to apply part of it here and keep the rest unapplied.'
-      );
+    if (allocated > suggestedLumpModal.receiptTotal + 0.02) {
+      alert('Receipt cost cannot be greater than the receipt total.');
       return;
     }
 
@@ -2948,6 +2946,27 @@ export default function ServiceTickets() {
           service_ticket_id: currentTicketRecordId,
           markup_amount: markup,
         });
+        if (remainder > 0.02) {
+          const { amount: remAmt, gst: remGst } = splitLumpAllocatedIntoAmountGst(remainder, sumA, sumG);
+          const descBase = String(primary.description || 'Receipt').trim();
+          const expenseDateRaw = String(primary.expense_date || '').split('T')[0].split(' ')[0];
+          const expenseDate =
+            expenseDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(expenseDateRaw)
+              ? expenseDateRaw
+              : new Date().toISOString().split('T')[0];
+          const st = primary.status;
+          const statusCreate =
+            st === 'approved' || st === 'rejected' || st === 'paid' || st === 'pending' ? st : 'pending';
+          await userExpensesService.create({
+            description: `${descBase} — remainder (same receipt)`,
+            amount: remAmt,
+            gst: remGst,
+            expense_date: expenseDate,
+            receipt_url: primary.receipt_url || undefined,
+            is_billable: primary.is_billable !== false,
+            status: statusCreate,
+          });
+        }
       } else if (remainder > 0.02) {
         const { amount: remAmt, gst: remGst } = splitLumpAllocatedIntoAmountGst(remainder, sumA, sumG);
         const survivor = rows[1];
@@ -8820,9 +8839,13 @@ export default function ServiceTickets() {
               <strong>{suggestedLumpModal.displayDescription}</strong>
               <br />
               Receipt total (subtotal + GST): <strong>${suggestedLumpModal.receiptTotal.toFixed(2)}</strong>
-              {suggestedLumpModal.rows.length > 1 && (
+              {suggestedLumpModal.rows.length > 1 ? (
                 <span style={{ display: 'block', marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
                   Extra lines from the same uploaded file are merged into one expense when you confirm.
+                </span>
+              ) : (
+                <span style={{ display: 'block', marginTop: '6px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                  If receipt cost is less than the total above, the unused portion is saved as a separate line on Expenses (same receipt file) so you can apply it elsewhere.
                 </span>
               )}
             </p>
