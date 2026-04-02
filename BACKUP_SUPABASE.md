@@ -2,6 +2,12 @@
 
 Ways to create a backup of your Supabase database for the IONEX Time Tracking project.
 
+## If you need a true “we lost everything” backup
+
+1. **Database (strongly recommended):** use **`SUPABASE_DB_URL` + `pg_dump`** via `.\backup-supabase.ps1`. That produces full SQL (schema + data) for everything your DB role can dump—far more complete than the REST/API path.
+2. **Off-site copy:** add `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` to `backup-config.env` so the script can **upload** the backup folder to the `database-backups` Storage bucket (see below). That protects you if your PC dies.
+3. **Not in SQL dumps:** **Storage objects** (PDFs, receipts, invoice files in buckets) are separate. Copy critical buckets periodically (Supabase Dashboard → Storage, or a small script using the service role). **Auth** (`auth.users`, etc.) is included in a normal `pg_dump` as the `postgres` user; the Node/API backup only covers **`public`** tables.
+
 ---
 
 ## Option 0: Scheduled backup (every Saturday at 7:00pm)

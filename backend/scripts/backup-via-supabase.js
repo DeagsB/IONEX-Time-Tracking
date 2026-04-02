@@ -37,10 +37,26 @@ if (!url || !key) {
 
 const supabase = createClient(url, key);
 
+// Order respects common FK dependencies (parents before children).
+// For a complete logical dump (all schemas, auth, extensions), use pg_dump + SUPABASE_DB_URL — see BACKUP_SUPABASE.md.
 const PUBLIC_TABLES = [
-  'users', 'customers', 'projects', 'employees', 'time_entries', 'forms',
-  'service_tickets', 'service_ticket_expenses', 'service_tickets_demo',
-  'bug_reports', 'project_user_assignments', 'customer_user_assignments', 'qbo_tokens'
+  'users',
+  'customers',
+  'projects',
+  'employees',
+  'pay_rate_history',
+  'project_user_assignments',
+  'customer_user_assignments',
+  'time_entries',
+  'forms',
+  'service_tickets',
+  'service_ticket_expenses',
+  'user_expenses',
+  'service_tickets_demo',
+  'bug_reports',
+  'qbo_tokens',
+  'invoiced_batch_invoices',
+  'invoiced_batch_marks',
 ];
 
 function escape(val) {

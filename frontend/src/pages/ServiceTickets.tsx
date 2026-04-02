@@ -5880,6 +5880,7 @@ export default function ServiceTickets() {
                             )}
                           </div>
                           {!(
+                            !editingExpense.id &&
                             editingExpense.needs_reimbursement &&
                             (editingExpense.expense_type === 'Hotel' ||
                               editingExpense.expense_type === 'Expenses')
@@ -5916,7 +5917,11 @@ export default function ServiceTickets() {
                                 </div>
                               )}
                               <div>
-                                <label style={labelStyle}>Billed Rate ($)</label>
+                                <label style={labelStyle}>
+                                  {editingExpense.expense_type === 'Hotel'
+                                    ? 'Amount billed to client ($)'
+                                    : 'Billed Rate ($)'}
+                                </label>
                                 <input
                                   type="number"
                                   step="0.01"
@@ -5934,6 +5939,11 @@ export default function ServiceTickets() {
                                   }}
                                   placeholder="0.00"
                                 />
+                                {editingExpense.expense_type === 'Hotel' && (
+                                  <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                                    Hotel lines bill as 1 × this amount (quantity is fixed at 1).
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
