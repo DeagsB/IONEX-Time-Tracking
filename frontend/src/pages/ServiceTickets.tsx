@@ -5947,8 +5947,8 @@ export default function ServiceTickets() {
                               </div>
                             </div>
                           )}
-                          {/* Per Diem: always reimbursable in reports (no checkbox). Travel: optional personal-vehicle reimbursement. */}
-                          {editingExpense.expense_type !== 'Subsistence' && (
+                          {/* Per Diem: always reimbursable in reports (no checkbox). Reimbursement flag + receipt UI only when adding a line; editing saved rows keeps existing flag on Update. */}
+                          {editingExpense.expense_type !== 'Subsistence' && !editingExpense.id && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                               <input
                                 type="checkbox"
