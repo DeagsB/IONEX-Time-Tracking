@@ -1033,6 +1033,8 @@ export default function ServiceTickets() {
     setSelectedTicket(null);
     setCurrentTicketRecordId(null);
     setExpenses([]);
+    setEditingExpense(null);
+    clearTicketExpenseFormIssues();
     setEditableTicket(null);
     setSubmitError(null);
     setServiceRows([]);
@@ -2723,6 +2725,8 @@ export default function ServiceTickets() {
       if (!freshTicket) {
         setSelectedTicket(null);
         setCurrentTicketRecordId(null);
+        setEditingExpense(null);
+        clearTicketExpenseFormIssues();
       } else if (freshTicket !== selectedTicket) {
         const wouldClearEntries = freshTicket.entries.length === 0 && selectedTicket.entries.length > 0;
         if (wouldClearEntries) return;
@@ -3057,6 +3061,8 @@ export default function ServiceTickets() {
 
     setSelectedTicket(ticket);
     setExpenses([]);
+    setEditingExpense(null);
+    clearTicketExpenseFormIssues();
     setPendingDeleteExpenseIds(new Set());
     setPendingAddExpenses([]);
     if (!existingRecord && ticket.entries?.length > 0) {
