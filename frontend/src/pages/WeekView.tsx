@@ -906,6 +906,98 @@ export default function WeekView() {
     setShowEditModal(true);
   };
 
+  const parseTimeStrForClipboard = (timeStr?: string) => {
+    if (!timeStr) return '';
+    if (timeStr.includes('T') || timeStr.includes(' ')) {
+      const d = new Date(timeStr);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+    return timeStr.slice(0, 5);
+  };
+
+  const formatEntryClipboardLine = (entry: any) => {
+    const entryProject = projects?.find((p: any) => p.id === entry.project_id);
+    const label = entryProject?.project_number
+      ? `${entryProject.project_number} – ${entryProject.name}`
+      : entryProject?.name || '(No Project)';
+    const raw = entry.date;
+    const dateStr =
+      typeof raw === 'string' ? raw.split('T')[0] : new Date(raw).toISOString().split('T')[0];
+    const st = parseTimeStrForClipboard(entry.start_time);
+    const et = parseTimeStrForClipboard(entry.end_time);
+    const desc = String(entry.description || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return `${dateStr}  ${st}–${et}  |  ${label}  |  ${Number(entry.hours ?? 0)}h${desc ? `  |  ${desc}` : ''}`;
+  };
+
+  const handleContextMenuCopy = async (entries: any[]) => {
+    const lines = entries.map((en) => formatEntryClipboardLine(en)).join('\n');
+    try {
+      await navigator.clipboard.writeText(lines);
+    } catch {
+      alert('Could not copy to clipboard.');
+    }
+  };
+
+  const duplicateTimeEntryFromContext = (entry: any) => {
+    if (!entry?.id || !effectiveUserId) return;
+    const raw = entry.date;
+    const dateStr =
+      typeof raw === 'string' ? raw.split('T')[0] : new Date(raw).toISOString().split('T')[0];
+    const entryProject = projects?.find((p: any) => p.id === entry.project_id);
+    const customerId = entry.customer_id ?? entryProject?.customer_id ?? null;
+    const isBillable = isPanelShop ? false : (entry.project_id ? (entry.billable !== undefined ? entry.billable : true) : false);
+    const rateType = isPanelShop
+      ? 'Shop Time'
+      : entry.project_id
+        ? entry.rate_type || 'Shop Time'
+        : 'Internal';
+    const timeEntryData: any = {
+      user_id: effectiveUserId,
+      date: dateStr,
+      start_time: entry.start_time,
+      end_time: entry.end_time,
+      hours: entry.hours,
+      rate: entry.rate ?? 0,
+      description: entry.description || '',
+      billable: isBillable,
+      rate_type: rateType,
+      is_demo: isDemoMode,
+      location: entry.location ?? null,
+      customer_id: customerId,
+      project_id: entry.project_id || null,
+      approver: entry.approver?.trim() || null,
+      po_afe: entry.po_afe?.trim() || null,
+      cc: entry.cc?.trim() || null,
+      other: entry.other?.trim() ?? null,
+    };
+    if (entry.project_id && timeEntryData.rate_type === 'Internal') {
+      const proj = projects?.find((p: any) => p.id === entry.project_id);
+      const cust = customers?.find((c: any) => c.id === proj?.customer_id);
+      const isIonex = cust?.name?.trim().toLowerCase() === 'ionex systems';
+      if (!isIonex) {
+        setInternalRateConfirm({ action: () => createTimeEntryMutation.mutate(timeEntryData) });
+        return;
+      }
+    }
+    createTimeEntryMutation.mutate(timeEntryData);
+  };
+
+  const contextMenuRowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    width: '100%',
+    padding: '8px 14px',
+    border: 'none',
+    background: 'none',
+    color: 'var(--text-primary)',
+    fontSize: '14px',
+    cursor: 'pointer',
+    textAlign: 'left',
+  };
+
   // Handle clicking on the running timer to edit it
   const handleTimerClick = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -2682,9 +2774,18 @@ export default function WeekView() {
       )}
 
       {/* Right-click context menu for time entries */}
-      {contextMenuEntry && (
+      {contextMenuEntry && (() => {
+        const entry = contextMenuEntry.entry;
+        const entriesToDelete = contextMenuEntry.entriesToDelete;
+        const entriesForCopy =
+          entriesToDelete && entriesToDelete.length > 0 ? entriesToDelete : entry ? [entry] : [];
+        const isBulkDelete = !!(entriesToDelete && entriesToDelete.length > 1);
+        const canDuplicate =
+          !!entry?.id && (!entriesToDelete || entriesToDelete.length <= 1);
+        return (
         <div
           ref={contextMenuRef}
+          role="menu"
           style={{
             position: 'fixed',
             left: contextMenuEntry.x,
@@ -2694,54 +2795,122 @@ export default function WeekView() {
             border: '1px solid var(--border-color)',
             borderRadius: '6px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            minWidth: '140px',
+            minWidth: '180px',
             padding: '4px 0',
           }}
         >
+          {!isBulkDelete && entry && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setContextMenuEntry(null);
+                handleEntryClick(entry, { stopPropagation: () => {} } as React.MouseEvent);
+              }}
+              style={contextMenuRowStyle}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <span style={{ opacity: 0.8 }}>✎</span>
+              Edit
+            </button>
+          )}
           <button
+            type="button"
+            role="menuitem"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              const entry = contextMenuEntry.entry;
-              const entriesToDelete = contextMenuEntry.entriesToDelete;
               setContextMenuEntry(null);
-              if (entriesToDelete && entriesToDelete.length > 1) {
-                setDeleteConfirmEntries(entriesToDelete);
+              void handleContextMenuCopy(entriesForCopy);
+            }}
+            style={contextMenuRowStyle}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            <span style={{ opacity: 0.8 }}>📋</span>
+            {entriesForCopy.length > 1 ? `Copy ${entriesForCopy.length} entries` : 'Copy'}
+          </button>
+          {canDuplicate && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={createTimeEntryMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setContextMenuEntry(null);
+                duplicateTimeEntryFromContext(entry);
+              }}
+              style={{
+                ...contextMenuRowStyle,
+                opacity: createTimeEntryMutation.isPending ? 0.5 : 1,
+                cursor: createTimeEntryMutation.isPending ? 'not-allowed' : 'pointer',
+              }}
+              onMouseEnter={(e) => {
+                if (!createTimeEntryMutation.isPending) {
+                  e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <span style={{ opacity: 0.8 }}>⧉</span>
+              Duplicate
+            </button>
+          )}
+          <div
+            style={{
+              height: 1,
+              margin: '4px 8px',
+              backgroundColor: 'var(--border-color)',
+            }}
+          />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const entriesToDel = contextMenuEntry.entriesToDelete;
+              const ent = contextMenuEntry.entry;
+              setContextMenuEntry(null);
+              if (entriesToDel && entriesToDel.length > 1) {
+                setDeleteConfirmEntries(entriesToDel);
                 setSelectedEntryIds(new Set());
-              } else if (entry?.id) {
-                const dateStr = typeof entry.date === 'string' ? entry.date : new Date(entry.date).toISOString().split('T')[0];
-                let customerId = entry.customer_id;
-                if (!customerId && entry.project?.customer?.id) customerId = entry.project.customer.id;
-                if (!customerId && entry.project_id && projects) {
-                  const proj = projects.find((p: any) => p.id === entry.project_id);
+              } else if (ent?.id) {
+                const dateStr = typeof ent.date === 'string' ? ent.date : new Date(ent.date).toISOString().split('T')[0];
+                let customerId = ent.customer_id;
+                if (!customerId && ent.project?.customer?.id) customerId = ent.project.customer.id;
+                if (!customerId && ent.project_id && projects) {
+                  const proj = projects.find((p: any) => p.id === ent.project_id);
                   if (proj) customerId = proj.customer_id;
                 }
                 setDeleteConfirmEntry({
-                  id: entry.id,
+                  id: ent.id,
                   date: dateStr,
-                  userId: entry.user_id,
+                  userId: ent.user_id,
                   customerId: customerId ?? null,
-                  projectId: entry.project_id,
-                  location: entry.location,
-                  approver: entry.approver,
-                  po_afe: entry.po_afe,
-                  cc: (entry as any).cc,
+                  projectId: ent.project_id,
+                  location: ent.location,
+                  approver: ent.approver,
+                  po_afe: ent.po_afe,
+                  cc: (ent as any).cc,
                 });
               }
             }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              width: '100%',
-              padding: '8px 14px',
-              border: 'none',
-              background: 'none',
-              color: 'var(--text-primary)',
-              fontSize: '14px',
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
+            style={contextMenuRowStyle}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)';
             }}
@@ -2750,12 +2919,11 @@ export default function WeekView() {
             }}
           >
             <span style={{ opacity: 0.8 }}>🗑</span>
-            {contextMenuEntry.entriesToDelete && contextMenuEntry.entriesToDelete.length > 1
-              ? `Delete ${contextMenuEntry.entriesToDelete.length} entries`
-              : 'Delete'}
+            {isBulkDelete ? `Delete ${entriesToDelete!.length} entries` : 'Delete'}
           </button>
         </div>
-      )}
+        );
+      })()}
 
       {/* Bulk delete time entries confirmation modal */}
       {deleteConfirmEntries && deleteConfirmEntries.length > 0 && (
