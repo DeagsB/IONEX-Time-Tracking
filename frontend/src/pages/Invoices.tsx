@@ -820,6 +820,26 @@ function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTic
   return `${key.approverCode}|${ids.join(',')}`;
 }
 
+/** service_tickets.id values (UUID) in legacy non-period group_id: `approverCode|id1,id2,...` */
+const SERVICE_TICKET_ROW_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Non-period invoice batches encode every ticket row id after the first `|`. Period batches use
+ * `projectId|periodKey` or `projectId|approver|periodKey` instead — those cannot be parsed here; heal
+ * needs the group to appear in the current Invoices date range.
+ */
+function parseTicketIdsFromLegacyNonPeriodGroupId(groupId: string): string[] | null {
+  const pipe = groupId.indexOf('|');
+  if (pipe < 0) return null;
+  const rest = groupId.slice(pipe + 1).trim();
+  if (!rest) return null;
+  const parts = rest.split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (!parts.every((p) => SERVICE_TICKET_ROW_UUID_RE.test(p))) return null;
+  return parts;
+}
+
 /** Normalize ticket date to yyyy-mm-dd */
 function toDateStr(d: string | undefined | null): string {
   if (!d) return '';
@@ -1528,6 +1548,74 @@ export default function Invoices() {
     return set;
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
+  /**
+   * PDF rows (invoiced_batch_invoices) used to be written before the mark; some environments may have
+   * invoice PDFs without invoiced_batch_marks rows. Heal by upserting a mark so Service Tickets + DB
+   * triggers get ticketIds. Uses (1) current grouped tickets when the batch is in the date range, or
+   * (2) parsing legacy `approver|uuid,uuid` group_ids so old batches lock without re-clicking Mark.
+   */
+  useEffect(() => {
+    if (isDemoMode || !isAdmin || !user) return;
+    const missing = invoicedGroupIdsFromDb.filter((id) => !dbMarkedIdSet.has(id));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      let healed = false;
+      for (const gid of missing) {
+        if (cancelled) break;
+        let snapshot: FrozenGroupSnapshot | null = null;
+        const group = groupedTickets.find((g) => getGroupId(g) === gid);
+        if (group) {
+          snapshot = {
+            key: group.key,
+            ticketIds: snapshotTicketIdsForInvoicedMark(
+              group.tickets as (ServiceTicket & { recordId?: string })[]
+            ),
+          };
+        } else {
+          const parsed = parseTicketIdsFromLegacyNonPeriodGroupId(gid);
+          if (parsed && parsed.length > 0) {
+            const ac = gid.slice(0, gid.indexOf('|'));
+            snapshot = {
+              key: {
+                projectId: '',
+                approverCode: ac,
+                approver: '',
+                poAfe: '',
+                location: '',
+                cc: '',
+                other: '',
+              },
+              ticketIds: parsed,
+            };
+          }
+        }
+        if (!snapshot) continue;
+        try {
+          await invoicedBatchMarksService.upsert(gid, snapshot);
+          healed = true;
+        } catch {
+          // RLS or network; skip until next load
+        }
+      }
+      if (!cancelled && healed) {
+        await queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+        await queryClient.invalidateQueries({ queryKey: ['lockedServiceTicketIdsForMe'] });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isDemoMode,
+    isAdmin,
+    user,
+    invoicedGroupIdsFromDb,
+    dbMarkedIdSet,
+    groupedTickets,
+    queryClient,
+  ]);
+
   const [showInvoiced, setShowInvoiced] = useState(false);
   const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
@@ -1701,11 +1789,13 @@ export default function Invoices() {
         setInvoiceFileForGroup(groupId, file);
         handleMarkAsInvoiced(group);
       } else {
+        // Persist mark first so ticket IDs are always in invoiced_batch_marks before the PDF row.
+        // Otherwise a successful upload + failed mark left batches "invoiced" in the UI with no DB/UI lock.
+        await markInvoicedMutation.mutateAsync({ groupId, snapshot });
         const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
         fileForUi = new File([file], storedName, { type: file.type });
         setInvoiceFileForGroup(groupId, fileForUi);
         await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-        await markInvoicedMutation.mutateAsync({ groupId, snapshot });
       }
       await handleDownloadBatchWithInvoice(group, groupId, fileForUi);
     } catch (err) {
@@ -1800,7 +1890,10 @@ export default function Invoices() {
     for (const id of markedIdsNotInCurrent) {
       const snap = frozenInvoicedGroups[id];
       if (!snap) continue;
-      const tickets = ticketsForCustomer.filter((t) => snap.ticketIds.includes(t.id));
+      const tickets = ticketsForCustomer.filter((t) => {
+        const rid = (t as ServiceTicket & { recordId?: string }).recordId?.trim();
+        return snap.ticketIds.some((tid) => tid === t.id || (!!rid && tid === rid));
+      });
       if (tickets.length === 0) continue;
       fromFrozen.push({ key: snap.key, tickets });
     }
@@ -2663,6 +2756,17 @@ export default function Invoices() {
                         setUploadingInvoiceGroupId(groupId);
                         setExportError(null);
                         try {
+                          if (!isDemoMode) {
+                            await markInvoicedMutation.mutateAsync({
+                              groupId,
+                              snapshot: {
+                                key: group.key,
+                                ticketIds: snapshotTicketIdsForInvoicedMark(
+                                  group.tickets as (ServiceTicket & { recordId?: string })[]
+                                ),
+                              },
+                            });
+                          }
                           const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
                           const fileForUi = new File([file], storedName, { type: file.type });
                           setInvoiceFileForGroup(groupId, fileForUi);
@@ -2696,6 +2800,17 @@ export default function Invoices() {
                           setUploadingInvoiceGroupId(groupId);
                           setExportError(null);
                           try {
+                            if (!isDemoMode) {
+                              await markInvoicedMutation.mutateAsync({
+                                groupId,
+                                snapshot: {
+                                  key: group.key,
+                                  ticketIds: snapshotTicketIdsForInvoicedMark(
+                                    group.tickets as (ServiceTicket & { recordId?: string })[]
+                                  ),
+                                },
+                              });
+                            }
                             const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(groupId, file);
                             const fileForUi = new File([file], storedName, { type: file.type });
                             setInvoiceFileForGroup(groupId, fileForUi);
