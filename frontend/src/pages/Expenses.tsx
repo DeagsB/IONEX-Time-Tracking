@@ -25,6 +25,15 @@ function formatExpenseGroupDateLabel(dateKey: string): string {
   });
 }
 
+/** YYYY-MM-DD in local timezone (matches expense_date keys). */
+function localTodayYmd(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 type SharedReceiptRowInput = { id: string; receipt_url?: string | null; amount?: unknown; gst?: unknown };
 
 /** Same-day (or same-group) rows that share one uploaded receipt file → line index + combined subtotal+GST. */
@@ -138,6 +147,8 @@ export default function Expenses() {
   const [adminStatusFilter, setAdminStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'paid' | 'all'>('pending');
   const [collapsedMyExpenseDateKeys, setCollapsedMyExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const [collapsedAdminExpenseDateKeys, setCollapsedAdminExpenseDateKeys] = useState<Set<string>>(() => new Set());
+  const hasSeededMyExpenseDateCollapse = useRef(false);
+  const hasSeededAdminExpenseDateCollapse = useRef(false);
   const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
 
   // Admin employee overview (like Service Tickets)
@@ -946,6 +957,43 @@ export default function Expenses() {
       return next;
     });
   };
+
+  useEffect(() => {
+    if (myExpensesGroupedByDate.length === 0) {
+      hasSeededMyExpenseDateCollapse.current = false;
+      setCollapsedMyExpenseDateKeys(new Set());
+      return;
+    }
+    if (hasSeededMyExpenseDateCollapse.current) return;
+    hasSeededMyExpenseDateCollapse.current = true;
+    const today = localTodayYmd();
+    setCollapsedMyExpenseDateKeys(
+      new Set(
+        myExpensesGroupedByDate.map((g) => g.dateKey).filter((k) => k !== today && k !== '—')
+      )
+    );
+  }, [myExpensesGroupedByDate]);
+
+  useEffect(() => {
+    hasSeededAdminExpenseDateCollapse.current = false;
+    setCollapsedAdminExpenseDateKeys(new Set());
+  }, [adminStatusFilter]);
+
+  useEffect(() => {
+    if (adminFilteredExpensesGroupedByDate.length === 0) {
+      hasSeededAdminExpenseDateCollapse.current = false;
+      setCollapsedAdminExpenseDateKeys(new Set());
+      return;
+    }
+    if (hasSeededAdminExpenseDateCollapse.current) return;
+    hasSeededAdminExpenseDateCollapse.current = true;
+    const today = localTodayYmd();
+    setCollapsedAdminExpenseDateKeys(
+      new Set(
+        adminFilteredExpensesGroupedByDate.map((g) => g.dateKey).filter((k) => k !== today && k !== '—')
+      )
+    );
+  }, [adminFilteredExpensesGroupedByDate]);
 
   // Admin employee overview: per-employee counts (pending, approved, rejected, paid)
   const expenseEmployeeSummary = useMemo(() => {
