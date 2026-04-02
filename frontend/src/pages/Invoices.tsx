@@ -794,6 +794,17 @@ type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodL
 
 type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[] };
 
+/** Persist service_tickets.id (UUID) in marks so DB locks and Service Tickets match. Falls back to composite t.id if no DB row yet. */
+function snapshotTicketIdsForInvoicedMark(
+  tickets: (ServiceTicket & { recordId?: string })[]
+): string[] {
+  return tickets.map((t) => {
+    const rid = (t as { recordId?: string }).recordId;
+    if (rid && String(rid).trim()) return String(rid).trim();
+    return t.id;
+  });
+}
+
 function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string {
   const key = group.key;
   // CNRL with period: projectId|approverCode|periodKey
@@ -1640,7 +1651,7 @@ export default function Invoices() {
     const groupId = getGroupId(group);
     const snapshot: FrozenGroupSnapshot = {
       key: group.key,
-      ticketIds: group.tickets.map((t) => t.id),
+      ticketIds: snapshotTicketIdsForInvoicedMark(group.tickets as (ServiceTicket & { recordId?: string })[]),
     };
     if (isDemoMode) {
       setLegacyMarkedInvoicedIds((prev) => {
@@ -1678,7 +1689,7 @@ export default function Invoices() {
     const groupId = getGroupId(group);
     const snapshot: FrozenGroupSnapshot = {
       key: group.key,
-      ticketIds: group.tickets.map((t) => t.id),
+      ticketIds: snapshotTicketIdsForInvoicedMark(group.tickets as (ServiceTicket & { recordId?: string })[]),
     };
     if (file.type !== 'application/pdf') return;
     setUploadingInvoiceGroupId(groupId);
@@ -1760,7 +1771,10 @@ export default function Invoices() {
     for (const g of groupedTickets) {
       const gid = getGroupId(g);
       if (effectiveMarkedInvoicedIds.has(gid)) {
-        const snap: FrozenGroupSnapshot = { key: g.key, ticketIds: g.tickets.map((t) => t.id) };
+        const snap: FrozenGroupSnapshot = {
+          key: g.key,
+          ticketIds: snapshotTicketIdsForInvoicedMark(g.tickets as (ServiceTicket & { recordId?: string })[]),
+        };
         const existing = next[gid];
         if (!existing || existing.ticketIds.join(',') !== snap.ticketIds.join(',') || JSON.stringify(existing.key) !== JSON.stringify(snap.key)) {
           next[gid] = snap;

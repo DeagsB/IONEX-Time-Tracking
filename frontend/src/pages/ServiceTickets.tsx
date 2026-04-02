@@ -2022,10 +2022,13 @@ export default function ServiceTickets() {
     return new Set(myLockedTicketIdsRaw);
   }, [isDemoMode, isAdmin, invoicedMarkRows, myLockedTicketIdsRaw]);
 
-  const isInvoicedBatchLocked = useMemo(
-    () => !!(currentTicketRecordId && invoicedBatchLockedIdSet.has(currentTicketRecordId)),
-    [currentTicketRecordId, invoicedBatchLockedIdSet]
-  );
+  /** Match DB row id (new marks) or legacy composite ticket id stored in older snapshots. */
+  const isInvoicedBatchLocked = useMemo(() => {
+    if (invoicedBatchLockedIdSet.size === 0) return false;
+    if (currentTicketRecordId && invoicedBatchLockedIdSet.has(currentTicketRecordId)) return true;
+    const compositeId = selectedTicket?.id;
+    return !!(compositeId && invoicedBatchLockedIdSet.has(compositeId));
+  }, [currentTicketRecordId, invoicedBatchLockedIdSet, selectedTicket?.id]);
 
   const effectiveLockedForEditing = useMemo(
     () => workflowLockedForEditing || isInvoicedBatchLocked,
@@ -5499,11 +5502,28 @@ export default function ServiceTickets() {
                 <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: '0 0 8px 0' }}>
                   SERVICE TICKET
                 </h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>
                     Ticket: {displayTicketNumber || 'Loading...'}
                   </p>
-                  {isAdmin && selectedTicket && (() => {
+                  {isInvoicedBatchLocked && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        letterSpacing: '0.04em',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: 'rgba(124, 58, 237, 0.18)',
+                        color: '#5b21b6',
+                        border: '1px solid rgba(124, 58, 237, 0.45)',
+                      }}
+                      title="This ticket is in a batch marked as invoiced. Editing is disabled until the batch is unmarked on the Invoices page."
+                    >
+                      INVOICED · READ-ONLY
+                    </span>
+                  )}
+                  {isAdmin && selectedTicket && !effectiveLockedForEditing && (() => {
                     const rec = findMatchingTicketRecord(selectedTicket);
                     const hasNumber = !!rec?.ticket_number;
                     if (!hasNumber) return null;
