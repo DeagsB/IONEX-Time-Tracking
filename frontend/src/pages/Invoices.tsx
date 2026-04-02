@@ -2772,35 +2772,6 @@ export default function Invoices() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleMarkAsInvoiced(group)}
-                          disabled={
-                            !!exportProgress ||
-                            !!qboProgress ||
-                            markInvoicedMutation.isPending ||
-                            uploadingInvoiceGroupId === groupId
-                          }
-                          style={{
-                            padding: '6px 12px',
-                            backgroundColor: 'var(--bg-tertiary)',
-                            color: 'var(--text-secondary)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            cursor:
-                              exportProgress ||
-                              qboProgress ||
-                              markInvoicedMutation.isPending ||
-                              uploadingInvoiceGroupId === groupId
-                                ? 'not-allowed'
-                                : 'pointer',
-                          }}
-                          title="Re-save merged lock list for this batch (same as main list)"
-                        >
-                          {markInvoicedMutation.isPending ? 'Saving…' : 'Mark as invoiced'}
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => handleUnmarkAsInvoiced(groupId)}
                           disabled={!!exportProgress || !!qboProgress || unmarkInvoicedMutation.isPending}
                           style={{
