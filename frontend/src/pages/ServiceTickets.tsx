@@ -326,6 +326,9 @@ export default function ServiceTickets() {
   }, [isAdmin, queryClient]);
   const [showDiscarded, setShowDiscarded] = useState(false);
 
+  /** From Expenses: show only tickets (record IDs) that have hotel lines still missing a receipt */
+  const [needsReceiptFilterIds, setNeedsReceiptFilterIds] = useState<string[] | null>(null);
+
   // Admin employee overview panel
   const [showEmployeeOverview, setShowEmployeeOverview] = useState(true);
   const [expandedEmployeeId, setExpandedEmployeeId] = useState<string | null>(null);
@@ -347,6 +350,39 @@ export default function ServiceTickets() {
 
   /** Deep link from Invoices (and dashboard): consume query params without wiping unrelated keys */
   const PENDING_OPEN_RECORD_KEY = 'ionex_st_pending_open_record';
+  const NEEDS_RECEIPT_TICKET_IDS_KEY = 'ionex_st_needs_receipt_record_ids';
+
+  useEffect(() => {
+    const filterNeedsReceipt = searchParams.get('filterNeedsReceipt');
+    if (filterNeedsReceipt === '1') {
+      let ids: string[] = [];
+      try {
+        const raw = sessionStorage.getItem(NEEDS_RECEIPT_TICKET_IDS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) ids = parsed.filter((x: unknown) => typeof x === 'string' && x.length > 0);
+        }
+      } catch {
+        /* ignore */
+      }
+      if (ids.length > 0) {
+        setNeedsReceiptFilterIds(ids);
+        setStartDate('2020-01-01');
+        setEndDate(new Date().toISOString().split('T')[0]);
+        setActiveTab('all');
+        setShowDiscarded(false);
+      }
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete('filterNeedsReceipt');
+          return n;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, setSearchParams]);
+
   useEffect(() => {
     const overview = searchParams.get('overview');
     const tab = searchParams.get('tab');
@@ -2641,6 +2677,7 @@ export default function ServiceTickets() {
         if (aResub && !bResub) return -1;
         if (!aResub && bResub) return 1;
       }
+
       let aVal: string | number;
       let bVal: string | number;
       
@@ -2697,9 +2734,17 @@ export default function ServiceTickets() {
       if (aVal > bVal) return effectiveSortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-    
+
+    if (needsReceiptFilterIds && needsReceiptFilterIds.length > 0) {
+      const idSet = new Set(needsReceiptFilterIds);
+      result = result.filter((t) => {
+        const recId = findMatchingTicketRecord(t)?.id;
+        return !!recId && idSet.has(recId);
+      });
+    }
+
     return result;
-  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate, expandedEmployeeId, searchTerm]);
+  }, [ticketsWithNumbers, selectedCustomerId, selectedUserId, activeTab, existingTickets, sortField, sortDirection, isAdmin, user?.id, showDiscarded, startDate, endDate, expandedEmployeeId, searchTerm, needsReceiptFilterIds]);
 
   // Ticket record IDs for expense totals query (only tickets that have a DB record)
   const ticketRecordIdsForExpenseTotals = useMemo(() => {
@@ -3620,6 +3665,36 @@ export default function ServiceTickets() {
           + Create Service Ticket
         </button>
       </div>
+
+      {needsReceiptFilterIds && needsReceiptFilterIds.length > 0 && (
+        <div
+          className="card"
+          style={{
+            marginBottom: '16px',
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexWrap: 'wrap',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+          }}
+        >
+          <span style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.45 }}>
+            <strong>Filtered:</strong> service tickets that still need a hotel receipt ({needsReceiptFilterIds.length}{' '}
+            ticket{needsReceiptFilterIds.length !== 1 ? 's' : ''}). Date range was widened so they are not hidden.
+          </span>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => setNeedsReceiptFilterIds(null)}
+            style={{ padding: '6px 12px', fontSize: '13px', fontWeight: '600' }}
+          >
+            Show all tickets
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card" style={{ marginBottom: '16px', padding: '20px' }}>

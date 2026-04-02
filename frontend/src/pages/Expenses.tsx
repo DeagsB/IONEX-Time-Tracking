@@ -1,10 +1,11 @@
 import React, { useState, useRef, useMemo, Fragment, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { userExpensesService, serviceTicketExpensesService, employeesService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 import { optimizeImage } from '../utils/imageOptimizer';
 import { ticketExpenseLineHasAttachedReceipt } from '../utils/ticketExpenseReceiptMatch';
+import { allocateProportionalCents } from '../utils/allocateProportionalCents';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 
@@ -29,8 +30,12 @@ const initialReceiptForm: ReceiptFormState = {
 /** After delete, server row is removed only after this delay unless the user clicks Undo. */
 const DELETE_UNDO_MS = 8000;
 
+const ST_NEEDS_RECEIPT_TICKET_IDS_KEY = 'ionex_st_needs_receipt_record_ids';
+const ST_PENDING_OPEN_RECORD_KEY = 'ionex_st_pending_open_record';
+
 export default function Expenses() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -138,6 +143,264 @@ export default function Expenses() {
       return !ticketExpenseLineHasAttachedReceipt(row.description, onTicket);
     });
   }, [hotelReimbLinesRaw, expenses]);
+
+  const [hotelAttachTarget, setHotelAttachTarget] = useState<{
+    serviceTicketExpenseId: string;
+    serviceTicketId: string;
+    description: string;
+    quantity: number;
+    rate: number;
+  } | null>(null);
+  const [hotelAttachFile, setHotelAttachFile] = useState<File | null>(null);
+  const [hotelAttachPreviewUrl, setHotelAttachPreviewUrl] = useState<string | null>(null);
+  const [hotelAttachForm, setHotelAttachForm] = useState({ description: '', amount: '', gst: '' });
+  const [hotelAttachError, setHotelAttachError] = useState<string | null>(null);
+  const [hotelAttachSaving, setHotelAttachSaving] = useState(false);
+  const hotelAttachFileInputRef = useRef<HTMLInputElement>(null);
+
+  /** One folio (e.g. guest bill) shared across multiple ticket hotel lines */
+  const [splitWizardOpen, setSplitWizardOpen] = useState(false);
+  const [splitWizardStep, setSplitWizardStep] = useState<1 | 2 | 3>(1);
+  const [splitSelectedLineIds, setSplitSelectedLineIds] = useState<Set<string>>(() => new Set());
+  const [splitFile, setSplitFile] = useState<File | null>(null);
+  const [splitPreviewUrl, setSplitPreviewUrl] = useState<string | null>(null);
+  const [splitForm, setSplitForm] = useState({ amount: '', gst: '' });
+  const [splitError, setSplitError] = useState<string | null>(null);
+  const [splitSaving, setSplitSaving] = useState(false);
+  const splitFileInputRef = useRef<HTMLInputElement>(null);
+
+  const hotelAttachAuto = useMemo(() => {
+    if (!hotelAttachTarget) return null;
+    const clientBilled =
+      (Number(hotelAttachTarget.quantity) || 1) * (Number(hotelAttachTarget.rate) || 0);
+    const expTotal = (parseFloat(hotelAttachForm.amount) || 0) + (parseFloat(hotelAttachForm.gst) || 0);
+    const markup = Math.round((clientBilled - expTotal) * 100) / 100;
+    return { clientBilled, expTotal, markup };
+  }, [hotelAttachTarget, hotelAttachForm.amount, hotelAttachForm.gst]);
+
+  const closeHotelAttachModal = () => {
+    if (hotelAttachPreviewUrl) URL.revokeObjectURL(hotelAttachPreviewUrl);
+    setHotelAttachTarget(null);
+    setHotelAttachFile(null);
+    setHotelAttachPreviewUrl(null);
+    setHotelAttachForm({ description: '', amount: '', gst: '' });
+    setHotelAttachError(null);
+    setHotelAttachSaving(false);
+  };
+
+  const openHotelAttachModal = (row: any) => {
+    setHotelAttachTarget({
+      serviceTicketExpenseId: String(row.id),
+      serviceTicketId: String(row.service_ticket_id),
+      description: String(row.description || 'Hotel'),
+      quantity: Number(row.quantity) || 1,
+      rate: Number(row.rate) || 0,
+    });
+    setHotelAttachForm({
+      description: String(row.description || 'Hotel'),
+      amount: '',
+      gst: '',
+    });
+    setHotelAttachFile(null);
+    setHotelAttachPreviewUrl(null);
+    setHotelAttachError(null);
+  };
+
+  const handleHotelAttachSave = async () => {
+    if (!hotelAttachTarget) return;
+    if (!hotelAttachForm.description.trim()) {
+      setHotelAttachError('Description is required');
+      return;
+    }
+    if (!hotelAttachForm.amount || parseFloat(hotelAttachForm.amount) <= 0) {
+      setHotelAttachError('Receipt amount is required');
+      return;
+    }
+    if (!hotelAttachFile) {
+      setHotelAttachError('Please choose a receipt image or PDF');
+      return;
+    }
+    const clientBilled =
+      (Number(hotelAttachTarget.quantity) || 1) * (Number(hotelAttachTarget.rate) || 0);
+    if (!(clientBilled > 0)) {
+      setHotelAttachError('This line has no amount billed to the client. Fix it on the service ticket first.');
+      return;
+    }
+    const amt = parseFloat(hotelAttachForm.amount);
+    const gst = parseFloat(hotelAttachForm.gst) || 0;
+    const expTotal = amt + gst;
+    const markup = Math.round((clientBilled - expTotal) * 100) / 100;
+
+    setHotelAttachSaving(true);
+    setHotelAttachError(null);
+    try {
+      const optimized = await optimizeImage(hotelAttachFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
+      const storagePath = await userExpensesService.uploadReceipt(optimized);
+      await userExpensesService.create({
+        description: hotelAttachForm.description.trim(),
+        amount: amt,
+        expense_date: new Date().toISOString().split('T')[0],
+        receipt_url: storagePath,
+        gst,
+        is_billable: true,
+        service_ticket_id: hotelAttachTarget.serviceTicketId,
+        markup_amount: markup,
+        status: isAdmin ? 'approved' : 'pending',
+      });
+      await serviceTicketExpensesService.update(hotelAttachTarget.serviceTicketExpenseId, {
+        expense_type: 'Hotel',
+        description: hotelAttachForm.description.trim(),
+        quantity: 1,
+        rate: clientBilled,
+        actual_cost: expTotal,
+        needs_reimbursement: true,
+      });
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+      queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      closeHotelAttachModal();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save';
+      setHotelAttachError(msg);
+    } finally {
+      setHotelAttachSaving(false);
+    }
+  };
+
+  const openSplitWizard = () => {
+    const ids = hotelLinesStillNeedReceipt.map((r: any) => String(r.id));
+    setSplitWizardStep(1);
+    setSplitSelectedLineIds(new Set(ids.length >= 2 ? ids : []));
+    setSplitFile(null);
+    setSplitPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setSplitForm({ amount: '', gst: '' });
+    setSplitError(null);
+    setSplitSaving(false);
+    setSplitWizardOpen(true);
+  };
+
+  const closeSplitWizard = () => {
+    if (splitPreviewUrl) URL.revokeObjectURL(splitPreviewUrl);
+    setSplitWizardOpen(false);
+    setSplitWizardStep(1);
+    setSplitSelectedLineIds(new Set());
+    setSplitFile(null);
+    setSplitPreviewUrl(null);
+    setSplitForm({ amount: '', gst: '' });
+    setSplitError(null);
+    setSplitSaving(false);
+  };
+
+  const splitSelectedRows = useMemo(() => {
+    return hotelLinesStillNeedReceipt.filter((r: any) => splitSelectedLineIds.has(String(r.id)));
+  }, [hotelLinesStillNeedReceipt, splitSelectedLineIds]);
+
+  const splitAllocationPreview = useMemo(() => {
+    if (splitSelectedRows.length < 2) return null;
+    const amt = parseFloat(splitForm.amount) || 0;
+    const gst = parseFloat(splitForm.gst) || 0;
+    if (amt <= 0) return null;
+    const weights = splitSelectedRows.map(
+      (r: any) => (Number(r.quantity) || 1) * (Number(r.rate) || 0)
+    );
+    const wsum = weights.reduce((a: number, b: number) => a + b, 0);
+    if (!(wsum > 0)) return null;
+    const amtCents = Math.round(amt * 100);
+    const gstCents = Math.round(gst * 100);
+    const amtParts = allocateProportionalCents(weights, amtCents);
+    const gstParts = allocateProportionalCents(weights, gstCents);
+    return splitSelectedRows.map((r: any, i: number) => {
+      const billed = weights[i];
+      const ai = amtParts[i] / 100;
+      const gi = gstParts[i] / 100;
+      const cost = ai + gi;
+      return {
+        row: r,
+        billed,
+        amount: ai,
+        gst: gi,
+        cost,
+        markup: Math.round((billed - cost) * 100) / 100,
+        pct: (100 * billed) / wsum,
+      };
+    });
+  }, [splitSelectedRows, splitForm.amount, splitForm.gst]);
+
+  const handleSplitWizardSave = async () => {
+    if (!splitAllocationPreview || splitAllocationPreview.length < 2 || !splitFile) return;
+    const amt = parseFloat(splitForm.amount) || 0;
+    const gst = parseFloat(splitForm.gst) || 0;
+    if (amt <= 0) {
+      setSplitError('Enter the receipt subtotal (before tax) from the folio.');
+      return;
+    }
+    for (const line of splitAllocationPreview) {
+      if (!(line.billed > 0)) {
+        setSplitError('Every selected line must have an amount billed to the client.');
+        return;
+      }
+    }
+
+    setSplitSaving(true);
+    setSplitError(null);
+    try {
+      const optimized = await optimizeImage(splitFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
+      const storagePath = await userExpensesService.uploadReceipt(optimized);
+      const expenseDate = new Date().toISOString().split('T')[0];
+
+      for (const line of splitAllocationPreview) {
+        const desc = String(line.row.description || 'Hotel').trim();
+        const markup = Math.round((line.billed - line.cost) * 100) / 100;
+        await userExpensesService.create({
+          description: desc,
+          amount: line.amount,
+          expense_date: expenseDate,
+          receipt_url: storagePath,
+          gst: line.gst,
+          is_billable: true,
+          service_ticket_id: String(line.row.service_ticket_id),
+          markup_amount: markup,
+          status: isAdmin ? 'approved' : 'pending',
+        });
+        await serviceTicketExpensesService.update(String(line.row.id), {
+          expense_type: 'Hotel',
+          description: desc,
+          quantity: 1,
+          rate: line.billed,
+          actual_cost: line.cost,
+          needs_reimbursement: true,
+        });
+      }
+
+      const sumAmt = splitAllocationPreview.reduce((s, l) => s + l.amount, 0);
+      const sumGst = splitAllocationPreview.reduce((s, l) => s + l.gst, 0);
+      const sumCost = splitAllocationPreview.reduce((s, l) => s + l.cost, 0);
+      if (Math.abs(sumAmt - amt) > 0.02 || Math.abs(sumGst - gst) > 0.02) {
+        console.warn('Split receipt rounding drift', { sumAmt, amt, sumGst, gst, sumCost });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+      queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+      queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+      closeSplitWizard();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save split receipt';
+      setSplitError(msg);
+    } finally {
+      setSplitSaving(false);
+    }
+  };
 
   const { data: allTicketRecords = [] } = useQuery({
     queryKey: ['ticketsForExpensePicker', isDemoMode, isAdmin, user?.id],
@@ -647,44 +910,683 @@ export default function Expenses() {
               <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#b45309', marginBottom: '6px' }}>
                 Receipt still needed — service ticket hotel
               </div>
-              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '640px' }}>
-                These hotel lines are on your tickets and marked for reimbursement, but no receipt is linked yet. Open the ticket and use <strong>Attach receipt</strong> on the line when you have the bill.
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
+                Use <strong>Add receipt</strong> for a single ticket. If the hotel emailed one <strong>guest folio</strong> that covers several nights (each night on its own service ticket), use <strong>Split folio across tickets</strong> — we split the folio subtotal and tax by how much you billed on each ticket, attach the same PDF to each, and set markup per line automatically.
               </p>
             </div>
-            <Link
-              to="/service-tickets"
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, alignSelf: 'center' }}>
+              {hotelLinesStillNeedReceipt.length >= 2 && (
+                <button
+                  type="button"
+                  onClick={openSplitWizard}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(245, 158, 11, 0.6)',
+                    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                    color: '#92400e',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Split folio across tickets
+                </button>
+              )}
+              <Link
+                to="/service-tickets?filterNeedsReceipt=1"
+                onClick={() => {
+                  try {
+                    const ids = [
+                      ...new Set(hotelLinesStillNeedReceipt.map((r: any) => String(r.service_ticket_id))),
+                    ];
+                    sessionStorage.setItem(ST_NEEDS_RECEIPT_TICKET_IDS_KEY, JSON.stringify(ids));
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  backgroundColor: 'var(--primary-color)',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  textDecoration: 'none',
+                  textAlign: 'center',
+                }}
+              >
+                Open Service Tickets
+              </Link>
+            </div>
+          </div>
+          <div style={{ marginTop: '14px', overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '8px 6px' }}>Description</th>
+                  <th style={{ padding: '8px 6px' }}>Ticket</th>
+                  <th style={{ padding: '8px 6px' }}>Date</th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right' }}>Billed to client</th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hotelLinesStillNeedReceipt.map((row: any) => {
+                  const tn = row.service_tickets?.ticket_number || '—';
+                  const dt = row.service_tickets?.date || '';
+                  const billed = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
+                  return (
+                    <tr key={row.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '10px 6px', fontWeight: '600', color: 'var(--text-primary)' }}>{row.description || 'Hotel'}</td>
+                      <td style={{ padding: '10px 6px', fontFamily: 'monospace' }}>{tn}</td>
+                      <td style={{ padding: '10px 6px', color: 'var(--text-secondary)' }}>{dt || '—'}</td>
+                      <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: '600' }}>${billed.toFixed(2)}</td>
+                      <td style={{ padding: '10px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => openHotelAttachModal(row)}
+                          style={{
+                            marginRight: '8px',
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: 'var(--primary-color)',
+                            color: 'white',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Add receipt
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            try {
+                              sessionStorage.setItem(ST_PENDING_OPEN_RECORD_KEY, String(row.service_ticket_id));
+                            } catch {
+                              /* ignore */
+                            }
+                            navigate('/service-tickets');
+                          }}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'var(--bg-secondary)',
+                            color: 'var(--text-primary)',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Open ticket
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {hotelAttachTarget && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10003,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onClick={closeHotelAttachModal}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '10px',
+              width: '90%',
+              maxWidth: '800px',
+              maxHeight: '85vh',
+              display: 'flex',
+              flexDirection: 'row',
+              overflow: 'hidden',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div
               style={{
-                flexShrink: 0,
-                padding: '8px 14px',
-                borderRadius: '6px',
-                backgroundColor: 'var(--primary-color)',
-                color: 'white',
-                fontSize: '13px',
-                fontWeight: '600',
-                textDecoration: 'none',
-                alignSelf: 'center',
+                flex: 1,
+                backgroundColor: 'var(--bg-tertiary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'auto',
+                padding: '16px',
+                minHeight: '360px',
               }}
             >
-              Open Service Tickets
-            </Link>
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                ref={hotelAttachFileInputRef}
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  if (hotelAttachPreviewUrl) URL.revokeObjectURL(hotelAttachPreviewUrl);
+                  setHotelAttachFile(file);
+                  setHotelAttachPreviewUrl(URL.createObjectURL(file));
+                }}
+              />
+              {hotelAttachPreviewUrl ? (
+                hotelAttachFile?.type === 'application/pdf' ? (
+                  <iframe
+                    src={hotelAttachPreviewUrl}
+                    title="PDF receipt preview"
+                    style={{ width: '100%', height: '100%', minHeight: '340px', border: 'none', borderRadius: '4px' }}
+                  />
+                ) : (
+                  <img
+                    src={hotelAttachPreviewUrl}
+                    alt="Receipt"
+                    style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain', borderRadius: '4px' }}
+                  />
+                )
+              ) : (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      hotelAttachFileInputRef.current?.click();
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file || (!file.type.startsWith('image/') && file.type !== 'application/pdf')) return;
+                    if (hotelAttachPreviewUrl) URL.revokeObjectURL(hotelAttachPreviewUrl);
+                    setHotelAttachFile(file);
+                    setHotelAttachPreviewUrl(URL.createObjectURL(file));
+                  }}
+                  onClick={() => hotelAttachFileInputRef.current?.click()}
+                  style={{
+                    width: '100%',
+                    minHeight: '300px',
+                    border: '2px dashed var(--border-color)',
+                    borderRadius: '8px',
+                    background: 'transparent',
+                    color: 'var(--text-tertiary)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    padding: '16px',
+                  }}
+                >
+                  Drop receipt here or click to upload
+                </div>
+              )}
+            </div>
+            <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>Attach hotel receipt</h3>
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                Billed amount on the ticket stays the same. Markup is calculated as billed to client minus receipt subtotal and GST.
+              </p>
+              {hotelAttachError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{hotelAttachError}</div>}
+              <div>
+                <label style={labelStyle}>Description</label>
+                <input
+                  type="text"
+                  value={hotelAttachForm.description}
+                  onChange={(e) => setHotelAttachForm({ ...hotelAttachForm, description: e.target.value })}
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Receipt amount ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={hotelAttachForm.amount}
+                  onChange={(e) => setHotelAttachForm({ ...hotelAttachForm, amount: e.target.value })}
+                  style={inputStyle}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>GST ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={hotelAttachForm.gst}
+                  onChange={(e) => setHotelAttachForm({ ...hotelAttachForm, gst: e.target.value })}
+                  style={inputStyle}
+                  placeholder="0.00"
+                />
+              </div>
+              {hotelAttachAuto && hotelAttachAuto.clientBilled > 0 && (
+                <div style={{ padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
+                  <div style={{ fontWeight: '600', marginBottom: '4px' }}>Billed to client (unchanged)</div>
+                  <div>${hotelAttachAuto.clientBilled.toFixed(2)}</div>
+                  <div style={{ marginTop: '8px', fontWeight: '600' }}>Auto markup: ${hotelAttachAuto.markup.toFixed(2)}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Receipt total: ${hotelAttachAuto.expTotal.toFixed(2)}</div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={closeHotelAttachModal}
+                  style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={hotelAttachSaving}
+                  onClick={() => void handleHotelAttachSave()}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: 'var(--primary-color)',
+                    color: 'white',
+                    fontWeight: '600',
+                    cursor: hotelAttachSaving ? 'not-allowed' : 'pointer',
+                    opacity: hotelAttachSaving ? 0.7 : 1,
+                  }}
+                >
+                  {hotelAttachSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
           </div>
-          <ul style={{ margin: '14px 0 0', paddingLeft: '20px', fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.6 }}>
-            {hotelLinesStillNeedReceipt.map((row: any) => {
-              const tn = row.service_tickets?.ticket_number || '—';
-              const dt = row.service_tickets?.date || '';
-              const billed = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
-              return (
-                <li key={row.id} style={{ marginBottom: '6px' }}>
-                  <span style={{ fontWeight: '600' }}>{row.description || 'Hotel'}</span>
-                  {' · '}
-                  Ticket <span style={{ fontFamily: 'monospace' }}>{tn}</span>
-                  {dt ? ` · ${dt}` : ''}
-                  {' · '}
-                  Billed to client <span style={{ fontWeight: '600' }}>${billed.toFixed(2)}</span>
-                </li>
-              );
-            })}
-          </ul>
+        </div>
+      )}
+
+      {splitWizardOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10004,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={closeSplitWizard}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '10px',
+              width: '100%',
+              maxWidth: '960px',
+              maxHeight: '90vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                Split one hotel folio across tickets
+              </h3>
+              <button
+                type="button"
+                onClick={closeSplitWizard}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  fontSize: '22px',
+                  lineHeight: 1,
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                }}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '16px' }}>
+                Step {splitWizardStep} of 3
+              </div>
+              {splitError && (
+                <div style={{ color: '#ef5350', fontSize: '13px', marginBottom: '12px' }}>{splitError}</div>
+              )}
+
+              {splitWizardStep === 1 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Upload the combined guest folio or invoice PDF. Enter the <strong>room subtotal</strong> and <strong>GST / taxes</strong> exactly as shown on the folio (before credits). The next step chooses which ticket lines belong to this stay.
+                  </p>
+                  <input
+                    ref={splitFileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!file) return;
+                      setSplitPreviewUrl((prev) => {
+                        if (prev) URL.revokeObjectURL(prev);
+                        return URL.createObjectURL(file);
+                      });
+                      setSplitFile(file);
+                    }}
+                  />
+                  {!splitPreviewUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => splitFileInputRef.current?.click()}
+                      style={{
+                        padding: '24px',
+                        border: '2px dashed var(--border-color)',
+                        borderRadius: '8px',
+                        background: 'var(--bg-tertiary)',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      Choose folio (image or PDF)
+                    </button>
+                  ) : (
+                    <div style={{ borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-tertiary)', minHeight: '200px' }}>
+                      {splitFile?.type === 'application/pdf' ? (
+                        <iframe
+                          src={splitPreviewUrl}
+                          title="Folio PDF"
+                          style={{ width: '100%', height: '280px', border: 'none' }}
+                        />
+                      ) : (
+                        <img src={splitPreviewUrl} alt="Folio" style={{ maxWidth: '100%', maxHeight: '280px', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
+                      )}
+                      <div style={{ padding: '8px' }}>
+                        <button type="button" onClick={() => splitFileInputRef.current?.click()} style={{ fontSize: '12px', color: 'var(--primary-color)', border: 'none', background: 'none', cursor: 'pointer' }}>
+                          Replace file
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label style={labelStyle}>Folio subtotal before tax ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={splitForm.amount}
+                      onChange={(e) => setSplitForm({ ...splitForm, amount: e.target.value })}
+                      style={inputStyle}
+                      placeholder="e.g. 1272.00"
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Tax on folio ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={splitForm.gst}
+                      onChange={(e) => setSplitForm({ ...splitForm, gst: e.target.value })}
+                      style={inputStyle}
+                      placeholder="e.g. 114.48"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {splitWizardStep === 2 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Select every service-ticket hotel line that this folio covers (for example each night on its own ticket). Allocation uses each line&apos;s <strong>billed to client</strong> amount as the weight.
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const all = hotelLinesStillNeedReceipt.map((r: any) => String(r.id));
+                        setSplitSelectedLineIds(new Set(all));
+                      }}
+                      style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                    >
+                      Select all below
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSplitSelectedLineIds(new Set())}
+                      style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                    >
+                      Clear selection
+                    </button>
+                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', alignSelf: 'center' }}>
+                      {splitSelectedLineIds.size} selected (need at least 2)
+                    </span>
+                  </div>
+                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                    {hotelLinesStillNeedReceipt.map((row: any) => {
+                      const id = String(row.id);
+                      const tn = row.service_tickets?.ticket_number || '—';
+                      const billed = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
+                      return (
+                        <label
+                          key={id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            padding: '10px 12px',
+                            borderBottom: '1px solid var(--border-color)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={splitSelectedLineIds.has(id)}
+                            onChange={(e) => {
+                              setSplitSelectedLineIds((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(id);
+                                else next.delete(id);
+                                return next;
+                              });
+                            }}
+                          />
+                          <span style={{ flex: 1 }}>
+                            <strong>{row.description || 'Hotel'}</strong>
+                            <span style={{ color: 'var(--text-tertiary)' }}>{' · Ticket '}{tn}</span>
+                          </span>
+                          <span style={{ fontWeight: '600', fontFamily: 'monospace' }}>${billed.toFixed(2)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {splitWizardStep === 3 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Each ticket gets a share of the folio matching its share of <strong>total billed to client</strong>. The same receipt file is attached to each internal expense. Markup per line = billed − that line&apos;s share of the folio.
+                  </p>
+                  {!splitAllocationPreview ? (
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>
+                      Go back and check subtotal, tax, and selected lines (each needs a positive billed amount).
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase', borderBottom: '1px solid var(--border-color)' }}>
+                            <th style={{ padding: '8px 6px' }}>Ticket</th>
+                            <th style={{ padding: '8px 6px' }}>Line</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>% of billed</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Billed</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Your folio cost</th>
+                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Markup</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {splitAllocationPreview.map((line) => {
+                            const tn = line.row.service_tickets?.ticket_number || '—';
+                            return (
+                              <tr key={String(line.row.id)} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '8px 6px', fontFamily: 'monospace' }}>{tn}</td>
+                                <td style={{ padding: '8px 6px' }}>{line.row.description || 'Hotel'}</td>
+                                <td style={{ padding: '8px 6px', textAlign: 'right' }}>{line.pct.toFixed(1)}%</td>
+                                <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: '600' }}>${line.billed.toFixed(2)}</td>
+                                <td style={{ padding: '8px 6px', textAlign: 'right' }}>${line.cost.toFixed(2)}</td>
+                                <td style={{ padding: '8px 6px', textAlign: 'right', color: line.markup >= 0 ? '#15803d' : '#b91c1c' }}>${line.markup.toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr style={{ fontWeight: '700', borderTop: '2px solid var(--border-color)' }}>
+                            <td colSpan={3} style={{ padding: '10px 6px' }}>Totals</td>
+                            <td style={{ padding: '10px 6px', textAlign: 'right' }}>
+                              ${splitAllocationPreview.reduce((s, l) => s + l.billed, 0).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '10px 6px', textAlign: 'right' }}>
+                              ${splitAllocationPreview.reduce((s, l) => s + l.cost, 0).toFixed(2)}
+                            </td>
+                            <td style={{ padding: '10px 6px', textAlign: 'right' }}>
+                              ${splitAllocationPreview.reduce((s, l) => s + l.markup, 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                padding: '14px 20px',
+                borderTop: '1px solid var(--border-color)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '10px',
+                flexWrap: 'wrap',
+              }}
+            >
+              {splitWizardStep > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSplitError(null);
+                    setSplitWizardStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s));
+                  }}
+                  style={{ padding: '10px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}
+                >
+                  Back
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={closeSplitWizard}
+                style={{ padding: '10px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              {splitWizardStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSplitError(null);
+                    if (splitWizardStep === 1) {
+                      if (!splitFile) {
+                        setSplitError('Choose the folio file first.');
+                        return;
+                      }
+                      if (!(parseFloat(splitForm.amount) > 0)) {
+                        setSplitError('Enter the folio subtotal before tax.');
+                        return;
+                      }
+                      setSplitWizardStep(2);
+                      return;
+                    }
+                    if (splitWizardStep === 2) {
+                      if (splitSelectedLineIds.size < 2) {
+                        setSplitError('Select at least two ticket lines.');
+                        return;
+                      }
+                      const rows = hotelLinesStillNeedReceipt.filter((r: any) => splitSelectedLineIds.has(String(r.id)));
+                      const bad = rows.some(
+                        (r: any) => !((Number(r.quantity) || 1) * (Number(r.rate) || 0) > 0)
+                      );
+                      if (bad) {
+                        setSplitError('Each selected line must have an amount billed to the client.');
+                        return;
+                      }
+                      setSplitWizardStep(3);
+                    }
+                  }}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: 'var(--primary-color)',
+                    color: 'white',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={splitSaving || !splitAllocationPreview || !splitFile}
+                  onClick={() => void handleSplitWizardSave()}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: 'var(--primary-color)',
+                    color: 'white',
+                    fontWeight: '600',
+                    cursor: splitSaving || !splitAllocationPreview || !splitFile ? 'not-allowed' : 'pointer',
+                    opacity: splitSaving || !splitAllocationPreview || !splitFile ? 0.6 : 1,
+                  }}
+                >
+                  {splitSaving ? 'Saving…' : 'Save all lines'}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
