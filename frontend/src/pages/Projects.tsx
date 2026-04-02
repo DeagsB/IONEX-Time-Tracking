@@ -118,9 +118,13 @@ export default function Projects() {
     if (!list.length) return [];
     
     return [...list].sort((a: any, b: any) => {
+      const aClosed = !!a.is_completed;
+      const bClosed = !!b.is_completed;
+      if (aClosed !== bClosed) return aClosed ? 1 : -1;
+
       let aVal: string | number;
       let bVal: string | number;
-      
+
       switch (sortField) {
         case 'project_number':
           aVal = (a.project_number || '').toLowerCase();
