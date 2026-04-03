@@ -3309,34 +3309,50 @@ export default function Invoices() {
               <div
                 key={groupId}
                 style={{
-                  position: 'relative',
                   padding: '16px',
-                  backgroundColor: periodStillAccumulating ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                  backgroundColor: 'var(--bg-secondary)',
                   borderRadius: '8px',
                   border: '1px solid var(--border-color)',
-                  overflow: 'hidden',
-                  opacity: periodStillAccumulating ? 0.88 : 1,
-                  filter: periodStillAccumulating ? 'grayscale(52%) brightness(0.94)' : undefined,
-                  transition: 'opacity 0.2s ease, filter 0.2s ease',
+                  boxShadow: periodStillAccumulating ? 'inset 3px 0 0 0 rgba(217, 119, 6, 0.9)' : undefined,
                 }}
               >
-                <div style={{ position: 'relative', zIndex: 1 }}>
                 {periodStillAccumulating && (
                   <div
                     style={{
                       marginBottom: '12px',
                       padding: '10px 12px',
-                      backgroundColor: 'var(--bg-secondary)',
+                      backgroundColor: 'var(--warning-bg, #fffbeb)',
                       border: '1px solid var(--border-color)',
                       borderRadius: '6px',
                       fontSize: '12px',
                       lineHeight: 1.45,
                       color: 'var(--text-secondary)',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'flex-start',
+                      gap: '10px',
                     }}
                   >
-                    <strong style={{ color: 'var(--text-primary)' }}>Pending — period still open.</strong> Service tickets may
-                    still be added through {periodAccumulationHintLabel(key.periodLabel)} — this batch is not complete for final
-                    invoicing.
+                    <span
+                      style={{
+                        flexShrink: 0,
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        backgroundColor: 'rgba(217, 119, 6, 0.18)',
+                        color: 'var(--warning-text, #b45309)',
+                      }}
+                    >
+                      Pending
+                    </span>
+                    <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                      <strong style={{ color: 'var(--text-primary)' }}>Period still open.</strong> Service tickets may still be
+                      added through {periodAccumulationHintLabel(key.periodLabel)} — this batch is not complete for final
+                      invoicing.
+                    </div>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
@@ -3551,52 +3567,6 @@ export default function Invoices() {
                     );
                   })}
                 </div>
-                </div>
-                {periodStillAccumulating && (
-                  <>
-                    <div
-                      aria-hidden
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.09)',
-                        pointerEvents: 'none',
-                        zIndex: 2,
-                        borderRadius: '8px',
-                      }}
-                    />
-                    <div
-                      aria-hidden
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        pointerEvents: 'none',
-                        zIndex: 3,
-                        borderRadius: '8px',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 'clamp(56px, min(22vw, 18vh), 200px)',
-                          fontWeight: 800,
-                          letterSpacing: '0.12em',
-                          color: 'rgba(100, 100, 100, 0.2)',
-                          transform: 'rotate(-20deg)',
-                          userSelect: 'none',
-                          whiteSpace: 'nowrap',
-                          textTransform: 'uppercase',
-                          fontFamily: 'system-ui, sans-serif',
-                        }}
-                      >
-                        Pending
-                      </span>
-                    </div>
-                  </>
-                )}
               </div>
             );
             })}
