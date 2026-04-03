@@ -2718,11 +2718,8 @@ export default function Invoices() {
                   : uniquePoAfeFromBreakdown.length === 1
                     ? uniquePoAfeFromBreakdown[0]!
                     : 'Multiple';
-              const projectDisplay = (() => {
-                const num = key.projectNumber?.trim();
-                const name = key.projectName?.trim();
-                return num && name ? `${num} – ${name}` : num || name || key.projectId || '(none)';
-              })();
+              const ionexProjectNum = key.projectNumber?.trim() || '';
+              const projectNameOnly = key.projectName?.trim() || '';
               return (
                 <div
                   key={persistId}
@@ -2735,11 +2732,29 @@ export default function Invoices() {
                 >
                   {/* Summary: project, approver, PO/AFE/CC, and total */}
                   <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                      <strong>Project:</strong>{' '}
-                      <CopyableHeaderValue copyText={projectDisplay}>
-                        {projectDisplay.length > 60 ? `${projectDisplay.slice(0, 60)}…` : projectDisplay}
-                      </CopyableHeaderValue>
+                    <div
+                      style={{
+                        fontSize: '18px',
+                        fontWeight: 700,
+                        color: 'var(--text-primary)',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                      }}
+                    >
+                      <div>
+                        <strong>IONEX project #:</strong>{' '}
+                        <CopyableHeaderValue copyText={ionexProjectNum}>
+                          {ionexProjectNum || '(none)'}
+                        </CopyableHeaderValue>
+                      </div>
+                      <div>
+                        <strong>Project name:</strong>{' '}
+                        <CopyableHeaderValue copyText={projectNameOnly}>
+                          {projectNameOnly || '(none)'}
+                        </CopyableHeaderValue>
+                      </div>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
                       <span>
@@ -3195,17 +3210,16 @@ export default function Invoices() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
                     <span>
-                      <strong>Project:</strong>{' '}
-                      {(() => {
-                        const num = key.projectNumber?.trim();
-                        const name = key.projectName?.trim();
-                        const fullDisplay = num && name ? `${num} – ${name}` : num || name || key.projectId || '(none)';
-                        const maxLen = 40;
-                        const short = fullDisplay.length > maxLen ? `${fullDisplay.slice(0, maxLen)}…` : fullDisplay;
-                        return (
-                          <CopyableHeaderValue copyText={fullDisplay === '(none)' ? '' : fullDisplay}>{short}</CopyableHeaderValue>
-                        );
-                      })()}
+                      <strong>IONEX project #:</strong>{' '}
+                      <CopyableHeaderValue copyText={key.projectNumber?.trim() || ''}>
+                        {key.projectNumber?.trim() || '(none)'}
+                      </CopyableHeaderValue>
+                    </span>
+                    <span>
+                      <strong>Project name:</strong>{' '}
+                      <CopyableHeaderValue copyText={key.projectName?.trim() || ''}>
+                        {key.projectName?.trim() || '(none)'}
+                      </CopyableHeaderValue>
                     </span>
                     {key.periodKey ? (
                       <>
