@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
@@ -42,7 +43,24 @@ export default function Layout() {
           overflow: isCalendar ? 'hidden' : 'auto',
           padding: isCalendar ? 0 : '20px',
         }}>
-          <Outlet />
+          <Suspense
+            fallback={
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '200px',
+                  color: 'var(--text-secondary)',
+                  fontSize: '15px',
+                }}
+              >
+                Loading…
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </div>
       </div>
     </div>

@@ -792,6 +792,67 @@ function getPeriodLabel(periodKey: string, grouping: DateRangeGrouping): string 
   return `${toDdMmYyyy(start)} to ${toDdMmYyyy(end)}`;
 }
 
+/** Local today as yyyy-mm-dd for comparisons. */
+function ymdTodayLocal(): string {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Last calendar day of the invoice period (yyyy-mm-dd), or null if not a fixed calendar period.
+ * Must stay in sync with getPeriodLabel's range logic.
+ */
+function getPeriodEndYmd(periodKey: string, grouping: DateRangeGrouping): string | null {
+  if (!periodKey?.trim() || grouping === 'project-completion') return null;
+  if (periodKey.startsWith('pc:')) return null;
+
+  if (grouping === 'daily') {
+    return /^\d{4}-\d{2}-\d{2}$/.test(periodKey) ? periodKey : null;
+  }
+  if (grouping === 'monthly') {
+    const parts = periodKey.split('-');
+    const y = parseInt(parts[0] || '', 10);
+    const m = parseInt(parts[1] || '', 10);
+    if (Number.isNaN(y) || Number.isNaN(m)) return null;
+    const last = new Date(y, m, 0);
+    return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+  }
+  if (grouping === 'weekly') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(periodKey)) return null;
+    const d = new Date(`${periodKey}T12:00:00`);
+    const end = new Date(d);
+    end.setDate(d.getDate() + 6);
+    return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  }
+  // bi-weekly: same as getPeriodLabel
+  const [yStr, bStr] = periodKey.split('-');
+  const y = parseInt(yStr || '0', 10);
+  const bi = parseInt((bStr || '0').replace('B', ''), 10) || 1;
+  const jan1 = new Date(y, 0, 1);
+  const firstMonday = jan1.getDay() === 0 ? 2 : jan1.getDay() === 1 ? 1 : 9 - jan1.getDay();
+  const firstMon = new Date(y, 0, firstMonday);
+  const start = new Date(firstMon);
+  start.setDate(firstMon.getDate() + (bi - 1) * 14);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 13);
+  return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+}
+
+/** True while today is still on or before the period end date (more tickets may land in this batch). */
+function isInvoicePeriodStillAccumulating(periodKey: string | undefined, grouping: DateRangeGrouping): boolean {
+  if (!periodKey) return false;
+  const end = getPeriodEndYmd(periodKey, grouping);
+  if (!end) return false;
+  return ymdTodayLocal() <= end;
+}
+
+function periodAccumulationHintLabel(periodLabel: string | undefined): string {
+  if (!periodLabel?.trim()) return 'the end of this period';
+  const parts = periodLabel.split(/\s+to\s+/i);
+  if (parts.length >= 2) return parts[parts.length - 1]!.trim();
+  return periodLabel.trim();
+}
+
 type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodLabel?: string };
 
 type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[] };
@@ -3233,6 +3294,18 @@ export default function Invoices() {
                   );
                   return !(k.poAfe || '').trim();
                 });
+              const firstTicket = groupTickets[0];
+              const custIdForPeriod = firstTicket?.customerId ?? '';
+              const projIdForPeriod =
+                (firstTicket as ServiceTicket & { recordProjectId?: string })?.recordProjectId ??
+                firstTicket?.projectId ??
+                '';
+              const periodGrouping = cnrlPeriodGrouping(getGroupingForTicket(custIdForPeriod, projIdForPeriod));
+              const periodStillAccumulating =
+                !!key.periodKey &&
+                periodGrouping !== 'project-completion' &&
+                !String(key.periodKey).startsWith('pc:') &&
+                isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping);
               return (
               <div
                 key={groupId}
@@ -3241,8 +3314,29 @@ export default function Invoices() {
                   backgroundColor: 'var(--bg-secondary)',
                   borderRadius: '8px',
                   border: '1px solid var(--border-color)',
+                  opacity: periodStillAccumulating ? 0.7 : 1,
+                  filter: periodStillAccumulating ? 'grayscale(22%)' : undefined,
+                  transition: 'opacity 0.2s ease',
                 }}
               >
+                {periodStillAccumulating && (
+                  <div
+                    style={{
+                      marginBottom: '12px',
+                      padding: '10px 12px',
+                      backgroundColor: 'var(--bg-tertiary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      lineHeight: 1.45,
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    <strong style={{ color: 'var(--text-primary)' }}>Period still open.</strong> Service tickets may still be
+                    added through {periodAccumulationHintLabel(key.periodLabel)} — this batch is not complete for final
+                    invoicing.
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
                     <span>
