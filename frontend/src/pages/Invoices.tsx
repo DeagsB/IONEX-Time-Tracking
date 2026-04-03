@@ -3303,7 +3303,6 @@ export default function Invoices() {
               const periodGrouping = cnrlPeriodGrouping(getGroupingForTicket(custIdForPeriod, projIdForPeriod));
               const periodStillAccumulating =
                 !!key.periodKey &&
-                periodGrouping !== 'project-completion' &&
                 !String(key.periodKey).startsWith('pc:') &&
                 isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping);
               return (
