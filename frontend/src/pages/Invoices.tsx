@@ -3309,21 +3309,24 @@ export default function Invoices() {
               <div
                 key={groupId}
                 style={{
+                  position: 'relative',
                   padding: '16px',
-                  backgroundColor: 'var(--bg-secondary)',
+                  backgroundColor: periodStillAccumulating ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
                   borderRadius: '8px',
                   border: '1px solid var(--border-color)',
-                  opacity: periodStillAccumulating ? 0.7 : 1,
-                  filter: periodStillAccumulating ? 'grayscale(22%)' : undefined,
-                  transition: 'opacity 0.2s ease',
+                  overflow: 'hidden',
+                  opacity: periodStillAccumulating ? 0.88 : 1,
+                  filter: periodStillAccumulating ? 'grayscale(52%) brightness(0.94)' : undefined,
+                  transition: 'opacity 0.2s ease, filter 0.2s ease',
                 }}
               >
+                <div style={{ position: 'relative', zIndex: 1 }}>
                 {periodStillAccumulating && (
                   <div
                     style={{
                       marginBottom: '12px',
                       padding: '10px 12px',
-                      backgroundColor: 'var(--bg-tertiary)',
+                      backgroundColor: 'var(--bg-secondary)',
                       border: '1px solid var(--border-color)',
                       borderRadius: '6px',
                       fontSize: '12px',
@@ -3331,8 +3334,8 @@ export default function Invoices() {
                       color: 'var(--text-secondary)',
                     }}
                   >
-                    <strong style={{ color: 'var(--text-primary)' }}>Period still open.</strong> Service tickets may still be
-                    added through {periodAccumulationHintLabel(key.periodLabel)} — this batch is not complete for final
+                    <strong style={{ color: 'var(--text-primary)' }}>Pending — period still open.</strong> Service tickets may
+                    still be added through {periodAccumulationHintLabel(key.periodLabel)} — this batch is not complete for final
                     invoicing.
                   </div>
                 )}
@@ -3548,6 +3551,52 @@ export default function Invoices() {
                     );
                   })}
                 </div>
+                </div>
+                {periodStillAccumulating && (
+                  <>
+                    <div
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.09)',
+                        pointerEvents: 'none',
+                        zIndex: 2,
+                        borderRadius: '8px',
+                      }}
+                    />
+                    <div
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        pointerEvents: 'none',
+                        zIndex: 3,
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 'clamp(56px, min(22vw, 18vh), 200px)',
+                          fontWeight: 800,
+                          letterSpacing: '0.12em',
+                          color: 'rgba(100, 100, 100, 0.2)',
+                          transform: 'rotate(-20deg)',
+                          userSelect: 'none',
+                          whiteSpace: 'nowrap',
+                          textTransform: 'uppercase',
+                          fontFamily: 'system-ui, sans-serif',
+                        }}
+                      >
+                        Pending
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             );
             })}
