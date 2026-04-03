@@ -1,4 +1,3 @@
-import { lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth, canAccessInvoices } from './context/AuthContext';
@@ -8,24 +7,22 @@ import { DemoModeProvider } from './context/DemoModeContext';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import Maintenance from './pages/Maintenance';
-
-const WeekView = lazy(() => import('./pages/WeekView'));
-const TimeEntries = lazy(() => import('./pages/TimeEntries'));
-const DayDetail = lazy(() => import('./pages/DayDetail'));
-const Projects = lazy(() => import('./pages/Projects'));
-const Customers = lazy(() => import('./pages/Customers'));
-const Employees = lazy(() => import('./pages/Employees'));
-const Payroll = lazy(() => import('./pages/Payroll'));
-const Profile = lazy(() => import('./pages/Profile'));
-const ServiceTickets = lazy(() => import('./pages/ServiceTickets'));
-const Invoices = lazy(() => import('./pages/Invoices'));
-const EmployeeReports = lazy(() => import('./pages/EmployeeReports'));
-const UserManagement = lazy(() => import('./pages/UserManagement'));
-const Changelog = lazy(() => import('./pages/Changelog'));
-const Expenses = lazy(() => import('./pages/Expenses'));
-const Profitability = lazy(() => import('./pages/Profitability'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-
+import WeekView from './pages/WeekView';
+import TimeEntries from './pages/TimeEntries';
+import DayDetail from './pages/DayDetail';
+import Projects from './pages/Projects';
+import Customers from './pages/Customers';
+import Employees from './pages/Employees';
+import Payroll from './pages/Payroll';
+import Profile from './pages/Profile';
+import ServiceTickets from './pages/ServiceTickets';
+import Invoices from './pages/Invoices';
+import EmployeeReports from './pages/EmployeeReports';
+import UserManagement from './pages/UserManagement';
+import Changelog from './pages/Changelog';
+import Expenses from './pages/Expenses';
+import Profitability from './pages/Profitability';
+import Dashboard from './pages/Dashboard';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 // Avoid refetch-on-focus racing token refresh on some browsers (entries briefly OK then empty).
