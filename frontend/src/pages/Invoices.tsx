@@ -633,17 +633,19 @@ function InvoiceTicketDetailModal({
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ textAlign: 'left', color: 'var(--text-tertiary)', fontSize: '12px' }}>
-                  <th style={{ padding: '6px 10px', fontWeight: 600 }}>Qty × rate</th>
+                  <th style={{ padding: '6px 10px', fontWeight: 600 }}>Description</th>
+                  <th style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>Qty × rate</th>
                   <th style={{ padding: '6px 10px', fontWeight: 600, textAlign: 'right' }}>Line</th>
                 </tr>
               </thead>
               <tbody>
                 {expenses.map((e, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '8px 10px' }}>
+                    <td style={{ padding: '8px 10px', verticalAlign: 'top' }}>{formatInvoiceExpenseLineLabel(e)}</td>
+                    <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
                       {e.quantity} × ${e.rate.toFixed(2)}
                     </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                       ${(e.quantity * e.rate).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
@@ -965,11 +967,27 @@ function buildSingleLineBreakdown(
 const NO_PO_AFE_LABEL = '(no PO/AFE/CC)';
 
 /** Expense lines for invoice math: billed amount uses quantity×rate; GST may be stored separately per line. */
-type InvoiceExpenseLine = { quantity: number; rate: number; gst?: number };
+type InvoiceExpenseLine = {
+  quantity: number;
+  rate: number;
+  gst?: number;
+  description?: string;
+  expense_type?: string;
+};
+
+function formatInvoiceExpenseLineLabel(e: InvoiceExpenseLine): string {
+  const typ = (e.expense_type || '').trim();
+  const desc = (e.description || '').trim();
+  if (typ && desc) return `${typ}: ${desc}`;
+  return typ || desc || '—';
+}
 
 const CA_GST_ON_LABOUR_RATE = 0.05;
 
-/** Subtotal (pre-GST), 5% GST on labour/services, receipt GST on expenses, and total including GST — invoiced view only. */
+/**
+ * Subtotal (pre-GST labour + expense amounts), 5% GST on labour, GST on expenses (5% of expense amounts when
+ * receipt line GST is not recorded; otherwise sum of receipt GST), and total — invoiced view only.
+ */
 function computeInvoicedGroupTotalsWithGst(
   groupTickets: (ServiceTicket & { recordId?: string })[],
   expensesByRecordId: Map<string, InvoiceExpenseLine[]>
@@ -977,28 +995,44 @@ function computeInvoicedGroupTotalsWithGst(
   subtotal: number;
   labourSubtotal: number;
   gstOnLabour: number;
+  /** Effective GST on expenses (receipt sum if any line has gst; else 5% of expense subtotal). */
   expenseGstTotal: number;
+  /** True when expenseGstTotal comes from stored receipt GST on lines (not the 5% default). */
+  expenseGstFromReceipt: boolean;
   totalInclGst: number;
 } {
   let subtotal = 0;
   let labourSubtotal = 0;
-  let expenseGstTotal = 0;
+  let expenseBase = 0;
+  let receiptGstSum = 0;
   for (const t of groupTickets) {
     const recordId = t.recordId;
     const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
     subtotal += calculateTicketTotalAmount(t, expenses);
     labourSubtotal += calculateTicketTotalAmount(t, []);
     for (const e of expenses) {
-      expenseGstTotal += Number(e.gst) || 0;
+      expenseBase += e.quantity * e.rate;
+      receiptGstSum += Number(e.gst) || 0;
     }
   }
   const r2 = (x: number) => Math.round(x * 100) / 100;
   subtotal = r2(subtotal);
   labourSubtotal = r2(labourSubtotal);
-  expenseGstTotal = r2(expenseGstTotal);
+  expenseBase = r2(expenseBase);
+  receiptGstSum = r2(receiptGstSum);
   const gstOnLabour = r2(labourSubtotal * CA_GST_ON_LABOUR_RATE);
-  const totalInclGst = r2(subtotal + expenseGstTotal + gstOnLabour);
-  return { subtotal, labourSubtotal, gstOnLabour, expenseGstTotal, totalInclGst };
+  const gstOnExpensesFromRate = r2(expenseBase * CA_GST_ON_LABOUR_RATE);
+  const expenseGstFromReceipt = receiptGstSum > 0;
+  const expenseGstTotal = expenseGstFromReceipt ? receiptGstSum : gstOnExpensesFromRate;
+  const totalInclGst = r2(subtotal + gstOnLabour + expenseGstTotal);
+  return {
+    subtotal,
+    labourSubtotal,
+    gstOnLabour,
+    expenseGstTotal,
+    expenseGstFromReceipt,
+    totalInclGst,
+  };
 }
 
 /** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX". Sorted by PO/AFE value (ascending), with (no PO/AFE/CC) last. */
@@ -1548,6 +1582,8 @@ export default function Invoices() {
                   quantity: e.quantity,
                   rate: e.rate,
                   gst: Number((e as { gst?: number }).gst) || 0,
+                  description: e.description,
+                  expense_type: e.expense_type,
                 }))
               );
             }
@@ -2814,7 +2850,7 @@ export default function Invoices() {
                           {gstTotals.expenseGstTotal > 0 && (
                             <>
                               {' · '}
-                              Receipt GST (expenses) $
+                              {gstTotals.expenseGstFromReceipt ? 'Receipt GST (expenses)' : 'GST on expenses (5%)'} $
                               {gstTotals.expenseGstTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </>
                           )}
