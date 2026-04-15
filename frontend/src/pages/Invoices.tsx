@@ -1402,31 +1402,6 @@ export default function Invoices() {
     return list;
   }, [tickets, selectedCustomerId, selectedProjectId]);
 
-  /** All ticket IDs (service_tickets.id / recordId) that belong to ANY invoiced batch mark in DB.
-   *  Used to permanently exclude invoiced tickets from re-grouping so grouping changes never affect them. */
-  const allInvoicedTicketIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const row of invoicedMarkRows) {
-      const ids = row.key_snapshot?.ticketIds;
-      if (!Array.isArray(ids)) continue;
-      for (const id of ids) {
-        const trimmed = typeof id === 'string' ? id.trim() : String(id ?? '').trim();
-        if (trimmed) set.add(trimmed);
-      }
-    }
-    return set;
-  }, [invoicedMarkRows]);
-
-  const uninvoicedTicketsForCustomer = useMemo(() => {
-    if (allInvoicedTicketIds.size === 0) return ticketsForCustomer;
-    return ticketsForCustomer.filter((t) => {
-      const rid = (t as ServiceTicket & { recordId?: string }).recordId?.trim();
-      if (rid && allInvoicedTicketIds.has(rid)) return false;
-      if (allInvoicedTicketIds.has(t.id)) return false;
-      return true;
-    });
-  }, [ticketsForCustomer, allInvoicedTicketIds]);
-
   const selectedCustomer = customers?.find((c: { id: string }) => c.id === selectedCustomerId);
   const isCNRL = !!selectedCustomerId && (selectedCustomer?.name ?? '').toUpperCase().includes('CNRL');
 
@@ -1734,11 +1709,63 @@ export default function Invoices() {
     return set;
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
+  const [showInvoiced, setShowInvoiced] = useState(false);
+  const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
+  const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
+  const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
+  const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
+  const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
+  const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
+
+  const markProjectCompletedMutation = useMutation({
+    mutationFn: (projectId: string) => projectsService.update(projectId, { status: 'completed' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  const [frozenInvoicedGroups, setFrozenInvoicedGroups] = useState<Record<string, FrozenGroupSnapshot>>(() => {
+    try {
+      const raw = localStorage.getItem(FROZEN_INVOICED_GROUPS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, FrozenGroupSnapshot>;
+        return typeof parsed === 'object' && parsed !== null ? parsed : {};
+      }
+    } catch {
+      // ignore
+    }
+    return {};
+  });
+
+  /** All ticket IDs (service_tickets.id / recordId) that belong to ANY invoiced batch mark in DB.
+   *  Used to permanently exclude invoiced tickets from re-grouping so grouping changes never affect them. */
+  const allInvoicedTicketIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of invoicedMarkRows) {
+      const ids = row.key_snapshot?.ticketIds;
+      if (!Array.isArray(ids)) continue;
+      for (const id of ids) {
+        const trimmed = typeof id === 'string' ? id.trim() : String(id ?? '').trim();
+        if (trimmed) set.add(trimmed);
+      }
+    }
+    return set;
+  }, [invoicedMarkRows]);
+
+  const uninvoicedTicketsForCustomer = useMemo(() => {
+    if (allInvoicedTicketIds.size === 0) return ticketsForCustomer;
+    return ticketsForCustomer.filter((t) => {
+      const rid = (t as ServiceTicket & { recordId?: string }).recordId?.trim();
+      if (rid && allInvoicedTicketIds.has(rid)) return false;
+      if (allInvoicedTicketIds.has(t.id)) return false;
+      return true;
+    });
+  }, [ticketsForCustomer, allInvoicedTicketIds]);
+
   /**
    * PDF rows (invoiced_batch_invoices) used to be written before the mark; some environments may have
    * invoice PDFs without invoiced_batch_marks rows. Heal by upserting a mark so Service Tickets + DB
-   * triggers get ticketIds. Uses (1) current grouped tickets when the batch is in the date range, or
-   * (2) parsing legacy `approver|uuid,uuid` group_ids so old batches lock without re-clicking Mark.
+   * triggers get ticketIds. Uses frozen snapshots or legacy `approver|uuid,uuid` group_ids.
    */
   useEffect(() => {
     if (isDemoMode || !isAdmin || !user) return;
@@ -1796,34 +1823,6 @@ export default function Invoices() {
     frozenInvoicedGroups,
     queryClient,
   ]);
-
-  const [showInvoiced, setShowInvoiced] = useState(false);
-  const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
-  const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
-  const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
-  const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
-  const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
-  const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
-
-  const markProjectCompletedMutation = useMutation({
-    mutationFn: (projectId: string) => projectsService.update(projectId, { status: 'completed' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    },
-  });
-
-  const [frozenInvoicedGroups, setFrozenInvoicedGroups] = useState<Record<string, FrozenGroupSnapshot>>(() => {
-    try {
-      const raw = localStorage.getItem(FROZEN_INVOICED_GROUPS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Record<string, FrozenGroupSnapshot>;
-        return typeof parsed === 'object' && parsed !== null ? parsed : {};
-      }
-    } catch {
-      // ignore
-    }
-    return {};
-  });
 
   const setInvoiceFileForGroup = useCallback((groupId: string, file: File | null) => {
     setInvoiceFilesByGroupId((prev) => {
