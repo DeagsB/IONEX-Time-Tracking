@@ -1440,182 +1440,6 @@ export default function Invoices() {
     return projects?.find((p: { id: string }) => p.id === selectedProjectId);
   }, [selectedProjectId, projects]);
 
-  // Group ONLY uninvoiced tickets. Invoiced tickets are reconstructed from DB snapshots separately
-  // so grouping mode changes never affect already-invoiced batches.
-  const groupedTickets = useMemo((): { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] => {
-    const ticketsToGroupCnrl: ServiceTicket[] = [];
-    const ticketsToGroupByPeriod: ServiceTicket[] = [];
-    if (selectedCustomerId) {
-      if (isCNRL) {
-        ticketsToGroupCnrl.push(...uninvoicedTicketsForCustomer);
-      } else {
-        ticketsToGroupByPeriod.push(...uninvoicedTicketsForCustomer);
-      }
-    } else {
-      for (const t of uninvoicedTicketsForCustomer) {
-        if (isTicketCnrl(t)) ticketsToGroupCnrl.push(t);
-        else ticketsToGroupByPeriod.push(t);
-      }
-    }
-
-    const result: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
-
-    if (ticketsToGroupCnrl.length > 0) {
-      const groups = new Map<string, ServiceTicket[]>();
-      const singleCustomer = !!selectedCustomerId;
-      for (const ticket of ticketsToGroupCnrl) {
-        const t = ticket as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
-        const keyObj = getInvoiceGroupKey(
-          {
-            projectId: t.recordProjectId ?? t.projectId,
-            projectName: t.projectName,
-            projectNumber: t.projectNumber,
-            location: t.location,
-            projectApprover: t.projectApprover,
-            projectPoAfe: t.projectPoAfe,
-            projectCc: t.projectCc,
-            projectApproverPoAfe: t.projectApproverPoAfe,
-            projectLocation: t.projectLocation,
-            projectOther: t.projectOther,
-            customerInfo: t.customerInfo,
-            entryApprover: t.entryApprover,
-            entryPoAfe: t.entryPoAfe,
-            entryCc: t.entryCc,
-            entries: t.entries,
-          },
-          t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-        );
-        if (!keyObj.approverCode || keyObj.approverCode === '_') continue;
-        const customerIdForGrouping = singleCustomer ? selectedCustomerId! : (t.customerId ?? '');
-        const projectIdForGrouping = keyObj.projectId ?? (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? t.projectId ?? '';
-        const groupingRaw = getGroupingForTicket(customerIdForGrouping, projectIdForGrouping);
-        const grouping = cnrlPeriodGrouping(groupingRaw);
-        const periodKey = getPeriodKey(t.date ?? '', grouping, projectIdForGrouping);
-        const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}|${periodKey}`;
-        const list = groups.get(groupKey) ?? [];
-        list.push(ticket);
-        groups.set(groupKey, list);
-      }
-      // Sort CNRL groups by PO/AFE (approverCode) first, then period, then project (restore PO/AFE ordering)
-      const sortedGroupKeys = [...groups.keys()].sort((a, b) => {
-        const pa = a.split('|');
-        const pb = b.split('|');
-        const projA = pa[0] ?? '';
-        const approverA = pa[1] ?? '';
-        const periodA = pa[2] ?? '';
-        const projB = pb[0] ?? '';
-        const approverB = pb[1] ?? '';
-        const periodB = pb[2] ?? '';
-        if (approverA !== approverB) return approverA.localeCompare(approverB);
-        if (periodA !== periodB) return periodA.localeCompare(periodB);
-        return projA.localeCompare(projB);
-      });
-      for (const groupKey of sortedGroupKeys) {
-        const list = groups.get(groupKey) ?? [];
-        // Sort by PO/AFE/CC only (then name, ticket#) — Coding is not used for line order
-        list.sort((a, b) => {
-          const ta = a as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
-          const tb = b as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
-          const { poAfe: poAfeA } = getApproverPoAfeCcFromTicket(ta, ta.headerOverrides);
-          const { poAfe: poAfeB } = getApproverPoAfeCcFromTicket(tb, tb.headerOverrides);
-          const poCmp = (poAfeA || '').localeCompare(poAfeB || '');
-          if (poCmp !== 0) return poCmp;
-          const nameCmp = (a.userName || '').localeCompare(b.userName || '');
-          if (nameCmp !== 0) return nameCmp;
-          return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
-        });
-        const first = list[0] as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
-        const keyObj = getInvoiceGroupKey(
-          {
-            projectId: first.recordProjectId ?? first.projectId,
-            projectName: first.projectName,
-            projectNumber: first.projectNumber,
-            location: first.location,
-            projectApprover: first.projectApprover,
-            projectPoAfe: first.projectPoAfe,
-            projectCc: first.projectCc,
-            projectApproverPoAfe: first.projectApproverPoAfe,
-            projectLocation: first.projectLocation,
-            projectOther: first.projectOther,
-            customerInfo: first.customerInfo,
-            entryApprover: first.entryApprover,
-            entryPoAfe: first.entryPoAfe,
-            entryCc: first.entryCc,
-            entries: first.entries,
-          },
-          first.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-        );
-        const parts = groupKey.split('|');
-        const periodKeyFromKey = parts[2] ?? '';
-        const customerIdForLabel = singleCustomer ? selectedCustomerId! : (first.customerId ?? '');
-        const projectIdForLabel = first.recordProjectId ?? first.projectId ?? '';
-        const groupingRaw = getGroupingForTicket(customerIdForLabel, projectIdForLabel);
-        const grouping = cnrlPeriodGrouping(groupingRaw);
-        const periodLabel = getPeriodLabel(periodKeyFromKey, grouping);
-        const keyWithPeriod: InvoiceGroupKeyWithPeriod = {
-          ...keyObj,
-          periodKey: periodKeyFromKey,
-          periodLabel,
-        };
-        result.push({ key: keyWithPeriod, tickets: list });
-      }
-    }
-
-    if (ticketsToGroupByPeriod.length > 0) {
-      const groupMap = new Map<string, ServiceTicket[]>();
-      const singleCustomer = !!selectedCustomerId;
-      for (const ticket of ticketsToGroupByPeriod) {
-        const t = ticket as ServiceTicket & { recordProjectId?: string };
-        const projectId = t.recordProjectId ?? t.projectId ?? '';
-        const customerIdForGrouping = singleCustomer ? selectedCustomerId! : (t.customerId ?? '');
-        const grouping = getGroupingForTicket(customerIdForGrouping, projectId);
-        const periodKey = getPeriodKey(t.date ?? '', grouping, projectId);
-        const groupKey = singleCustomer ? `${projectId}|${periodKey}` : `${t.customerId ?? ''}|${projectId}|${periodKey}`;
-        const list = groupMap.get(groupKey) ?? [];
-        list.push(ticket);
-        groupMap.set(groupKey, list);
-      }
-      const sortedKeys = [...groupMap.keys()].sort((a, b) => a.localeCompare(b));
-      for (const groupKey of sortedKeys) {
-        const list = groupMap.get(groupKey) ?? [];
-        list.sort((a, b) => {
-          const dateCmp = (a.date || '').localeCompare(b.date || '');
-          if (dateCmp !== 0) return dateCmp;
-          const nameCmp = (a.userName || '').localeCompare(b.userName || '');
-          if (nameCmp !== 0) return nameCmp;
-          return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
-        });
-        const first = list[0] as ServiceTicket & { recordProjectId?: string };
-        const parts = groupKey.split('|');
-        const periodKey = singleCustomer ? parts[1]! : parts[2]!;
-        const customerIdForLabel = singleCustomer ? selectedCustomerId : (parts[0] ?? '');
-        const projectIdFromKey = singleCustomer ? parts[0]! : parts[1]!;
-        const grouping = getGroupingForTicket(customerIdForLabel, projectIdFromKey);
-        let periodLabel = getPeriodLabel(periodKey, grouping);
-        if (grouping === 'project-completion') {
-          const lbl = [first.projectNumber, first.projectName].filter(Boolean).join(' – ');
-          periodLabel = lbl ? `Project batch: ${lbl}` : 'Project completion';
-        }
-        const keyObj: InvoiceGroupKeyWithPeriod = {
-          projectId: first.recordProjectId ?? first.projectId ?? projectIdFromKey,
-          projectName: first.projectName,
-          projectNumber: first.projectNumber,
-          approverCode: periodKey,
-          approver: periodLabel,
-          poAfe: '',
-          location: '',
-          cc: '',
-          other: '',
-          periodKey,
-          periodLabel,
-        };
-        result.push({ key: keyObj, tickets: list });
-      }
-    }
-
-    return result;
-  }, [uninvoicedTicketsForCustomer, selectedCustomerId, isCNRL, dateRangeGroupingByCustomer, dateRangeGroupingByProject, selectedProjectId, getGroupingForTicket, isTicketCnrl]);
-
   // Fetch expenses for all tickets (uninvoiced + invoiced)
   const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, InvoiceExpenseLine[]>>(new Map());
   useEffect(() => {
@@ -1761,6 +1585,180 @@ export default function Invoices() {
       return true;
     });
   }, [ticketsForCustomer, allInvoicedTicketIds]);
+
+  // Group ONLY uninvoiced tickets. Invoiced tickets are reconstructed from DB snapshots separately
+  // so grouping mode changes never affect already-invoiced batches.
+  const groupedTickets = useMemo((): { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] => {
+    const ticketsToGroupCnrl: ServiceTicket[] = [];
+    const ticketsToGroupByPeriod: ServiceTicket[] = [];
+    if (selectedCustomerId) {
+      if (isCNRL) {
+        ticketsToGroupCnrl.push(...uninvoicedTicketsForCustomer);
+      } else {
+        ticketsToGroupByPeriod.push(...uninvoicedTicketsForCustomer);
+      }
+    } else {
+      for (const t of uninvoicedTicketsForCustomer) {
+        if (isTicketCnrl(t)) ticketsToGroupCnrl.push(t);
+        else ticketsToGroupByPeriod.push(t);
+      }
+    }
+
+    const result: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
+
+    if (ticketsToGroupCnrl.length > 0) {
+      const groups = new Map<string, ServiceTicket[]>();
+      const singleCustomer = !!selectedCustomerId;
+      for (const ticket of ticketsToGroupCnrl) {
+        const t = ticket as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
+        const keyObj = getInvoiceGroupKey(
+          {
+            projectId: t.recordProjectId ?? t.projectId,
+            projectName: t.projectName,
+            projectNumber: t.projectNumber,
+            location: t.location,
+            projectApprover: t.projectApprover,
+            projectPoAfe: t.projectPoAfe,
+            projectCc: t.projectCc,
+            projectApproverPoAfe: t.projectApproverPoAfe,
+            projectLocation: t.projectLocation,
+            projectOther: t.projectOther,
+            customerInfo: t.customerInfo,
+            entryApprover: t.entryApprover,
+            entryPoAfe: t.entryPoAfe,
+            entryCc: t.entryCc,
+            entries: t.entries,
+          },
+          t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+        );
+        if (!keyObj.approverCode || keyObj.approverCode === '_') continue;
+        const customerIdForGrouping = singleCustomer ? selectedCustomerId! : (t.customerId ?? '');
+        const projectIdForGrouping = keyObj.projectId ?? (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? t.projectId ?? '';
+        const groupingRaw = getGroupingForTicket(customerIdForGrouping, projectIdForGrouping);
+        const grouping = cnrlPeriodGrouping(groupingRaw);
+        const periodKey = getPeriodKey(t.date ?? '', grouping, projectIdForGrouping);
+        const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}|${periodKey}`;
+        const list = groups.get(groupKey) ?? [];
+        list.push(ticket);
+        groups.set(groupKey, list);
+      }
+      const sortedGroupKeys = [...groups.keys()].sort((a, b) => {
+        const pa = a.split('|');
+        const pb = b.split('|');
+        const projA = pa[0] ?? '';
+        const approverA = pa[1] ?? '';
+        const periodA = pa[2] ?? '';
+        const projB = pb[0] ?? '';
+        const approverB = pb[1] ?? '';
+        const periodB = pb[2] ?? '';
+        if (approverA !== approverB) return approverA.localeCompare(approverB);
+        if (periodA !== periodB) return periodA.localeCompare(periodB);
+        return projA.localeCompare(projB);
+      });
+      for (const groupKey of sortedGroupKeys) {
+        const list = groups.get(groupKey) ?? [];
+        list.sort((a, b) => {
+          const ta = a as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
+          const tb = b as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
+          const { poAfe: poAfeA } = getApproverPoAfeCcFromTicket(ta, ta.headerOverrides);
+          const { poAfe: poAfeB } = getApproverPoAfeCcFromTicket(tb, tb.headerOverrides);
+          const poCmp = (poAfeA || '').localeCompare(poAfeB || '');
+          if (poCmp !== 0) return poCmp;
+          const nameCmp = (a.userName || '').localeCompare(b.userName || '');
+          if (nameCmp !== 0) return nameCmp;
+          return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
+        });
+        const first = list[0] as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
+        const keyObj = getInvoiceGroupKey(
+          {
+            projectId: first.recordProjectId ?? first.projectId,
+            projectName: first.projectName,
+            projectNumber: first.projectNumber,
+            location: first.location,
+            projectApprover: first.projectApprover,
+            projectPoAfe: first.projectPoAfe,
+            projectCc: first.projectCc,
+            projectApproverPoAfe: first.projectApproverPoAfe,
+            projectLocation: first.projectLocation,
+            projectOther: first.projectOther,
+            customerInfo: first.customerInfo,
+            entryApprover: first.entryApprover,
+            entryPoAfe: first.entryPoAfe,
+            entryCc: first.entryCc,
+            entries: first.entries,
+          },
+          first.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+        );
+        const parts = groupKey.split('|');
+        const periodKeyFromKey = parts[2] ?? '';
+        const customerIdForLabel = singleCustomer ? selectedCustomerId! : (first.customerId ?? '');
+        const projectIdForLabel = first.recordProjectId ?? first.projectId ?? '';
+        const groupingRaw = getGroupingForTicket(customerIdForLabel, projectIdForLabel);
+        const grouping = cnrlPeriodGrouping(groupingRaw);
+        const periodLabel = getPeriodLabel(periodKeyFromKey, grouping);
+        const keyWithPeriod: InvoiceGroupKeyWithPeriod = {
+          ...keyObj,
+          periodKey: periodKeyFromKey,
+          periodLabel,
+        };
+        result.push({ key: keyWithPeriod, tickets: list });
+      }
+    }
+
+    if (ticketsToGroupByPeriod.length > 0) {
+      const groupMap = new Map<string, ServiceTicket[]>();
+      const singleCustomer = !!selectedCustomerId;
+      for (const ticket of ticketsToGroupByPeriod) {
+        const t = ticket as ServiceTicket & { recordProjectId?: string };
+        const projectId = t.recordProjectId ?? t.projectId ?? '';
+        const customerIdForGrouping = singleCustomer ? selectedCustomerId! : (t.customerId ?? '');
+        const grouping = getGroupingForTicket(customerIdForGrouping, projectId);
+        const periodKey = getPeriodKey(t.date ?? '', grouping, projectId);
+        const groupKey = singleCustomer ? `${projectId}|${periodKey}` : `${t.customerId ?? ''}|${projectId}|${periodKey}`;
+        const list = groupMap.get(groupKey) ?? [];
+        list.push(ticket);
+        groupMap.set(groupKey, list);
+      }
+      const sortedKeys = [...groupMap.keys()].sort((a, b) => a.localeCompare(b));
+      for (const groupKey of sortedKeys) {
+        const list = groupMap.get(groupKey) ?? [];
+        list.sort((a, b) => {
+          const dateCmp = (a.date || '').localeCompare(b.date || '');
+          if (dateCmp !== 0) return dateCmp;
+          const nameCmp = (a.userName || '').localeCompare(b.userName || '');
+          if (nameCmp !== 0) return nameCmp;
+          return ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber);
+        });
+        const first = list[0] as ServiceTicket & { recordProjectId?: string };
+        const parts = groupKey.split('|');
+        const periodKey = singleCustomer ? parts[1]! : parts[2]!;
+        const customerIdForLabel = singleCustomer ? selectedCustomerId : (parts[0] ?? '');
+        const projectIdFromKey = singleCustomer ? parts[0]! : parts[1]!;
+        const grouping = getGroupingForTicket(customerIdForLabel, projectIdFromKey);
+        let periodLabel = getPeriodLabel(periodKey, grouping);
+        if (grouping === 'project-completion') {
+          const lbl = [first.projectNumber, first.projectName].filter(Boolean).join(' – ');
+          periodLabel = lbl ? `Project batch: ${lbl}` : 'Project completion';
+        }
+        const keyObj: InvoiceGroupKeyWithPeriod = {
+          projectId: first.recordProjectId ?? first.projectId ?? projectIdFromKey,
+          projectName: first.projectName,
+          projectNumber: first.projectNumber,
+          approverCode: periodKey,
+          approver: periodLabel,
+          poAfe: '',
+          location: '',
+          cc: '',
+          other: '',
+          periodKey,
+          periodLabel,
+        };
+        result.push({ key: keyObj, tickets: list });
+      }
+    }
+
+    return result;
+  }, [uninvoicedTicketsForCustomer, selectedCustomerId, isCNRL, dateRangeGroupingByCustomer, dateRangeGroupingByProject, selectedProjectId, getGroupingForTicket, isTicketCnrl]);
 
   /**
    * PDF rows (invoiced_batch_invoices) used to be written before the mark; some environments may have
