@@ -725,17 +725,21 @@ export type DateRangeGrouping =
   | 'weekly'
   | 'bi-weekly'
   | 'monthly'
-  | 'project-completion';
+  | 'project-completion'
+  | 'progress';
 
-/** CNRL invoice batches always use calendar periods; project-completion is not used on the CNRL path. */
-function cnrlPeriodGrouping(g: DateRangeGrouping): Exclude<DateRangeGrouping, 'project-completion'> {
-  return g === 'project-completion' ? 'bi-weekly' : g;
+/** CNRL invoice batches always use calendar periods; project-completion and progress are not used on the CNRL path. */
+function cnrlPeriodGrouping(g: DateRangeGrouping): Exclude<DateRangeGrouping, 'project-completion' | 'progress'> {
+  return (g === 'project-completion' || g === 'progress') ? 'bi-weekly' : g;
 }
 
 /** Get period key for a ticket date for non-CNRL grouping (daily / weekly / bi-weekly / monthly / project-completion) */
 function getPeriodKey(dateStr: string, grouping: DateRangeGrouping, projectId?: string): string {
   if (grouping === 'project-completion') {
     return projectId ? `pc:${projectId}` : 'pc:unknown';
+  }
+  if (grouping === 'progress') {
+    return projectId ? `prog:${projectId}` : 'prog:unknown';
   }
   const d = new Date(dateStr + 'T12:00:00');
   const y = d.getFullYear();
@@ -771,6 +775,7 @@ function toDdMmYyyy(d: Date): string {
 
 /** Human-readable label for a period key */
 function getPeriodLabel(periodKey: string, grouping: DateRangeGrouping): string {
+  if (grouping === 'progress') return 'Progress batch';
   if (grouping === 'project-completion') return 'Project completion';
   if (grouping === 'daily') return periodKey;
   if (grouping === 'monthly') {
@@ -804,8 +809,8 @@ function ymdTodayLocal(): string {
  * Must stay in sync with getPeriodLabel's range logic.
  */
 function getPeriodEndYmd(periodKey: string, grouping: DateRangeGrouping): string | null {
-  if (!periodKey?.trim() || grouping === 'project-completion') return null;
-  if (periodKey.startsWith('pc:')) return null;
+  if (!periodKey?.trim() || grouping === 'project-completion' || grouping === 'progress') return null;
+  if (periodKey.startsWith('pc:') || periodKey.startsWith('prog:')) return null;
 
   if (grouping === 'daily') {
     return /^\d{4}-\d{2}-\d{2}$/.test(periodKey) ? periodKey : null;
@@ -1740,6 +1745,10 @@ export default function Invoices() {
           const lbl = [first.projectNumber, first.projectName].filter(Boolean).join(' – ');
           periodLabel = lbl ? `Project batch: ${lbl}` : 'Project completion';
         }
+        if (grouping === 'progress') {
+          const lbl = [first.projectNumber, first.projectName].filter(Boolean).join(' – ');
+          periodLabel = lbl ? `Progress batch: ${lbl}` : 'Progress batch';
+        }
         const keyObj: InvoiceGroupKeyWithPeriod = {
           projectId: first.recordProjectId ?? first.projectId ?? projectIdFromKey,
           projectName: first.projectName,
@@ -2539,6 +2548,7 @@ export default function Invoices() {
               <option value="bi-weekly">Bi-weekly</option>
               <option value="monthly">Monthly</option>
               {!isCNRL && <option value="project-completion">Project completion (one batch per project)</option>}
+              {!isCNRL && <option value="progress">Progress (batch as you go)</option>}
             </select>
           </div>
         )}
@@ -2563,6 +2573,9 @@ export default function Invoices() {
               <option value="monthly">Monthly</option>
               {(!selectedCustomerId ? !projectFilterCustomerIsCnrl : !isCNRL) && (
                 <option value="project-completion">Project completion (one batch per project)</option>
+              )}
+              {(!selectedCustomerId ? !projectFilterCustomerIsCnrl : !isCNRL) && (
+                <option value="progress">Progress (batch as you go)</option>
               )}
             </select>
           </div>
@@ -3301,6 +3314,7 @@ export default function Invoices() {
               const periodStillAccumulating =
                 !!key.periodKey &&
                 !String(key.periodKey).startsWith('pc:') &&
+                !String(key.periodKey).startsWith('prog:') &&
                 isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping);
               return (
               <div
