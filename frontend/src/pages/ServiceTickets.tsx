@@ -603,7 +603,7 @@ export default function ServiceTickets() {
   const [isTicketEdited, setIsTicketEdited] = useState(false);
   // Per-entry edit overrides: { entryId: { description, st, tt, ft, so, fo } }
   // Only entries that differ from their time entry are stored.
-  type EntryOverride = { description: string; st: number; tt: number; ft: number; so: number; fo: number };
+  type EntryOverride = { description: string; st: number; tt: number; ft: number; so: number; fo: number; _deleted?: boolean };
   const [editedEntryOverrides, setEditedEntryOverrides] = useState<Record<string, EntryOverride>>({});
   // Snapshot of rows as derived from live time entries (before any edits) for comparison
   const originalTimeEntryRowsRef = useRef<ServiceRow[]>([]);
@@ -1069,7 +1069,7 @@ export default function ServiceTickets() {
       }
       setIsTicketEdited(false);
       justSavedRef.current = true;
-      setTimeout(() => { justSavedRef.current = false; }, 2000);
+      setTimeout(() => { justSavedRef.current = false; }, 8000);
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
       // Update initial snapshots so pending highlights and Save Changes button clear after save
@@ -1232,21 +1232,23 @@ export default function ServiceTickets() {
 
   // Build service rows by merging live time entries with per-entry overrides.
   // Entries without overrides use live data. Entries with overrides use saved edits.
+  // Entries marked _deleted in overrides are excluded.
   // Manually added rows (id starts with "new-") are appended from overrides.
   const buildRowsWithOverrides = (entries: ServiceTicket['entries'], overrides: Record<string, EntryOverride>): ServiceRow[] => {
     const baseRows = entriesToServiceRows(entries);
-    const mergedRows = baseRows.map(row => {
+    const mergedRows: ServiceRow[] = [];
+    for (const row of baseRows) {
       const ov = overrides[row.id];
+      if (ov?._deleted) continue;
       if (ov) {
-        return { ...row, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo };
+        mergedRows.push({ ...row, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo });
+      } else {
+        mergedRows.push(row);
       }
-      return row;
-    });
-    // Append only manually added rows (id starts with "new-") from overrides.
-    // Stale overrides with IDs that don't match current entries are ignored to prevent duplicates.
+    }
     const existingIds = new Set(baseRows.map(r => r.id));
     Object.entries(overrides).forEach(([id, ov]) => {
-      if (!existingIds.has(id) && id.startsWith('new-')) {
+      if (!existingIds.has(id) && id.startsWith('new-') && !ov._deleted) {
         mergedRows.push({ id, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo });
       }
     });
@@ -1261,14 +1263,22 @@ export default function ServiceTickets() {
       row.so !== originalRow.so || row.fo !== originalRow.fo;
   };
 
-  // Compute per-entry overrides from current service rows vs. original time entry rows
+  // Compute per-entry overrides from current service rows vs. original time entry rows.
+  // Rows present in originalRows but missing from currentRows are marked _deleted so they
+  // stay hidden when the ticket is reloaded (the underlying time entry still exists in DB).
   const computeEntryOverrides = (currentRows: ServiceRow[], originalRows: ServiceRow[]): Record<string, EntryOverride> => {
     const originalMap = new Map(originalRows.map(r => [r.id, r]));
+    const currentIds = new Set(currentRows.map(r => r.id));
     const overrides: Record<string, EntryOverride> = {};
     for (const row of currentRows) {
       const orig = originalMap.get(row.id);
       if (rowDiffersFromOriginal(row, orig)) {
         overrides[row.id] = { description: row.description, st: row.st, tt: row.tt, ft: row.ft, so: row.so, fo: row.fo };
+      }
+    }
+    for (const orig of originalRows) {
+      if (!currentIds.has(orig.id) && !orig.id.startsWith('new-')) {
+        overrides[orig.id] = { description: orig.description, st: 0, tt: 0, ft: 0, so: 0, fo: 0, _deleted: true };
       }
     }
     return overrides;
@@ -1527,10 +1537,14 @@ export default function ServiceTickets() {
 
   // Assign ticket number to a single ticket.
   // When useSavedData is true (e.g. admin approved from panel after saving), only assign number/metadata; do not overwrite hours/header.
-  const handleAssignTicketNumber = async (ticket: ServiceTicket, opts?: { useSavedData?: boolean }) => {
+  // When knownRecordId is provided (panel approve flow), use it directly to avoid stale-closure mismatches
+  // where findMatchingTicketRecord could resolve to a different record than performSave just wrote to.
+  const handleAssignTicketNumber = async (ticket: ServiceTicket, opts?: { useSavedData?: boolean; knownRecordId?: string }) => {
     try {
-      // Find or create ticket record
-      const existing = findMatchingTicketRecord(ticket);
+      // Find or create ticket record — prefer the caller-supplied ID to avoid stale-closure issues
+      const existing = opts?.knownRecordId
+        ? (existingTickets?.find(et => et.id === opts.knownRecordId) ?? findMatchingTicketRecord(ticket))
+        : findMatchingTicketRecord(ticket);
           
       let ticketRecordId: string;
       // Empty entries array (standalone tickets) should NOT be treated as demo
@@ -1542,11 +1556,11 @@ export default function ServiceTickets() {
       const sequenceMatch = ticketNumber.match(/\d{3}$/);
       const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
       
-      if (existing) {
-        if (existing.ticket_number) {
+      if (existing || opts?.knownRecordId) {
+        if (existing?.ticket_number) {
           return; // Already has a ticket number assigned
         }
-        ticketRecordId = existing.id;
+        ticketRecordId = opts?.knownRecordId || existing!.id;
         const useSavedData = opts?.useSavedData === true;
         const headerOverrides = useSavedData ? undefined : buildApprovalHeaderOverrides(ticket);
         const approvalHours = useSavedData ? undefined : (() => {
@@ -8147,7 +8161,7 @@ export default function ServiceTickets() {
                             try {
                               const ok = await performSave();
                               if (!ok) { setIsApproving(false); return; }
-                              await handleAssignTicketNumber(selectedTicket, { useSavedData: true });
+                              await handleAssignTicketNumber(selectedTicket, { useSavedData: true, knownRecordId: currentTicketRecordId || undefined });
                               queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                               queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                               queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
@@ -8176,7 +8190,7 @@ export default function ServiceTickets() {
                         try {
                           const ok = await performSave();
                           if (!ok) { setIsApproving(false); return; }
-                          await handleAssignTicketNumber(selectedTicket, { useSavedData: true });
+                          await handleAssignTicketNumber(selectedTicket, { useSavedData: true, knownRecordId: currentTicketRecordId || undefined });
                           queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
                           queryClient.invalidateQueries({ queryKey: ['rejectedTicketsCount'] });
                           queryClient.invalidateQueries({ queryKey: ['resubmittedTicketsCount'] });
