@@ -3786,12 +3786,12 @@ export default function ServiceTickets() {
       });
       const hasPerEntryOverrides = Object.keys(relevantOverrides).length > 0;
 
-      if (hasPerEntryOverrides && !hasApprovedTicketNumber) {
+      if (hasPerEntryOverrides) {
         const mergedRows = buildRowsWithOverrides(ticket.entries, relevantOverrides);
         setServiceRows(mergedRows);
         initialServiceRowsRef.current = mergedRows.map(r => ({ ...r }));
         setEditedEntryOverrides(relevantOverrides);
-        setIsTicketEdited(true);
+        if (!hasApprovedTicketNumber) setIsTicketEdited(true);
         const legacy = serviceRowsToLegacyFormat(mergedRows);
         setEditedDescriptions(legacy.descriptions);
         setEditedHours(legacy.hours);
