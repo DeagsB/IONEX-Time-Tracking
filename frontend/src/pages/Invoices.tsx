@@ -2850,6 +2850,14 @@ export default function Invoices() {
                         gap: '6px',
                       }}
                     >
+                      {groupTickets[0]?.customerName && (
+                        <div>
+                          <strong>Customer:</strong>{' '}
+                          <CopyableHeaderValue copyText={groupTickets[0].customerName}>
+                            {groupTickets[0].customerName}
+                          </CopyableHeaderValue>
+                        </div>
+                      )}
                       <div>
                         <strong>IONEX project #:</strong>{' '}
                         <CopyableHeaderValue copyText={ionexProjectNum}>
@@ -3368,6 +3376,14 @@ export default function Invoices() {
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                    {firstTicket?.customerName && (
+                      <span>
+                        <strong>Customer:</strong>{' '}
+                        <CopyableHeaderValue copyText={firstTicket.customerName}>
+                          {firstTicket.customerName}
+                        </CopyableHeaderValue>
+                      </span>
+                    )}
                     <span>
                       <strong>IONEX project #:</strong>{' '}
                       <CopyableHeaderValue copyText={key.projectNumber?.trim() || ''}>
