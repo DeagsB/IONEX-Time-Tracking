@@ -31,6 +31,7 @@ import {
 import { generateAndStorePdf, mergePdfBlobs } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
 import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
+import SearchableSelect from '../components/SearchableSelect';
 
 type PdfExportEntryOverride = {
   description: string;
@@ -1401,6 +1402,31 @@ export default function Invoices() {
     return list;
   }, [tickets, selectedCustomerId, selectedProjectId]);
 
+  /** All ticket IDs (service_tickets.id / recordId) that belong to ANY invoiced batch mark in DB.
+   *  Used to permanently exclude invoiced tickets from re-grouping so grouping changes never affect them. */
+  const allInvoicedTicketIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of invoicedMarkRows) {
+      const ids = row.key_snapshot?.ticketIds;
+      if (!Array.isArray(ids)) continue;
+      for (const id of ids) {
+        const trimmed = typeof id === 'string' ? id.trim() : String(id ?? '').trim();
+        if (trimmed) set.add(trimmed);
+      }
+    }
+    return set;
+  }, [invoicedMarkRows]);
+
+  const uninvoicedTicketsForCustomer = useMemo(() => {
+    if (allInvoicedTicketIds.size === 0) return ticketsForCustomer;
+    return ticketsForCustomer.filter((t) => {
+      const rid = (t as ServiceTicket & { recordId?: string }).recordId?.trim();
+      if (rid && allInvoicedTicketIds.has(rid)) return false;
+      if (allInvoicedTicketIds.has(t.id)) return false;
+      return true;
+    });
+  }, [ticketsForCustomer, allInvoicedTicketIds]);
+
   const selectedCustomer = customers?.find((c: { id: string }) => c.id === selectedCustomerId);
   const isCNRL = !!selectedCustomerId && (selectedCustomer?.name ?? '').toUpperCase().includes('CNRL');
 
@@ -1439,19 +1465,19 @@ export default function Invoices() {
     return projects?.find((p: { id: string }) => p.id === selectedProjectId);
   }, [selectedProjectId, projects]);
 
-  // Group tickets: CNRL = by approver/PO/AFE etc.; non-CNRL = by project then date period (daily/weekly/bi-weekly/monthly)
-  // When "All customers" is selected, split by customer: CNRL tickets use CNRL grouping, others use time-frame grouping
+  // Group ONLY uninvoiced tickets. Invoiced tickets are reconstructed from DB snapshots separately
+  // so grouping mode changes never affect already-invoiced batches.
   const groupedTickets = useMemo((): { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] => {
     const ticketsToGroupCnrl: ServiceTicket[] = [];
     const ticketsToGroupByPeriod: ServiceTicket[] = [];
     if (selectedCustomerId) {
       if (isCNRL) {
-        ticketsToGroupCnrl.push(...ticketsForCustomer);
+        ticketsToGroupCnrl.push(...uninvoicedTicketsForCustomer);
       } else {
-        ticketsToGroupByPeriod.push(...ticketsForCustomer);
+        ticketsToGroupByPeriod.push(...uninvoicedTicketsForCustomer);
       }
     } else {
-      for (const t of ticketsForCustomer) {
+      for (const t of uninvoicedTicketsForCustomer) {
         if (isTicketCnrl(t)) ticketsToGroupCnrl.push(t);
         else ticketsToGroupByPeriod.push(t);
       }
@@ -1613,17 +1639,15 @@ export default function Invoices() {
     }
 
     return result;
-  }, [ticketsForCustomer, selectedCustomerId, isCNRL, dateRangeGroupingByCustomer, dateRangeGroupingByProject, selectedProjectId, getGroupingForTicket, isTicketCnrl]);
+  }, [uninvoicedTicketsForCustomer, selectedCustomerId, isCNRL, dateRangeGroupingByCustomer, dateRangeGroupingByProject, selectedProjectId, getGroupingForTicket, isTicketCnrl]);
 
-  // Fetch expenses for all tickets (for CC breakdown totals)
+  // Fetch expenses for all tickets (uninvoiced + invoiced)
   const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, InvoiceExpenseLine[]>>(new Map());
   useEffect(() => {
     const recordIds = new Set<string>();
-    for (const { tickets: groupTickets } of groupedTickets) {
-      for (const t of groupTickets) {
-        const rid = (t as ServiceTicket & { recordId?: string }).recordId;
-        if (rid) recordIds.add(rid);
-      }
+    for (const t of ticketsForCustomer) {
+      const rid = (t as ServiceTicket & { recordId?: string }).recordId;
+      if (rid) recordIds.add(rid);
     }
     if (recordIds.size === 0) {
       setExpensesByRecordId(new Map());
@@ -1657,7 +1681,7 @@ export default function Invoices() {
     };
     fetchAll();
     return () => { cancelled = true; };
-  }, [groupedTickets]);
+  }, [ticketsForCustomer]);
 
   const [exportingGroupIdx, setExportingGroupIdx] = useState<string | null>(null);
 
@@ -1726,14 +1750,9 @@ export default function Invoices() {
       for (const gid of missing) {
         if (cancelled) break;
         let snapshot: FrozenGroupSnapshot | null = null;
-        const group = groupedTickets.find((g) => getGroupId(g) === gid);
-        if (group) {
-          snapshot = {
-            key: group.key,
-            ticketIds: snapshotTicketIdsForInvoicedMark(
-              group.tickets as (ServiceTicket & { recordId?: string })[]
-            ),
-          };
+        const frozenSnap = frozenInvoicedGroups[gid];
+        if (frozenSnap) {
+          snapshot = frozenSnap;
         } else {
           const parsed = parseTicketIdsFromLegacyNonPeriodGroupId(gid);
           if (parsed && parsed.length > 0) {
@@ -1774,7 +1793,7 @@ export default function Invoices() {
     user,
     invoicedGroupIdsFromDb,
     dbMarkedIdSet,
-    groupedTickets,
+    frozenInvoicedGroups,
     queryClient,
   ]);
 
@@ -2021,25 +2040,19 @@ export default function Invoices() {
   }, [invoicedMarkRows]);
 
   useEffect(() => {
-    const sameTicketIdSets = (a: string[], b: string[]) =>
-      [...a].sort().join('\0') === [...b].sort().join('\0');
     let updated = false;
     const next: Record<string, FrozenGroupSnapshot> = { ...frozenInvoicedGroups };
-    for (const g of groupedTickets) {
-      const gid = getGroupId(g);
-      const invoiced =
-        findMarkRowForGroup(g, invoicedMarkRows) != null || effectiveMarkedInvoicedIds.has(gid);
-      if (invoiced) {
-        const existing = next[gid];
-        const merged = mergeMarkSnapshotForGroup(g, existing);
-        if (
-          !existing ||
-          !sameTicketIdSets(existing.ticketIds, merged.ticketIds) ||
-          JSON.stringify(existing.key) !== JSON.stringify(merged.key)
-        ) {
-          next[gid] = merged;
-          updated = true;
-        }
+    for (const row of invoicedMarkRows) {
+      const snap = row.key_snapshot;
+      if (!snap || !snap.ticketIds || !(snap.key as InvoiceGroupKeyWithPeriod | undefined)) continue;
+      const existing = next[row.group_id];
+      if (
+        !existing ||
+        JSON.stringify(existing.ticketIds) !== JSON.stringify(snap.ticketIds) ||
+        JSON.stringify(existing.key) !== JSON.stringify(snap.key)
+      ) {
+        next[row.group_id] = { key: snap.key as InvoiceGroupKeyWithPeriod, ticketIds: snap.ticketIds };
+        updated = true;
       }
     }
     if (updated) {
@@ -2050,24 +2063,35 @@ export default function Invoices() {
         // ignore
       }
     }
-  }, [groupedTickets, effectiveMarkedInvoicedIds, frozenInvoicedGroups, invoicedMarkRows]);
+  }, [frozenInvoicedGroups, invoicedMarkRows]);
 
+  /** Invoiced groups are reconstructed from DB mark rows' frozen snapshots.
+   *  This guarantees grouping mode changes NEVER affect already-invoiced batches —
+   *  the original key, ticket membership, and group_id are preserved exactly as when marked. */
   const invoicedGroups = useMemo(() => {
-    const fromCurrent = groupedTickets.filter(
-      (g) =>
-        findMarkRowForGroup(g, invoicedMarkRows) != null || effectiveMarkedInvoicedIds.has(getGroupId(g))
-    );
-    const coveredDbGroupIds = new Set<string>();
-    for (const g of groupedTickets) {
-      const row = findMarkRowForGroup(g, invoicedMarkRows);
-      if (row) coveredDbGroupIds.add(row.group_id);
+    const result: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
+    const coveredGroupIds = new Set<string>();
+
+    for (const row of invoicedMarkRows) {
+      const snap = row.key_snapshot;
+      if (!snap || !Array.isArray(snap.ticketIds)) continue;
+      const snappedKey = snap.key as InvoiceGroupKeyWithPeriod | undefined;
+      if (!snappedKey) continue;
+      const snappedIds = new Set(
+        snap.ticketIds.map((x: unknown) => (typeof x === 'string' ? x.trim() : String(x ?? '').trim())).filter(Boolean)
+      );
+      const tickets = ticketsForCustomer.filter((t) => {
+        const rid = (t as ServiceTicket & { recordId?: string }).recordId?.trim();
+        return (rid && snappedIds.has(rid)) || snappedIds.has(t.id);
+      });
+      if (tickets.length === 0) continue;
+      result.push({ key: snappedKey, tickets });
+      coveredGroupIds.add(row.group_id);
     }
-    const currentGroupIds = new Set(fromCurrent.map((g) => getGroupId(g)));
-    const markedIdsNotInCurrent = [...effectiveMarkedInvoicedIds].filter(
-      (id) => !currentGroupIds.has(id) && !coveredDbGroupIds.has(id)
-    );
-    const fromFrozen: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[] = [];
-    for (const id of markedIdsNotInCurrent) {
+
+    // Demo / legacy localStorage fallback
+    for (const id of effectiveMarkedInvoicedIds) {
+      if (coveredGroupIds.has(id)) continue;
       const snap = frozenInvoicedGroups[id];
       if (!snap) continue;
       const tickets = ticketsForCustomer.filter((t) => {
@@ -2075,27 +2099,19 @@ export default function Invoices() {
         return snap.ticketIds.some((tid) => tid === t.id || (!!rid && tid === rid));
       });
       if (tickets.length === 0) continue;
-      fromFrozen.push({ key: snap.key, tickets });
+      result.push({ key: snap.key, tickets });
     }
-    return [...fromCurrent, ...fromFrozen];
+
+    return result;
   }, [
-    groupedTickets,
-    effectiveMarkedInvoicedIds,
     invoicedMarkRows,
+    effectiveMarkedInvoicedIds,
     frozenInvoicedGroups,
     ticketsForCustomer,
   ]);
 
-  /** Batches not yet marked — main pending list, bulk export, and QuickBooks */
-  const uninvoicedGroups = useMemo(
-    () =>
-      groupedTickets.filter(
-        (g) =>
-          findMarkRowForGroup(g, invoicedMarkRows) == null &&
-          !effectiveMarkedInvoicedIds.has(getGroupId(g))
-      ),
-    [groupedTickets, effectiveMarkedInvoicedIds, invoicedMarkRows]
-  );
+  /** groupedTickets already excludes invoiced tickets, so all groups here are uninvoiced. */
+  const uninvoicedGroups = groupedTickets;
 
   const { data: savedInvoiceMetadata } = useQuery({
     queryKey: ['invoicedBatchInvoices', [...invoicedGroupIdsFromDb].sort().join(',')],
@@ -2445,53 +2461,33 @@ export default function Invoices() {
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={{ flexShrink: 0 }}>
+        <div style={{ flexShrink: 0, minWidth: '220px' }}>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Customer</label>
-          <select
+          <SearchableSelect
             value={selectedCustomerId}
-            onChange={(e) => {
-              const nextCustomerId = e.target.value;
-              setSelectedCustomerId(nextCustomerId);
-              // Clear project when customer changes so selection stays valid for the new customer
+            onChange={(val) => {
+              setSelectedCustomerId(val);
               setSelectedProjectId('');
             }}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              fontSize: '14px',
-              minWidth: '200px',
-            }}
-          >
-            <option value="">All customers</option>
-            {(customers ?? []).map((c: { id: string; name: string }) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            options={(customers ?? []).map((c: { id: string; name: string }) => ({ value: c.id, label: c.name }))}
+            emptyOption={{ value: '', label: 'All customers' }}
+            placeholder="Search customers..."
+            style={{ fontSize: '14px' }}
+          />
         </div>
-        <div style={{ flexShrink: 0 }}>
+        <div style={{ flexShrink: 0, minWidth: '220px' }}>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Project</label>
-          <select
+          <SearchableSelect
             value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              fontSize: '14px',
-              minWidth: '200px',
-            }}
-            aria-label="Filter by project"
-          >
-            <option value="">All projects</option>
-            {projectsForFilter.map((p: { id: string; name?: string; project_number?: string }) => (
-              <option key={p.id} value={p.id}>{[p.project_number, p.name].filter(Boolean).join(' – ') || p.id}</option>
-            ))}
-          </select>
+            onChange={(val) => setSelectedProjectId(val)}
+            options={projectsForFilter.map((p: { id: string; name?: string; project_number?: string }) => ({
+              value: p.id,
+              label: [p.project_number, p.name].filter(Boolean).join(' – ') || p.id,
+            }))}
+            emptyOption={{ value: '', label: 'All projects' }}
+            placeholder="Search projects..."
+            style={{ fontSize: '14px' }}
+          />
         </div>
         {selectedProjectId && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2719,11 +2715,15 @@ export default function Invoices() {
         </div>
       )}
 
-      {groupedTickets.length === 0 ? (
+      {groupedTickets.length === 0 && invoicedGroups.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           {selectedCustomerId
             ? 'No approved tickets for this customer in the selected date range. Approve service tickets first in the Service Tickets page.'
             : 'No approved tickets ready for export. Approve service tickets first in the Service Tickets page.'}
+        </div>
+      ) : groupedTickets.length === 0 && !showInvoiced ? (
+        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+          All batches are marked as invoiced. Use <strong>See invoiced</strong> to view them.
         </div>
       ) : showInvoiced ? (
         <div>
