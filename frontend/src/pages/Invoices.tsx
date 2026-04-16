@@ -1766,6 +1766,12 @@ export default function Invoices() {
       }
     }
 
+    result.sort((a, b) => {
+      const minDate = (tickets: ServiceTicket[]) =>
+        tickets.reduce((min, t) => (t.date && t.date < min ? t.date : min), '\uffff');
+      return minDate(a.tickets).localeCompare(minDate(b.tickets));
+    });
+
     return result;
   }, [uninvoicedTicketsForCustomer, selectedCustomerId, isCNRL, dateRangeGroupingByCustomer, dateRangeGroupingByProject, selectedProjectId, getGroupingForTicket, isTicketCnrl]);
 
@@ -2107,6 +2113,12 @@ export default function Invoices() {
       if (tickets.length === 0) continue;
       result.push({ key: snap.key, tickets });
     }
+
+    result.sort((a, b) => {
+      const minDate = (tickets: ServiceTicket[]) =>
+        tickets.reduce((min, t) => (t.date && t.date < min ? t.date : min), '\uffff');
+      return minDate(a.tickets).localeCompare(minDate(b.tickets));
+    });
 
     return result;
   }, [
@@ -2827,281 +2839,21 @@ export default function Invoices() {
                     : 'Multiple';
               const ionexProjectNum = key.projectNumber?.trim() || '';
               const projectNameOnly = key.projectName?.trim() || '';
+              const invoiceLabel = invoiceFilesByGroupId[persistId]?.name
+                ?? savedInvoiceMetadata?.[persistId]?.filename
+                ?? null;
+              const isAccordionOpen = isBreakdownExpanded;
               return (
                 <div
                   key={persistId}
                   style={{
-                    padding: '16px',
                     backgroundColor: 'var(--bg-secondary)',
                     borderRadius: '8px',
                     border: '1px solid var(--border-color)',
+                    overflow: 'hidden',
                   }}
                 >
-                  {/* Summary: project, approver, PO/AFE/CC, and total */}
-                  <div style={{ marginBottom: '12px' }}>
-                    <div
-                      style={{
-                        fontSize: '18px',
-                        fontWeight: 700,
-                        color: 'var(--text-primary)',
-                        marginBottom: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px',
-                      }}
-                    >
-                      {groupTickets[0]?.customerName && (
-                        <div>
-                          <strong>Customer:</strong>{' '}
-                          <CopyableHeaderValue copyText={groupTickets[0].customerName}>
-                            {groupTickets[0].customerName}
-                          </CopyableHeaderValue>
-                        </div>
-                      )}
-                      <div>
-                        <strong>IONEX project #:</strong>{' '}
-                        <CopyableHeaderValue copyText={ionexProjectNum}>
-                          {ionexProjectNum || '(none)'}
-                        </CopyableHeaderValue>
-                      </div>
-                      <div>
-                        <strong>Project name:</strong>{' '}
-                        <CopyableHeaderValue copyText={projectNameOnly}>
-                          {projectNameOnly || '(none)'}
-                        </CopyableHeaderValue>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-                      <span>
-                        <strong>Approver:</strong>{' '}
-                        <CopyableHeaderValue copyText={key.approverCode || key.approver || ''}>
-                          {key.approverCode || key.approver || '(none)'}
-                        </CopyableHeaderValue>
-                      </span>
-                      <span>
-                        <strong>PO/AFE/CC:</strong>{' '}
-                        <CopyableHeaderValue copyText={headerPoAfe === '(none)' ? '' : headerPoAfe}>
-                          {headerPoAfe}
-                        </CopyableHeaderValue>
-                      </span>
-                      {key.cc ? (
-                        <span>
-                          <strong>Coding:</strong>{' '}
-                          <CopyableHeaderValue copyText={key.cc}>{key.cc}</CopyableHeaderValue>
-                          {key.periodLabel || key.periodKey ? (
-                            <>
-                              {' · '}
-                              <strong>
-                                <CopyableHeaderValue copyText={key.periodLabel || key.periodKey || ''}>
-                                  {key.periodLabel || key.periodKey}
-                                </CopyableHeaderValue>
-                              </strong>
-                            </>
-                          ) : null}
-                        </span>
-                      ) : key.periodLabel || key.periodKey ? (
-                        <span>
-                          <strong>Period:</strong>{' '}
-                          <CopyableHeaderValue copyText={key.periodLabel || key.periodKey || ''}>
-                            <strong>{key.periodLabel || key.periodKey}</strong>
-                          </CopyableHeaderValue>
-                        </span>
-                      ) : null}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
-                        <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary-color)' }}>
-                          Total (incl. GST): $
-                          {gstTotals.totalInclGst.toLocaleString('en-CA', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
-                          Subtotal ${gstTotals.subtotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          {gstTotals.labourSubtotal > 0 && (
-                            <>
-                              {' · '}
-                              GST on labour (5%) $
-                              {gstTotals.gstOnLabour.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </>
-                          )}
-                          {gstTotals.expenseGstTotal > 0 && (
-                            <>
-                              {' · '}
-                              {gstTotals.expenseGstFromReceipt ? 'Receipt GST (expenses)' : 'GST on expenses (5%)'} $
-                              {gstTotals.expenseGstTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </>
-                          )}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                        <button
-                          onClick={() => handleExportSingleGroup(group)}
-                          disabled={!!exportProgress || !!qboProgress || exportingGroupIdx !== null}
-                          style={{
-                            padding: '6px 12px',
-                            backgroundColor: 'var(--primary-color)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            cursor: exportProgress || qboProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
-                          }}
-                          title="Download this group's merged PDF"
-                        >
-                          {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleUnmarkAsInvoiced(persistId)}
-                          disabled={!!exportProgress || !!qboProgress || unmarkInvoicedMutation.isPending}
-                          style={{
-                            padding: '6px 12px',
-                            backgroundColor: 'var(--bg-tertiary)',
-                            color: 'var(--text-secondary)',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            cursor: exportProgress || qboProgress || unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
-                          }}
-                          title="Move this group back to pending (removes DB mark and linked invoice file if any)"
-                        >
-                          {unmarkInvoicedMutation.isPending ? 'Updating…' : 'Unmark as invoiced'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Attach invoice PDF and download batch with invoice */}
-                  <div style={{ marginTop: '12px', marginBottom: '12px' }}>
-                    <div
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
-                      onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
-                      onDrop={async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.currentTarget.style.borderColor = '';
-                        const file = e.dataTransfer?.files?.[0];
-                        if (file?.type !== 'application/pdf') return;
-                        setUploadingInvoiceGroupId(persistId);
-                        setExportError(null);
-                        try {
-                          if (!isDemoMode) {
-                            await markInvoicedMutation.mutateAsync({
-                              groupId: persistId,
-                              snapshot: getMergedMarkSnapshot(group),
-                            });
-                          }
-                          const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
-                          const fileForUi = new File([file], storedName, { type: file.type });
-                          setInvoiceFileForGroup(persistId, fileForUi);
-                          await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                          await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
-                        } catch (err) {
-                          setExportError(err instanceof Error ? err.message : 'Upload failed');
-                        } finally {
-                          setUploadingInvoiceGroupId(null);
-                        }
-                      }}
-                      onClick={() => document.getElementById(`invoice-file-${persistId}`)?.click()}
-                      style={{
-                        border: '2px dashed var(--border-color)',
-                        borderRadius: '8px',
-                        padding: '12px 16px',
-                        cursor: uploadingInvoiceGroupId === persistId ? 'wait' : 'pointer',
-                        backgroundColor: 'var(--bg-tertiary)',
-                        marginBottom: '8px',
-                      }}
-                    >
-                      <input
-                        id={`invoice-file-${persistId}`}
-                        type="file"
-                        accept=".pdf,application/pdf"
-                        style={{ display: 'none' }}
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          e.target.value = '';
-                          if (!file) return;
-                          setUploadingInvoiceGroupId(persistId);
-                          setExportError(null);
-                          try {
-                            if (!isDemoMode) {
-                              await markInvoicedMutation.mutateAsync({
-                                groupId: persistId,
-                                snapshot: getMergedMarkSnapshot(group),
-                              });
-                            }
-                            const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
-                            const fileForUi = new File([file], storedName, { type: file.type });
-                            setInvoiceFileForGroup(persistId, fileForUi);
-                            await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                            await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
-                          } catch (err) {
-                            setExportError(err instanceof Error ? err.message : 'Upload failed');
-                          } finally {
-                            setUploadingInvoiceGroupId(null);
-                          }
-                        }}
-                      />
-                      {uploadingInvoiceGroupId === persistId ? (
-                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Uploading…</span>
-                      ) : invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId] ? (
-                        <span style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span title={invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}>
-                            {invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setInvoiceFileForGroup(persistId, null);
-                              try {
-                                await invoicedBatchInvoicesService.deleteInvoice(persistId);
-                                await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                              } catch (err) {
-                                setExportError(err instanceof Error ? err.message : 'Remove failed');
-                              }
-                            }}
-                            style={{
-                              padding: '2px 8px',
-                              fontSize: '11px',
-                              backgroundColor: 'var(--bg-primary)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              color: 'var(--text-secondary)',
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          Drop invoice PDF here or click to choose (saved to storage)
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleDownloadBatchWithInvoice(group, persistId)}
-                      disabled={!(invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) || !!exportProgress || !!qboProgress || downloadingWithInvoiceGroupId === persistId}
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) ? 'var(--primary-color)' : 'var(--bg-tertiary)',
-                        color: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) ? 'white' : 'var(--text-tertiary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) && !exportProgress && !qboProgress && downloadingWithInvoiceGroupId !== persistId ? 'pointer' : 'not-allowed',
-                      }}
-                      title="Merge invoice PDF (first) with this batch and download"
-                    >
-                      {downloadingWithInvoiceGroupId === persistId ? 'Generating…' : 'Download batch with invoice'}
-                    </button>
-                  </div>
-                  {/* Dropdown to show/hide detailed breakdown */}
+                  {/* Accordion header */}
                   <button
                     type="button"
                     onClick={() => {
@@ -3115,25 +2867,310 @@ export default function Invoices() {
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px',
+                      gap: '12px',
                       width: '100%',
-                      padding: '8px 12px',
-                      backgroundColor: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      color: 'var(--text-secondary)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
+                      padding: '12px 16px',
+                      backgroundColor: 'var(--bg-secondary)',
+                      border: 'none',
                       cursor: 'pointer',
                       textAlign: 'left',
+                      fontFamily: 'inherit',
+                      color: 'var(--text-primary)',
+                      fontSize: '13px',
                     }}
                   >
-                    {isBreakdownExpanded ? '▼' : '▶'} Invoice line item breakdown
+                    <span style={{ fontSize: '11px', flexShrink: 0, color: 'var(--text-tertiary)' }}>
+                      {isAccordionOpen ? '▼' : '▶'}
+                    </span>
+                    <span style={{ fontWeight: 700, flexShrink: 0 }}>
+                      {groupTickets[0]?.customerName || 'Unknown'}
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>
+                      #{ionexProjectNum || '—'}
+                    </span>
+                    {(key.periodLabel || key.periodKey) && (
+                      <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>
+                        {key.periodLabel || key.periodKey}
+                      </span>
+                    )}
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: '12px', marginLeft: 'auto', flexShrink: 0 }}>
+                      {invoiceLabel
+                        ? <span style={{ color: 'var(--success-color, #16a34a)' }}>Invoice: {invoiceLabel}</span>
+                        : 'No invoice'}
+                    </span>
+                    <span style={{ fontWeight: 700, color: 'var(--primary-color)', flexShrink: 0, fontSize: '14px' }}>
+                      ${gstTotals.totalInclGst.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                   </button>
-                  {isBreakdownExpanded && (
-                    <>
+
+                  {/* Expanded body */}
+                  {isAccordionOpen && (
+                    <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--border-color)' }}>
+                      {/* Full details */}
+                      <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+                        <div
+                          style={{
+                            fontSize: '18px',
+                            fontWeight: 700,
+                            color: 'var(--text-primary)',
+                            marginBottom: '8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px',
+                          }}
+                        >
+                          {groupTickets[0]?.customerName && (
+                            <div>
+                              <strong>Customer:</strong>{' '}
+                              <CopyableHeaderValue copyText={groupTickets[0].customerName}>
+                                {groupTickets[0].customerName}
+                              </CopyableHeaderValue>
+                            </div>
+                          )}
+                          <div>
+                            <strong>IONEX project #:</strong>{' '}
+                            <CopyableHeaderValue copyText={ionexProjectNum}>
+                              {ionexProjectNum || '(none)'}
+                            </CopyableHeaderValue>
+                          </div>
+                          <div>
+                            <strong>Project name:</strong>{' '}
+                            <CopyableHeaderValue copyText={projectNameOnly}>
+                              {projectNameOnly || '(none)'}
+                            </CopyableHeaderValue>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                          <span>
+                            <strong>Approver:</strong>{' '}
+                            <CopyableHeaderValue copyText={key.approverCode || key.approver || ''}>
+                              {key.approverCode || key.approver || '(none)'}
+                            </CopyableHeaderValue>
+                          </span>
+                          <span>
+                            <strong>PO/AFE/CC:</strong>{' '}
+                            <CopyableHeaderValue copyText={headerPoAfe === '(none)' ? '' : headerPoAfe}>
+                              {headerPoAfe}
+                            </CopyableHeaderValue>
+                          </span>
+                          {key.cc ? (
+                            <span>
+                              <strong>Coding:</strong>{' '}
+                              <CopyableHeaderValue copyText={key.cc}>{key.cc}</CopyableHeaderValue>
+                              {key.periodLabel || key.periodKey ? (
+                                <>
+                                  {' · '}
+                                  <strong>
+                                    <CopyableHeaderValue copyText={key.periodLabel || key.periodKey || ''}>
+                                      {key.periodLabel || key.periodKey}
+                                    </CopyableHeaderValue>
+                                  </strong>
+                                </>
+                              ) : null}
+                            </span>
+                          ) : key.periodLabel || key.periodKey ? (
+                            <span>
+                              <strong>Period:</strong>{' '}
+                              <CopyableHeaderValue copyText={key.periodLabel || key.periodKey || ''}>
+                                <strong>{key.periodLabel || key.periodKey}</strong>
+                              </CopyableHeaderValue>
+                            </span>
+                          ) : null}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
+                            <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--primary-color)' }}>
+                              Total (incl. GST): $
+                              {gstTotals.totalInclGst.toLocaleString('en-CA', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+                              Subtotal ${gstTotals.subtotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {gstTotals.labourSubtotal > 0 && (
+                                <>
+                                  {' · '}
+                                  GST on labour (5%) $
+                                  {gstTotals.gstOnLabour.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </>
+                              )}
+                              {gstTotals.expenseGstTotal > 0 && (
+                                <>
+                                  {' · '}
+                                  {gstTotals.expenseGstFromReceipt ? 'Receipt GST (expenses)' : 'GST on expenses (5%)'} $
+                                  {gstTotals.expenseGstTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                            <button
+                              onClick={() => handleExportSingleGroup(group)}
+                              disabled={!!exportProgress || !!qboProgress || exportingGroupIdx !== null}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: 'var(--primary-color)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: exportProgress || qboProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
+                              }}
+                              title="Download this group's merged PDF"
+                            >
+                              {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUnmarkAsInvoiced(persistId)}
+                              disabled={!!exportProgress || !!qboProgress || unmarkInvoicedMutation.isPending}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: 'var(--bg-tertiary)',
+                                color: 'var(--text-secondary)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: exportProgress || qboProgress || unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
+                              }}
+                              title="Move this group back to pending (removes DB mark and linked invoice file if any)"
+                            >
+                              {unmarkInvoicedMutation.isPending ? 'Updating…' : 'Unmark as invoiced'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Attach invoice PDF and download batch with invoice */}
+                      <div style={{ marginTop: '12px', marginBottom: '12px' }}>
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
+                          onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
+                          onDrop={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.currentTarget.style.borderColor = '';
+                            const file = e.dataTransfer?.files?.[0];
+                            if (file?.type !== 'application/pdf') return;
+                            setUploadingInvoiceGroupId(persistId);
+                            setExportError(null);
+                            try {
+                              if (!isDemoMode) {
+                                await markInvoicedMutation.mutateAsync({
+                                  groupId: persistId,
+                                  snapshot: getMergedMarkSnapshot(group),
+                                });
+                              }
+                              const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
+                              const fileForUi = new File([file], storedName, { type: file.type });
+                              setInvoiceFileForGroup(persistId, fileForUi);
+                              await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                              await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
+                            } catch (err) {
+                              setExportError(err instanceof Error ? err.message : 'Upload failed');
+                            } finally {
+                              setUploadingInvoiceGroupId(null);
+                            }
+                          }}
+                          onClick={() => document.getElementById(`invoice-file-${persistId}`)?.click()}
+                          style={{
+                            border: '2px dashed var(--border-color)',
+                            borderRadius: '8px',
+                            padding: '12px 16px',
+                            cursor: uploadingInvoiceGroupId === persistId ? 'wait' : 'pointer',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            marginBottom: '8px',
+                          }}
+                        >
+                          <input
+                            id={`invoice-file-${persistId}`}
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            style={{ display: 'none' }}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (!file) return;
+                              setUploadingInvoiceGroupId(persistId);
+                              setExportError(null);
+                              try {
+                                if (!isDemoMode) {
+                                  await markInvoicedMutation.mutateAsync({
+                                    groupId: persistId,
+                                    snapshot: getMergedMarkSnapshot(group),
+                                  });
+                                }
+                                const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
+                                const fileForUi = new File([file], storedName, { type: file.type });
+                                setInvoiceFileForGroup(persistId, fileForUi);
+                                await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                                await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
+                              } catch (err) {
+                                setExportError(err instanceof Error ? err.message : 'Upload failed');
+                              } finally {
+                                setUploadingInvoiceGroupId(null);
+                              }
+                            }}
+                          />
+                          {uploadingInvoiceGroupId === persistId ? (
+                            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Uploading…</span>
+                          ) : invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId] ? (
+                            <span style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span title={invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}>
+                                {invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setInvoiceFileForGroup(persistId, null);
+                                  try {
+                                    await invoicedBatchInvoicesService.deleteInvoice(persistId);
+                                    await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                                  } catch (err) {
+                                    setExportError(err instanceof Error ? err.message : 'Remove failed');
+                                  }
+                                }}
+                                style={{
+                                  padding: '2px 8px',
+                                  fontSize: '11px',
+                                  backgroundColor: 'var(--bg-primary)',
+                                  border: '1px solid var(--border-color)',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  color: 'var(--text-secondary)',
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                              Drop invoice PDF here or click to choose (saved to storage)
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleDownloadBatchWithInvoice(group, persistId)}
+                          disabled={!(invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) || !!exportProgress || !!qboProgress || downloadingWithInvoiceGroupId === persistId}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                            color: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) ? 'white' : 'var(--text-tertiary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: (invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId]) && !exportProgress && !qboProgress && downloadingWithInvoiceGroupId !== persistId ? 'pointer' : 'not-allowed',
+                          }}
+                          title="Merge invoice PDF (first) with this batch and download"
+                        >
+                          {downloadingWithInvoiceGroupId === persistId ? 'Generating…' : 'Download batch with invoice'}
+                        </button>
+                      </div>
+                      {/* Line item breakdown */}
                       {hasMissingPoAfe && (
                         <div style={{
                           marginTop: '12px',
@@ -3183,7 +3220,7 @@ export default function Invoices() {
                           );
                         })}
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
               );
