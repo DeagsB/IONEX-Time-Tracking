@@ -1225,6 +1225,11 @@ export default function Invoices() {
     queryFn: () => customersService.getAll(),
   });
 
+  const { data: projects } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsService.getAll(),
+  });
+
   const getGroupingForCustomer = useCallback(
     (customerId: string) => {
       const customer = customers?.find((c: { id: string; name?: string; invoice_date_grouping?: string }) => c.id === customerId);
@@ -1249,11 +1254,6 @@ export default function Invoices() {
   const { data: employees } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeesService.getAll(),
-  });
-
-  const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsService.getAll(),
   });
 
   // Build full tickets from billable entries + approved records (same logic as ServiceTickets)
