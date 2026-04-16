@@ -614,8 +614,10 @@ export async function generateAndStorePdf(
       }
     };
 
-    // Generate PDF as blob
-    const pdfBlob = await html2pdf().set(opt).from(element).outputPdf('blob') as Blob;
+    // Generate PDF as blob; strip any trailing blank page that html2pdf.js
+    // sometimes adds when content marginally overflows the page boundary.
+    const rawBlob = await html2pdf().set(opt).from(element).outputPdf('blob') as Blob;
+    const pdfBlob = await stripExtraBlankPages(rawBlob);
     
     let storageUrl: string | undefined;
     
@@ -659,6 +661,22 @@ export async function generateAndStorePdf(
   } finally {
     document.body.removeChild(container);
   }
+}
+
+/**
+ * Strip trailing blank pages from a PDF blob.
+ * html2pdf.js produces an extra empty page when content slightly overflows the
+ * page boundary. Service ticket PDFs are always exactly 1 page, so any page
+ * beyond the first is blank and should be removed before merging.
+ */
+async function stripExtraBlankPages(blob: Blob): Promise<Blob> {
+  const bytes = await blob.arrayBuffer();
+  const pdf = await PDFDocument.load(bytes);
+  while (pdf.getPageCount() > 1) {
+    pdf.removePage(pdf.getPageCount() - 1);
+  }
+  const trimmedBytes = await pdf.save();
+  return new Blob([trimmedBytes as BlobPart], { type: 'application/pdf' });
 }
 
 /**
