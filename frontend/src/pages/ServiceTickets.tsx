@@ -1248,7 +1248,7 @@ export default function ServiceTickets() {
     }
     const existingIds = new Set(baseRows.map(r => r.id));
     Object.entries(overrides).forEach(([id, ov]) => {
-      if (!existingIds.has(id) && id.startsWith('new-') && !ov._deleted) {
+      if (!existingIds.has(id) && (id.startsWith('new-') || id.startsWith('legacy-')) && !ov._deleted) {
         mergedRows.push({ id, description: ov.description, st: ov.st, tt: ov.tt, ft: ov.ft, so: ov.so, fo: ov.fo });
       }
     });
@@ -2291,10 +2291,10 @@ export default function ServiceTickets() {
           const baseEntryHours = { 'Shop Time': 0, 'Travel Time': 0, 'Field Time': 0, 'Shop Overtime': 0, 'Field Overtime': 0 };
           const overrideHours = { st: 0, tt: 0, ft: 0, so: 0, fo: 0 };
           
-          // Only include overrides for entries that belong to THIS ticket, plus manual rows (new-*)
+          // Only include overrides for entries that belong to THIS ticket, plus manual/legacy rows
           const btEntryIds = new Set(bt.entries.map(e => e.id));
           const relevantOverrideIds = new Set(
-            Object.keys(savedOverrides).filter(id => btEntryIds.has(id) || id.startsWith('new-'))
+            Object.keys(savedOverrides).filter(id => btEntryIds.has(id) || id.startsWith('new-') || id.startsWith('legacy-'))
           );
           
           // Sum hours from base entries that are NOT overridden
@@ -3780,7 +3780,7 @@ export default function ServiceTickets() {
       const ticketEntryIds = new Set(ticket.entries.map(e => e.id));
       const relevantOverrides: Record<string, EntryOverride> = {};
       Object.entries(savedOverrides).forEach(([id, ov]) => {
-        if (ticketEntryIds.has(id) || id.startsWith('new-')) {
+        if (ticketEntryIds.has(id) || id.startsWith('new-') || id.startsWith('legacy-')) {
           relevantOverrides[id] = ov;
         }
       });
