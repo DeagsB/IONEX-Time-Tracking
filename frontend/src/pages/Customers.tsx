@@ -33,6 +33,7 @@ export default function Customers() {
     rate_field_junior: '',
     rate_field_senior: '',
     rate_travel: '',
+    invoice_date_grouping: '',
   });
 
   const [showInactive, setShowInactive] = useState(false);
@@ -189,6 +190,7 @@ export default function Customers() {
       rate_field_junior: '',
       rate_field_senior: '',
       rate_travel: '',
+      invoice_date_grouping: '',
     });
   };
 
@@ -215,16 +217,21 @@ export default function Customers() {
       rate_field_junior: customer.rate_field_junior || '',
       rate_field_senior: customer.rate_field_senior || '',
       rate_travel: customer.rate_travel || '',
+      invoice_date_grouping: customer.invoice_date_grouping || '',
     });
     setShowModal(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const payload = {
+      ...formData,
+      invoice_date_grouping: formData.invoice_date_grouping || null,
+    };
     if (editingCustomer) {
-      updateMutation.mutate({ id: editingCustomer.id, data: formData });
+      updateMutation.mutate({ id: editingCustomer.id, data: payload });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(payload);
     }
   };
 
@@ -435,6 +442,23 @@ export default function Customers() {
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
+            </div>
+
+            <div className="form-group">
+              <label className="label">Invoice Grouping</label>
+              <select
+                className="input"
+                value={formData.invoice_date_grouping}
+                onChange={(e) => setFormData({ ...formData, invoice_date_grouping: e.target.value })}
+              >
+                <option value="">Default</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="bi-weekly">Bi-weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="project-completion">Project Completion</option>
+                <option value="progress">Progress</option>
+              </select>
             </div>
 
             <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid var(--border-color)' }} />
@@ -668,6 +692,23 @@ export default function Customers() {
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
+            </div>
+
+            <div className="form-group">
+              <label className="label">Invoice Grouping</label>
+              <select
+                className="input"
+                value={formData.invoice_date_grouping}
+                onChange={(e) => setFormData({ ...formData, invoice_date_grouping: e.target.value })}
+              >
+                <option value="">Default</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="bi-weekly">Bi-weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="project-completion">Project Completion</option>
+                <option value="progress">Progress</option>
+              </select>
             </div>
 
             <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid var(--border-color)' }} />

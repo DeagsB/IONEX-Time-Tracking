@@ -38,6 +38,7 @@ export default function Projects() {
     ft_junior_rate: '',
     ft_senior_rate: '',
     travel_rate: '',
+    invoice_date_grouping: '',
   });
 
   const [showInactive, setShowInactive] = useState(false);
@@ -247,6 +248,7 @@ export default function Projects() {
       if (data.ft_junior_rate !== undefined) projectData.ft_junior_rate = data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null;
       if (data.ft_senior_rate !== undefined) projectData.ft_senior_rate = data.ft_senior_rate ? parseFloat(data.ft_senior_rate) : null;
       if (data.travel_rate !== undefined) projectData.travel_rate = data.travel_rate ? parseFloat(data.travel_rate) : null;
+      if (data.invoice_date_grouping !== undefined) projectData.invoice_date_grouping = data.invoice_date_grouping || null;
 
       return await projectsService.update(id, projectData);
     },
@@ -315,6 +317,7 @@ export default function Projects() {
       ft_junior_rate: '',
       ft_senior_rate: '',
       travel_rate: '',
+      invoice_date_grouping: '',
     });
   };
 
@@ -339,6 +342,7 @@ export default function Projects() {
       ft_junior_rate: project.ft_junior_rate?.toString() || '',
       ft_senior_rate: project.ft_senior_rate?.toString() || '',
       travel_rate: project.travel_rate?.toString() || '',
+      invoice_date_grouping: project.invoice_date_grouping || '',
     });
     setShowModal(true);
   };
@@ -652,6 +656,22 @@ export default function Projects() {
                   onChange={(e) => setFormData({ ...formData, other: e.target.value })}
                   placeholder="Additional notes"
                 />
+              </div>
+              <div className="form-group">
+                <label className="label">Invoice Grouping (overrides customer)</label>
+                <select
+                  className="input"
+                  value={formData.invoice_date_grouping}
+                  onChange={(e) => setFormData({ ...formData, invoice_date_grouping: e.target.value })}
+                >
+                  <option value="">Use Customer Default</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="bi-weekly">Bi-weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="project-completion">Project Completion</option>
+                  <option value="progress">Progress</option>
+                </select>
               </div>
             </div>
 
@@ -1045,6 +1065,22 @@ export default function Projects() {
                   onChange={(e) => setFormData({ ...formData, other: e.target.value })}
                   placeholder="Additional notes"
                 />
+              </div>
+              <div className="form-group">
+                <label className="label">Invoice Grouping (overrides customer)</label>
+                <select
+                  className="input"
+                  value={formData.invoice_date_grouping}
+                  onChange={(e) => setFormData({ ...formData, invoice_date_grouping: e.target.value })}
+                >
+                  <option value="">Use Customer Default</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="bi-weekly">Bi-weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="project-completion">Project Completion</option>
+                  <option value="progress">Progress</option>
+                </select>
               </div>
             </div>
 
