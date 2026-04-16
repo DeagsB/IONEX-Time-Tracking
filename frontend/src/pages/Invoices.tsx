@@ -1794,6 +1794,10 @@ export default function Invoices() {
       const pendingA = uninvoicedGroupPeriodStillAccumulating(a, getGroupingForTicket);
       const pendingB = uninvoicedGroupPeriodStillAccumulating(b, getGroupingForTicket);
       if (pendingA !== pendingB) return pendingA ? 1 : -1;
+      const custA = a.tickets[0]?.customerName ?? a.tickets[0]?.customerId ?? '';
+      const custB = b.tickets[0]?.customerName ?? b.tickets[0]?.customerId ?? '';
+      const custCmp = custA.localeCompare(custB);
+      if (custCmp !== 0) return custCmp;
       return minDate(a.tickets).localeCompare(minDate(b.tickets));
     });
 
@@ -2142,6 +2146,10 @@ export default function Invoices() {
     result.sort((a, b) => {
       const minDate = (tickets: ServiceTicket[]) =>
         tickets.reduce((min, t) => (t.date && t.date < min ? t.date : min), '\uffff');
+      const custA = a.tickets[0]?.customerName ?? a.tickets[0]?.customerId ?? '';
+      const custB = b.tickets[0]?.customerName ?? b.tickets[0]?.customerId ?? '';
+      const custCmp = custA.localeCompare(custB);
+      if (custCmp !== 0) return custCmp;
       return minDate(a.tickets).localeCompare(minDate(b.tickets));
     });
 
