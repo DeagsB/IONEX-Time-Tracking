@@ -861,6 +861,22 @@ function periodAccumulationHintLabel(periodLabel: string | undefined): string {
 
 type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodLabel?: string };
 
+/** Same rule as pending banner on uninvoiced cards: calendar period not ended yet. */
+function uninvoicedGroupPeriodStillAccumulating(
+  group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
+  getGroupingForTicket: (customerId: string, projectId: string) => DateRangeGrouping
+): boolean {
+  const pk = group.key.periodKey;
+  if (!pk || String(pk).startsWith('pc:') || String(pk).startsWith('prog:')) return false;
+  const first = group.tickets[0];
+  if (!first) return false;
+  const custId = first.customerId ?? '';
+  const projId =
+    (first as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? first.projectId ?? '';
+  const periodGrouping = cnrlPeriodGrouping(getGroupingForTicket(custId, projId));
+  return isInvoicePeriodStillAccumulating(pk, periodGrouping);
+}
+
 type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[] };
 
 /** Persist service_tickets.id (UUID) in marks so DB locks and Service Tickets match. Falls back to composite t.id if no DB row yet. */
@@ -1162,10 +1178,27 @@ export default function Invoices() {
   const [startDate, setStartDate] = useState('2026-01-01');
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [dateRangeGroupingByCustomer, setDateRangeGroupingByCustomer] = useState<Record<string, DateRangeGrouping>>({});
-  const [dateRangeGroupingByProject, setDateRangeGroupingByProject] = useState<Record<string, DateRangeGrouping>>({});
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(() => {
+    try { return localStorage.getItem('ionex-inv-customer') || ''; } catch { return ''; }
+  });
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
+    try { return localStorage.getItem('ionex-inv-project') || ''; } catch { return ''; }
+  });
+  const [defaultGrouping, setDefaultGrouping] = useState<DateRangeGrouping>(() => {
+    try { return (localStorage.getItem('ionex-inv-grp-default') as DateRangeGrouping) || 'monthly'; } catch { return 'monthly'; }
+  });
+  const [dateRangeGroupingByCustomer, setDateRangeGroupingByCustomer] = useState<Record<string, DateRangeGrouping>>(() => {
+    try { const r = localStorage.getItem('ionex-inv-grp-cust'); return r ? JSON.parse(r) : {}; } catch { return {}; }
+  });
+  const [dateRangeGroupingByProject, setDateRangeGroupingByProject] = useState<Record<string, DateRangeGrouping>>(() => {
+    try { const r = localStorage.getItem('ionex-inv-grp-proj'); return r ? JSON.parse(r) : {}; } catch { return {}; }
+  });
+
+  useEffect(() => { try { localStorage.setItem('ionex-inv-customer', selectedCustomerId); } catch {} }, [selectedCustomerId]);
+  useEffect(() => { try { localStorage.setItem('ionex-inv-project', selectedProjectId); } catch {} }, [selectedProjectId]);
+  useEffect(() => { try { localStorage.setItem('ionex-inv-grp-default', defaultGrouping); } catch {} }, [defaultGrouping]);
+  useEffect(() => { try { localStorage.setItem('ionex-inv-grp-cust', JSON.stringify(dateRangeGroupingByCustomer)); } catch {} }, [dateRangeGroupingByCustomer]);
+  useEffect(() => { try { localStorage.setItem('ionex-inv-grp-proj', JSON.stringify(dateRangeGroupingByProject)); } catch {} }, [dateRangeGroupingByProject]);
 
   const qboApiLocal = isQuickBooksApiLocal();
   const { data: qboConnected } = useQuery({
@@ -1208,9 +1241,9 @@ export default function Invoices() {
       if (dateRangeGroupingByCustomer[customerId]) return dateRangeGroupingByCustomer[customerId];
       const customer = customers?.find((c: { id: string; name?: string }) => c.id === customerId);
       const isCnrl = (customer?.name ?? '').toUpperCase().includes('CNRL');
-      return isCnrl ? 'bi-weekly' : 'monthly';
+      return isCnrl ? 'bi-weekly' : defaultGrouping;
     },
-    [dateRangeGroupingByCustomer, customers]
+    [dateRangeGroupingByCustomer, customers, defaultGrouping]
   );
 
   /** Grouping for a ticket: session project override, else customer default (same as pre–invoice_date_grouping; keeps getGroupId stable vs marks from 398505f). */
@@ -1769,6 +1802,9 @@ export default function Invoices() {
     result.sort((a, b) => {
       const minDate = (tickets: ServiceTicket[]) =>
         tickets.reduce((min, t) => (t.date && t.date < min ? t.date : min), '\uffff');
+      const pendingA = uninvoicedGroupPeriodStillAccumulating(a, getGroupingForTicket);
+      const pendingB = uninvoicedGroupPeriodStillAccumulating(b, getGroupingForTicket);
+      if (pendingA !== pendingB) return pendingA ? 1 : -1;
       return minDate(a.tickets).localeCompare(minDate(b.tickets));
     });
 
@@ -2540,58 +2576,41 @@ export default function Invoices() {
             </button>
           </div>
         )}
-        {selectedCustomerId && (
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by (customer)</label>
-            <select
-              value={getGroupingForCustomer(selectedCustomerId)}
-              onChange={(e) => setDateRangeGroupingByCustomer((prev) => ({ ...prev, [selectedCustomerId]: e.target.value as DateRangeGrouping }))}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '14px',
-              }}
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="bi-weekly">Bi-weekly</option>
-              <option value="monthly">Monthly</option>
-              {!isCNRL && <option value="project-completion">Project completion (one batch per project)</option>}
-              {!isCNRL && <option value="progress">Progress (batch as you go)</option>}
-            </select>
-          </div>
-        )}
-        {selectedProjectId && (
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Group by (project)</label>
-            <select
-              value={dateRangeGroupingByProject[selectedProjectId] ?? getGroupingForCustomer(selectedCustomerId || '')}
-              onChange={(e) => setDateRangeGroupingByProject((prev) => ({ ...prev, [selectedProjectId]: e.target.value as DateRangeGrouping }))}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '14px',
-              }}
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="bi-weekly">Bi-weekly</option>
-              <option value="monthly">Monthly</option>
-              {(!selectedCustomerId ? !projectFilterCustomerIsCnrl : !isCNRL) && (
-                <option value="project-completion">Project completion (one batch per project)</option>
-              )}
-              {(!selectedCustomerId ? !projectFilterCustomerIsCnrl : !isCNRL) && (
-                <option value="progress">Progress (batch as you go)</option>
-              )}
-            </select>
-          </div>
-        )}
+        <div>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+            {selectedCustomerId ? `Group by (${(customers?.find((c: { id: string; name?: string }) => c.id === selectedCustomerId) as { name?: string })?.name || 'customer'})` : 'Group by'}
+          </label>
+          <select
+            value={selectedCustomerId ? getGroupingForCustomer(selectedCustomerId) : defaultGrouping}
+            onChange={(e) => {
+              const val = e.target.value as DateRangeGrouping;
+              if (selectedCustomerId) {
+                setDateRangeGroupingByCustomer((prev) => ({ ...prev, [selectedCustomerId]: val }));
+              } else {
+                setDefaultGrouping(val);
+              }
+            }}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+            }}
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="bi-weekly">Bi-weekly</option>
+            <option value="monthly">Monthly</option>
+            {(!selectedCustomerId || !isCNRL) && (
+              <option value="project-completion">Project completion (one batch per project)</option>
+            )}
+            {(!selectedCustomerId || !isCNRL) && (
+              <option value="progress">Progress (batch as you go)</option>
+            )}
+          </select>
+        </div>
         <div>
           <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Start Date</label>
           <input
