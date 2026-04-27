@@ -580,7 +580,7 @@ export function getProjectHeaderFields(project: { approver?: string; po_afe?: st
 }
 
 /** Round hours to nearest 0.5 (round up) */
-function roundToHalfHour(hours: number): number {
+export function roundToHalfHour(hours: number): number {
   return Math.ceil(hours * 2) / 2;
 }
 

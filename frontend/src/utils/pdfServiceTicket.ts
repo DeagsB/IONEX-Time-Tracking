@@ -1,5 +1,5 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { ServiceTicket, getRateTypeSortOrder } from './serviceTickets';
+import { ServiceTicket, roundToHalfHour } from './serviceTickets';
 
 // PDF page dimensions (Letter size)
 const PAGE_WIDTH = 612;
