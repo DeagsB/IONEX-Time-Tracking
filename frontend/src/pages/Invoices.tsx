@@ -1561,6 +1561,7 @@ export default function Invoices() {
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
   const [showInvoiced, setShowInvoiced] = useState(false);
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
   const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
   const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
@@ -2164,11 +2165,49 @@ export default function Invoices() {
   /** groupedTickets already excludes invoiced tickets, so all groups here are uninvoiced. */
   const uninvoicedGroups = groupedTickets;
 
+  const filteredUninvoicedGroups = useMemo(() => {
+    if (!invoiceSearchQuery.trim()) return uninvoicedGroups;
+    const q = invoiceSearchQuery.trim().toLowerCase();
+    return uninvoicedGroups.filter((g) => {
+      const custName = g.tickets[0]?.customerName?.toLowerCase() ?? '';
+      const projName = g.key.projectName?.toLowerCase() ?? '';
+      const projNum = g.key.projectNumber?.toLowerCase() ?? '';
+      const ticketNums = g.tickets.map(t => t.ticketNumber?.toLowerCase() ?? '').join(' ');
+      return custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
+    });
+  }, [uninvoicedGroups, invoiceSearchQuery]);
+
   const { data: savedInvoiceMetadata } = useQuery({
     queryKey: ['invoicedBatchInvoices', [...invoicedGroupIdsFromDb].sort().join(',')],
     queryFn: () => invoicedBatchInvoicesService.getMetadataByGroupIds(invoicedGroupIdsFromDb),
     enabled: showInvoiced && invoicedGroupIdsFromDb.length > 0,
   });
+
+  const getInvoiceLabel = useCallback((group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+    const pid = resolvedPersistGroupId(group, invoicedMarkRows);
+    return invoiceFilesByGroupId[pid]?.name ?? savedInvoiceMetadata?.[pid]?.filename ?? null;
+  }, [invoicedMarkRows, invoiceFilesByGroupId, savedInvoiceMetadata]);
+
+  const extractInvoiceNumber = useCallback((label: string | null): number => {
+    if (!label) return -1;
+    const m = label.match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : -1;
+  }, []);
+
+  const sortedFilteredInvoicedGroups = useMemo(() => {
+    let groups = [...invoicedGroups];
+    groups.sort((a, b) => extractInvoiceNumber(getInvoiceLabel(b)) - extractInvoiceNumber(getInvoiceLabel(a)));
+    if (!invoiceSearchQuery.trim()) return groups;
+    const q = invoiceSearchQuery.trim().toLowerCase();
+    return groups.filter((g) => {
+      const label = getInvoiceLabel(g)?.toLowerCase() ?? '';
+      const custName = g.tickets[0]?.customerName?.toLowerCase() ?? '';
+      const projName = g.key.projectName?.toLowerCase() ?? '';
+      const projNum = g.key.projectNumber?.toLowerCase() ?? '';
+      const ticketNums = g.tickets.map(t => t.ticketNumber?.toLowerCase() ?? '').join(' ');
+      return label.includes(q) || custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
+    });
+  }, [invoicedGroups, invoiceSearchQuery, getInvoiceLabel, extractInvoiceNumber]);
 
   const markTicketsAsPdfExported = async (groupTickets: ServiceTicket[]) => {
     const recordIds = groupTickets
@@ -2760,8 +2799,28 @@ export default function Invoices() {
               No invoiced groups. Use "Back to pending" to return.
             </div>
           ) : (
+          <>
+          <div style={{ marginBottom: '12px' }}>
+            <input
+              type="text"
+              value={invoiceSearchQuery}
+              onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+              placeholder="Search invoices by number, customer, project, ticket…"
+              style={{
+                width: '100%',
+                maxWidth: '400px',
+                padding: '8px 12px',
+                fontSize: '14px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                backgroundColor: 'var(--bg-primary)',
+                color: 'var(--text-primary)',
+                outline: 'none',
+              }}
+            />
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {invoicedGroups.map((group) => {
+            {sortedFilteredInvoicedGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
               const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
@@ -2876,7 +2935,7 @@ export default function Invoices() {
                     )}
                     <span style={{ color: 'var(--text-tertiary)', fontSize: '12px', marginLeft: 'auto', flexShrink: 0 }}>
                       {invoiceLabel
-                        ? <span style={{ color: 'var(--success-color, #16a34a)' }}>Invoice: {invoiceLabel}</span>
+                        ? <span style={{ color: 'var(--success-color, #16a34a)' }}>{invoiceLabel}</span>
                         : 'No invoice'}
                     </span>
                     <span style={{ fontWeight: 700, color: 'var(--primary-color)', flexShrink: 0, fontSize: '14px' }}>
@@ -3207,6 +3266,7 @@ export default function Invoices() {
               );
             })}
           </div>
+          </>
           )}
         </div>
       ) : uninvoicedGroups.length === 0 ? (
@@ -3306,8 +3366,27 @@ export default function Invoices() {
             </button>
           </div>
 
+          <div style={{ marginBottom: '12px' }}>
+            <input
+              type="text"
+              value={invoiceSearchQuery}
+              onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+              placeholder="Search by customer, project, ticket number…"
+              style={{
+                width: '100%',
+                maxWidth: '400px',
+                padding: '8px 12px',
+                fontSize: '14px',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                backgroundColor: 'var(--bg-primary)',
+                color: 'var(--text-primary)',
+                outline: 'none',
+              }}
+            />
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {uninvoicedGroups.map((group) => {
+            {filteredUninvoicedGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
               const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
