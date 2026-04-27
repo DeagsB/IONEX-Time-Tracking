@@ -51,41 +51,54 @@ function splitDescription(description: string, maxChars: number): string[] {
  */
 interface RowItem {
   description: string;
-  hours: number | null; // null means continuation row (no hours)
-  rateType: string;
+  st: number;
+  tt: number;
+  ft: number;
+  so: number;
+  fo: number;
   isFirstLineOfEntry: boolean;
 }
 
 /**
- * Prepares row items from entries, splitting long descriptions across rows
+ * Prepares row items from entries, merging entries with the same description
  */
 function prepareRowItems(entries: ServiceTicket['entries']): RowItem[] {
-  const rowItems: RowItem[] = [];
-
-  // Sort entries by rate type order: Shop Time, Field Time, Travel Time, then Overtime
-  const sortedEntries = [...entries].sort((a, b) => {
-    const rateTypeA = a.rate_type || 'Shop Time';
-    const rateTypeB = b.rate_type || 'Shop Time';
-    const orderA = getRateTypeSortOrder(rateTypeA);
-    const orderB = getRateTypeSortOrder(rateTypeB);
-    
-    // If same order, maintain original order
-    if (orderA === orderB) {
-      return 0;
-    }
-    
-    return orderA - orderB;
-  });
-
-  for (const entry of sortedEntries) {
-    const descriptionLines = splitDescription(entry.description || 'No description', MAX_DESCRIPTION_CHARS);
+  const merged = new Map<string, { description: string; st: number; tt: number; ft: number; so: number; fo: number }>();
+  for (const entry of entries) {
+    const desc = entry.description || 'No description';
     const rateType = entry.rate_type || 'Shop Time';
+    const hours = roundToHalfHour(Number(entry.hours) || 0);
+    const existing = merged.get(desc);
+    if (existing) {
+      if (rateType === 'Shop Time') existing.st += hours;
+      else if (rateType === 'Travel Time') existing.tt += hours;
+      else if (rateType === 'Field Time') existing.ft += hours;
+      else if (rateType === 'Shop Overtime') existing.so += hours;
+      else if (rateType === 'Field Overtime') existing.fo += hours;
+      else existing.st += hours;
+    } else {
+      merged.set(desc, {
+        description: desc,
+        st: rateType === 'Shop Time' ? hours : 0,
+        tt: rateType === 'Travel Time' ? hours : 0,
+        ft: rateType === 'Field Time' ? hours : 0,
+        so: rateType === 'Shop Overtime' ? hours : 0,
+        fo: rateType === 'Field Overtime' ? hours : 0,
+      });
+    }
+  }
 
+  const rowItems: RowItem[] = [];
+  for (const row of merged.values()) {
+    const descriptionLines = splitDescription(row.description, MAX_DESCRIPTION_CHARS);
     for (let i = 0; i < descriptionLines.length; i++) {
       rowItems.push({
         description: descriptionLines[i],
-        hours: i === 0 ? roundToHalfHour(entry.hours) : null, // Only first line gets hours, rounded to 0.5
-        rateType: rateType,
+        st: i === 0 ? row.st : 0,
+        tt: i === 0 ? row.tt : 0,
+        ft: i === 0 ? row.ft : 0,
+        so: i === 0 ? row.so : 0,
+        fo: i === 0 ? row.fo : 0,
         isFirstLineOfEntry: i === 0,
       });
     }
@@ -214,29 +227,26 @@ function fillRowItems(
     const descAddr = createCellAddress(currentRow, descriptionCol);
     setCellValue(descAddr, item.description);
 
-      // Set hours if this is the first line of an entry (already rounded to 0.5)
-      if (item.hours !== null) {
-        const roundedHours = roundToHalfHour(item.hours); // Ensure rounding is applied
-        let hoursCol = stCol;
-        if (item.rateType === 'Travel Time') {
-          hoursCol = ttCol;
-          ttTotal += roundedHours;
-        } else if (item.rateType === 'Field Time') {
-          hoursCol = ftCol;
-          ftTotal += roundedHours;
-        } else if (item.rateType === 'Shop Overtime') {
-          hoursCol = soCol;
-          shopOtTotal += roundedHours;
-        } else if (item.rateType === 'Field Overtime') {
-          hoursCol = foCol;
-          fieldOtTotal += roundedHours;
-        } else {
-          rtTotal += roundedHours; // Shop Time
-        }
-
-      const hoursAddr = createCellAddress(currentRow, hoursCol);
-      setCellValue(hoursAddr, roundedHours);
-    }
+      if (item.st > 0) {
+        setCellValue(createCellAddress(currentRow, stCol), item.st);
+        rtTotal += item.st;
+      }
+      if (item.tt > 0) {
+        setCellValue(createCellAddress(currentRow, ttCol), item.tt);
+        ttTotal += item.tt;
+      }
+      if (item.ft > 0) {
+        setCellValue(createCellAddress(currentRow, ftCol), item.ft);
+        ftTotal += item.ft;
+      }
+      if (item.so > 0) {
+        setCellValue(createCellAddress(currentRow, soCol), item.so);
+        shopOtTotal += item.so;
+      }
+      if (item.fo > 0) {
+        setCellValue(createCellAddress(currentRow, foCol), item.fo);
+        fieldOtTotal += item.fo;
+      }
 
     currentRow++;
     itemIndex++;

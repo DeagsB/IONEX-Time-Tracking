@@ -73,21 +73,30 @@ function useFrozenHoursForServiceTicketPdf(ticket: ServiceTicket): boolean {
 type PdfDescriptionLine = { text: string; st: number; tt: number; ft: number; so: number; fo: number };
 
 function buildPdfDescriptionLinesFromEntries(ticket: ServiceTicket): PdfDescriptionLine[] {
-  const lines: PdfDescriptionLine[] = [];
+  const merged = new Map<string, PdfDescriptionLine>();
   [...ticket.entries].reverse().forEach((entry) => {
     const desc = entry.description || 'Work performed';
     const rateCode = getRateCode(entry.rate_type);
     const roundedHours = roundToHalfHour(Number(entry.hours) || 0);
-    lines.push({
-      text: desc,
-      st: rateCode === 'RT' ? roundedHours : 0,
-      tt: rateCode === 'TT' ? roundedHours : 0,
-      ft: rateCode === 'FT' ? roundedHours : 0,
-      so: entry.rate_type === 'Shop Overtime' ? roundedHours : 0,
-      fo: entry.rate_type === 'Field Overtime' ? roundedHours : 0,
-    });
+    const existing = merged.get(desc);
+    if (existing) {
+      if (rateCode === 'RT') existing.st += roundedHours;
+      else if (rateCode === 'TT') existing.tt += roundedHours;
+      else if (rateCode === 'FT') existing.ft += roundedHours;
+      if (entry.rate_type === 'Shop Overtime') existing.so += roundedHours;
+      if (entry.rate_type === 'Field Overtime') existing.fo += roundedHours;
+    } else {
+      merged.set(desc, {
+        text: desc,
+        st: rateCode === 'RT' ? roundedHours : 0,
+        tt: rateCode === 'TT' ? roundedHours : 0,
+        ft: rateCode === 'FT' ? roundedHours : 0,
+        so: entry.rate_type === 'Shop Overtime' ? roundedHours : 0,
+        fo: entry.rate_type === 'Field Overtime' ? roundedHours : 0,
+      });
+    }
   });
-  return lines;
+  return [...merged.values()];
 }
 
 /** One table row with non-zero columns (matches standalone ticket PDF layout). */

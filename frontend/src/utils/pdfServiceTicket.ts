@@ -102,37 +102,50 @@ function splitDescription(description: string, maxChars: number): string[] {
 
 interface RowItem {
   description: string;
-  hours: number | null;
-  rateType: string;
+  st: number;
+  tt: number;
+  ft: number;
+  so: number;
+  fo: number;
 }
 
 function prepareRowItems(entries: ServiceTicket['entries']): RowItem[] {
-  const rowItems: RowItem[] = [];
-
-  // Sort entries by rate type order: Shop Time, Field Time, Travel Time, then Overtime
-  const sortedEntries = [...entries].sort((a, b) => {
-    const rateTypeA = a.rate_type || 'Shop Time';
-    const rateTypeB = b.rate_type || 'Shop Time';
-    const orderA = getRateTypeSortOrder(rateTypeA);
-    const orderB = getRateTypeSortOrder(rateTypeB);
-    
-    // If same order, maintain original order
-    if (orderA === orderB) {
-      return 0;
-    }
-    
-    return orderA - orderB;
-  });
-
-  for (const entry of sortedEntries) {
-    const descriptionLines = splitDescription(entry.description || 'No description', MAX_DESCRIPTION_CHARS);
+  const merged = new Map<string, { description: string; st: number; tt: number; ft: number; so: number; fo: number }>();
+  for (const entry of entries) {
+    const desc = entry.description || 'No description';
     const rateType = entry.rate_type || 'Shop Time';
+    const hours = roundToHalfHour(Number(entry.hours) || 0);
+    const existing = merged.get(desc);
+    if (existing) {
+      if (rateType === 'Shop Time') existing.st += hours;
+      else if (rateType === 'Travel Time') existing.tt += hours;
+      else if (rateType === 'Field Time') existing.ft += hours;
+      else if (rateType === 'Shop Overtime') existing.so += hours;
+      else if (rateType === 'Field Overtime') existing.fo += hours;
+      else existing.st += hours;
+    } else {
+      merged.set(desc, {
+        description: desc,
+        st: rateType === 'Shop Time' ? hours : 0,
+        tt: rateType === 'Travel Time' ? hours : 0,
+        ft: rateType === 'Field Time' ? hours : 0,
+        so: rateType === 'Shop Overtime' ? hours : 0,
+        fo: rateType === 'Field Overtime' ? hours : 0,
+      });
+    }
+  }
 
+  const rowItems: RowItem[] = [];
+  for (const row of merged.values()) {
+    const descriptionLines = splitDescription(row.description, MAX_DESCRIPTION_CHARS);
     for (let i = 0; i < descriptionLines.length; i++) {
       rowItems.push({
         description: descriptionLines[i],
-        hours: i === 0 ? entry.hours : null,
-        rateType: rateType,
+        st: i === 0 ? row.st : 0,
+        tt: i === 0 ? row.tt : 0,
+        ft: i === 0 ? row.ft : 0,
+        so: i === 0 ? row.so : 0,
+        fo: i === 0 ? row.fo : 0,
       });
     }
   }
@@ -343,25 +356,19 @@ export async function generatePdfServiceTicket(ticket: ServiceTicket): Promise<U
         color: rgb(0, 0, 0),
       });
       
-      // Hours in appropriate column
-      if (item.hours !== null) {
-        let hoursX = LAYOUT.hoursColumns.rt.x;
-        
-        if (item.rateType === 'Travel Time') {
-          hoursX = LAYOUT.hoursColumns.tt.x;
-        } else if (item.rateType === 'Field Time') {
-          hoursX = LAYOUT.hoursColumns.ft.x;
-        } else if (item.rateType === 'Shop Overtime' || item.rateType === 'Field Overtime') {
-          hoursX = LAYOUT.hoursColumns.ot.x;
-        }
-        
-        page.drawText(item.hours.toFixed(2), {
-          x: hoursX,
-          y: rowY,
-          size: 8,
-          font,
-          color: rgb(0, 0, 0),
-        });
+      // Hours in appropriate columns (merged: one row can have ST + SO etc.)
+      if (item.st > 0) {
+        page.drawText(item.st.toFixed(2), { x: LAYOUT.hoursColumns.rt.x, y: rowY, size: 8, font, color: rgb(0, 0, 0) });
+      }
+      if (item.ft > 0) {
+        page.drawText(item.ft.toFixed(2), { x: LAYOUT.hoursColumns.ft.x, y: rowY, size: 8, font, color: rgb(0, 0, 0) });
+      }
+      if (item.tt > 0) {
+        page.drawText(item.tt.toFixed(2), { x: LAYOUT.hoursColumns.tt.x, y: rowY, size: 8, font, color: rgb(0, 0, 0) });
+      }
+      const ot = item.so + item.fo;
+      if (ot > 0) {
+        page.drawText(ot.toFixed(2), { x: LAYOUT.hoursColumns.ot.x, y: rowY, size: 8, font, color: rgb(0, 0, 0) });
       }
       
       currentItemIndex++;
