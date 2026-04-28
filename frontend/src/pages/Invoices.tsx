@@ -1078,7 +1078,8 @@ function mergeMarkSnapshotForGroup(
   group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
   existing: FrozenGroupSnapshot | null | undefined,
   expensesCombined?: boolean,
-  statusId?: string
+  statusId?: string,
+  pendingLabourNotes?: Record<string, string>
 ): FrozenGroupSnapshot {
   const fresh = snapshotTicketIdsForInvoicedMark(group.tickets as (ServiceTicket & { recordId?: string })[]);
   const merged = new Set<string>();
@@ -1093,6 +1094,7 @@ function mergeMarkSnapshotForGroup(
     ticketIds: [...merged].sort(),
     expensesCombined: expensesCombined ?? existing?.expensesCombined,
     statusId: statusId ?? existing?.statusId,
+    labourNotes: pendingLabourNotes ?? existing?.labourNotes,
   };
 }
 
@@ -1914,6 +1916,7 @@ export default function Invoices() {
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
   const [combinedExpenseGroupIds, setCombinedExpenseGroupIds] = useState<Set<string>>(new Set());
   const [splitRateGroupIds, setSplitRateGroupIds] = useState<Set<string>>(new Set());
+  const [pendingLabourNotes, setPendingLabourNotes] = useState<Record<string, Record<string, string>>>({});
   const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
@@ -2404,7 +2407,8 @@ export default function Invoices() {
       row?.key_snapshot && typeof row.key_snapshot === 'object'
         ? (row.key_snapshot as FrozenGroupSnapshot)
         : undefined;
-    return mergeMarkSnapshotForGroup(group, prevFromDb, expensesCombined, statusId);
+    const groupId = getGroupId(group);
+    return mergeMarkSnapshotForGroup(group, prevFromDb, expensesCombined, statusId, pendingLabourNotes[groupId]);
   };
 
   const handleMarkAsInvoiced = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
@@ -2427,7 +2431,7 @@ export default function Invoices() {
         return next;
       });
       setFrozenInvoicedGroups((prev) => {
-        const mergedSnap = mergeMarkSnapshotForGroup(group, prev[persistId], isCombined || undefined, initialStatusId);
+        const mergedSnap = mergeMarkSnapshotForGroup(group, prev[persistId], isCombined || undefined, initialStatusId, pendingLabourNotes[getGroupId(group)]);
         const next = { ...prev, [persistId]: mergedSnap };
         try {
           localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
@@ -2763,7 +2767,7 @@ export default function Invoices() {
     const groupId = getGroupId(group);
     const exportPersistId = resolvedPersistGroupId(group, invoicedMarkRows);
     const exportSnap = invoicedMarkRows.find((r) => r.group_id === exportPersistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
-    const exportLabourNotes = exportSnap?.labourNotes;
+    const exportLabourNotes = exportSnap?.labourNotes ?? pendingLabourNotes[groupId];
     setExportingGroupIdx(groupId);
     setExportError(null);
     try {
@@ -2831,7 +2835,7 @@ export default function Invoices() {
 
     const downloadFilename = mergedInvoiceBatchDownloadFilename(sourceInvoiceName);
     const dlSnap = invoicedMarkRows.find((r) => r.group_id === groupId)?.key_snapshot as FrozenGroupSnapshot | undefined;
-    const dlLabourNotes = dlSnap?.labourNotes;
+    const dlLabourNotes = dlSnap?.labourNotes ?? pendingLabourNotes[groupId];
 
     const { tickets: groupTickets } = group;
     setDownloadingWithInvoiceGroupId(groupId);
@@ -2918,7 +2922,8 @@ export default function Invoices() {
         }
 
         try {
-          const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses);
+          const groupId = getGroupId(uninvoicedGroups[i]);
+          const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, pendingLabourNotes[groupId]);
           blobs.unshift(summaryPdf);
         } catch (err) {
           console.warn('Failed to generate summary PDF:', err);
@@ -3075,7 +3080,8 @@ export default function Invoices() {
           }
 
           try {
-            const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses);
+            const groupId = getGroupId(uninvoicedGroups[i]);
+            const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, pendingLabourNotes[groupId]);
             blobs.unshift(summaryPdf);
           } catch (err) {
             console.warn('Failed to generate summary PDF:', err);
@@ -4384,6 +4390,30 @@ export default function Invoices() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => {
+                        if (editingLabourNotesGroupId === groupId) {
+                          setEditingLabourNotesGroupId(null);
+                        } else {
+                          setEditingLabourNotes(pendingLabourNotes[groupId] ?? {});
+                          setEditingLabourNotesGroupId(groupId);
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: editingLabourNotesGroupId === groupId ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                        color: editingLabourNotesGroupId === groupId ? 'white' : 'var(--text-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                      title="Add notes to labour types on the summary PDF"
+                    >
+                      Edit descriptions
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleMarkAsInvoiced(group)}
                       onDragEnter={(e) => {
                         e.preventDefault();
@@ -4446,6 +4476,66 @@ export default function Invoices() {
                     </button>
                   </div>
                 </div>
+                {/* Labour notes editor */}
+                {editingLabourNotesGroupId === groupId && (
+                  <div style={{
+                    marginBottom: '12px',
+                    padding: '12px',
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    borderLeft: '4px solid var(--primary-color)',
+                  }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Edit Summary Descriptions
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
+                      Notes appear in brackets after the labour type on the summary PDF, e.g. <em>Shop Time (ST) (Conveyor installation)</em>
+                    </div>
+                    {SUMMARY_LABOUR_TYPES.map(({ key: ltKey, label: ltLabel }) => (
+                      <div key={ltKey} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                        <span style={{ width: '150px', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', flexShrink: 0 }}>{ltLabel}</span>
+                        <input
+                          type="text"
+                          value={editingLabourNotes[ltKey] ?? ''}
+                          onChange={(e) => setEditingLabourNotes((prev) => ({ ...prev, [ltKey]: e.target.value }))}
+                          placeholder="Add a note…"
+                          style={{
+                            flex: 1,
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '4px',
+                            backgroundColor: 'var(--bg-primary)',
+                            color: 'var(--text-primary)',
+                          }}
+                        />
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setEditingLabourNotesGroupId(null)}
+                        style={{ padding: '5px 12px', fontSize: '12px', border: '1px solid var(--border-color)', borderRadius: '5px', backgroundColor: 'var(--bg-tertiary)', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cleaned = Object.fromEntries(
+                            Object.entries(editingLabourNotes).filter(([, v]) => v.trim())
+                          );
+                          setPendingLabourNotes((prev) => ({ ...prev, [groupId]: cleaned }));
+                          setEditingLabourNotesGroupId(null);
+                        }}
+                        style={{ padding: '5px 12px', fontSize: '12px', border: 'none', borderRadius: '5px', backgroundColor: 'var(--primary-color)', color: 'white', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div style={{
                   marginBottom: '12px',
                   padding: '12px',
