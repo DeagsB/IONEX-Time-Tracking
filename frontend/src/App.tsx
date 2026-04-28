@@ -23,6 +23,7 @@ import Changelog from './pages/Changelog';
 import Expenses from './pages/Expenses';
 import Profitability from './pages/Profitability';
 import Dashboard from './pages/Dashboard';
+import InvoiceWorkflows from './pages/InvoiceWorkflows';
 import Layout from './components/Layout';
 import AppErrorBoundary from './components/ErrorBoundary';
 // Avoid refetch-on-focus racing token refresh on some browsers (entries briefly OK then empty).
@@ -197,6 +198,14 @@ function AppRoutes() {
           element={
             <AdminRoute>
               <Profitability />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="invoice-workflows"
+          element={
+            <AdminRoute>
+              <InvoiceWorkflows />
             </AdminRoute>
           }
         />

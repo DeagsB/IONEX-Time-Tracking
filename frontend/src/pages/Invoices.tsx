@@ -13,6 +13,9 @@ import {
   invoicedBatchMarksService,
   type InvoicedBatchMarkRow,
   invoiceFilenameForDownload,
+  invoiceWorkflowsService,
+  type InvoiceWorkflowRow,
+  type InvoiceWorkflowStatus,
 } from '../services/supabaseServices';
 import {
   groupEntriesIntoTickets,
@@ -32,6 +35,19 @@ import { generateAndStorePdf, mergePdfBlobs } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
 import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
 import SearchableSelect from '../components/SearchableSelect';
+
+const STATUS_COLOR_MAP: Record<string, string> = {
+  gray: '#6b7280',
+  blue: '#3b82f6',
+  orange: '#f59e0b',
+  green: '#22c55e',
+  red: '#ef4444',
+  purple: '#8b5cf6',
+  teal: '#14b8a6',
+};
+function statusColorHex(name: string) {
+  return STATUS_COLOR_MAP[name] ?? '#6b7280';
+}
 
 type PdfExportEntryOverride = {
   description: string;
@@ -923,7 +939,7 @@ function uninvoicedGroupPeriodStillAccumulating(
   return isInvoicePeriodStillAccumulating(pk, periodGrouping);
 }
 
-type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[] };
+type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[]; expensesCombined?: boolean; statusId?: string };
 
 /** Persist service_tickets.id (UUID) in marks so DB locks and Service Tickets match. Falls back to composite t.id if no DB row yet. */
 function snapshotTicketIdsForInvoicedMark(
@@ -939,7 +955,9 @@ function snapshotTicketIdsForInvoicedMark(
 /** Union of existing mark ticket IDs and current grid row IDs so re-saving never drops locks. */
 function mergeMarkSnapshotForGroup(
   group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
-  existing: FrozenGroupSnapshot | null | undefined
+  existing: FrozenGroupSnapshot | null | undefined,
+  expensesCombined?: boolean,
+  statusId?: string
 ): FrozenGroupSnapshot {
   const fresh = snapshotTicketIdsForInvoicedMark(group.tickets as (ServiceTicket & { recordId?: string })[]);
   const merged = new Set<string>();
@@ -952,6 +970,8 @@ function mergeMarkSnapshotForGroup(
   return {
     key: group.key,
     ticketIds: [...merged].sort(),
+    expensesCombined: expensesCombined ?? existing?.expensesCombined,
+    statusId: statusId ?? existing?.statusId,
   };
 }
 
@@ -1306,6 +1326,25 @@ export default function Invoices() {
     queryFn: () => customersService.getAll(),
   });
 
+  const { data: allWorkflows = [] } = useQuery<InvoiceWorkflowRow[]>({
+    queryKey: ['invoiceWorkflows'],
+    queryFn: invoiceWorkflowsService.getAll,
+  });
+
+  const defaultWorkflow = useMemo(() => allWorkflows.find((w) => w.is_default) ?? allWorkflows[0], [allWorkflows]);
+
+  const getWorkflowForCustomer = useCallback(
+    (customerName: string | undefined): InvoiceWorkflowRow | undefined => {
+      if (!customerName || allWorkflows.length === 0) return defaultWorkflow;
+      const cust = customers?.find((c: any) => c.name === customerName);
+      if (cust?.invoice_workflow_id) {
+        return allWorkflows.find((w) => w.id === cust.invoice_workflow_id) ?? defaultWorkflow;
+      }
+      return defaultWorkflow;
+    },
+    [customers, allWorkflows, defaultWorkflow]
+  );
+
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => projectsService.getAll(),
@@ -1643,6 +1682,7 @@ export default function Invoices() {
 
   const [showInvoiced, setShowInvoiced] = useState(false);
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<string>('all');
   const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
   const [combinedExpenseGroupIds, setCombinedExpenseGroupIds] = useState<Set<string>>(new Set());
@@ -2041,18 +2081,51 @@ export default function Invoices() {
     },
   });
 
-  const getMergedMarkSnapshot = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+  const updateBatchStatusMutation = useMutation({
+    mutationFn: async ({ groupId, statusId }: { groupId: string; statusId: string }) => {
+      const row = invoicedMarkRows.find((r) => r.group_id === groupId);
+      if (!row) return;
+      const snap = (row.key_snapshot ?? {}) as FrozenGroupSnapshot;
+      await invoicedBatchMarksService.upsert(groupId, { ...snap, statusId } as unknown as { key: unknown; ticketIds: string[] });
+    },
+    onMutate: async ({ groupId, statusId }) => {
+      await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
+      const previous = queryClient.getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks']);
+      queryClient.setQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks'], (prev) =>
+        (prev ?? []).map((r) => {
+          if (r.group_id !== groupId) return r;
+          const snap = (r.key_snapshot ?? {}) as Record<string, unknown>;
+          return { ...r, key_snapshot: { ...snap, statusId } as InvoicedBatchMarkRow['key_snapshot'] };
+        })
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(['invoicedBatchMarks'], ctx.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+    },
+  });
+
+  const getMergedMarkSnapshot = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }, expensesCombined?: boolean, statusId?: string) => {
     const row = findMarkRowForGroup(group, invoicedMarkRows);
     const prevFromDb =
       row?.key_snapshot && typeof row.key_snapshot === 'object'
         ? (row.key_snapshot as FrozenGroupSnapshot)
         : undefined;
-    return mergeMarkSnapshotForGroup(group, prevFromDb);
+    return mergeMarkSnapshotForGroup(group, prevFromDb, expensesCombined, statusId);
   };
 
   const handleMarkAsInvoiced = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
     const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
-    const snapshot = getMergedMarkSnapshot(group);
+    const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
+    const customerName = group.tickets[0]?.customerName;
+    const wf = getWorkflowForCustomer(customerName);
+    const initialStatusId = wf?.statuses?.[0]?.id;
+    const snapshot = getMergedMarkSnapshot(group, isCombined || undefined, initialStatusId);
     if (isDemoMode) {
       setLegacyMarkedInvoicedIds((prev) => {
         const next = new Set(prev);
@@ -2061,7 +2134,7 @@ export default function Invoices() {
         return next;
       });
       setFrozenInvoicedGroups((prev) => {
-        const mergedSnap = mergeMarkSnapshotForGroup(group, prev[persistId]);
+        const mergedSnap = mergeMarkSnapshotForGroup(group, prev[persistId], isCombined || undefined, initialStatusId);
         const next = { ...prev, [persistId]: mergedSnap };
         try {
           localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
@@ -2088,7 +2161,11 @@ export default function Invoices() {
     file: File
   ) => {
     const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
-    const snapshot = getMergedMarkSnapshot(group);
+    const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
+    const customerName = group.tickets[0]?.customerName;
+    const wf = getWorkflowForCustomer(customerName);
+    const initialStatusId = wf?.statuses?.[0]?.id;
+    const snapshot = getMergedMarkSnapshot(group, isCombined || undefined, initialStatusId);
     if (file.type !== 'application/pdf') return;
     setUploadingInvoiceGroupId(persistId);
     setExportError(null);
@@ -2197,6 +2274,25 @@ export default function Invoices() {
     }
   }, [frozenInvoicedGroups, invoicedMarkRows]);
 
+  useEffect(() => {
+    const ids = new Set<string>();
+    for (const row of invoicedMarkRows) {
+      const snap = row.key_snapshot as FrozenGroupSnapshot | undefined;
+      if (snap?.expensesCombined) ids.add(row.group_id);
+    }
+    for (const [id, snap] of Object.entries(frozenInvoicedGroups)) {
+      if (snap.expensesCombined) ids.add(id);
+    }
+    if (ids.size > 0) {
+      setCombinedExpenseGroupIds((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.add(id);
+        if (next.size === prev.size) return prev;
+        return next;
+      });
+    }
+  }, [invoicedMarkRows, frozenInvoicedGroups]);
+
   /** Invoiced groups are reconstructed from DB mark rows' frozen snapshots.
    *  This guarantees grouping mode changes NEVER affect already-invoiced batches —
    *  the original key, ticket membership, and group_id are preserved exactly as when marked. */
@@ -2286,9 +2382,35 @@ export default function Invoices() {
     return m ? parseInt(m[1], 10) : -1;
   }, []);
 
+  const activeStatusLabels = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; color: string; count: number }>();
+    for (const g of invoicedGroups) {
+      const pid = resolvedPersistGroupId(g, invoicedMarkRows);
+      const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
+      const sid = snap?.statusId;
+      if (!sid) continue;
+      const wf = getWorkflowForCustomer(g.tickets[0]?.customerName);
+      const st = wf?.statuses?.find((s) => s.id === sid);
+      if (!st) continue;
+      const existing = map.get(sid);
+      if (existing) existing.count++;
+      else map.set(sid, { id: sid, label: st.label, color: st.color, count: 1 });
+    }
+    return [...map.values()];
+  }, [invoicedGroups, invoicedMarkRows, getWorkflowForCustomer]);
+
   const sortedFilteredInvoicedGroups = useMemo(() => {
     let groups = [...invoicedGroups];
     groups.sort((a, b) => extractInvoiceNumber(getInvoiceLabel(b)) - extractInvoiceNumber(getInvoiceLabel(a)));
+
+    if (invoiceStatusFilter !== 'all') {
+      groups = groups.filter((g) => {
+        const pid = resolvedPersistGroupId(g, invoicedMarkRows);
+        const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
+        return snap?.statusId === invoiceStatusFilter;
+      });
+    }
+
     if (!invoiceSearchQuery.trim()) return groups;
     const q = invoiceSearchQuery.trim().toLowerCase();
     return groups.filter((g) => {
@@ -2299,7 +2421,7 @@ export default function Invoices() {
       const ticketNums = g.tickets.map(t => t.ticketNumber?.toLowerCase() ?? '').join(' ');
       return label.includes(q) || custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
     });
-  }, [invoicedGroups, invoiceSearchQuery, getInvoiceLabel, extractInvoiceNumber]);
+  }, [invoicedGroups, invoiceSearchQuery, invoiceStatusFilter, getInvoiceLabel, extractInvoiceNumber, invoicedMarkRows]);
 
   const markTicketsAsPdfExported = async (groupTickets: ServiceTicket[]) => {
     const recordIds = groupTickets
@@ -2928,6 +3050,49 @@ export default function Invoices() {
               }}
             />
           </div>
+          {activeStatusLabels.length > 0 && (
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setInvoiceStatusFilter('all')}
+                style={{
+                  fontSize: '12px',
+                  fontWeight: invoiceStatusFilter === 'all' ? 700 : 500,
+                  padding: '3px 12px',
+                  borderRadius: '999px',
+                  border: invoiceStatusFilter === 'all' ? '2px solid var(--primary-color)' : '1px solid var(--border-color)',
+                  backgroundColor: invoiceStatusFilter === 'all' ? 'var(--primary-light)' : 'var(--bg-tertiary)',
+                  color: invoiceStatusFilter === 'all' ? 'var(--primary-color)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                }}
+              >
+                All
+              </button>
+              {activeStatusLabels.map((s) => {
+                const hex = statusColorHex(s.color);
+                const isActive = invoiceStatusFilter === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setInvoiceStatusFilter(isActive ? 'all' : s.id)}
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: isActive ? 700 : 500,
+                      padding: '3px 12px',
+                      borderRadius: '999px',
+                      border: isActive ? `2px solid ${hex}` : '1px solid var(--border-color)',
+                      backgroundColor: isActive ? `${hex}18` : 'var(--bg-tertiary)',
+                      color: isActive ? hex : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {s.label} ({s.count})
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {sortedFilteredInvoicedGroups.map((group) => {
               const { key, tickets: groupTickets } = group;
@@ -2994,6 +3159,10 @@ export default function Invoices() {
                 ?? savedInvoiceMetadata?.[persistId]?.filename
                 ?? null;
               const isAccordionOpen = isBreakdownExpanded;
+              const batchSnap = invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
+              const batchStatusId = batchSnap?.statusId;
+              const batchWorkflow = getWorkflowForCustomer(groupTickets[0]?.customerName);
+              const batchCurrentStatus = batchWorkflow?.statuses?.find((s) => s.id === batchStatusId);
               return (
                 <div
                   key={persistId}
@@ -3049,6 +3218,23 @@ export default function Invoices() {
                         ? <span style={{ color: 'var(--success-color, #16a34a)' }}>{invoiceLabel}</span>
                         : 'No invoice'}
                     </span>
+                    {batchCurrentStatus && (
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '2px 10px',
+                          borderRadius: '999px',
+                          backgroundColor: `${statusColorHex(batchCurrentStatus.color)}18`,
+                          color: statusColorHex(batchCurrentStatus.color),
+                          border: `1px solid ${statusColorHex(batchCurrentStatus.color)}40`,
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {batchCurrentStatus.label}
+                      </span>
+                    )}
                     <span style={{ fontWeight: 700, color: 'var(--primary-color)', flexShrink: 0, fontSize: '14px' }}>
                       ${gstTotals.totalInclGst.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
@@ -3194,6 +3380,41 @@ export default function Invoices() {
                           </div>
                         </div>
                       </div>
+                      {/* Invoice status workflow */}
+                      {batchWorkflow && batchWorkflow.statuses.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', flexShrink: 0 }}>Status:</span>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {batchWorkflow.statuses.map((ws) => {
+                              const isActive = ws.id === batchStatusId;
+                              const hex = statusColorHex(ws.color);
+                              return (
+                                <button
+                                  key={ws.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isActive) return;
+                                    updateBatchStatusMutation.mutate({ groupId: persistId, statusId: ws.id });
+                                  }}
+                                  style={{
+                                    fontSize: '12px',
+                                    fontWeight: isActive ? 700 : 500,
+                                    padding: '3px 12px',
+                                    borderRadius: '999px',
+                                    border: isActive ? `2px solid ${hex}` : '1px solid var(--border-color)',
+                                    backgroundColor: isActive ? `${hex}18` : 'var(--bg-tertiary)',
+                                    color: isActive ? hex : 'var(--text-secondary)',
+                                    cursor: isActive ? 'default' : 'pointer',
+                                    transition: 'all 0.15s ease',
+                                  }}
+                                >
+                                  {ws.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       {/* Attach invoice PDF and download batch with invoice */}
                       <div style={{ marginTop: '12px', marginBottom: '12px' }}>
                         <div
@@ -3211,7 +3432,7 @@ export default function Invoices() {
                               if (!isDemoMode) {
                                 await markInvoicedMutation.mutateAsync({
                                   groupId: persistId,
-                                  snapshot: getMergedMarkSnapshot(group),
+                                  snapshot: getMergedMarkSnapshot(group, isCombined || undefined),
                                 });
                               }
                               const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
@@ -3247,25 +3468,25 @@ export default function Invoices() {
                               setUploadingInvoiceGroupId(persistId);
                               setExportError(null);
                               try {
-                                if (!isDemoMode) {
-                                  await markInvoicedMutation.mutateAsync({
-                                    groupId: persistId,
-                                    snapshot: getMergedMarkSnapshot(group),
-                                  });
-                                }
-                                const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
-                                const fileForUi = new File([file], storedName, { type: file.type });
-                                setInvoiceFileForGroup(persistId, fileForUi);
-                                await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                                await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
-                              } catch (err) {
-                                setExportError(err instanceof Error ? err.message : 'Upload failed');
-                              } finally {
-                                setUploadingInvoiceGroupId(null);
+                              if (!isDemoMode) {
+                                await markInvoicedMutation.mutateAsync({
+                                  groupId: persistId,
+                                  snapshot: getMergedMarkSnapshot(group, isCombined || undefined),
+                                });
                               }
-                            }}
-                          />
-                          {uploadingInvoiceGroupId === persistId ? (
+                              const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
+                              const fileForUi = new File([file], storedName, { type: file.type });
+                              setInvoiceFileForGroup(persistId, fileForUi);
+                              await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                              await handleDownloadBatchWithInvoice(group, persistId, fileForUi);
+                            } catch (err) {
+                              setExportError(err instanceof Error ? err.message : 'Upload failed');
+                            } finally {
+                              setUploadingInvoiceGroupId(null);
+                            }
+                          }}
+                        />
+                        {uploadingInvoiceGroupId === persistId ? (
                             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Uploading…</span>
                           ) : invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId] ? (
                             <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}

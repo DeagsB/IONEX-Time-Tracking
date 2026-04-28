@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { customersService } from '../services/supabaseServices';
+import { customersService, invoiceWorkflowsService } from '../services/supabaseServices';
 
 export default function Customers() {
   const { user, isAdmin } = useAuth();
@@ -34,9 +34,16 @@ export default function Customers() {
     rate_field_senior: '',
     rate_travel: '',
     invoice_date_grouping: '',
+    invoice_workflow_id: '',
   });
 
   const [showInactive, setShowInactive] = useState(false);
+
+  const { data: workflows = [] } = useQuery({
+    queryKey: ['invoiceWorkflows'],
+    queryFn: invoiceWorkflowsService.getAll,
+  });
+
   const { data: customers } = useQuery({
     queryKey: ['customers', showInactive],
     queryFn: () => customersService.getAll(isAdmin ? showInactive : false),
@@ -191,6 +198,7 @@ export default function Customers() {
       rate_field_senior: '',
       rate_travel: '',
       invoice_date_grouping: '',
+      invoice_workflow_id: '',
     });
   };
 
@@ -218,6 +226,7 @@ export default function Customers() {
       rate_field_senior: customer.rate_field_senior || '',
       rate_travel: customer.rate_travel || '',
       invoice_date_grouping: customer.invoice_date_grouping || '',
+      invoice_workflow_id: customer.invoice_workflow_id || '',
     });
     setShowModal(true);
   };
@@ -227,6 +236,7 @@ export default function Customers() {
     const payload = {
       ...formData,
       invoice_date_grouping: formData.invoice_date_grouping || null,
+      invoice_workflow_id: formData.invoice_workflow_id || null,
     };
     if (editingCustomer) {
       updateMutation.mutate({ id: editingCustomer.id, data: payload });
@@ -458,6 +468,22 @@ export default function Customers() {
                 <option value="monthly">Monthly</option>
                 <option value="project-completion">Project Completion</option>
                 <option value="progress">Progress</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Invoice Workflow</label>
+              <select
+                className="input"
+                value={formData.invoice_workflow_id}
+                onChange={(e) => setFormData({ ...formData, invoice_workflow_id: e.target.value })}
+              >
+                <option value="">System Default</option>
+                {workflows.map((wf: any) => (
+                  <option key={wf.id} value={wf.id}>
+                    {wf.name}{wf.is_default ? ' (default)' : ''}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -708,6 +734,22 @@ export default function Customers() {
                 <option value="monthly">Monthly</option>
                 <option value="project-completion">Project Completion</option>
                 <option value="progress">Progress</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="label">Invoice Workflow</label>
+              <select
+                className="input"
+                value={formData.invoice_workflow_id}
+                onChange={(e) => setFormData({ ...formData, invoice_workflow_id: e.target.value })}
+              >
+                <option value="">System Default</option>
+                {workflows.map((wf: any) => (
+                  <option key={wf.id} value={wf.id}>
+                    {wf.name}{wf.is_default ? ' (default)' : ''}
+                  </option>
+                ))}
               </select>
             </div>
 

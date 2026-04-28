@@ -326,6 +326,9 @@ export default function Sidebar() {
             <SidebarLink to="/changelog" active={isActive('/changelog')}>
               Changelog
             </SidebarLink>
+            <SidebarLink to="/invoice-workflows" active={isActive('/invoice-workflows')}>
+              Invoice Workflows
+            </SidebarLink>
           </div>
         )}
       </div>

@@ -2959,6 +2959,67 @@ export const invoicedBatchMarksService = {
   },
 };
 
+/* ─── Invoice Workflows ─── */
+
+export type InvoiceWorkflowStatus = {
+  id: string;
+  label: string;
+  color: string;
+};
+
+export type InvoiceWorkflowRow = {
+  id: string;
+  name: string;
+  statuses: InvoiceWorkflowStatus[];
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const invoiceWorkflowsService = {
+  async getAll(): Promise<InvoiceWorkflowRow[]> {
+    const { data, error } = await supabase
+      .from('invoice_workflows')
+      .select('*')
+      .order('is_default', { ascending: false })
+      .order('name');
+    if (error) throw error;
+    return (data || []) as InvoiceWorkflowRow[];
+  },
+
+  async create(workflow: { name: string; statuses: InvoiceWorkflowStatus[]; is_default?: boolean }): Promise<InvoiceWorkflowRow> {
+    if (workflow.is_default) {
+      await supabase.from('invoice_workflows').update({ is_default: false }).eq('is_default', true);
+    }
+    const { data, error } = await supabase
+      .from('invoice_workflows')
+      .insert({ name: workflow.name, statuses: workflow.statuses, is_default: workflow.is_default ?? false })
+      .select()
+      .single();
+    if (error) throw error;
+    return data as InvoiceWorkflowRow;
+  },
+
+  async update(id: string, updates: { name?: string; statuses?: InvoiceWorkflowStatus[]; is_default?: boolean }): Promise<InvoiceWorkflowRow> {
+    if (updates.is_default) {
+      await supabase.from('invoice_workflows').update({ is_default: false }).eq('is_default', true);
+    }
+    const { data, error } = await supabase
+      .from('invoice_workflows')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data as InvoiceWorkflowRow;
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('invoice_workflows').delete().eq('id', id);
+    if (error) throw error;
+  },
+};
+
 /** All service_tickets.id values listed in any invoiced batch mark (admin Service Tickets lock UI). */
 export function collectLockedServiceTicketIdsFromMarks(rows: InvoicedBatchMarkRow[]): Set<string> {
   const s = new Set<string>();
