@@ -1748,6 +1748,8 @@ export default function Invoices() {
       for (const groupKey of sortedGroupKeys) {
         const list = groups.get(groupKey) ?? [];
         list.sort((a, b) => {
+          const dateCmp = (a.date || '').localeCompare(b.date || '');
+          if (dateCmp !== 0) return dateCmp;
           const ta = a as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
           const tb = b as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
           const { poAfe: poAfeA } = getApproverPoAfeCcFromTicket(ta, ta.headerOverrides);
@@ -2195,6 +2197,7 @@ export default function Invoices() {
         return (rid && snappedIds.has(rid)) || snappedIds.has(t.id);
       });
       if (tickets.length === 0) continue;
+      tickets.sort((a, b) => (a.date || '').localeCompare(b.date || '') || ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber));
       result.push({ key: snappedKey, tickets });
       coveredGroupIds.add(row.group_id);
     }
@@ -2209,6 +2212,7 @@ export default function Invoices() {
         return snap.ticketIds.some((tid) => tid === t.id || (!!rid && tid === rid));
       });
       if (tickets.length === 0) continue;
+      tickets.sort((a, b) => (a.date || '').localeCompare(b.date || '') || ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber));
       result.push({ key: snap.key, tickets });
     }
 
