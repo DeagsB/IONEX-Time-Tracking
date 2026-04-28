@@ -3268,34 +3268,10 @@ export default function Invoices() {
                           {uploadingInvoiceGroupId === persistId ? (
                             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Uploading…</span>
                           ) : invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId] ? (
-                            <span style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <span title={invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}>
-                                {invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  setInvoiceFileForGroup(persistId, null);
-                                  try {
-                                    await invoicedBatchInvoicesService.deleteInvoice(persistId);
-                                    await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
-                                  } catch (err) {
-                                    setExportError(err instanceof Error ? err.message : 'Remove failed');
-                                  }
-                                }}
-                                style={{
-                                  padding: '2px 8px',
-                                  fontSize: '11px',
-                                  backgroundColor: 'var(--bg-primary)',
-                                  border: '1px solid var(--border-color)',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  color: 'var(--text-secondary)',
-                                }}
-                              >
-                                Remove
-                              </button>
+                            <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}
+                              title={invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
+                            >
+                              {invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
                             </span>
                           ) : (
                             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
