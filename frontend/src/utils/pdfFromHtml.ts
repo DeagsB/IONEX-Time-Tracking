@@ -544,40 +544,36 @@ export async function generateBatchSummaryPdf(
   const firstTicket = groupTickets[0];
   if (!firstTicket) throw new Error('No tickets in batch');
 
-  let rtHours = 0, ttHours = 0, ftHours = 0, shopOtHours = 0, fieldOtHours = 0;
-  let rtAmount = 0, ttAmount = 0, ftAmount = 0, shopOtAmount = 0, fieldOtAmount = 0;
+  // Group labour by type and rate
+  const labourMap = new Map<string, { label: string; hours: number; amount: number; rate: number }>();
 
-  const employeeNames = new Set<string>();
-  const employeeEmails = new Set<string>();
+  const addLabour = (type: string, label: string, hours: number, rate: number) => {
+    if (hours > 0) {
+      const key = `${type}_${rate}`;
+      const existing = labourMap.get(key);
+      if (existing) {
+        existing.hours += hours;
+        existing.amount += hours * rate;
+      } else {
+        labourMap.set(key, { label, hours, amount: hours * rate, rate });
+      }
+    }
+  };
+
   const dates = new Set<string>();
 
   for (const ticket of groupTickets) {
     const { rtHours: tRt, ttHours: tTt, ftHours: tFt, shopOtHours: tSo, fieldOtHours: tFo } = computeServiceTicketPdfHoursAndLines(ticket);
-    rtHours += tRt;
-    ttHours += tTt;
-    ftHours += tFt;
-    shopOtHours += tSo;
-    fieldOtHours += tFo;
-
-    rtAmount += tRt * ticket.rates.rt;
-    ttAmount += tTt * ticket.rates.tt;
-    ftAmount += tFt * ticket.rates.ft;
-    shopOtAmount += tSo * ticket.rates.shop_ot;
-    fieldOtAmount += tFo * ticket.rates.field_ot;
-
-    const name = ticket.entries[0]?.user?.first_name && ticket.entries[0]?.user?.last_name
-      ? `${ticket.entries[0].user.first_name} ${ticket.entries[0].user.last_name}`
-      : ticket.userName || 'Unknown';
-    const email = ticket.entries[0]?.user?.email || '';
-    if (name) employeeNames.add(name);
-    if (email) employeeEmails.add(email);
+    
+    addLabour('ST', 'Shop Time (ST)', tRt, ticket.rates.rt);
+    addLabour('TT', 'Travel Time (TT)', tTt, ticket.rates.tt);
+    addLabour('FT', 'Field Time (FT)', tFt, ticket.rates.ft);
+    addLabour('SO', 'Shop OT (SO)', tSo, ticket.rates.shop_ot);
+    addLabour('FO', 'Field OT (FO)', tFo, ticket.rates.field_ot);
 
     const rawTicketDate = ticket.date || ticket.entries[0]?.date;
     if (rawTicketDate) dates.add(rawTicketDate);
   }
-
-  const employeeName = employeeNames.size > 1 ? 'Multiple Technicians' : (Array.from(employeeNames)[0] || 'Unknown');
-  const employeeEmail = employeeEmails.size > 1 ? 'Multiple Emails' : (Array.from(employeeEmails)[0] || '');
 
   let ticketDate = '';
   if (dates.size > 0) {
@@ -593,18 +589,35 @@ export async function generateBatchSummaryPdf(
     );
   }
 
-  const expensesTotal = allExpenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
-  const grandTotal = rtAmount + ttAmount + ftAmount + shopOtAmount + fieldOtAmount + expensesTotal;
+  // Group expenses
+  const expenseMap = new Map<string, { expense_type: string; description: string; quantity: number; rate: number; unit?: string }>();
+  for (const expense of allExpenses) {
+    // Key by type, description, and rate to group identical expenses
+    const key = `${expense.expense_type}_${expense.description}_${expense.rate}`;
+    const existing = expenseMap.get(key);
+    if (existing) {
+      existing.quantity += expense.quantity;
+    } else {
+      expenseMap.set(key, { ...expense });
+    }
+  }
+  const groupedExpenses = Array.from(expenseMap.values());
+  const expensesTotal = groupedExpenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
+
+  const labourLines = Array.from(labourMap.values());
+  const totalLabourHours = labourLines.reduce((sum, l) => sum + l.hours, 0);
+  const totalLabourAmount = labourLines.reduce((sum, l) => sum + l.amount, 0);
+  const grandTotal = totalLabourAmount + expensesTotal;
 
   const html = buildBatchSummaryPdfHtml(
     firstTicket,
-    allExpenses,
-    employeeName,
-    employeeEmail,
+    groupedExpenses,
     ticketDate,
-    rtHours, ttHours, ftHours, shopOtHours, fieldOtHours,
-    rtAmount, ttAmount, ftAmount, shopOtAmount, fieldOtAmount,
-    expensesTotal, grandTotal
+    labourLines,
+    totalLabourHours,
+    totalLabourAmount,
+    expensesTotal,
+    grandTotal
   );
 
   const container = document.createElement('div');
@@ -635,32 +648,15 @@ export async function generateBatchSummaryPdf(
 function buildBatchSummaryPdfHtml(
   ticket: ServiceTicket,
   expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }>,
-  employeeName: string,
-  employeeEmail: string,
   ticketDate: string,
-  rtHours: number,
-  ttHours: number,
-  ftHours: number,
-  shopOtHours: number,
-  fieldOtHours: number,
-  rtAmount: number,
-  ttAmount: number,
-  ftAmount: number,
-  shopOtAmount: number,
-  fieldOtAmount: number,
+  labourLines: Array<{ label: string; hours: number; amount: number; rate: number }>,
+  totalLabourHours: number,
+  totalLabourAmount: number,
   expensesTotal: number,
   grandTotal: number
 ): string {
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket);
   const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
-
-  const labourLines = [
-    { label: 'Shop Time (ST)', hours: rtHours, amount: rtAmount },
-    { label: 'Field Time (FT)', hours: ftHours, amount: ftAmount },
-    { label: 'Travel Time (TT)', hours: ttHours, amount: ttAmount },
-    { label: 'Shop OT (SO)', hours: shopOtHours, amount: shopOtAmount },
-    { label: 'Field OT (FO)', hours: fieldOtHours, amount: fieldOtAmount },
-  ].filter(l => l.hours > 0);
 
   return `
     <div id="service-ticket-summary" style="
@@ -700,14 +696,6 @@ function buildBatchSummaryPdfHtml(
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.projectNumber || ''}</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 60px;">Job Type</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">AUTO</td>
-            </tr>
-            <tr>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Tech</td>
-              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeName}</td>
-            </tr>
-            <tr>
-              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
-              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeEmail}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Date</td>
@@ -790,7 +778,7 @@ function buildBatchSummaryPdfHtml(
             <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
               <td style="padding: 3px 6px;">Labour Type</td>
               <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">Hours</td>
-              <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Avg Rate</td>
+              <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Rate</td>
               <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Amount</td>
             </tr>
           </thead>
@@ -799,7 +787,7 @@ function buildBatchSummaryPdfHtml(
             <tr style="border-bottom: 1px solid #eee;">
               <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${line.label}</td>
               <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.hours.toFixed(2)}</td>
-              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${(line.amount / line.hours).toFixed(2)}</td>
+              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${line.rate.toFixed(2)}</td>
               <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${line.amount.toFixed(2)}</td>
             </tr>
             `).join('')}
@@ -815,9 +803,9 @@ function buildBatchSummaryPdfHtml(
           <tfoot>
             <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
               <td style="padding: 4px 6px; text-align: right;">Total Labour</td>
-              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${(rtHours + ftHours + ttHours + shopOtHours + fieldOtHours).toFixed(2)}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${totalLabourHours.toFixed(2)}</td>
               <td style="padding: 4px; text-align: center; border-left: 1px solid #000;"></td>
-              <td style="padding: 4px 6px; text-align: right; border-left: 1px solid #000;">$${(rtAmount + ftAmount + ttAmount + shopOtAmount + fieldOtAmount).toFixed(2)}</td>
+              <td style="padding: 4px 6px; text-align: right; border-left: 1px solid #000;">$${totalLabourAmount.toFixed(2)}</td>
             </tr>
           </tfoot>
         </table>
@@ -876,24 +864,8 @@ function buildBatchSummaryPdfHtml(
           <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Ticket Summary</div>
           <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
             <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total ST</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${rtAmount.toFixed(2)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total FT</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ftAmount.toFixed(2)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total TT</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ttAmount.toFixed(2)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total SO</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${shopOtAmount.toFixed(2)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total FO</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${fieldOtAmount.toFixed(2)}</td>
+              <td style="padding: 3px 6px;">Total Labour</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${totalLabourAmount.toFixed(2)}</td>
             </tr>
             <tr style="border-bottom: 1px solid #ccc;">
               <td style="padding: 3px 6px;">Total Expenses</td>
