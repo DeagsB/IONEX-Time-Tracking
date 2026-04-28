@@ -509,6 +509,7 @@ export default function ServiceTickets() {
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [refreshingLatestCustomer, setRefreshingLatestCustomer] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [currentTicketRecordId, setCurrentTicketRecordId] = useState<string | null>(null);
@@ -2071,6 +2072,41 @@ export default function ServiceTickets() {
     () => workflowLockedForEditing || isInvoicedBatchLocked,
     [workflowLockedForEditing, isInvoicedBatchLocked]
   );
+
+  /** Fill customer-only header fields from current customers row (name, address, city/province, postal, contact, phone, email). Does not touch service fields. */
+  const refreshEditableCustomerFromLatest = useCallback(async () => {
+    if (effectiveLockedForEditing) return;
+    const cid = selectedTicket?.customerId;
+    if (!cid || cid === 'unassigned') {
+      alert('No customer assigned to this ticket.');
+      return;
+    }
+    setRefreshingLatestCustomer(true);
+    try {
+      const c = await customersService.getById(cid);
+      const city = (c?.city != null ? String(c.city).trim() : '') || '';
+      const state = (c?.state != null ? String(c.state).trim() : '') || '';
+      const cityState = city && state ? `${city}, ${state}` : city || state;
+      setEditableTicket((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          customerName: c?.name != null ? String(c.name) : '',
+          address: c?.address != null ? String(c.address) : '',
+          cityState,
+          zipCode: c?.zip_code != null ? String(c.zip_code) : '',
+          contactName: c?.contact_name != null ? String(c.contact_name) : '',
+          phone: c?.phone != null ? String(c.phone) : '',
+          email: c?.email != null ? String(c.email) : '',
+        };
+      });
+    } catch (e) {
+      console.error(e);
+      alert('Could not load latest customer information.');
+    } finally {
+      setRefreshingLatestCustomer(false);
+    }
+  }, [effectiveLockedForEditing, selectedTicket?.customerId]);
 
   const showLockedReason = useCallback(() => {
     if (!effectiveLockedForEditing) return;
@@ -5867,7 +5903,34 @@ export default function ServiceTickets() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                       {/* Customer Info */}
                       <div style={sectionStyle}>
-                        <h3 style={sectionTitleStyle}>Customer Information</h3>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', marginBottom: '16px' }}>
+                          <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>Customer Information</h3>
+                          <button
+                            type="button"
+                            disabled={
+                              effectiveLockedForEditing ||
+                              refreshingLatestCustomer ||
+                              !selectedTicket?.customerId ||
+                              selectedTicket.customerId === 'unassigned'
+                            }
+                            onClick={() => void refreshEditableCustomerFromLatest()}
+                            title="Replace name, address, city/province, postal code, contact, phone, and email with the latest values from the Customers record"
+                            style={{
+                              padding: '6px 10px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: effectiveLockedForEditing ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+                              color: 'var(--primary-color)',
+                              cursor: effectiveLockedForEditing || refreshingLatestCustomer ? 'not-allowed' : 'pointer',
+                              whiteSpace: 'nowrap',
+                              opacity: effectiveLockedForEditing ? 0.6 : 1,
+                            }}
+                          >
+                            {refreshingLatestCustomer ? 'Loading…' : 'Use latest customer info'}
+                          </button>
+                        </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                           <div>
                             <label style={labelStyle}>Customer Name</label>
