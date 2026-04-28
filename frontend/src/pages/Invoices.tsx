@@ -1318,7 +1318,7 @@ function buildRateTypeBreakdown(
     const hrs = hoursMap.get(key) ?? 0;
     if (hrs <= 0) continue;
     const amount = Math.round(hrs * (rateMap.get(key) ?? 0) * 100) / 100;
-    if (amount > 0) lines.push({ ticketList: label, poAfe: '', totalAmount: amount });
+    if (amount > 0) lines.push({ ticketList: ticketList ? `${label} (${ticketList})` : label, poAfe: '', totalAmount: amount });
   }
   if (includeExpenses) {
     for (const t of tickets) {
