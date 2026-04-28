@@ -539,13 +539,14 @@ export async function downloadPdfFromHtml(
  */
 export async function generateBatchSummaryPdf(
   groupTickets: ServiceTicket[],
-  allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }>
+  allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }>,
+  labourNotes?: Record<string, string>
 ): Promise<Blob> {
   const firstTicket = groupTickets[0];
   if (!firstTicket) throw new Error('No tickets in batch');
 
   // Group labour by type and rate
-  const labourMap = new Map<string, { label: string; hours: number; amount: number; rate: number }>();
+  const labourMap = new Map<string, { label: string; hours: number; amount: number; rate: number; typeKey: string }>();
 
   const addLabour = (type: string, label: string, hours: number, rate: number) => {
     if (hours > 0) {
@@ -555,7 +556,7 @@ export async function generateBatchSummaryPdf(
         existing.hours += hours;
         existing.amount += hours * rate;
       } else {
-        labourMap.set(key, { label, hours, amount: hours * rate, rate });
+        labourMap.set(key, { label, hours, amount: hours * rate, rate, typeKey: type });
       }
     }
   };
@@ -631,7 +632,8 @@ export async function generateBatchSummaryPdf(
     totalLabourHours,
     totalLabourAmount,
     expensesTotal,
-    grandTotal
+    grandTotal,
+    labourNotes
   );
 
   const container = document.createElement('div');
@@ -669,7 +671,8 @@ function buildBatchSummaryPdfHtml(
   totalLabourHours: number,
   totalLabourAmount: number,
   expensesTotal: number,
-  grandTotal: number
+  grandTotal: number,
+  labourNotes?: Record<string, string>
 ): string {
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket);
   const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
@@ -810,7 +813,7 @@ function buildBatchSummaryPdfHtml(
           <tbody>
             ${labourLines.map(line => `
             <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${line.label}</td>
+              <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${line.label}${labourNotes?.[line.typeKey] ? ` (${labourNotes[line.typeKey]})` : ''}</td>
               <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.hours.toFixed(2)}</td>
               <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${line.rate.toFixed(2)}</td>
               <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${line.amount.toFixed(2)}</td>

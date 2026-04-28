@@ -764,6 +764,14 @@ function InvoiceTicketDetailModal({
 const MARKED_INVOICED_STORAGE_KEY = 'ionex-invoices-marked';
 const FROZEN_INVOICED_GROUPS_KEY = 'ionex-invoices-frozen-groups';
 
+const SUMMARY_LABOUR_TYPES = [
+  { key: 'ST', label: 'Shop Time (ST)' },
+  { key: 'TT', label: 'Travel Time (TT)' },
+  { key: 'FT', label: 'Field Time (FT)' },
+  { key: 'SO', label: 'Shop OT (SO)' },
+  { key: 'FO', label: 'Field OT (FO)' },
+] as const;
+
 function readMarkedInvoiceIdsFromLocalStorage(): Set<string> {
   try {
     const raw = localStorage.getItem(MARKED_INVOICED_STORAGE_KEY);
@@ -940,7 +948,7 @@ function uninvoicedGroupPeriodStillAccumulating(
   return isInvoicePeriodStillAccumulating(pk, periodGrouping);
 }
 
-type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[]; expensesCombined?: boolean; statusId?: string; statusChangedAt?: string };
+type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[]; expensesCombined?: boolean; statusId?: string; statusChangedAt?: string; labourNotes?: Record<string, string> };
 
 /** Persist service_tickets.id (UUID) in marks so DB locks and Service Tickets match. Falls back to composite t.id if no DB row yet. */
 function snapshotTicketIdsForInvoicedMark(
@@ -1691,6 +1699,8 @@ export default function Invoices() {
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
+  const [editingLabourNotesGroupId, setEditingLabourNotesGroupId] = useState<string | null>(null);
+  const [editingLabourNotes, setEditingLabourNotes] = useState<Record<string, string>>({});
 
   const markProjectCompletedMutation = useMutation({
     mutationFn: (projectId: string) => projectsService.update(projectId, { status: 'completed' }),
@@ -2138,6 +2148,37 @@ export default function Invoices() {
     },
   });
 
+  const saveLabourNotesMutation = useMutation({
+    mutationFn: async ({ groupId, labourNotes }: { groupId: string; labourNotes: Record<string, string> }) => {
+      const row = invoicedMarkRows.find((r) => r.group_id === groupId);
+      if (!row) return;
+      const snap = (row.key_snapshot ?? {}) as FrozenGroupSnapshot;
+      const updated = { ...snap, labourNotes };
+      await invoicedBatchMarksService.upsert(groupId, updated as { key: unknown; ticketIds: string[] });
+    },
+    onMutate: async ({ groupId, labourNotes }) => {
+      await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
+      const previous = queryClient.getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks']);
+      queryClient.setQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks'], (prev) =>
+        (prev ?? []).map((r) => {
+          if (r.group_id !== groupId) return r;
+          const snap = (r.key_snapshot ?? {}) as FrozenGroupSnapshot;
+          const updated: FrozenGroupSnapshot = { ...snap, labourNotes };
+          return { ...r, key_snapshot: updated as unknown as InvoicedBatchMarkRow['key_snapshot'] };
+        })
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous !== undefined) {
+        queryClient.setQueryData(['invoicedBatchMarks'], ctx.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+    },
+  });
+
   const getMergedMarkSnapshot = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }, expensesCombined?: boolean, statusId?: string) => {
     const row = findMarkRowForGroup(group, invoicedMarkRows);
     const prevFromDb =
@@ -2501,6 +2542,9 @@ export default function Invoices() {
   const handleExportSingleGroup = async (group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }) => {
     const { key, tickets: groupTickets } = group;
     const groupId = getGroupId(group);
+    const exportPersistId = resolvedPersistGroupId(group, invoicedMarkRows);
+    const exportSnap = invoicedMarkRows.find((r) => r.group_id === exportPersistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
+    const exportLabourNotes = exportSnap?.labourNotes;
     setExportingGroupIdx(groupId);
     setExportError(null);
     try {
@@ -2527,7 +2571,7 @@ export default function Invoices() {
       }
 
       try {
-        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses);
+        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, exportLabourNotes);
         blobs.unshift(summaryPdf);
       } catch (err) {
         console.warn('Failed to generate summary PDF:', err);
@@ -2567,6 +2611,8 @@ export default function Invoices() {
     } else return;
 
     const downloadFilename = mergedInvoiceBatchDownloadFilename(sourceInvoiceName);
+    const dlSnap = invoicedMarkRows.find((r) => r.group_id === groupId)?.key_snapshot as FrozenGroupSnapshot | undefined;
+    const dlLabourNotes = dlSnap?.labourNotes;
 
     const { tickets: groupTickets } = group;
     setDownloadingWithInvoiceGroupId(groupId);
@@ -2595,7 +2641,7 @@ export default function Invoices() {
       }
 
       try {
-        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses);
+        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, dlLabourNotes);
         blobs.splice(1, 0, summaryPdf); // Insert after invoice PDF
       } catch (err) {
         console.warn('Failed to generate summary PDF:', err);
@@ -3477,6 +3523,30 @@ export default function Invoices() {
                             </button>
                             <button
                               type="button"
+                              onClick={() => {
+                                if (editingLabourNotesGroupId === persistId) {
+                                  setEditingLabourNotesGroupId(null);
+                                } else {
+                                  setEditingLabourNotes(batchSnap?.labourNotes ?? {});
+                                  setEditingLabourNotesGroupId(persistId);
+                                }
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: editingLabourNotesGroupId === persistId ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                                color: editingLabourNotesGroupId === persistId ? 'white' : 'var(--text-secondary)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                              }}
+                              title="Add notes to labour types on the summary PDF"
+                            >
+                              Edit descriptions
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleUnmarkAsInvoiced(persistId)}
                               disabled={!!exportProgress || !!qboProgress || unmarkInvoicedMutation.isPending}
                               style={{
@@ -3496,6 +3566,67 @@ export default function Invoices() {
                           </div>
                         </div>
                       </div>
+                      {/* Labour notes editor */}
+                      {editingLabourNotesGroupId === persistId && (
+                        <div style={{
+                          marginTop: '10px',
+                          padding: '12px',
+                          backgroundColor: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          borderLeft: '4px solid var(--primary-color)',
+                        }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Edit Summary Descriptions
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
+                            Notes appear in brackets after the labour type on the summary PDF, e.g. <em>Shop Time (ST) (Conveyor installation)</em>
+                          </div>
+                          {SUMMARY_LABOUR_TYPES.map(({ key: ltKey, label: ltLabel }) => (
+                            <div key={ltKey} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                              <span style={{ width: '150px', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', flexShrink: 0 }}>{ltLabel}</span>
+                              <input
+                                type="text"
+                                value={editingLabourNotes[ltKey] ?? ''}
+                                onChange={(e) => setEditingLabourNotes((prev) => ({ ...prev, [ltKey]: e.target.value }))}
+                                placeholder="Add a note…"
+                                style={{
+                                  flex: 1,
+                                  padding: '4px 8px',
+                                  fontSize: '12px',
+                                  border: '1px solid var(--border-color)',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'var(--bg-primary)',
+                                  color: 'var(--text-primary)',
+                                }}
+                              />
+                            </div>
+                          ))}
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setEditingLabourNotesGroupId(null)}
+                              style={{ padding: '5px 12px', fontSize: '12px', border: '1px solid var(--border-color)', borderRadius: '5px', backgroundColor: 'var(--bg-tertiary)', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={saveLabourNotesMutation.isPending}
+                              onClick={() => {
+                                const cleaned = Object.fromEntries(
+                                  Object.entries(editingLabourNotes).filter(([, v]) => v.trim())
+                                );
+                                saveLabourNotesMutation.mutate({ groupId: persistId, labourNotes: cleaned });
+                                setEditingLabourNotesGroupId(null);
+                              }}
+                              style={{ padding: '5px 12px', fontSize: '12px', border: 'none', borderRadius: '5px', backgroundColor: 'var(--primary-color)', color: 'white', fontWeight: 600, cursor: saveLabourNotesMutation.isPending ? 'not-allowed' : 'pointer' }}
+                            >
+                              {saveLabourNotesMutation.isPending ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {/* Invoice status workflow */}
                       {batchWorkflow && batchWorkflow.statuses.length > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px', marginBottom: '4px' }}>
