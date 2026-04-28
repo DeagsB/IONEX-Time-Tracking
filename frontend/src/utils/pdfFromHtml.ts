@@ -38,9 +38,9 @@ const getRateCode = (rateType?: string): 'RT' | 'TT' | 'FT' | 'OT' => {
   return RATE_TYPE_MAP[rateType || ''] || 'RT';
 };
 
-// Round UP to nearest 0.5 hour (never round down)
+// Round UP to nearest 0.25 hour (never round down)
 const roundToHalfHour = (hours: number): number => {
-  return Math.ceil(hours * 2) / 2;
+  return Math.ceil(hours * 4) / 4;
 };
 
 function sumEntryHours(ticket: ServiceTicket): number {

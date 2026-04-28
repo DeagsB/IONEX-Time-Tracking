@@ -579,9 +579,9 @@ export function getProjectHeaderFields(project: { approver?: string; po_afe?: st
   };
 }
 
-/** Round hours to nearest 0.5 (round up) */
+/** Round hours up to nearest 0.25 */
 export function roundToHalfHour(hours: number): number {
-  return Math.ceil(hours * 2) / 2;
+  return Math.ceil(hours * 4) / 4;
 }
 
 /** Calculate total billable amount for a service ticket (matches PDF total) */

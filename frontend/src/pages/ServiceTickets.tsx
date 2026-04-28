@@ -897,9 +897,9 @@ export default function ServiceTickets() {
   const [inlineProjectNumber, setInlineProjectNumber] = useState('');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
 
-  // Round to nearest 0.5 hour (always round up)
+  // Round to nearest 0.25 hour (always round up)
   const roundToHalfHour = (hours: number): number => {
-    return Math.ceil(hours * 2) / 2;
+    return Math.ceil(hours * 4) / 4;
   };
 
   // Compare hours with tolerance to avoid false "pending" after save/reopen (floating-point drift)
