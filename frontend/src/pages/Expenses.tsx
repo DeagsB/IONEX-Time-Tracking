@@ -25,15 +25,6 @@ function formatExpenseGroupDateLabel(dateKey: string): string {
   });
 }
 
-/** YYYY-MM-DD in local timezone (matches expense_date keys). */
-function localTodayYmd(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 type SharedReceiptRowInput = { id: string; receipt_url?: string | null; amount?: unknown; gst?: unknown };
 
 /** Same-day (or same-group) rows that share one uploaded receipt file → line index + combined subtotal+GST. */
@@ -999,12 +990,10 @@ export default function Expenses() {
     }
     if (hasSeededMyExpenseDateCollapse.current) return;
     hasSeededMyExpenseDateCollapse.current = true;
-    const today = localTodayYmd();
-    setCollapsedMyExpenseDateKeys(
-      new Set(
-        myExpensesGroupedByDate.map((g) => g.dateKey).filter((k) => k !== today && k !== '—')
-      )
-    );
+    const collapsedKeys = myExpensesGroupedByDate
+      .filter((g) => g.items.length > 0 && g.items.every((exp: any) => exp.status === 'paid'))
+      .map((g) => g.dateKey);
+    setCollapsedMyExpenseDateKeys(new Set(collapsedKeys));
   }, [myExpensesGroupedByDate]);
 
   useEffect(() => {
@@ -1020,12 +1009,10 @@ export default function Expenses() {
     }
     if (hasSeededAdminExpenseDateCollapse.current) return;
     hasSeededAdminExpenseDateCollapse.current = true;
-    const today = localTodayYmd();
-    setCollapsedAdminExpenseDateKeys(
-      new Set(
-        adminFilteredExpensesGroupedByDate.map((g) => g.dateKey).filter((k) => k !== today && k !== '—')
-      )
-    );
+    const collapsedKeys = adminFilteredExpensesGroupedByDate
+      .filter((g) => g.items.length > 0 && g.items.every((exp: any) => exp._status === 'paid'))
+      .map((g) => g.dateKey);
+    setCollapsedAdminExpenseDateKeys(new Set(collapsedKeys));
   }, [adminFilteredExpensesGroupedByDate]);
 
   // Admin employee overview: per-employee counts (unpaid, paid)
