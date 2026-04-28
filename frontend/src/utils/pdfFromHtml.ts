@@ -667,7 +667,7 @@ function buildBatchSummaryPdfHtml(
   employeeName: string,
   employeeEmail: string,
   ticketDate: string,
-  labourLines: Array<{ label: string; hours: number; amount: number; rate: number }>,
+  labourLines: Array<{ label: string; hours: number; amount: number; rate: number; typeKey: string }>,
   totalLabourHours: number,
   totalLabourAmount: number,
   expensesTotal: number,
