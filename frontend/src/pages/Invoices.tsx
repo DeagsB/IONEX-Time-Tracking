@@ -1058,14 +1058,12 @@ function mergedInvoiceBatchDownloadFilename(sourceInvoiceName: string | null | u
 /** Single line for non-CNRL period groups (no PO/AFE breakdown); poAfe empty so "PO/AFE/CC:" is not shown */
 function buildSingleLineBreakdown(
   tickets: (ServiceTicket & { recordId?: string })[],
-  expensesByRecordId: Map<string, InvoiceExpenseLine[]>
+  _expensesByRecordId: Map<string, InvoiceExpenseLine[]>
 ): { ticketList: string; poAfe: string; totalAmount: number }[] {
   const nums = tickets.map((t) => t.ticketNumber).filter(Boolean) as string[];
   let totalAmount = 0;
   for (const t of tickets) {
-    const recordId = t.recordId;
-    const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
-    totalAmount += calculateTicketTotalAmount(t, expenses);
+    totalAmount += calculateTicketTotalAmount(t, []);
   }
   return [{
     ticketList: formatTicketNumbersWithRanges(nums),
@@ -1184,7 +1182,7 @@ function computeGroupExpenseTotal(
 function buildPoAfeBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
   getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
-  expensesByRecordId: Map<string, InvoiceExpenseLine[]>
+  _expensesByRecordId: Map<string, InvoiceExpenseLine[]>
 ): { ticketList: string; poAfe: string; totalAmount: number }[] {
   const byPoAfe = new Map<string, { nums: string[]; tickets: typeof tickets }>();
   for (const t of tickets) {
@@ -1212,9 +1210,7 @@ function buildPoAfeBreakdown(
       });
       let totalAmount = 0;
       for (const t of poAfeTickets) {
-        const recordId = (t as { recordId?: string }).recordId;
-        const expenses = recordId ? (expensesByRecordId.get(recordId) ?? []) : [];
-        totalAmount += calculateTicketTotalAmount(t, expenses);
+        totalAmount += calculateTicketTotalAmount(t, []);
       }
       return {
         ticketList: formatTicketNumbersWithRanges(sortedNums),
