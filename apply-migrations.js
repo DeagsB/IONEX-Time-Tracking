@@ -68,7 +68,7 @@ async function applyMigration(filename) {
   console.log('='.repeat(60));
   
   try {
-    const filePath = join(__dirname, filename);
+    const filePath = join(__dirname, 'sql', 'migrations', filename);
     const sql = readFileSync(filePath, 'utf-8');
     await executeSQL(sql);
     console.log(`✅ Migration ${filename} applied successfully\n`);

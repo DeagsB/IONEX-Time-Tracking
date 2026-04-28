@@ -17,7 +17,7 @@
 ## Step 2: Set Up Database Schema
 
 1. In Supabase Dashboard, go to **SQL Editor**
-2. Copy the contents of `supabase-schema.sql` from the root of this project
+2. Copy the contents of `sql/supabase-schema.sql` in this project
 3. Paste and run it in the SQL Editor
 4. This creates all tables, triggers, and Row Level Security policies
 

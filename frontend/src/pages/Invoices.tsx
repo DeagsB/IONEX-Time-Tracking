@@ -421,8 +421,12 @@ function PoAfeBreakdownLine({
 }) {
   const [hoverLine, setHoverLine] = useState(false);
   const [hoverAmount, setHoverAmount] = useState(false);
+  const [hoverSplitHours, setHoverSplitHours] = useState(false);
+  const [hoverSplitRate, setHoverSplitRate] = useState(false);
   const [copiedLine, setCopiedLine] = useState(false);
   const [copiedAmount, setCopiedAmount] = useState(false);
+  const [copiedSplitHours, setCopiedSplitHours] = useState(false);
+  const [copiedSplitRate, setCopiedSplitRate] = useState(false);
   const isNone = !poAfe || poAfe === '(none)' || poAfe === NO_PO_AFE_LABEL;
   const isExpenseOnly = category === 'expense';
   const isCombined = category !== 'labour' && category !== 'expense';
@@ -453,6 +457,52 @@ function PoAfeBreakdownLine({
     } catch {
       // ignore
     }
+  };
+
+  const formattedSplitHours =
+    splitRate !== undefined && splitHours !== undefined
+      ? `${splitHours.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}h`
+      : '';
+  const formattedSplitRate =
+    splitRate !== undefined && splitHours !== undefined
+      ? `$${splitRate.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/h`
+      : '';
+
+  const copySplitHours = async () => {
+    if (!formattedSplitHours) return;
+    try {
+      await navigator.clipboard.writeText(formattedSplitHours);
+      setCopiedSplitHours(true);
+      setTimeout(() => setCopiedSplitHours(false), 1500);
+    } catch {
+      // ignore
+    }
+  };
+
+  const copySplitRate = async () => {
+    if (!formattedSplitRate) return;
+    try {
+      await navigator.clipboard.writeText(formattedSplitRate);
+      setCopiedSplitRate(true);
+      setTimeout(() => setCopiedSplitRate(false), 1500);
+    } catch {
+      // ignore
+    }
+  };
+
+  const amountBoxStyle = {
+    flexShrink: 0 as const,
+    alignSelf: 'flex-start' as const,
+    padding: '8px 14px',
+    borderRadius: '8px',
+    cursor: 'pointer' as const,
+    fontWeight: 700 as const,
+    color: 'var(--primary-color)',
+    fontSize: '14px',
+    textAlign: 'right' as const,
+    whiteSpace: 'nowrap' as const,
+    border: '1px solid var(--border-color)',
+    userSelect: 'none' as const,
   };
 
   return (
@@ -516,42 +566,54 @@ function PoAfeBreakdownLine({
       {splitRate !== undefined && splitHours !== undefined ? (
         <div style={{ display: 'flex', gap: '10px' }}>
           <div
-            style={{
-              flexShrink: 0,
-              alignSelf: 'flex-start',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              fontWeight: 600,
-              color: 'var(--text-secondary)',
-              fontSize: '13px',
-              textAlign: 'right',
-              whiteSpace: 'nowrap',
-              border: '1px solid var(--border-color)',
-              backgroundColor: 'var(--bg-primary)',
-              boxShadow: shadowRest,
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              void copySplitHours();
             }}
-            title="Hours"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                void copySplitHours();
+              }
+            }}
+            onMouseEnter={() => setHoverSplitHours(true)}
+            onMouseLeave={() => setHoverSplitHours(false)}
+            title={copiedSplitHours ? 'Copied!' : 'Click to copy hours'}
+            style={{
+              ...amountBoxStyle,
+              backgroundColor: copiedSplitHours ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+              boxShadow: hoverSplitHours || copiedSplitHours ? shadowHover : shadowRest,
+              transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
+            }}
           >
-            {splitHours.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}h
+            {formattedSplitHours}
           </div>
           <div
-            style={{
-              flexShrink: 0,
-              alignSelf: 'flex-start',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              fontWeight: 600,
-              color: 'var(--text-secondary)',
-              fontSize: '13px',
-              textAlign: 'right',
-              whiteSpace: 'nowrap',
-              border: '1px solid var(--border-color)',
-              backgroundColor: 'var(--bg-primary)',
-              boxShadow: shadowRest,
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              void copySplitRate();
             }}
-            title="Rate"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                void copySplitRate();
+              }
+            }}
+            onMouseEnter={() => setHoverSplitRate(true)}
+            onMouseLeave={() => setHoverSplitRate(false)}
+            title={copiedSplitRate ? 'Copied!' : 'Click to copy rate'}
+            style={{
+              ...amountBoxStyle,
+              backgroundColor: copiedSplitRate ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+              boxShadow: hoverSplitRate || copiedSplitRate ? shadowHover : shadowRest,
+              transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
+            }}
           >
-            ${splitRate.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/h
+            {formattedSplitRate}
           </div>
         </div>
       ) : (
@@ -572,21 +634,10 @@ function PoAfeBreakdownLine({
           onMouseLeave={() => setHoverAmount(false)}
           title={copiedAmount ? 'Copied!' : 'Click to copy this amount only'}
           style={{
-            flexShrink: 0,
-            alignSelf: 'flex-start',
-            padding: '8px 14px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: 700,
-            color: 'var(--primary-color)',
-            fontSize: '14px',
-            textAlign: 'right',
-            whiteSpace: 'nowrap',
-            border: '1px solid var(--border-color)',
+            ...amountBoxStyle,
             backgroundColor: copiedAmount ? 'var(--bg-secondary)' : 'var(--bg-primary)',
             boxShadow: hoverAmount || copiedAmount ? shadowHover : shadowRest,
             transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
-            userSelect: 'none',
           }}
         >
           {formattedTotal}

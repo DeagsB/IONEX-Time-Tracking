@@ -160,7 +160,7 @@ export default function Employees() {
       
       // Provide helpful message if columns are missing
       if (errorMessage.includes("Could not find") && errorMessage.includes("column")) {
-        errorMessage = `Database schema error: Missing required columns. Please run the migration 'migration_add_billable_rates.sql' in your Supabase SQL Editor. Error: ${errorMessage}`;
+        errorMessage = `Database schema error: Missing required columns. Please run sql/migrations/migration_add_billable_rates.sql in your Supabase SQL Editor. Error: ${errorMessage}`;
       }
       
       alert(`Failed to update employee: ${errorMessage}`);

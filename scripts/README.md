@@ -14,7 +14,7 @@ cd backend && node -r dotenv/config ../scripts/migrate-header-overrides-to-separ
 
 Requires `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in `backend/.env`.
 
-## remove-duplicate-service-tickets-morgan-wolfe.sql
+## sql/scripts/remove-duplicate-service-tickets-morgan-wolfe.sql
 
 Removes duplicate service tickets for **Morgan Wolfe** that were created when location was added to service ticket matching (same date + customer ended up with multiple tickets, e.g. one with empty location and one with a location).
 
@@ -31,7 +31,11 @@ Removes duplicate service tickets for **Morgan Wolfe** that were created when lo
 
 Only the **production** table `service_tickets` is modified; `service_tickets_demo` is not changed.
 
-## recover-service-ticket-hours.sql
+## sql/scripts/diagnose-service-ticket-hours.sql
+
+Inspects approved service tickets with zero hours and related time entries. Run in SQL Editor before `recover-service-ticket-hours.sql` to see which rows need recovery.
+
+## sql/scripts/recover-service-ticket-hours.sql
 
 Recovers hours for approved service tickets that show 0.00 but have matching time entries. Use when:
 - Tickets have `project_id=null` (merge couldn't match to base ticket)

@@ -36,7 +36,7 @@ To also upload backups to Supabase Storage (protects against local machine failu
 
 1. **Create the storage bucket** – run in Supabase SQL Editor:
    ```sql
-   -- From migration_create_database_backups_bucket.sql
+   -- From `sql/migrations/migration_create_database_backups_bucket.sql`
    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
    VALUES ('database-backups', 'database-backups', false, 524288000, ARRAY['application/sql', 'application/octet-stream', 'text/plain'])
    ON CONFLICT (id) DO NOTHING;
