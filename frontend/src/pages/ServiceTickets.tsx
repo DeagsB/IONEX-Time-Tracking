@@ -1109,6 +1109,12 @@ export default function ServiceTickets() {
   };
 
   const buildApprovalHeaderOverrides = (ticket: ServiceTicket): Record<string, string | number | string[]> => {
+    // If the ticket already has header overrides, use them directly to preserve manual edits
+    const existingOv = (ticket as any).headerOverrides as Record<string, any> | undefined;
+    if (existingOv && Object.keys(existingOv).length > 0) {
+      return existingOv;
+    }
+
     const cityState = ticket.customerInfo.city && ticket.customerInfo.state
       ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
       : ticket.customerInfo.city || ticket.customerInfo.state || '';
