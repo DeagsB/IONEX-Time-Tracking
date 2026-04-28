@@ -1293,9 +1293,8 @@ function buildRateTypeBreakdown(
   ];
   const hoursMap = new Map<string, number>();
   const rateMap = new Map<string, number>();
-  const nums: string[] = [];
+  const numsMap = new Map<string, string[]>();
   for (const t of tickets) {
-    if (t.ticketNumber) nums.push(t.ticketNumber);
     const { rtHours, ttHours, ftHours, shopOtHours, fieldOtHours } =
       (() => {
         const e = t.entries;
@@ -1308,17 +1307,28 @@ function buildRateTypeBreakdown(
       })();
     const hByKey: Record<string, number> = { ST: rtHours, TT: ttHours, FT: ftHours, SO: shopOtHours, FO: fieldOtHours };
     for (const { key, rateField } of RATE_TYPES) {
-      hoursMap.set(key, (hoursMap.get(key) ?? 0) + hByKey[key]);
-      rateMap.set(key, t.rates[rateField] || 0);
+      const h = hByKey[key];
+      if (h > 0) {
+        hoursMap.set(key, (hoursMap.get(key) ?? 0) + h);
+        rateMap.set(key, t.rates[rateField] || 0);
+        if (t.ticketNumber) {
+          const arr = numsMap.get(key) ?? [];
+          arr.push(t.ticketNumber);
+          numsMap.set(key, arr);
+        }
+      }
     }
   }
-  const ticketList = formatTicketNumbersWithRanges([...nums].sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b)));
   const lines: { ticketList: string; poAfe: string; totalAmount: number }[] = [];
   for (const { key, label } of RATE_TYPES) {
     const hrs = hoursMap.get(key) ?? 0;
     if (hrs <= 0) continue;
     const amount = Math.round(hrs * (rateMap.get(key) ?? 0) * 100) / 100;
-    if (amount > 0) lines.push({ ticketList: ticketList ? `${label} (${ticketList})` : label, poAfe: '', totalAmount: amount });
+    if (amount > 0) {
+      const nums = numsMap.get(key) ?? [];
+      const ticketList = formatTicketNumbersWithRanges([...nums].sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b)));
+      lines.push({ ticketList: ticketList ? `${label} (${ticketList})` : label, poAfe: '', totalAmount: amount });
+    }
   }
   if (includeExpenses) {
     for (const t of tickets) {
