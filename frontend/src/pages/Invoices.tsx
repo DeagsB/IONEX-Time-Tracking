@@ -2086,7 +2086,8 @@ export default function Invoices() {
       const row = invoicedMarkRows.find((r) => r.group_id === groupId);
       if (!row) return;
       const snap = (row.key_snapshot ?? {}) as FrozenGroupSnapshot;
-      await invoicedBatchMarksService.upsert(groupId, { ...snap, statusId } as unknown as { key: unknown; ticketIds: string[] });
+      const updated = { ...snap, statusId };
+      await invoicedBatchMarksService.upsert(groupId, updated as { key: unknown; ticketIds: string[] });
     },
     onMutate: async ({ groupId, statusId }) => {
       await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
@@ -2094,8 +2095,9 @@ export default function Invoices() {
       queryClient.setQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks'], (prev) =>
         (prev ?? []).map((r) => {
           if (r.group_id !== groupId) return r;
-          const snap = (r.key_snapshot ?? {}) as Record<string, unknown>;
-          return { ...r, key_snapshot: { ...snap, statusId } as InvoicedBatchMarkRow['key_snapshot'] };
+          const snap = (r.key_snapshot ?? {}) as FrozenGroupSnapshot;
+          const updated: FrozenGroupSnapshot = { ...snap, statusId };
+          return { ...r, key_snapshot: updated as unknown as InvoicedBatchMarkRow['key_snapshot'] };
         })
       );
       return { previous };
