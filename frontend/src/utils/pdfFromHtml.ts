@@ -537,6 +537,393 @@ export async function downloadPdfFromHtml(
  * Generate PDF and optionally upload to Supabase Storage
  * Returns the PDF blob and storage URL if uploaded
  */
+export async function generateBatchSummaryPdf(
+  groupTickets: ServiceTicket[],
+  allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }>
+): Promise<Blob> {
+  const firstTicket = groupTickets[0];
+  if (!firstTicket) throw new Error('No tickets in batch');
+
+  let rtHours = 0, ttHours = 0, ftHours = 0, shopOtHours = 0, fieldOtHours = 0;
+  let rtAmount = 0, ttAmount = 0, ftAmount = 0, shopOtAmount = 0, fieldOtAmount = 0;
+
+  const employeeNames = new Set<string>();
+  const employeeEmails = new Set<string>();
+  const dates = new Set<string>();
+
+  for (const ticket of groupTickets) {
+    const { rtHours: tRt, ttHours: tTt, ftHours: tFt, shopOtHours: tSo, fieldOtHours: tFo } = computeServiceTicketPdfHoursAndLines(ticket);
+    rtHours += tRt;
+    ttHours += tTt;
+    ftHours += tFt;
+    shopOtHours += tSo;
+    fieldOtHours += tFo;
+
+    rtAmount += tRt * ticket.rates.rt;
+    ttAmount += tTt * ticket.rates.tt;
+    ftAmount += tFt * ticket.rates.ft;
+    shopOtAmount += tSo * ticket.rates.shop_ot;
+    fieldOtAmount += tFo * ticket.rates.field_ot;
+
+    const name = ticket.entries[0]?.user?.first_name && ticket.entries[0]?.user?.last_name
+      ? `${ticket.entries[0].user.first_name} ${ticket.entries[0].user.last_name}`
+      : ticket.userName || 'Unknown';
+    const email = ticket.entries[0]?.user?.email || '';
+    if (name) employeeNames.add(name);
+    if (email) employeeEmails.add(email);
+
+    const rawTicketDate = ticket.date || ticket.entries[0]?.date;
+    if (rawTicketDate) dates.add(rawTicketDate);
+  }
+
+  const employeeName = employeeNames.size > 1 ? 'Multiple Technicians' : (Array.from(employeeNames)[0] || 'Unknown');
+  const employeeEmail = employeeEmails.size > 1 ? 'Multiple Emails' : (Array.from(employeeEmails)[0] || '');
+
+  let ticketDate = '';
+  if (dates.size > 0) {
+    const sortedDates = Array.from(dates).sort();
+    if (sortedDates.length === 1) {
+      ticketDate = formatTicketDateMmDdYyyy(sortedDates[0]);
+    } else {
+      ticketDate = `${formatTicketDateMmDdYyyy(sortedDates[0])} - ${formatTicketDateMmDdYyyy(sortedDates[sortedDates.length - 1])}`;
+    }
+  } else {
+    ticketDate = formatTicketDateMmDdYyyy(
+      `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
+    );
+  }
+
+  const expensesTotal = allExpenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
+  const grandTotal = rtAmount + ttAmount + ftAmount + shopOtAmount + fieldOtAmount + expensesTotal;
+
+  const html = buildBatchSummaryPdfHtml(
+    firstTicket,
+    allExpenses,
+    employeeName,
+    employeeEmail,
+    ticketDate,
+    rtHours, ttHours, ftHours, shopOtHours, fieldOtHours,
+    rtAmount, ttAmount, ftAmount, shopOtAmount, fieldOtAmount,
+    expensesTotal, grandTotal
+  );
+
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  container.style.cssText = 'position:fixed;left:0;top:0;width:8.5in;z-index:-1;pointer-events:none;opacity:0.01';
+  document.body.appendChild(container);
+
+  const element = container.querySelector('#service-ticket-summary');
+
+  try {
+    await waitForPdfElementReady(element as HTMLElement);
+    const opt = {
+      margin: 0,
+      filename: 'summary.pdf',
+      image: { type: 'jpeg', quality: 0.85 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const }
+    };
+
+    const rawBlob = await html2pdf().set(opt).from(element).outputPdf('blob') as Blob;
+    const pdfBlob = await stripExtraBlankPages(rawBlob);
+    return pdfBlob;
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+function buildBatchSummaryPdfHtml(
+  ticket: ServiceTicket,
+  expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }>,
+  employeeName: string,
+  employeeEmail: string,
+  ticketDate: string,
+  rtHours: number,
+  ttHours: number,
+  ftHours: number,
+  shopOtHours: number,
+  fieldOtHours: number,
+  rtAmount: number,
+  ttAmount: number,
+  ftAmount: number,
+  shopOtAmount: number,
+  fieldOtAmount: number,
+  expensesTotal: number,
+  grandTotal: number
+): string {
+  const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket);
+  const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
+
+  const labourLines = [
+    { label: 'Shop Time (ST)', hours: rtHours, amount: rtAmount },
+    { label: 'Field Time (FT)', hours: ftHours, amount: ftAmount },
+    { label: 'Travel Time (TT)', hours: ttHours, amount: ttAmount },
+    { label: 'Shop OT (SO)', hours: shopOtHours, amount: shopOtAmount },
+    { label: 'Field OT (FO)', hours: fieldOtHours, amount: fieldOtAmount },
+  ].filter(l => l.hours > 0);
+
+  return `
+    <div id="service-ticket-summary" style="
+      width: 8.5in;
+      font-family: Arial, sans-serif;
+      font-size: 9pt;
+      color: #000;
+      background: #fff;
+      padding: 0.3in;
+      box-sizing: border-box;
+    ">
+      <!-- Header -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="width: 180px;">
+          <img 
+            src="/ionex-logo.png" 
+            alt="IONEX Systems" 
+            style="max-width: 180px; max-height: 60px; height: auto;" 
+            onerror="this.onerror=null; this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%2250%22><text x=%220%22 y=%2235%22 font-family=%22Arial%22 font-size=%2224%22 font-weight=%22bold%22 fill=%22%23cc0000%22>IONEX</text></svg>';"
+          />
+        </div>
+        <div style="flex: 1; text-align: center;">
+          <div style="font-size: 16pt; font-weight: bold; letter-spacing: 2px;">SERVICE TICKET SUMMARY</div>
+        </div>
+        <div style="width: 140px; text-align: right;">
+        </div>
+      </div>
+
+      <!-- Customer Info and Service Info Row -->
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <!-- Service Info (Left) -->
+        <div style="flex: 1; border: 1px solid #000;">
+          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Info</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 60px;">Job ID</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.projectNumber || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 60px;">Job Type</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">AUTO</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Tech</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Date</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticketDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Address</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">2-3650 19th Street NE</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">City</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Calgary, AB</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px;">Postal</td>
+              <td colspan="3" style="padding: 2px 4px;">T2E 6V2</td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- Customer Info (Right) -->
+        <div style="flex: 1.2; border: 1px solid #000;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 100px;">Customer Name</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-weight: bold;">${ticket.customerInfo.name}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Billing Address</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.address || ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">City/Province</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.city || ''}${ticket.customerInfo.state ? ', ' + ticket.customerInfo.state : ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Postal Code</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.zip_code || ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Name</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.contact_name || ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Contact Email</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.customerInfo.email || ''}</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Phone</td>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; width: 100px;">PO/AFE/CC (Cost Center)</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${poAfe}</td>
+              <td style="padding: 2px 4px; width: 40px;">Coding</td>
+              <td style="padding: 2px 4px;">${cc}</td>
+            </tr>
+            <tr style="border-top: 1px solid #ccc;">
+              <td style="padding: 2px 4px; width: 100px;">Approver</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approver}</td>
+              <td style="padding: 2px 4px; width: 40px;">Other</td>
+              <td style="padding: 2px 4px;">${otherVal}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Labour Summary -->
+      <div style="border: 1px solid #000; margin-bottom: 10px;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+          <colgroup>
+            <col style="width: auto;" />
+            <col style="width: 80px;" />
+            <col style="width: 80px;" />
+            <col style="width: 80px;" />
+          </colgroup>
+          <thead>
+            <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
+              <td style="padding: 3px 6px;">Labour Type</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">Hours</td>
+              <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Avg Rate</td>
+              <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Amount</td>
+            </tr>
+          </thead>
+          <tbody>
+            ${labourLines.map(line => `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${line.label}</td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.hours.toFixed(2)}</td>
+              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${(line.amount / line.hours).toFixed(2)}</td>
+              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${line.amount.toFixed(2)}</td>
+            </tr>
+            `).join('')}
+            ${Array.from({ length: Math.max(0, 5 - labourLines.length) }).map(() => `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
+              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+            </tr>
+            `).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
+              <td style="padding: 4px 6px; text-align: right;">Total Labour</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${(rtHours + ftHours + ttHours + shopOtHours + fieldOtHours).toFixed(2)}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;"></td>
+              <td style="padding: 4px 6px; text-align: right; border-left: 1px solid #000;">$${(rtAmount + ftAmount + ttAmount + shopOtAmount + fieldOtAmount).toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Travel/Expenses and Summary Row -->
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <!-- Travel/Expenses -->
+        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column;">
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed; flex: 1;">
+            <colgroup>
+              <col style="width: auto;" />
+              <col style="width: 60px;" />
+              <col style="width: 40px;" />
+              <col style="width: 60px;" />
+            </colgroup>
+            <thead>
+              <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
+                <td style="padding: 3px 6px;">Expenses</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">RATE</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">QTY</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SUB</td>
+              </tr>
+            </thead>
+            <tbody>
+              ${expenses.length > 0 ? expenses.map((expense) => `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${expense.rate.toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: center; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">${expense.quantity.toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
+              </tr>
+              `).join('') : ''}
+              ${Array.from({ length: Math.max(0, 6 - expenses.length) }).map(() => `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+              </tr>
+              `).join('')}
+            </tbody>
+            <tfoot>
+              <tr style="border-top: 2px solid #000; font-weight: bold; background: #f0f0f0;">
+                <td style="padding: 4px 6px; text-align: right; vertical-align: bottom;">Total Expenses</td>
+                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
+                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
+                <td style="padding: 4px 6px; border-left: 1px solid #000; text-align: right; vertical-align: bottom; font-size: 10pt;">$${expensesTotal.toFixed(2)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Service Ticket Summary -->
+        <div style="width: 200px; border: 1px solid #000;">
+          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Ticket Summary</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total ST</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${rtAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total FT</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ftAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total TT</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${ttAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total SO</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${shopOtAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total FO</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${fieldOtAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc;">
+              <td style="padding: 3px 6px;">Total Expenses</td>
+              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${expensesTotal.toFixed(2)}</td>
+            </tr>
+            <tr style="background: #f0f0f0;">
+              <td style="padding: 4px 6px; font-weight: bold;">TOTAL</td>
+              <td style="padding: 4px 6px; text-align: right; font-weight: bold; font-size: 10pt;">$${grandTotal.toFixed(2)}</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Customer Approval / Coding Row -->
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <div style="flex: 1; border: 1px solid #000;">
+          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Customer Approval / Coding</div>
+          <div style="padding: 20px 6px; font-size: 8pt;">
+          </div>
+        </div>
+        <div style="flex: 1; border: 1px solid #000;">
+          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Customer Signature</div>
+          <div style="padding: 20px 6px; font-size: 8pt;">
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export async function generateAndStorePdf(
   ticket: ServiceTicket,
   expenses: Array<{

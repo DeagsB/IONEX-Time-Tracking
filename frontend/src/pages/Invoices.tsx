@@ -32,7 +32,7 @@ import {
   buildGroupingKey,
   getTicketBillingKey,
 } from '../utils/serviceTickets';
-import { generateAndStorePdf, mergePdfBlobs } from '../utils/pdfFromHtml';
+import { generateAndStorePdf, mergePdfBlobs, generateBatchSummaryPdf } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
 import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
 import SearchableSelect from '../components/SearchableSelect';
@@ -2497,6 +2497,8 @@ export default function Invoices() {
     setExportError(null);
     try {
       const blobs: Blob[] = [];
+      const allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+
       for (const ticket of groupTickets) {
         const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
         const recordId = t.recordId;
@@ -2504,6 +2506,7 @@ export default function Invoices() {
         if (recordId) {
           try {
             expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+            allExpenses.push(...expenses);
           } catch {
             expenses = [];
           }
@@ -2514,6 +2517,14 @@ export default function Invoices() {
         });
         blobs.push(result.blob);
       }
+
+      try {
+        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses);
+        blobs.unshift(summaryPdf);
+      } catch (err) {
+        console.warn('Failed to generate summary PDF:', err);
+      }
+
       if (blobs.length > 0) {
         const merged = await mergePdfBlobs(blobs);
         const filename = getInvoicePdfFilename(key, groupTickets);
@@ -2554,6 +2565,8 @@ export default function Invoices() {
     setExportError(null);
     try {
       const blobs: Blob[] = [invoiceBlob];
+      const allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+
       for (const ticket of groupTickets) {
         const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
         const recordId = t.recordId;
@@ -2561,6 +2574,7 @@ export default function Invoices() {
         if (recordId) {
           try {
             expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+            allExpenses.push(...expenses);
           } catch {
             expenses = [];
           }
@@ -2571,6 +2585,14 @@ export default function Invoices() {
         });
         blobs.push(result.blob);
       }
+
+      try {
+        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses);
+        blobs.splice(1, 0, summaryPdf); // Insert after invoice PDF
+      } catch (err) {
+        console.warn('Failed to generate summary PDF:', err);
+      }
+
       const merged = await mergePdfBlobs(blobs);
       saveAs(merged, downloadFilename);
       await markTicketsAsPdfExported(groupTickets);
@@ -2599,6 +2621,8 @@ export default function Invoices() {
         });
 
         const blobs: Blob[] = [];
+        const allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+
         for (const ticket of groupTickets) {
           const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
           const recordId = t.recordId;
@@ -2606,6 +2630,7 @@ export default function Invoices() {
           if (recordId) {
             try {
               expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+              allExpenses.push(...expenses);
             } catch {
               expenses = [];
             }
@@ -2617,6 +2642,13 @@ export default function Invoices() {
           blobs.push(result.blob);
           processed++;
           setExportProgress({ current: processed, total, label: `Generating PDF ${processed}/${total}` });
+        }
+
+        try {
+          const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses);
+          blobs.unshift(summaryPdf);
+        } catch (err) {
+          console.warn('Failed to generate summary PDF:', err);
         }
 
         if (blobs.length > 0) {
@@ -2748,6 +2780,8 @@ export default function Invoices() {
 
           // Attach merged PDF to invoice
           const blobs: Blob[] = [];
+          const allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+
           for (const ticket of groupTickets) {
             const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
             const recordId = t.recordId;
@@ -2755,6 +2789,7 @@ export default function Invoices() {
             if (recordId) {
               try {
                 expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+                allExpenses.push(...expenses);
               } catch {
                 expenses = [];
               }
@@ -2765,6 +2800,14 @@ export default function Invoices() {
             });
             blobs.push(pdfResult.blob);
           }
+
+          try {
+            const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses);
+            blobs.unshift(summaryPdf);
+          } catch (err) {
+            console.warn('Failed to generate summary PDF:', err);
+          }
+
           if (blobs.length > 0) {
             const merged = await mergePdfBlobs(blobs);
             const filename = getInvoicePdfFilename(key, groupTickets);
