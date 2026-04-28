@@ -467,11 +467,20 @@ function PoAfeBreakdownLine({
     splitRate !== undefined && splitHours !== undefined
       ? `$${splitRate.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/h`
       : '';
+  /** Clipboard only: numeric hours/rate (no h, $, /h). Display strings stay formattedSplit*. */
+  const clipboardSplitHours =
+    splitRate !== undefined && splitHours !== undefined
+      ? splitHours.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : '';
+  const clipboardSplitRate =
+    splitRate !== undefined && splitHours !== undefined
+      ? splitRate.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : '';
 
   const copySplitHours = async () => {
-    if (!formattedSplitHours) return;
+    if (!clipboardSplitHours) return;
     try {
-      await navigator.clipboard.writeText(formattedSplitHours);
+      await navigator.clipboard.writeText(clipboardSplitHours);
       setCopiedSplitHours(true);
       setTimeout(() => setCopiedSplitHours(false), 1500);
     } catch {
@@ -480,9 +489,9 @@ function PoAfeBreakdownLine({
   };
 
   const copySplitRate = async () => {
-    if (!formattedSplitRate) return;
+    if (!clipboardSplitRate) return;
     try {
-      await navigator.clipboard.writeText(formattedSplitRate);
+      await navigator.clipboard.writeText(clipboardSplitRate);
       setCopiedSplitRate(true);
       setTimeout(() => setCopiedSplitRate(false), 1500);
     } catch {
