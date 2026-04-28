@@ -560,6 +560,8 @@ export async function generateBatchSummaryPdf(
     }
   };
 
+  const employeeNames = new Set<string>();
+  const employeeEmails = new Set<string>();
   const dates = new Set<string>();
 
   for (const ticket of groupTickets) {
@@ -571,9 +573,19 @@ export async function generateBatchSummaryPdf(
     addLabour('SO', 'Shop OT (SO)', tSo, ticket.rates.shop_ot);
     addLabour('FO', 'Field OT (FO)', tFo, ticket.rates.field_ot);
 
+    const name = ticket.entries[0]?.user?.first_name && ticket.entries[0]?.user?.last_name
+      ? `${ticket.entries[0].user.first_name} ${ticket.entries[0].user.last_name}`
+      : ticket.userName || 'Unknown';
+    const email = ticket.entries[0]?.user?.email || '';
+    if (name) employeeNames.add(name);
+    if (email) employeeEmails.add(email);
+
     const rawTicketDate = ticket.date || ticket.entries[0]?.date;
     if (rawTicketDate) dates.add(rawTicketDate);
   }
+
+  const employeeName = employeeNames.size > 1 ? 'Multiple Technicians' : (Array.from(employeeNames)[0] || 'Unknown');
+  const employeeEmail = employeeEmails.size > 1 ? 'Multiple Emails' : (Array.from(employeeEmails)[0] || '');
 
   let ticketDate = '';
   if (dates.size > 0) {
@@ -612,6 +624,8 @@ export async function generateBatchSummaryPdf(
   const html = buildBatchSummaryPdfHtml(
     firstTicket,
     groupedExpenses,
+    employeeName,
+    employeeEmail,
     ticketDate,
     labourLines,
     totalLabourHours,
@@ -648,6 +662,8 @@ export async function generateBatchSummaryPdf(
 function buildBatchSummaryPdfHtml(
   ticket: ServiceTicket,
   expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }>,
+  employeeName: string,
+  employeeEmail: string,
   ticketDate: string,
   labourLines: Array<{ label: string; hours: number; amount: number; rate: number }>,
   totalLabourHours: number,
@@ -680,6 +696,7 @@ function buildBatchSummaryPdfHtml(
         </div>
         <div style="flex: 1; text-align: center;">
           <div style="font-size: 16pt; font-weight: bold; letter-spacing: 2px;">SERVICE TICKET SUMMARY</div>
+          <div style="font-size: 8pt; color: #555; margin-top: 2px;">Summary of all service tickets attached below</div>
         </div>
         <div style="width: 140px; text-align: right;">
         </div>
@@ -696,6 +713,14 @@ function buildBatchSummaryPdfHtml(
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; border-right: 1px solid #ccc;">${ticket.projectNumber || ''}</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 60px;">Job Type</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">AUTO</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Tech</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Email</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${employeeEmail}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Date</td>
@@ -815,12 +840,12 @@ function buildBatchSummaryPdfHtml(
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
         <!-- Travel/Expenses -->
         <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column;">
-          <table style="width: 100%; border-collapse: collapse; table-layout: fixed; flex: 1;">
+          <table style="width: 100%; border-collapse: collapse; flex: 1;">
             <colgroup>
               <col style="width: auto;" />
               <col style="width: 60px;" />
-              <col style="width: 40px;" />
-              <col style="width: 60px;" />
+              <col style="width: 50px;" />
+              <col style="width: 70px;" />
             </colgroup>
             <thead>
               <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
@@ -836,7 +861,7 @@ function buildBatchSummaryPdfHtml(
                 <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</td>
                 <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${expense.rate.toFixed(2)}</td>
                 <td style="padding: 2px 4px; text-align: center; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">${expense.quantity.toFixed(2)}</td>
-                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box; white-space: nowrap;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
               </tr>
               `).join('') : ''}
               ${Array.from({ length: Math.max(0, 6 - expenses.length) }).map(() => `
@@ -853,7 +878,7 @@ function buildBatchSummaryPdfHtml(
                 <td style="padding: 4px 6px; text-align: right; vertical-align: bottom;">Total Expenses</td>
                 <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
                 <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
-                <td style="padding: 4px 6px; border-left: 1px solid #000; text-align: right; vertical-align: bottom; font-size: 10pt;">$${expensesTotal.toFixed(2)}</td>
+                <td style="padding: 4px 6px; border-left: 1px solid #000; text-align: right; vertical-align: bottom; font-size: 10pt; white-space: nowrap;">$${expensesTotal.toFixed(2)}</td>
               </tr>
             </tfoot>
           </table>
@@ -891,6 +916,11 @@ function buildBatchSummaryPdfHtml(
           <div style="padding: 20px 6px; font-size: 8pt;">
           </div>
         </div>
+      </div>
+
+      <!-- Company Footer -->
+      <div style="text-align: center; font-size: 7pt; color: #666; margin-top: 15px; border-top: 1px solid #ccc; padding-top: 6px;">
+        IONEX Systems | Calgary, Alberta | Email: accounting@ionexsystems.com
       </div>
     </div>
   `;
