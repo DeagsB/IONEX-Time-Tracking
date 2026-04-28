@@ -374,7 +374,6 @@ function PoAfeBreakdownLine({
   ticketList: string;
   poAfe: string;
   totalAmount: number;
-  /** Row type label between description and amount (not included in copy text). */
   category?: 'labour' | 'expense';
 }) {
   const [hoverLine, setHoverLine] = useState(false);
@@ -382,9 +381,11 @@ function PoAfeBreakdownLine({
   const [copiedLine, setCopiedLine] = useState(false);
   const [copiedAmount, setCopiedAmount] = useState(false);
   const isNone = !poAfe || poAfe === '(none)' || poAfe === NO_PO_AFE_LABEL;
+  const categoryLabel = category === 'expense' ? 'Expense' : 'Labour';
   const copyText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const displayText = isNone ? ticketList : `PO/AFE/CC: ${poAfe}; ${ticketList}`;
   const formattedTotal = `$${totalAmount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const categoryColor = category === 'expense' ? '#e67e22' : '#2980b9';
 
   const shadowRest = '0 1px 3px rgba(0, 0, 0, 0.08)';
   const shadowHover = '0 4px 16px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08)';
@@ -434,10 +435,12 @@ function PoAfeBreakdownLine({
         }}
         onMouseEnter={() => setHoverLine(true)}
         onMouseLeave={() => setHoverLine(false)}
-        title={copiedLine ? 'Copied!' : 'Click to copy line (PO/AFE and tickets; not the dollar amount)'}
+        title={copiedLine ? 'Copied!' : 'Click to copy line (not the dollar amount)'}
         style={{
           flex: 1,
           minWidth: 0,
+          display: 'flex',
+          alignItems: 'center',
           padding: '8px 12px',
           borderRadius: '8px',
           cursor: 'pointer',
@@ -450,7 +453,20 @@ function PoAfeBreakdownLine({
           userSelect: 'none',
         }}
       >
-        {displayText}
+        <span style={{ flex: 1, minWidth: 0 }}>{displayText}</span>
+        <span
+          style={{
+            flexShrink: 0,
+            marginLeft: '12px',
+            fontSize: '10px',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: categoryColor,
+          }}
+        >
+          {categoryLabel}
+        </span>
       </div>
       <div
         role="button"
@@ -487,24 +503,6 @@ function PoAfeBreakdownLine({
         }}
       >
         {formattedTotal}
-      </div>
-      <div
-        aria-hidden
-        style={{
-          flexShrink: 0,
-          alignSelf: 'center',
-          padding: '4px 4px 4px 0',
-          minWidth: '56px',
-          textAlign: 'right',
-          fontSize: '10px',
-          fontWeight: 700,
-          letterSpacing: '0.04em',
-          textTransform: 'uppercase',
-          color: 'var(--text-tertiary)',
-          userSelect: 'none',
-        }}
-      >
-        {category === 'expense' ? 'Expense' : 'Labour'}
       </div>
     </div>
   );
@@ -1088,10 +1086,9 @@ type InvoiceExpenseLine = {
 };
 
 function formatInvoiceExpenseLineLabel(e: InvoiceExpenseLine): string {
-  const typ = (e.expense_type || '').trim();
   const desc = (e.description || '').trim();
-  if (typ && desc) return `${typ}: ${desc}`;
-  return typ || desc || '—';
+  const typ = (e.expense_type || '').trim();
+  return desc || typ || '—';
 }
 
 const CA_GST_ON_LABOUR_RATE = 0.05;
@@ -1150,11 +1147,12 @@ function computeInvoicedGroupTotalsWithGst(
 function computeGroupExpenseTotal(
   tickets: (ServiceTicket & { recordId?: string })[],
   expensesByRecordId: Map<string, InvoiceExpenseLine[]>
-): { total: number; lines: { label: string; amount: number; count: number }[] } {
-  const grouped = new Map<string, { amount: number; count: number }>();
+): { total: number; lines: { label: string; amount: number; ticketNums: string[] }[] } {
+  const grouped = new Map<string, { amount: number; ticketNums: Set<string> }>();
   for (const t of tickets) {
     const rid = t.recordId;
     const exps = rid ? (expensesByRecordId.get(rid) ?? []) : [];
+    const tNum = t.ticketNumber || '';
     for (const e of exps) {
       const amt = Math.round(e.quantity * e.rate * 100) / 100;
       if (amt > 0) {
@@ -1162,19 +1160,21 @@ function computeGroupExpenseTotal(
         const existing = grouped.get(label);
         if (existing) {
           existing.amount += amt;
-          existing.count += 1;
+          if (tNum) existing.ticketNums.add(tNum);
         } else {
-          grouped.set(label, { amount: amt, count: 1 });
+          const s = new Set<string>();
+          if (tNum) s.add(tNum);
+          grouped.set(label, { amount: amt, ticketNums: s });
         }
       }
     }
   }
   const lines = [...grouped.entries()]
     .sort((a, b) => b[1].amount - a[1].amount)
-    .map(([label, { amount, count }]) => ({
+    .map(([label, { amount, ticketNums }]) => ({
       label,
       amount: Math.round(amount * 100) / 100,
-      count,
+      ticketNums: [...ticketNums].sort(),
     }));
   const total = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
   return { total, lines };
@@ -3308,15 +3308,18 @@ export default function Invoices() {
                             expensesByRecordId
                           );
                           if (expLines.length === 0) return null;
-                          return expLines.map((l, i) => (
-                            <PoAfeBreakdownLine
-                              key={`exp-${i}`}
-                              ticketList={l.count > 1 ? `${l.label} (×${l.count})` : l.label}
-                              poAfe=""
-                              totalAmount={l.amount}
-                              category="expense"
-                            />
-                          ));
+                          return expLines.map((l, i) => {
+                            const suffix = l.ticketNums.length > 1 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                            return (
+                              <PoAfeBreakdownLine
+                                key={`exp-${i}`}
+                                ticketList={`${l.label}${suffix}`}
+                                poAfe=""
+                                totalAmount={l.amount}
+                                category="expense"
+                              />
+                            );
+                          });
                         })()}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
@@ -3755,15 +3758,18 @@ export default function Invoices() {
                       expensesByRecordId
                     );
                     if (expLines.length === 0) return null;
-                    return expLines.map((l, i) => (
-                      <PoAfeBreakdownLine
-                        key={`exp-${i}`}
-                        ticketList={l.count > 1 ? `${l.label} (×${l.count})` : l.label}
-                        poAfe=""
-                        totalAmount={l.amount}
-                        category="expense"
-                      />
-                    ));
+                    return expLines.map((l, i) => {
+                      const suffix = l.ticketNums.length > 1 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                      return (
+                        <PoAfeBreakdownLine
+                          key={`exp-${i}`}
+                          ticketList={`${l.label}${suffix}`}
+                          poAfe=""
+                          totalAmount={l.amount}
+                          category="expense"
+                        />
+                      );
+                    });
                   })()}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
