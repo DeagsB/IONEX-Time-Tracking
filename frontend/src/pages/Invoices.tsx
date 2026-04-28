@@ -2044,15 +2044,23 @@ export default function Invoices() {
     },
     onMutate: async (groupId) => {
       await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
-      const previous = queryClient.getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks']);
+      await queryClient.cancelQueries({ queryKey: ['invoicedBatchInvoices'] });
+      const previousMarks = queryClient.getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks']);
       queryClient.setQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks'], (prev) =>
         (prev ?? []).filter((r) => r.group_id !== groupId)
       );
-      return { previous };
+      const previousInvoiceIds = queryClient.getQueryData<string[]>(['invoicedBatchInvoices', 'allGroupIds']);
+      queryClient.setQueryData<string[]>(['invoicedBatchInvoices', 'allGroupIds'], (prev) =>
+        (prev ?? []).filter((id) => id !== groupId)
+      );
+      return { previousMarks, previousInvoiceIds };
     },
     onError: (_err, _groupId, ctx) => {
-      if (ctx?.previous !== undefined) {
-        queryClient.setQueryData(['invoicedBatchMarks'], ctx.previous);
+      if (ctx?.previousMarks !== undefined) {
+        queryClient.setQueryData(['invoicedBatchMarks'], ctx.previousMarks);
+      }
+      if (ctx?.previousInvoiceIds !== undefined) {
+        queryClient.setQueryData(['invoicedBatchInvoices', 'allGroupIds'], ctx.previousInvoiceIds);
       }
     },
     onSuccess: (_data, groupId) => {

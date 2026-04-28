@@ -885,20 +885,20 @@ function buildBatchSummaryPdfHtml(
         </div>
 
         <!-- Service Ticket Summary -->
-        <div style="width: 200px; border: 1px solid #000;">
+        <div style="width: 200px; border: 1px solid #000; display: flex; flex-direction: column;">
           <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Ticket Summary</div>
-          <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
-            <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total Labour</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${totalLabourAmount.toFixed(2)}</td>
+          <table style="width: 100%; border-collapse: collapse; font-size: 8pt; flex: 1;">
+            <tr style="border-bottom: 1px solid #ccc; height: 33%;">
+              <td style="padding: 6px; vertical-align: middle;">Total Labour</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; vertical-align: middle; white-space: nowrap;">$${totalLabourAmount.toFixed(2)}</td>
             </tr>
-            <tr style="border-bottom: 1px solid #ccc;">
-              <td style="padding: 3px 6px;">Total Expenses</td>
-              <td style="padding: 3px 6px; text-align: right; font-weight: bold;">$${expensesTotal.toFixed(2)}</td>
+            <tr style="border-bottom: 1px solid #ccc; height: 33%;">
+              <td style="padding: 6px; vertical-align: middle;">Total Expenses</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; vertical-align: middle; white-space: nowrap;">$${expensesTotal.toFixed(2)}</td>
             </tr>
-            <tr style="background: #f0f0f0;">
-              <td style="padding: 4px 6px; font-weight: bold;">TOTAL</td>
-              <td style="padding: 4px 6px; text-align: right; font-weight: bold; font-size: 10pt;">$${grandTotal.toFixed(2)}</td>
+            <tr style="background: #f0f0f0; height: 34%;">
+              <td style="padding: 6px; font-weight: bold; font-size: 10pt; vertical-align: middle;">TOTAL</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; font-size: 12pt; vertical-align: middle; white-space: nowrap;">$${grandTotal.toFixed(2)}</td>
             </tr>
           </table>
         </div>
