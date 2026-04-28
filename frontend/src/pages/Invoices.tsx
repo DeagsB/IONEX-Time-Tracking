@@ -3112,21 +3112,21 @@ export default function Invoices() {
                               })}
                             </span>
                             <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
-                              Subtotal ${gstTotals.subtotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              {gstTotals.labourSubtotal > 0 && (
-                                <>
-                                  {' · '}
-                                  GST on labour (5%) $
-                                  {gstTotals.gstOnLabour.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </>
-                              )}
-                              {gstTotals.expenseGstTotal > 0 && (
-                                <>
-                                  {' · '}
-                                  {gstTotals.expenseGstFromReceipt ? 'Receipt GST (expenses)' : 'GST on expenses (5%)'} $
-                                  {gstTotals.expenseGstTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </>
-                              )}
+                              {(() => {
+                                const fmt = (n: number) => n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                const expSubtotal = Math.round((gstTotals.subtotal - gstTotals.labourSubtotal) * 100) / 100;
+                                const parts: string[] = [];
+                                if (gstTotals.labourSubtotal > 0) parts.push(`Labour $${fmt(gstTotals.labourSubtotal)}`);
+                                if (expSubtotal > 0) parts.push(`Expenses $${fmt(expSubtotal)}`);
+                                if (parts.length === 0) parts.push(`Subtotal $${fmt(gstTotals.subtotal)}`);
+                                else parts.unshift(`Subtotal $${fmt(gstTotals.subtotal)}`);
+                                if (gstTotals.gstOnLabour > 0) parts.push(`GST on labour (5%) $${fmt(gstTotals.gstOnLabour)}`);
+                                if (gstTotals.expenseGstTotal > 0) {
+                                  const label = gstTotals.expenseGstFromReceipt ? 'Receipt GST (expenses)' : 'GST on expenses (5%)';
+                                  parts.push(`${label} $${fmt(gstTotals.expenseGstTotal)}`);
+                                }
+                                return parts.join(' · ');
+                              })()}
                             </span>
                           </div>
                           <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
