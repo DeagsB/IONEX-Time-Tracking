@@ -1155,6 +1155,16 @@ function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTic
   return `${key.approverCode}|${ids.join(',')}`;
 }
 
+/** Match batches that share the same project, approver, PO/AFE, and CC (coding) for bulk labour notes. */
+function summaryDescriptionMatchKey(key: InvoiceGroupKeyWithPeriod): string {
+  return [
+    (key.projectId ?? '').trim(),
+    (key.approver ?? '').trim(),
+    (key.poAfe ?? '').trim(),
+    (key.cc ?? '').trim(),
+  ].join('\u0001');
+}
+
 /** service_tickets.id values (UUID) in legacy non-period group_id: `approverCode|id1,id2,...` */
 const SERVICE_TICKET_ROW_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1917,6 +1927,7 @@ export default function Invoices() {
   const [combinedExpenseGroupIds, setCombinedExpenseGroupIds] = useState<Set<string>>(new Set());
   const [splitRateGroupIds, setSplitRateGroupIds] = useState<Set<string>>(new Set());
   const [pendingLabourNotes, setPendingLabourNotes] = useState<Record<string, Record<string, string>>>({});
+  const [applyLabourNotesToSimilarBatches, setApplyLabourNotesToSimilarBatches] = useState(false);
   const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
@@ -3755,8 +3766,10 @@ export default function Invoices() {
                               onClick={() => {
                                 if (editingLabourNotesGroupId === persistId) {
                                   setEditingLabourNotesGroupId(null);
+                                  setApplyLabourNotesToSimilarBatches(false);
                                 } else {
                                   setEditingLabourNotes(batchSnap?.labourNotes ?? {});
+                                  setApplyLabourNotesToSimilarBatches(false);
                                   setEditingLabourNotesGroupId(persistId);
                                 }
                               }}
@@ -3831,10 +3844,22 @@ export default function Invoices() {
                               />
                             </div>
                           ))}
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '10px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.4 }}>
+                            <input
+                              type="checkbox"
+                              checked={applyLabourNotesToSimilarBatches}
+                              onChange={(e) => setApplyLabourNotesToSimilarBatches(e.target.checked)}
+                              style={{ marginTop: '2px', flexShrink: 0 }}
+                            />
+                            <span>Also apply to every <strong>invoiced</strong> batch with the same project, approver, PO/AFE, and CC</span>
+                          </label>
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '10px' }}>
                             <button
                               type="button"
-                              onClick={() => setEditingLabourNotesGroupId(null)}
+                              onClick={() => {
+                                setEditingLabourNotesGroupId(null);
+                                setApplyLabourNotesToSimilarBatches(false);
+                              }}
                               style={{ padding: '5px 12px', fontSize: '12px', border: '1px solid var(--border-color)', borderRadius: '5px', backgroundColor: 'var(--bg-tertiary)', cursor: 'pointer', color: 'var(--text-secondary)' }}
                             >
                               Cancel
@@ -3846,8 +3871,24 @@ export default function Invoices() {
                                 const cleaned = Object.fromEntries(
                                   Object.entries(editingLabourNotes).filter(([, v]) => v.trim())
                                 );
-                                saveLabourNotesMutation.mutate({ groupId: persistId, labourNotes: cleaned });
-                                setEditingLabourNotesGroupId(null);
+                                const mk = summaryDescriptionMatchKey(key);
+                                void (async () => {
+                                  try {
+                                    if (applyLabourNotesToSimilarBatches) {
+                                      for (const g of invoicedGroups) {
+                                        if (summaryDescriptionMatchKey(g.key) !== mk) continue;
+                                        const pid = resolvedPersistGroupId(g, invoicedMarkRows);
+                                        await saveLabourNotesMutation.mutateAsync({ groupId: pid, labourNotes: cleaned });
+                                      }
+                                    } else {
+                                      await saveLabourNotesMutation.mutateAsync({ groupId: persistId, labourNotes: cleaned });
+                                    }
+                                    setEditingLabourNotesGroupId(null);
+                                    setApplyLabourNotesToSimilarBatches(false);
+                                  } catch {
+                                    /* onError on mutation / toast if needed */
+                                  }
+                                })();
                               }}
                               style={{ padding: '5px 12px', fontSize: '12px', border: 'none', borderRadius: '5px', backgroundColor: 'var(--primary-color)', color: 'white', fontWeight: 600, cursor: saveLabourNotesMutation.isPending ? 'not-allowed' : 'pointer' }}
                             >
@@ -4393,8 +4434,10 @@ export default function Invoices() {
                       onClick={() => {
                         if (editingLabourNotesGroupId === groupId) {
                           setEditingLabourNotesGroupId(null);
+                          setApplyLabourNotesToSimilarBatches(false);
                         } else {
                           setEditingLabourNotes(pendingLabourNotes[groupId] ?? {});
+                          setApplyLabourNotesToSimilarBatches(false);
                           setEditingLabourNotesGroupId(groupId);
                         }
                       }}
@@ -4512,10 +4555,22 @@ export default function Invoices() {
                         />
                       </div>
                     ))}
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '10px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.4 }}>
+                      <input
+                        type="checkbox"
+                        checked={applyLabourNotesToSimilarBatches}
+                        onChange={(e) => setApplyLabourNotesToSimilarBatches(e.target.checked)}
+                        style={{ marginTop: '2px', flexShrink: 0 }}
+                      />
+                      <span>Also apply to every <strong>pending</strong> batch with the same project, approver, PO/AFE, and CC</span>
+                    </label>
                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '10px' }}>
                       <button
                         type="button"
-                        onClick={() => setEditingLabourNotesGroupId(null)}
+                        onClick={() => {
+                          setEditingLabourNotesGroupId(null);
+                          setApplyLabourNotesToSimilarBatches(false);
+                        }}
                         style={{ padding: '5px 12px', fontSize: '12px', border: '1px solid var(--border-color)', borderRadius: '5px', backgroundColor: 'var(--bg-tertiary)', cursor: 'pointer', color: 'var(--text-secondary)' }}
                       >
                         Cancel
@@ -4526,7 +4581,21 @@ export default function Invoices() {
                           const cleaned = Object.fromEntries(
                             Object.entries(editingLabourNotes).filter(([, v]) => v.trim())
                           );
-                          setPendingLabourNotes((prev) => ({ ...prev, [groupId]: cleaned }));
+                          const mk = summaryDescriptionMatchKey(key);
+                          if (applyLabourNotesToSimilarBatches) {
+                            setPendingLabourNotes((prev) => {
+                              const next = { ...prev };
+                              for (const g of uninvoicedGroups) {
+                                if (summaryDescriptionMatchKey(g.key) === mk) {
+                                  next[getGroupId(g)] = cleaned;
+                                }
+                              }
+                              return next;
+                            });
+                          } else {
+                            setPendingLabourNotes((prev) => ({ ...prev, [groupId]: cleaned }));
+                          }
+                          setApplyLabourNotesToSimilarBatches(false);
                           setEditingLabourNotesGroupId(null);
                         }}
                         style={{ padding: '5px 12px', fontSize: '12px', border: 'none', borderRadius: '5px', backgroundColor: 'var(--primary-color)', color: 'white', fontWeight: 600, cursor: 'pointer' }}
