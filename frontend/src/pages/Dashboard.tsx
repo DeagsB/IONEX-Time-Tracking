@@ -316,7 +316,7 @@ export default function Dashboard() {
   const actionItems = [
     { label: 'Tickets Awaiting Review', count: awaitingReviewCount, path: '/service-tickets?overview=open&tab=submitted', color: '#3b82f6' },
     { label: 'Resubmitted Tickets', count: resubmittedCount, path: '/service-tickets?overview=open&tab=submitted', color: '#eab308' },
-    { label: 'Pending Expense Approvals', count: pendingExpenseCount, path: '/expenses?overview=open&tab=pending', color: '#f59e0b' },
+    { label: 'Unpaid Expenses', count: pendingExpenseCount, path: '/expenses?overview=open&tab=unpaid', color: '#f59e0b' },
     { label: 'Projects Missing Numbers', count: missingNumberCount, path: '/projects?overview=open&missing=1', color: '#10b981' },
     { label: 'Open Bug Reports', count: openBugCount, path: '/service-tickets?overview=open&tab=submitted', color: '#ef4444' },
   ];

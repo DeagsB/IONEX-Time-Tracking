@@ -187,7 +187,7 @@ export default function Expenses() {
   const [loadingReceiptId, setLoadingReceiptId] = useState<string | null>(null);
 
   // Admin approval
-  const [adminStatusFilter, setAdminStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'paid' | 'all'>('pending');
+  const [adminStatusFilter, setAdminStatusFilter] = useState<'unpaid' | 'paid' | 'all'>('unpaid');
   const [collapsedMyExpenseDateKeys, setCollapsedMyExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const [collapsedAdminExpenseDateKeys, setCollapsedAdminExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const hasSeededMyExpenseDateCollapse = useRef(false);
@@ -239,8 +239,8 @@ export default function Expenses() {
     if (overview === 'open') {
       setShowExpenseEmployeeOverview(true);
     }
-    if (tab === 'pending') {
-      setAdminStatusFilter('pending');
+    if (tab === 'pending' || tab === 'unpaid') {
+      setAdminStatusFilter('unpaid');
     }
     if (overview || tab) {
       setSearchParams({}, { replace: true });
@@ -393,7 +393,7 @@ export default function Expenses() {
         is_billable: true,
         service_ticket_id: hotelAttachTarget.serviceTicketId,
         markup_amount: markup,
-        status: isAdmin ? 'approved' : 'pending',
+        status: 'pending',
       });
       await serviceTicketExpensesService.update(hotelAttachTarget.serviceTicketExpenseId, {
         expense_type: 'Hotel',
@@ -577,7 +577,7 @@ export default function Expenses() {
           is_billable: true,
           service_ticket_id: String(line.row.service_ticket_id),
           markup_amount: markup,
-          status: isAdmin ? 'approved' : 'pending',
+          status: 'pending',
         });
         await serviceTicketExpensesService.update(String(line.row.id), {
           expense_type: 'Hotel',
@@ -586,7 +586,7 @@ export default function Expenses() {
           rate: line.billed,
           actual_cost: line.cost,
           needs_reimbursement: true,
-          reimbursement_status: 'approved',
+          reimbursement_status: 'pending',
           reimbursement_approved_at: new Date().toISOString(),
         });
       }
@@ -604,7 +604,7 @@ export default function Expenses() {
           receipt_url: storagePath,
           gst: remGst,
           is_billable: false,
-          status: isAdmin ? 'approved' : 'pending',
+          status: 'pending',
         });
       }
 
@@ -860,7 +860,7 @@ export default function Expenses() {
     enabled: isAdmin,
   });
 
-  const handleAdminStatusChange = async (itemId: string, newStatus: 'approved' | 'rejected' | 'paid', source: 'receipt' | 'ticket') => {
+  const handleAdminStatusChange = async (itemId: string, newStatus: 'pending' | 'paid', source: 'receipt' | 'ticket') => {
     setUpdatingExpenseId(itemId);
     try {
       if (source === 'ticket') {
@@ -868,20 +868,6 @@ export default function Expenses() {
         queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
       } else {
         await userExpensesService.update(itemId, { status: newStatus });
-
-        if (newStatus === 'rejected') {
-          const expense = expenses.find((e: any) => e.id === itemId);
-          if (expense?.service_ticket_id) {
-            await userExpensesService._removeLinkedTicketExpense(expense.service_ticket_id, expense.description);
-            await userExpensesService.update(itemId, { service_ticket_id: null, markup_amount: null });
-            queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
-            const ru = expense.receipt_url && String(expense.receipt_url).trim();
-            if (ru) {
-              await userExpensesService.mergeUnappliedRowsSharingReceiptUrl(ru);
-            }
-          }
-        }
-
         queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       }
       queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
@@ -897,7 +883,7 @@ export default function Expenses() {
     const receiptItems = expenses.map((exp: any) => ({
       ...exp,
       _source: 'receipt' as const,
-      _status: exp.status,
+      _status: exp.status === 'paid' ? 'paid' : 'unpaid',
       _userId: exp.user_id,
       _employeeName: exp.users ? `${exp.users.first_name || ''} ${exp.users.last_name || ''}`.trim() || exp.users.email : 'Unknown',
       _ticketNumber: exp.service_tickets?.ticket_number || null,
@@ -918,7 +904,7 @@ export default function Expenses() {
         return {
           ...exp,
           _source: 'ticket' as const,
-          _status: exp.reimbursement_status || 'pending',
+          _status: (exp.reimbursement_status === 'paid') ? 'paid' : 'unpaid',
           _userId: uid,
           _employeeName: empName,
           _ticketNumber: exp.service_tickets?.ticket_number || null,
@@ -1042,44 +1028,38 @@ export default function Expenses() {
     );
   }, [adminFilteredExpensesGroupedByDate]);
 
-  // Admin employee overview: per-employee counts (pending, approved, rejected, paid)
+  // Admin employee overview: per-employee counts (unpaid, paid)
   const expenseEmployeeSummary = useMemo(() => {
     if (!isAdmin || !employees?.length) return [];
-    const map = new Map<string, { userId: string; name: string; pending: number; approved: number; rejected: number; paid: number }>();
+    const map = new Map<string, { userId: string; name: string; unpaid: number; paid: number }>();
     for (const e of mergedAdminExpenses) {
       const uid = e._userId;
       if (!uid) continue;
       if (!map.has(uid)) {
         const emp = employees.find((em: any) => em.user_id === uid);
         const name = emp?.user ? `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim() : e._employeeName || 'Unknown';
-        map.set(uid, { userId: uid, name, pending: 0, approved: 0, rejected: 0, paid: 0 });
+        map.set(uid, { userId: uid, name, unpaid: 0, paid: 0 });
       }
       const entry = map.get(uid)!;
-      const s = e._status;
-      if (s === 'pending') entry.pending++;
-      else if (s === 'approved') entry.approved++;
-      else if (s === 'rejected') entry.rejected++;
-      else if (s === 'paid') entry.paid++;
+      if (e._status === 'paid') entry.paid++;
+      else entry.unpaid++;
     }
     return Array.from(map.values()).sort((a, b) => {
-      if (a.pending > 0 && b.pending === 0) return -1;
-      if (a.pending === 0 && b.pending > 0) return 1;
+      if (a.unpaid > 0 && b.unpaid === 0) return -1;
+      if (a.unpaid === 0 && b.unpaid > 0) return 1;
       return a.name.localeCompare(b.name);
     });
   }, [isAdmin, mergedAdminExpenses, employees]);
 
   // Expenses for expanded employee in overview (grouped by status)
   const expandedExpenseEmployeeByStatus = useMemo(() => {
-    const empty = { pending: [] as any[], approved: [] as any[], rejected: [] as any[], paid: [] as any[] };
+    const empty = { unpaid: [] as any[], paid: [] as any[] };
     if (!expandedExpenseEmployeeId || !isAdmin) return empty;
     const pool = mergedAdminExpenses.filter((e: any) => e._userId === expandedExpenseEmployeeId);
-    const grouped = { pending: [] as any[], approved: [] as any[], rejected: [] as any[], paid: [] as any[] };
+    const grouped = { unpaid: [] as any[], paid: [] as any[] };
     for (const e of pool) {
-      const s = e._status;
-      if (s === 'pending') grouped.pending.push(e);
-      else if (s === 'approved') grouped.approved.push(e);
-      else if (s === 'rejected') grouped.rejected.push(e);
-      else if (s === 'paid') grouped.paid.push(e);
+      if (e._status === 'paid') grouped.paid.push(e);
+      else grouped.unpaid.push(e);
     }
     return grouped;
   }, [expandedExpenseEmployeeId, isAdmin, mergedAdminExpenses]);
@@ -1203,7 +1183,7 @@ export default function Expenses() {
         gst: parseFloat(receiptForm.gst) || 0,
         is_billable: receiptForm.is_billable,
         notes: receiptForm.notes.trim() || undefined,
-        status: isAdmin ? 'approved' : 'pending',
+        status: 'pending',
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
@@ -2162,8 +2142,8 @@ export default function Expenses() {
               ({expenseEmployeeSummary.length} employee{expenseEmployeeSummary.length !== 1 ? 's' : ''})
             </span>
             {(() => {
-              const totalPending = expenseEmployeeSummary.reduce((s, e) => s + e.pending, 0);
-              if (totalPending === 0) return null;
+              const totalUnpaid = expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0);
+              if (totalUnpaid === 0) return null;
               return (
                 <span style={{
                   marginLeft: '4px',
@@ -2173,7 +2153,7 @@ export default function Expenses() {
                   fontWeight: '700',
                   backgroundColor: '#ff9800',
                   color: 'white',
-                }}>{totalPending} pending</span>
+                }}>{totalUnpaid} unpaid</span>
               );
             })()}
           </button>
@@ -2184,9 +2164,7 @@ export default function Expenses() {
                 <thead>
                   <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
                     <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
-                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '100px' }}>Pending</th>
-                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase', width: '100px' }}>Approved</th>
-                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ef4444', textTransform: 'uppercase', width: '100px' }}>Rejected</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '100px' }}>Unpaid</th>
                     <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#3b82f6', textTransform: 'uppercase', width: '100px' }}>Paid</th>
                   </tr>
                 </thead>
@@ -2218,13 +2196,7 @@ export default function Expenses() {
                             {emp.name}
                           </td>
                           <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
-                            <span style={{ color: emp.pending > 0 ? '#ff9800' : 'var(--text-tertiary)', fontWeight: emp.pending > 0 ? '700' : '400' }}>{emp.pending}</span>
-                          </td>
-                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
-                            <span style={{ color: emp.approved > 0 ? '#4caf50' : 'var(--text-tertiary)' }}>{emp.approved}</span>
-                          </td>
-                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
-                            <span style={{ color: emp.rejected > 0 ? '#ef4444' : 'var(--text-tertiary)' }}>{emp.rejected}</span>
+                            <span style={{ color: emp.unpaid > 0 ? '#ff9800' : 'var(--text-tertiary)', fontWeight: emp.unpaid > 0 ? '700' : '400' }}>{emp.unpaid}</span>
                           </td>
                           <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
                             <span style={{ color: emp.paid > 0 ? '#3b82f6' : 'var(--text-tertiary)' }}>{emp.paid}</span>
@@ -2232,12 +2204,10 @@ export default function Expenses() {
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={5} style={{ padding: '0' }}>
+                            <td colSpan={3} style={{ padding: '0' }}>
                               <div style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-color)', padding: '4px 0' }}>
                                 {([
-                                  { key: 'pending', label: 'Pending', color: '#ff9800', items: expandedExpenseEmployeeByStatus.pending },
-                                  { key: 'approved', label: 'Approved', color: '#4caf50', items: expandedExpenseEmployeeByStatus.approved },
-                                  { key: 'rejected', label: 'Rejected', color: '#ef4444', items: expandedExpenseEmployeeByStatus.rejected },
+                                  { key: 'unpaid', label: 'Unpaid', color: '#ff9800', items: expandedExpenseEmployeeByStatus.unpaid },
                                   { key: 'paid', label: 'Paid', color: '#3b82f6', items: expandedExpenseEmployeeByStatus.paid },
                                 ] as const).map(section => {
                                   const sectionOpen = expandedExpenseStatusSections[emp.userId]?.has(section.key) || false;
@@ -2321,13 +2291,7 @@ export default function Expenses() {
                   <tr style={{ borderTop: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', fontWeight: '700' }}>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>Total</td>
                     <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#ff9800' }}>
-                      {expenseEmployeeSummary.reduce((s, e) => s + e.pending, 0)}
-                    </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#4caf50' }}>
-                      {expenseEmployeeSummary.reduce((s, e) => s + e.approved, 0)}
-                    </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#ef4444' }}>
-                      {expenseEmployeeSummary.reduce((s, e) => s + e.rejected, 0)}
+                      {expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0)}
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#3b82f6' }}>
                       {expenseEmployeeSummary.reduce((s, e) => s + e.paid, 0)}
@@ -2664,16 +2628,10 @@ export default function Expenses() {
                       padding: '4px 8px',
                       borderRadius: '12px',
                       fontSize: '12px',
-                      backgroundColor: exp.status === 'approved' ? 'rgba(16, 185, 129, 0.1)' :
-                                       exp.status === 'rejected' ? 'rgba(239, 68, 68, 0.1)' :
-                                       exp.status === 'paid' ? 'rgba(59, 130, 246, 0.1)' :
-                                       'rgba(245, 158, 11, 0.1)',
-                      color: exp.status === 'approved' ? '#10b981' :
-                             exp.status === 'rejected' ? '#ef4444' :
-                             exp.status === 'paid' ? '#3b82f6' :
-                             '#f59e0b',
+                      backgroundColor: exp.status === 'paid' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                      color: exp.status === 'paid' ? '#3b82f6' : '#f59e0b',
                     }}>
-                      {exp.status.charAt(0).toUpperCase() + exp.status.slice(1)}
+                      {exp.status === 'paid' ? 'Paid' : 'Unpaid'}
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px' }}>
@@ -2728,12 +2686,12 @@ export default function Expenses() {
       {isAdmin && (
         <div style={{ marginTop: '40px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px' }}>
-            Expense Approvals
+            Expense Management
           </h2>
 
           {/* Status filter tabs */}
           <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
-            {(['pending', 'approved', 'rejected', 'paid', 'all'] as const).map((status) => (
+            {(['unpaid', 'paid', 'all'] as const).map((status) => (
               <button
                 key={status}
                 onClick={() => setAdminStatusFilter(status)}
@@ -2937,35 +2895,17 @@ export default function Expenses() {
                       <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                         <span style={{
                           padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600',
-                          backgroundColor: status === 'approved' ? 'rgba(16, 185, 129, 0.1)' : status === 'rejected' ? 'rgba(239, 68, 68, 0.1)' : status === 'paid' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                          color: status === 'approved' ? '#10b981' : status === 'rejected' ? '#ef4444' : status === 'paid' ? '#3b82f6' : '#f59e0b',
+                          backgroundColor: status === 'paid' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                          color: status === 'paid' ? '#3b82f6' : '#f59e0b',
                         }}>
-                          {status.charAt(0).toUpperCase() + status.slice(1)}
+                          {status === 'paid' ? 'Paid' : 'Unpaid'}
                         </span>
                       </td>
                       <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '12px' }}>
                         {exp._ticketNumber || '-'}
                       </td>
                       <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                        {status === 'pending' && (
-                          <>
-                            <button
-                              disabled={isUpdating}
-                              onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'approved', source); }}
-                              style={{ padding: '3px 8px', marginRight: '4px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              disabled={isUpdating}
-                              onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'rejected', source); }}
-                              style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                        {status === 'approved' && (
+                        {status === 'unpaid' && (
                           <button
                             disabled={isUpdating}
                             onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'paid', source); }}
@@ -2974,17 +2914,14 @@ export default function Expenses() {
                             Mark Paid
                           </button>
                         )}
-                        {status === 'rejected' && (
+                        {status === 'paid' && (
                           <button
                             disabled={isUpdating}
-                            onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'approved', source); }}
-                            style={{ padding: '3px 8px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
+                            onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'pending', source); }}
+                            style={{ padding: '3px 8px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
                           >
-                            Re-approve
+                            Mark Unpaid
                           </button>
-                        )}
-                        {status === 'paid' && (
-                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Done</span>
                         )}
                       </td>
                     </tr>

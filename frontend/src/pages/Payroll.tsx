@@ -470,8 +470,7 @@ export default function Payroll() {
       const { data, error } = await supabase
         .from('user_expenses')
         .select('service_ticket_id, description, status')
-        .in('service_ticket_id', payrollTicketIdsForReceiptCheck)
-        .in('status', ['approved', 'paid']);
+        .in('service_ticket_id', payrollTicketIdsForReceiptCheck);
       if (error) throw error;
       return data || [];
     },
@@ -485,8 +484,7 @@ export default function Payroll() {
         .from('user_expenses')
         .select('*')
         .gte('expense_date', startDate)
-        .lte('expense_date', endDate)
-        .in('status', ['approved', 'paid']);
+        .lte('expense_date', endDate);
       if (!isAdmin && user?.id) {
         query = query.eq('user_id', user.id);
       }
@@ -516,13 +514,8 @@ export default function Payroll() {
 
   const catchUpReceipts = useMemo(() => {
     if (!isCurrentPeriod) return [];
-    const periodEnd = endDate + 'T23:59:59.999Z';
-    return (catchUpReceiptsRaw as any[]).filter((r) => {
-      const periodEndForExpense = getPeriodEndForDate(r.expense_date);
-      const cutoff = periodEndForExpense + 'T23:59:59.999Z';
-      return r.approved_at && r.approved_at > cutoff;
-    });
-  }, [isCurrentPeriod, endDate, catchUpReceiptsRaw]);
+    return (catchUpReceiptsRaw as any[]);
+  }, [isCurrentPeriod, catchUpReceiptsRaw]);
 
   const receiptExpensesForReimbursements = useMemo(
     () => (receiptExpenses as any[]).concat(catchUpReceipts),
@@ -628,7 +621,7 @@ export default function Payroll() {
         category = 'Per Diem';
       } else if (
         exp.needs_reimbursement &&
-        (['approved', 'paid'].includes(exp.reimbursement_status) ||
+        (!!exp.reimbursement_status ||
           ticketExpenseHasPayrollEligibleLinkedReceipt(exp, payrollLinkedApprovedReceipts as any[]))
       ) {
         reimbRate = 1.00;

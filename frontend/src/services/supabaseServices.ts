@@ -2455,24 +2455,19 @@ export const userExpensesService = {
   },
 
   /**
-   * Mark approved receipt expenses as paid when their period has passed and they were approved before/during the period.
-   * Skips expenses that were re-approved after the period end (approved_at > endDate).
+   * Mark unpaid (pending) receipt expenses as paid for a given period.
    */
   async markPaidForPeriod(startDate: string, endDate: string): Promise<{ count: number }> {
-    const endOfDay = endDate + 'T23:59:59.999Z';
     const { data: rows, error: selectError } = await supabase
       .from('user_expenses')
-      .select('id, approved_at')
+      .select('id')
       .gte('expense_date', startDate)
       .lte('expense_date', endDate)
-      .eq('status', 'approved');
+      .neq('status', 'paid');
 
     if (selectError) throw selectError;
-    const toMark = (rows || []).filter(
-      (r: any) => r.approved_at == null || r.approved_at <= endOfDay
-    );
-    if (toMark.length === 0) return { count: 0 };
-    const ids = toMark.map((r: any) => r.id);
+    if (!rows || rows.length === 0) return { count: 0 };
+    const ids = rows.map((r: any) => r.id);
     const { error: updateError } = await supabase
       .from('user_expenses')
       .update({ status: 'paid' })
@@ -2489,7 +2484,7 @@ export const userExpensesService = {
     let query = supabase
       .from('user_expenses')
       .select('*')
-      .eq('status', 'approved')
+      .neq('status', 'paid')
       .lt('expense_date', expenseDateBefore)
       .order('expense_date', { ascending: false });
     if (userId) {
