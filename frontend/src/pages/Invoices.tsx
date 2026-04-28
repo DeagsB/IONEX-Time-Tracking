@@ -3309,7 +3309,7 @@ export default function Invoices() {
                           );
                           if (expLines.length === 0) return null;
                           return expLines.map((l, i) => {
-                            const suffix = l.ticketNums.length > 1 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                            const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                             return (
                               <PoAfeBreakdownLine
                                 key={`exp-${i}`}
@@ -3759,7 +3759,7 @@ export default function Invoices() {
                     );
                     if (expLines.length === 0) return null;
                     return expLines.map((l, i) => {
-                      const suffix = l.ticketNums.length > 1 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                      const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                       return (
                         <PoAfeBreakdownLine
                           key={`exp-${i}`}
