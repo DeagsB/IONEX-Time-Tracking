@@ -939,7 +939,7 @@ function uninvoicedGroupPeriodStillAccumulating(
   return isInvoicePeriodStillAccumulating(pk, periodGrouping);
 }
 
-type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[]; expensesCombined?: boolean; statusId?: string };
+type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[]; expensesCombined?: boolean; statusId?: string; statusChangedAt?: string };
 
 /** Persist service_tickets.id (UUID) in marks so DB locks and Service Tickets match. Falls back to composite t.id if no DB row yet. */
 function snapshotTicketIdsForInvoicedMark(
@@ -2086,17 +2086,18 @@ export default function Invoices() {
       const row = invoicedMarkRows.find((r) => r.group_id === groupId);
       if (!row) return;
       const snap = (row.key_snapshot ?? {}) as FrozenGroupSnapshot;
-      const updated = { ...snap, statusId };
+      const updated = { ...snap, statusId, statusChangedAt: new Date().toISOString() };
       await invoicedBatchMarksService.upsert(groupId, updated as { key: unknown; ticketIds: string[] });
     },
     onMutate: async ({ groupId, statusId }) => {
       await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
       const previous = queryClient.getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks']);
+      const now = new Date().toISOString();
       queryClient.setQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks'], (prev) =>
         (prev ?? []).map((r) => {
           if (r.group_id !== groupId) return r;
           const snap = (r.key_snapshot ?? {}) as FrozenGroupSnapshot;
-          const updated: FrozenGroupSnapshot = { ...snap, statusId };
+          const updated: FrozenGroupSnapshot = { ...snap, statusId, statusChangedAt: now };
           return { ...r, key_snapshot: updated as unknown as InvoicedBatchMarkRow['key_snapshot'] };
         })
       );
@@ -2389,9 +2390,9 @@ export default function Invoices() {
     for (const g of invoicedGroups) {
       const pid = resolvedPersistGroupId(g, invoicedMarkRows);
       const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
-      const sid = snap?.statusId;
-      if (!sid) continue;
       const wf = getWorkflowForCustomer(g.tickets[0]?.customerName);
+      const sid = snap?.statusId ?? wf?.statuses?.[0]?.id;
+      if (!sid) continue;
       const st = wf?.statuses?.find((s) => s.id === sid);
       if (!st) continue;
       const existing = map.get(sid);
@@ -2409,7 +2410,9 @@ export default function Invoices() {
       groups = groups.filter((g) => {
         const pid = resolvedPersistGroupId(g, invoicedMarkRows);
         const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
-        return snap?.statusId === invoiceStatusFilter;
+        const wf = getWorkflowForCustomer(g.tickets[0]?.customerName);
+        const sid = snap?.statusId ?? wf?.statuses?.[0]?.id;
+        return sid === invoiceStatusFilter;
       });
     }
 
@@ -3161,10 +3164,15 @@ export default function Invoices() {
                 ?? savedInvoiceMetadata?.[persistId]?.filename
                 ?? null;
               const isAccordionOpen = isBreakdownExpanded;
-              const batchSnap = invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
-              const batchStatusId = batchSnap?.statusId;
+              const batchMarkRow = invoicedMarkRows.find((r) => r.group_id === persistId);
+              const batchSnap = batchMarkRow?.key_snapshot as FrozenGroupSnapshot | undefined;
               const batchWorkflow = getWorkflowForCustomer(groupTickets[0]?.customerName);
+              const batchStatusId = batchSnap?.statusId ?? batchWorkflow?.statuses?.[0]?.id;
               const batchCurrentStatus = batchWorkflow?.statuses?.find((s) => s.id === batchStatusId);
+              const statusSinceDate = batchSnap?.statusChangedAt ?? batchMarkRow?.marked_at;
+              const daysSinceStatus = statusSinceDate
+                ? Math.floor((Date.now() - new Date(statusSinceDate).getTime()) / (1000 * 60 * 60 * 24))
+                : null;
               return (
                 <div
                   key={persistId}
@@ -3221,20 +3229,26 @@ export default function Invoices() {
                         : 'No invoice'}
                     </span>
                     {batchCurrentStatus && (
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          padding: '2px 10px',
-                          borderRadius: '999px',
-                          backgroundColor: `${statusColorHex(batchCurrentStatus.color)}18`,
-                          color: statusColorHex(batchCurrentStatus.color),
-                          border: `1px solid ${statusColorHex(batchCurrentStatus.color)}40`,
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {batchCurrentStatus.label}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '2px 10px',
+                            borderRadius: '999px',
+                            backgroundColor: `${statusColorHex(batchCurrentStatus.color)}18`,
+                            color: statusColorHex(batchCurrentStatus.color),
+                            border: `1px solid ${statusColorHex(batchCurrentStatus.color)}40`,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {batchCurrentStatus.label}
+                        </span>
+                        {daysSinceStatus !== null && (
+                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                            {daysSinceStatus === 0 ? 'today' : daysSinceStatus === 1 ? '1 day' : `${daysSinceStatus} days`}
+                          </span>
+                        )}
                       </span>
                     )}
                     <span style={{ fontWeight: 700, color: 'var(--primary-color)', flexShrink: 0, fontSize: '14px' }}>
