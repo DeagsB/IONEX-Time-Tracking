@@ -1615,6 +1615,29 @@ export default function Invoices() {
     queryFn: () => employeesService.getAll(),
   });
 
+  const loadInvoicedBatchMarks = !!user && !isDemoMode && canAccessInvoices(user);
+
+  const { data: invoicedMarkRows = [] } = useQuery({
+    queryKey: ['invoicedBatchMarks'],
+    queryFn: () => invoicedBatchMarksService.getAll(),
+    enabled: loadInvoicedBatchMarks,
+  });
+
+  /** All ticket IDs (service_tickets.id / recordId) that belong to ANY invoiced batch mark in DB.
+   *  Used to permanently exclude invoiced tickets from re-grouping so grouping changes never affect them. */
+  const allInvoicedTicketIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of invoicedMarkRows) {
+      const ids = row.key_snapshot?.ticketIds;
+      if (!Array.isArray(ids)) continue;
+      for (const id of ids) {
+        const trimmed = typeof id === 'string' ? id.trim() : String(id ?? '').trim();
+        if (trimmed) set.add(trimmed);
+      }
+    }
+    return set;
+  }, [invoicedMarkRows]);
+
   // Build full tickets from billable entries + approved records (same logic as ServiceTickets)
   // approvedRecords is already filtered by date range to match Service Tickets Approved tab
   const tickets = useMemo(() => {
@@ -1682,7 +1705,8 @@ export default function Invoices() {
           projectPoAfe: pf.poAfe || ticketToUse.projectPoAfe,
           projectCc: pf.cc || ticketToUse.projectCc,
         };
-        const ticketWithOverrides = applyHeaderOverridesToTicket(rawTicket, rec.header_overrides ?? undefined);
+        const isUninvoiced = !allInvoicedTicketIds.has(rec.id);
+        const ticketWithOverrides = applyHeaderOverridesToTicket(rawTicket, rec.header_overrides ?? undefined, isUninvoiced);
         ticketList.push({ ...ticketWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawTicket.recordProjectId });
       } else {
         // Standalone ticket (no matching billable entries)
@@ -1773,7 +1797,8 @@ export default function Invoices() {
           projectCc: projFields.cc || undefined,
           projectOther: proj?.other,
         };
-        const standaloneWithOverrides = applyHeaderOverridesToTicket(rawStandalone, rec.header_overrides ?? undefined);
+        const isUninvoiced = !allInvoicedTicketIds.has(rec.id);
+        const standaloneWithOverrides = applyHeaderOverridesToTicket(rawStandalone, rec.header_overrides ?? undefined, isUninvoiced);
         ticketList.push({ ...standaloneWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawStandalone.recordProjectId });
       }
     }
@@ -1881,15 +1906,6 @@ export default function Invoices() {
     queryFn: () => invoicedBatchInvoicesService.getAllInvoicedGroupIds(),
   });
 
-  /** Load all DB marks for anyone on Invoices (admin + developer). Do not gate on isAdmin: developer "User" toggle cleared isAdmin but marks-only batches would disappear from "See invoiced". */
-  const loadInvoicedBatchMarks = !!user && !isDemoMode && canAccessInvoices(user);
-
-  const { data: invoicedMarkRows = [] } = useQuery({
-    queryKey: ['invoicedBatchMarks'],
-    queryFn: () => invoicedBatchMarksService.getAll(),
-    enabled: loadInvoicedBatchMarks,
-  });
-
   const dbMarkedIdSet = useMemo(
     () => new Set(invoicedMarkRows.map((r) => r.group_id)),
     [invoicedMarkRows]
@@ -1954,21 +1970,6 @@ export default function Invoices() {
     }
     return {};
   });
-
-  /** All ticket IDs (service_tickets.id / recordId) that belong to ANY invoiced batch mark in DB.
-   *  Used to permanently exclude invoiced tickets from re-grouping so grouping changes never affect them. */
-  const allInvoicedTicketIds = useMemo(() => {
-    const set = new Set<string>();
-    for (const row of invoicedMarkRows) {
-      const ids = row.key_snapshot?.ticketIds;
-      if (!Array.isArray(ids)) continue;
-      for (const id of ids) {
-        const trimmed = typeof id === 'string' ? id.trim() : String(id ?? '').trim();
-        if (trimmed) set.add(trimmed);
-      }
-    }
-    return set;
-  }, [invoicedMarkRows]);
 
   const uninvoicedTicketsForCustomer = useMemo(() => {
     if (allInvoicedTicketIds.size === 0) return ticketsForCustomer;

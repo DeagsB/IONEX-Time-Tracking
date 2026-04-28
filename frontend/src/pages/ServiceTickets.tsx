@@ -961,6 +961,17 @@ export default function ServiceTickets() {
           selectedTicket.entryPoAfe ?? '',
           selectedTicket.entryCc ?? ''
         );
+
+        // Track which customer info fields were manually edited
+        const existingManualFields = ((selectedTicket as any).headerOverrides as any)?._manual_customer_info_fields || [];
+        const normStr = (val: any) => (val != null ? String(val).trim() : '');
+        const newDirtyFields = ['customerName', 'address', 'cityState', 'zipCode', 'phone', 'email', 'contactName', 'locationCode', 'poNumber'].filter(f => {
+          if (!editableTicket || !initialEditableTicketRef.current) return false;
+          return normStr(editableTicket[f as keyof EditableTicketSnapshot]) !== normStr(initialEditableTicketRef.current[f as keyof EditableTicketSnapshot]);
+        });
+        const manualFieldsSet = new Set([...existingManualFields, ...newDirtyFields]);
+        const manualFields = Array.from(manualFieldsSet);
+
         const { error: overrideError } = await supabase
           .from(tableName)
           .update({
@@ -986,6 +997,7 @@ export default function ServiceTickets() {
               date: editableTicket.date ?? '',
               _grouping_key: ticketGroupingKey,
               _billing_key: ticketBillingKey,
+              _manual_customer_info_fields: manualFields,
             },
           })
           .eq('id', recordId);
@@ -1096,7 +1108,7 @@ export default function ServiceTickets() {
     }
   };
 
-  const buildApprovalHeaderOverrides = (ticket: ServiceTicket): Record<string, string | number> => {
+  const buildApprovalHeaderOverrides = (ticket: ServiceTicket): Record<string, string | number | string[]> => {
     const cityState = ticket.customerInfo.city && ticket.customerInfo.state
       ? `${ticket.customerInfo.city}, ${ticket.customerInfo.state}`
       : ticket.customerInfo.city || ticket.customerInfo.state || '';
@@ -1124,6 +1136,7 @@ export default function ServiceTickets() {
       };
     })();
     const groupingKey = ticket.id ? getTicketBillingKey(ticket.id) : '_::_::_';
+    const existingManualFields = ((ticket as any).headerOverrides as any)?._manual_customer_info_fields || [];
     return {
       customer_name: ticket.customerInfo.name ?? '',
       address: ticket.customerInfo.address ?? '',
@@ -1147,6 +1160,7 @@ export default function ServiceTickets() {
       rate_field_ot: ticket.rates.field_ot,
       _grouping_key: groupingKey,
       _billing_key: buildBillingKey(approverPoAfeCc.approver, approverPoAfeCc.po_afe, approverPoAfeCc.cc),
+      _manual_customer_info_fields: existingManualFields,
     };
   };
 

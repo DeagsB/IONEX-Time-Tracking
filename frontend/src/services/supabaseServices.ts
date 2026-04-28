@@ -1006,7 +1006,7 @@ export const serviceTicketsService = {
     totalAmount: number;
     isDemo?: boolean;
     approvedByAdminId?: string;
-    headerOverrides?: Record<string, string | number>;
+    headerOverrides?: Record<string, string | number | string[]>;
   }) {
     const isDemo = ticket.isDemo || false;
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
@@ -1151,7 +1151,7 @@ export const serviceTicketsService = {
     ticketNumber: string | null,
     isDemo: boolean = false,
     approvedByAdminId?: string,
-    headerOverrides?: Record<string, string | number>,
+    headerOverrides?: Record<string, string | number | string[]>,
     approvalHours?: {
       totalHours: number;
       totalAmount: number;
@@ -1310,7 +1310,7 @@ export const serviceTicketsService = {
     location?: string;
     billingKey?: string;
     /** When creating a new record, use these values for header_overrides instead of parsing from billingKey (which only has po_afe) */
-    headerOverrides?: { approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string };
+    headerOverrides?: Record<string, string | number | string[]>;
   }, isDemo: boolean = false): Promise<{ id: string }> {
     // Don't create tickets without a customer - they need a project/customer to be valid
     if (!params.customerId) {
@@ -1390,17 +1390,17 @@ export const serviceTicketsService = {
       candidates?.find(isDraftOrRejected);
     if (draftOrRejected) {
       const ho = params.headerOverrides;
-      const existingOv = (draftOrRejected.header_overrides as Record<string, string> | null) ?? {};
-      const mergedOverrides: Record<string, string> = {
+      const existingOv = (draftOrRejected.header_overrides as Record<string, any> | null) ?? {};
+      const mergedOverrides: Record<string, any> = {
         ...existingOv,
         _grouping_key: targetBillingKey,
         _billing_key: ho
-          ? buildBillingKey(ho.approver ?? '', ho.po_afe ?? '', ho.cc ?? '')
+          ? buildBillingKey(String(ho.approver ?? ''), String(ho.po_afe ?? ''), String(ho.cc ?? ''))
           : targetBillingKey,
       };
-      if (ho?.approver != null) mergedOverrides.approver = (ho.approver ?? '').trim();
-      if (ho?.po_afe != null) mergedOverrides.po_afe = (ho.po_afe ?? '').trim();
-      if (ho?.cc != null) mergedOverrides.cc = (ho.cc ?? '').trim();
+      if (ho?.approver != null) mergedOverrides.approver = String(ho.approver ?? '').trim();
+      if (ho?.po_afe != null) mergedOverrides.po_afe = String(ho.po_afe ?? '').trim();
+      if (ho?.cc != null) mergedOverrides.cc = String(ho.cc ?? '').trim();
       if (ho?.other != null) mergedOverrides.other = String(ho.other ?? '').trim();
       if (ho?.service_location != null) mergedOverrides.service_location = String(ho.service_location ?? '').trim();
       const updatePayload: Record<string, unknown> = { header_overrides: mergedOverrides };
@@ -1427,16 +1427,16 @@ export const serviceTicketsService = {
     // Use provided headerOverrides (from time entries) when creating; otherwise parse from billingKey (grouping key only has po_afe)
     // Always set _grouping_key and _billing_key so record stays matched to ticket when user edits PO/AFE/CC
     const ho = params.headerOverrides;
-    let headerOverridesToInsert: Record<string, string> | undefined;
+    let headerOverridesToInsert: Record<string, any> | undefined;
     if (ho && (ho.approver != null || ho.po_afe != null || ho.cc != null || ho.other != null || ho.service_location != null)) {
       headerOverridesToInsert = {
-        approver: (ho.approver ?? '').trim(),
-        po_afe: (ho.po_afe ?? '').trim(),
-        cc: (ho.cc ?? '').trim(),
+        approver: String(ho.approver ?? '').trim(),
+        po_afe: String(ho.po_afe ?? '').trim(),
+        cc: String(ho.cc ?? '').trim(),
         ...(ho.other != null ? { other: String(ho.other ?? '').trim() } : {}),
         ...(ho.service_location != null ? { service_location: String(ho.service_location ?? '').trim() } : {}),
         _grouping_key: targetBillingKey,
-        _billing_key: buildBillingKey(ho.approver ?? '', ho.po_afe ?? '', ho.cc ?? ''),
+        _billing_key: buildBillingKey(String(ho.approver ?? ''), String(ho.po_afe ?? ''), String(ho.cc ?? '')),
       };
     } else if (targetBillingKey !== '_::_::_') {
       const [approver, poAfe, cc] = targetBillingKey.split('::');

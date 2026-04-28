@@ -676,9 +676,11 @@ const emptyIfUnderscore = (v: string | undefined) => (v === '_' ? '' : (v ?? '')
  * NO PARSING: approver, po_afe, cc stay in their own fields - never combined or extracted. */
 export function applyHeaderOverridesToTicket(
   ticket: ServiceTicket,
-  headerOverrides?: HeaderOverrides | null
+  headerOverrides?: HeaderOverrides | null,
+  ignoreCustomerInfoOverrides?: boolean
 ): ServiceTicket {
   const ov = headerOverrides && Object.keys(headerOverrides).length > 0 ? headerOverrides : null;
+  const manualFields = (ov as any)?._manual_customer_info_fields || [];
   const entryPo = ticket.entryPoAfe ?? ticket.entries?.find((e) => e.po_afe?.trim())?.po_afe?.trim();
   const locFallback = (ticket.location ?? ticket.projectLocation ?? ticket.customerInfo?.service_location ?? '').trim();
 
@@ -709,21 +711,27 @@ export function applyHeaderOverridesToTicket(
     field_ot: typeof ov!.rate_field_ot === 'number' ? ov.rate_field_ot : ticket.rates.field_ot,
   } : ticket.rates;
 
+  const useCustomerOverride = (field: string, ovValue: any, fallback: any) => {
+    if (!ignoreCustomerInfoOverrides) return ovValue ?? fallback;
+    if (manualFields.includes(field)) return ovValue ?? fallback;
+    return fallback;
+  };
+
   return {
     ...ticket,
     customerInfo: {
       ...ticket.customerInfo,
-      name: ov?.customer_name ?? ticket.customerInfo.name,
-      contact_name: ov?.contact_name ?? ticket.customerInfo.contact_name,
-      address: ov?.address ?? ticket.customerInfo.address,
-      city: ov?.city_state?.split(',')[0]?.trim() ?? ticket.customerInfo.city,
-      state: ov?.city_state?.split(',')[1]?.trim() ?? ticket.customerInfo.state,
-      zip_code: ov?.zip_code ?? ticket.customerInfo.zip_code,
-      phone: ov?.phone ?? ticket.customerInfo.phone,
-      email: ov?.email ?? ticket.customerInfo.email,
+      name: useCustomerOverride('customerName', ov?.customer_name, ticket.customerInfo.name),
+      contact_name: useCustomerOverride('contactName', ov?.contact_name, ticket.customerInfo.contact_name),
+      address: useCustomerOverride('address', ov?.address, ticket.customerInfo.address),
+      city: useCustomerOverride('cityState', ov?.city_state?.split(',')[0]?.trim(), ticket.customerInfo.city),
+      state: useCustomerOverride('cityState', ov?.city_state?.split(',')[1]?.trim(), ticket.customerInfo.state),
+      zip_code: useCustomerOverride('zipCode', ov?.zip_code, ticket.customerInfo.zip_code),
+      phone: useCustomerOverride('phone', ov?.phone, ticket.customerInfo.phone),
+      email: useCustomerOverride('email', ov?.email, ticket.customerInfo.email),
       service_location: ((ov?.service_location ?? ticket.customerInfo.service_location ?? locFallback).trim() || locFallback),
-      location_code: ov?.location_code ?? ticket.customerInfo.location_code,
-      po_number: ov?.po_number ?? ticket.customerInfo.po_number,
+      location_code: useCustomerOverride('locationCode', ov?.location_code, ticket.customerInfo.location_code),
+      po_number: useCustomerOverride('poNumber', ov?.po_number, ticket.customerInfo.po_number),
       approver: approverVal ?? ticket.customerInfo.approver ?? undefined,
       po_afe: poAfeVal ?? ticket.customerInfo.po_afe ?? undefined,
       cc: ccVal ?? ticket.customerInfo.cc ?? undefined,
