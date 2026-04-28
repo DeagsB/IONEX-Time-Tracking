@@ -409,11 +409,15 @@ function PoAfeBreakdownLine({
   poAfe,
   totalAmount,
   category = 'labour',
+  splitRate,
+  splitHours,
 }: {
   ticketList: string;
   poAfe: string;
   totalAmount: number;
   category?: string;
+  splitRate?: number;
+  splitHours?: number;
 }) {
   const [hoverLine, setHoverLine] = useState(false);
   const [hoverAmount, setHoverAmount] = useState(false);
@@ -509,42 +513,85 @@ function PoAfeBreakdownLine({
           {categoryLabel}
         </span>
       </div>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={(e) => {
-          e.stopPropagation();
-          void copyAmount();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
+      {splitRate !== undefined && splitHours !== undefined ? (
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <div
+            style={{
+              flexShrink: 0,
+              alignSelf: 'flex-start',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              fontSize: '13px',
+              textAlign: 'right',
+              whiteSpace: 'nowrap',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-primary)',
+              boxShadow: shadowRest,
+            }}
+            title="Hours"
+          >
+            {splitHours.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}h
+          </div>
+          <div
+            style={{
+              flexShrink: 0,
+              alignSelf: 'flex-start',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              fontSize: '13px',
+              textAlign: 'right',
+              whiteSpace: 'nowrap',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-primary)',
+              boxShadow: shadowRest,
+            }}
+            title="Rate"
+          >
+            ${splitRate.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/h
+          </div>
+        </div>
+      ) : (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
             void copyAmount();
-          }
-        }}
-        onMouseEnter={() => setHoverAmount(true)}
-        onMouseLeave={() => setHoverAmount(false)}
-        title={copiedAmount ? 'Copied!' : 'Click to copy this amount only'}
-        style={{
-          flexShrink: 0,
-          alignSelf: 'flex-start',
-          padding: '8px 14px',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          fontWeight: 700,
-          color: 'var(--primary-color)',
-          fontSize: '14px',
-          textAlign: 'right',
-          whiteSpace: 'nowrap',
-          border: '1px solid var(--border-color)',
-          backgroundColor: copiedAmount ? 'var(--bg-secondary)' : 'var(--bg-primary)',
-          boxShadow: hoverAmount || copiedAmount ? shadowHover : shadowRest,
-          transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
-          userSelect: 'none',
-        }}
-      >
-        {formattedTotal}
-      </div>
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              void copyAmount();
+            }
+          }}
+          onMouseEnter={() => setHoverAmount(true)}
+          onMouseLeave={() => setHoverAmount(false)}
+          title={copiedAmount ? 'Copied!' : 'Click to copy this amount only'}
+          style={{
+            flexShrink: 0,
+            alignSelf: 'flex-start',
+            padding: '8px 14px',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: 700,
+            color: 'var(--primary-color)',
+            fontSize: '14px',
+            textAlign: 'right',
+            whiteSpace: 'nowrap',
+            border: '1px solid var(--border-color)',
+            backgroundColor: copiedAmount ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+            boxShadow: hoverAmount || copiedAmount ? shadowHover : shadowRest,
+            transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
+            userSelect: 'none',
+          }}
+        >
+          {formattedTotal}
+        </div>
+      )}
     </div>
   );
 }
@@ -1283,7 +1330,7 @@ function buildRateTypeBreakdown(
   tickets: (ServiceTicket & { recordId?: string })[],
   expensesByRecordId: Map<string, InvoiceExpenseLine[]>,
   includeExpenses = false
-): { ticketList: string; poAfe: string; totalAmount: number }[] {
+): { ticketList: string; poAfe: string; totalAmount: number; splitRate?: number; splitHours?: number }[] {
   const RATE_TYPES = [
     { key: 'ST', label: 'Shop Time (ST)', rateField: 'rt' as const },
     { key: 'TT', label: 'Travel Time (TT)', rateField: 'tt' as const },
@@ -1319,15 +1366,16 @@ function buildRateTypeBreakdown(
       }
     }
   }
-  const lines: { ticketList: string; poAfe: string; totalAmount: number }[] = [];
+  const lines: { ticketList: string; poAfe: string; totalAmount: number; splitRate?: number; splitHours?: number }[] = [];
   for (const { key, label } of RATE_TYPES) {
     const hrs = hoursMap.get(key) ?? 0;
     if (hrs <= 0) continue;
-    const amount = Math.round(hrs * (rateMap.get(key) ?? 0) * 100) / 100;
+    const rate = rateMap.get(key) ?? 0;
+    const amount = Math.round(hrs * rate * 100) / 100;
     if (amount > 0) {
       const nums = numsMap.get(key) ?? [];
       const ticketList = formatTicketNumbersWithRanges([...nums].sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b)));
-      lines.push({ ticketList: ticketList ? `${label} (${ticketList})` : label, poAfe: '', totalAmount: amount });
+      lines.push({ ticketList: ticketList ? `${label} (${ticketList})` : label, poAfe: '', totalAmount: amount, splitRate: rate, splitHours: hrs });
     }
   }
   if (includeExpenses) {
@@ -1336,7 +1384,7 @@ function buildRateTypeBreakdown(
       const exps = rid ? (expensesByRecordId.get(rid) ?? []) : [];
       for (const e of exps) {
         const amt = Math.round(e.quantity * e.rate * 100) / 100;
-        if (amt > 0) lines.push({ ticketList: formatInvoiceExpenseLineLabel(e), poAfe: '', totalAmount: amt });
+        if (amt > 0) lines.push({ ticketList: formatInvoiceExpenseLineLabel(e), poAfe: '', totalAmount: amt, splitRate: e.rate, splitHours: e.quantity });
       }
     }
   }
@@ -3896,8 +3944,8 @@ export default function Invoices() {
                                   setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(persistId); else next.delete(persistId); return next; });
                                 }} />
                               </div>
-                              {breakdownLines.map(({ ticketList, poAfe, totalAmount }, i) => (
-                                <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} />
+                              {breakdownLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours }, i) => (
+                                <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} />
                               ))}
                               {!isCombined && !isSplitRate && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
@@ -4346,8 +4394,8 @@ export default function Invoices() {
                             setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(groupId); else next.delete(groupId); return next; });
                           }} />
                         </div>
-                        {labourLines.map(({ ticketList, poAfe, totalAmount }, i) => (
-                          <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} />
+                        {labourLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours }, i) => (
+                          <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} />
                         ))}
                         {!isCombined && !isSplitRatePending && expLines.map((l, i) => {
                           const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
