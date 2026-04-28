@@ -3020,6 +3020,77 @@ export const invoiceWorkflowsService = {
   },
 };
 
+/* ─── Invoice Status History ─── */
+
+export type InvoiceStatusHistoryRow = {
+  id: string;
+  group_id: string;
+  customer_name: string | null;
+  project_number: string | null;
+  workflow_id: string | null;
+  status_id: string;
+  status_label: string;
+  entered_at: string;
+  exited_at: string | null;
+  days_in_status: number | null;
+  changed_by: string | null;
+};
+
+export const invoiceStatusHistoryService = {
+  async logEntry(entry: {
+    group_id: string;
+    customer_name?: string;
+    project_number?: string;
+    workflow_id?: string;
+    status_id: string;
+    status_label: string;
+    entered_at?: string;
+  }): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.from('invoice_status_history').insert({
+      group_id: entry.group_id,
+      customer_name: entry.customer_name ?? null,
+      project_number: entry.project_number ?? null,
+      workflow_id: entry.workflow_id ?? null,
+      status_id: entry.status_id,
+      status_label: entry.status_label,
+      entered_at: entry.entered_at ?? new Date().toISOString(),
+      changed_by: user?.id ?? null,
+    });
+    if (error) throw error;
+  },
+
+  async closeEntry(groupId: string, statusId: string): Promise<void> {
+    const now = new Date();
+    const { data: rows } = await supabase
+      .from('invoice_status_history')
+      .select('id, entered_at')
+      .eq('group_id', groupId)
+      .eq('status_id', statusId)
+      .is('exited_at', null)
+      .order('entered_at', { ascending: false })
+      .limit(1);
+    if (!rows || rows.length === 0) return;
+    const row = rows[0];
+    const enteredAt = new Date(row.entered_at);
+    const daysInStatus = Math.round(((now.getTime() - enteredAt.getTime()) / (1000 * 60 * 60 * 24)) * 100) / 100;
+    await supabase
+      .from('invoice_status_history')
+      .update({ exited_at: now.toISOString(), days_in_status: daysInStatus })
+      .eq('id', row.id);
+  },
+
+  async getByGroupId(groupId: string): Promise<InvoiceStatusHistoryRow[]> {
+    const { data, error } = await supabase
+      .from('invoice_status_history')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('entered_at', { ascending: true });
+    if (error) throw error;
+    return (data || []) as InvoiceStatusHistoryRow[];
+  },
+};
+
 /** All service_tickets.id values listed in any invoiced batch mark (admin Service Tickets lock UI). */
 export function collectLockedServiceTicketIdsFromMarks(rows: InvoicedBatchMarkRow[]): Set<string> {
   const s = new Set<string>();

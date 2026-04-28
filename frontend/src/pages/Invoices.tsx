@@ -16,6 +16,7 @@ import {
   invoiceWorkflowsService,
   type InvoiceWorkflowRow,
   type InvoiceWorkflowStatus,
+  invoiceStatusHistoryService,
 } from '../services/supabaseServices';
 import {
   groupEntriesIntoTickets,
@@ -2082,12 +2083,28 @@ export default function Invoices() {
   });
 
   const updateBatchStatusMutation = useMutation({
-    mutationFn: async ({ groupId, statusId }: { groupId: string; statusId: string }) => {
+    mutationFn: async ({ groupId, statusId, prevStatusId, statusLabel, customerName, projectNumber, workflowId }: {
+      groupId: string; statusId: string; prevStatusId?: string;
+      statusLabel: string; customerName?: string; projectNumber?: string; workflowId?: string;
+    }) => {
       const row = invoicedMarkRows.find((r) => r.group_id === groupId);
       if (!row) return;
       const snap = (row.key_snapshot ?? {}) as FrozenGroupSnapshot;
-      const updated = { ...snap, statusId, statusChangedAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const updated = { ...snap, statusId, statusChangedAt: now };
       await invoicedBatchMarksService.upsert(groupId, updated as { key: unknown; ticketIds: string[] });
+      if (prevStatusId) {
+        await invoiceStatusHistoryService.closeEntry(groupId, prevStatusId).catch(() => {});
+      }
+      await invoiceStatusHistoryService.logEntry({
+        group_id: groupId,
+        customer_name: customerName,
+        project_number: projectNumber,
+        workflow_id: workflowId,
+        status_id: statusId,
+        status_label: statusLabel,
+        entered_at: now,
+      }).catch(() => {});
     },
     onMutate: async ({ groupId, statusId }) => {
       await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
@@ -2127,8 +2144,13 @@ export default function Invoices() {
     const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
     const customerName = group.tickets[0]?.customerName;
     const wf = getWorkflowForCustomer(customerName);
-    const initialStatusId = wf?.statuses?.[0]?.id;
+    const initialStatus = wf?.statuses?.[0];
+    const initialStatusId = initialStatus?.id;
+    const now = new Date().toISOString();
     const snapshot = getMergedMarkSnapshot(group, isCombined || undefined, initialStatusId);
+    if (snapshot.statusId && !snapshot.statusChangedAt) {
+      snapshot.statusChangedAt = now;
+    }
     if (isDemoMode) {
       setLegacyMarkedInvoicedIds((prev) => {
         const next = new Set(prev);
@@ -2151,6 +2173,19 @@ export default function Invoices() {
     markInvoicedMutation.mutate(
       { groupId: persistId, snapshot },
       {
+        onSuccess: () => {
+          if (initialStatus && wf) {
+            invoiceStatusHistoryService.logEntry({
+              group_id: persistId,
+              customer_name: customerName,
+              project_number: group.key.projectNumber || undefined,
+              workflow_id: wf.id,
+              status_id: initialStatus.id,
+              status_label: initialStatus.label,
+              entered_at: now,
+            }).catch(() => {});
+          }
+        },
         onError: (err) => {
           setExportError(err instanceof Error ? err.message : 'Could not save marked as invoiced');
         },
@@ -2167,8 +2202,13 @@ export default function Invoices() {
     const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
     const customerName = group.tickets[0]?.customerName;
     const wf = getWorkflowForCustomer(customerName);
-    const initialStatusId = wf?.statuses?.[0]?.id;
+    const initialStatus = wf?.statuses?.[0];
+    const initialStatusId = initialStatus?.id;
+    const now = new Date().toISOString();
     const snapshot = getMergedMarkSnapshot(group, isCombined || undefined, initialStatusId);
+    if (snapshot.statusId && !snapshot.statusChangedAt) {
+      snapshot.statusChangedAt = now;
+    }
     if (file.type !== 'application/pdf') return;
     setUploadingInvoiceGroupId(persistId);
     setExportError(null);
@@ -2179,9 +2219,18 @@ export default function Invoices() {
         setInvoiceFileForGroup(persistId, file);
         handleMarkAsInvoiced(group);
       } else {
-        // Persist mark first so ticket IDs are always in invoiced_batch_marks before the PDF row.
-        // Otherwise a successful upload + failed mark left batches "invoiced" in the UI with no DB/UI lock.
         await markInvoicedMutation.mutateAsync({ groupId: persistId, snapshot });
+        if (initialStatus && wf) {
+          invoiceStatusHistoryService.logEntry({
+            group_id: persistId,
+            customer_name: customerName,
+            project_number: group.key.projectNumber || undefined,
+            workflow_id: wf.id,
+            status_id: initialStatus.id,
+            status_label: initialStatus.label,
+            entered_at: now,
+          }).catch(() => {});
+        }
         const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
         fileForUi = new File([file], storedName, { type: file.type });
         setInvoiceFileForGroup(persistId, fileForUi);
@@ -3410,7 +3459,15 @@ export default function Invoices() {
                                   type="button"
                                   onClick={() => {
                                     if (isActive) return;
-                                    updateBatchStatusMutation.mutate({ groupId: persistId, statusId: ws.id });
+                                    updateBatchStatusMutation.mutate({
+                                      groupId: persistId,
+                                      statusId: ws.id,
+                                      prevStatusId: batchStatusId,
+                                      statusLabel: ws.label,
+                                      customerName: groupTickets[0]?.customerName,
+                                      projectNumber: key.projectNumber || undefined,
+                                      workflowId: batchWorkflow?.id,
+                                    });
                                   }}
                                   style={{
                                     fontSize: '12px',
