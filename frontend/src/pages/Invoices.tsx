@@ -2833,7 +2833,24 @@ export default function Invoices() {
         </div>
       ) : groupedTickets.length === 0 && !showInvoiced ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-          All batches are marked as invoiced. Use <strong>See invoiced</strong> to view them.
+          All batches are marked as invoiced.
+          <div style={{ marginTop: '12px' }}>
+            <button
+              onClick={() => setShowInvoiced(true)}
+              style={{
+                padding: '8px 18px',
+                backgroundColor: 'var(--primary-color)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              See invoiced ({invoicedGroups.length})
+            </button>
+          </div>
         </div>
       ) : showInvoiced ? (
         <div>
