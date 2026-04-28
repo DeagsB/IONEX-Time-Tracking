@@ -1338,9 +1338,11 @@ function buildRateTypeBreakdown(
     { key: 'SO', label: 'Shop OT (SO)', rateField: 'shop_ot' as const },
     { key: 'FO', label: 'Field OT (FO)', rateField: 'field_ot' as const },
   ];
+  
+  // Key is `${rateType}_${rateAmount}`
   const hoursMap = new Map<string, number>();
-  const rateMap = new Map<string, number>();
   const numsMap = new Map<string, string[]>();
+  
   for (const t of tickets) {
     const { rtHours, ttHours, ftHours, shopOtHours, fieldOtHours } =
       (() => {
@@ -1353,31 +1355,51 @@ function buildRateTypeBreakdown(
         return { rtHours: rt, ttHours: tt, ftHours: ft, shopOtHours: so, fieldOtHours: fo };
       })();
     const hByKey: Record<string, number> = { ST: rtHours, TT: ttHours, FT: ftHours, SO: shopOtHours, FO: fieldOtHours };
+    
     for (const { key, rateField } of RATE_TYPES) {
       const h = hByKey[key];
       if (h > 0) {
-        hoursMap.set(key, (hoursMap.get(key) ?? 0) + h);
-        rateMap.set(key, t.rates[rateField] || 0);
+        const rate = t.rates[rateField] || 0;
+        const compositeKey = `${key}_${rate}`;
+        
+        hoursMap.set(compositeKey, (hoursMap.get(compositeKey) ?? 0) + h);
         if (t.ticketNumber) {
-          const arr = numsMap.get(key) ?? [];
+          const arr = numsMap.get(compositeKey) ?? [];
           arr.push(t.ticketNumber);
-          numsMap.set(key, arr);
+          numsMap.set(compositeKey, arr);
         }
       }
     }
   }
+  
   const lines: { ticketList: string; poAfe: string; totalAmount: number; splitRate?: number; splitHours?: number }[] = [];
+  
   for (const { key, label } of RATE_TYPES) {
-    const hrs = hoursMap.get(key) ?? 0;
-    if (hrs <= 0) continue;
-    const rate = rateMap.get(key) ?? 0;
-    const amount = Math.round(hrs * rate * 100) / 100;
-    if (amount > 0) {
-      const nums = numsMap.get(key) ?? [];
-      const ticketList = formatTicketNumbersWithRanges([...nums].sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b)));
-      lines.push({ ticketList: ticketList ? `${label} (${ticketList})` : label, poAfe: '', totalAmount: amount, splitRate: rate, splitHours: hrs });
+    // Find all composite keys that start with this rate type
+    const matchingKeys = Array.from(hoursMap.keys()).filter(k => k.startsWith(`${key}_`));
+    
+    // Sort by rate descending (optional, but nice for consistency)
+    matchingKeys.sort((a, b) => {
+      const rateA = Number(a.split('_')[1]);
+      const rateB = Number(b.split('_')[1]);
+      return rateB - rateA;
+    });
+    
+    for (const compositeKey of matchingKeys) {
+      const hrs = hoursMap.get(compositeKey) ?? 0;
+      if (hrs <= 0) continue;
+      
+      const rate = Number(compositeKey.split('_')[1]);
+      const amount = Math.round(hrs * rate * 100) / 100;
+      
+      if (amount > 0) {
+        const nums = numsMap.get(compositeKey) ?? [];
+        const ticketList = formatTicketNumbersWithRanges([...nums].sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b)));
+        lines.push({ ticketList: ticketList ? `${label} (${ticketList})` : label, poAfe: '', totalAmount: amount, splitRate: rate, splitHours: hrs });
+      }
     }
   }
+  
   if (includeExpenses) {
     for (const t of tickets) {
       const rid = t.recordId;
