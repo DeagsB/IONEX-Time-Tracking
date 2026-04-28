@@ -365,7 +365,18 @@ function CopyableHeaderValue({ copyText, children }: { copyText: string; childre
 }
 
 /** PO/AFE line + amount as two separate shadowed boxes; each copies its own text */
-function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: string; poAfe: string; totalAmount: number }) {
+function PoAfeBreakdownLine({
+  ticketList,
+  poAfe,
+  totalAmount,
+  category = 'labour',
+}: {
+  ticketList: string;
+  poAfe: string;
+  totalAmount: number;
+  /** Row type label between description and amount (not included in copy text). */
+  category?: 'labour' | 'expense';
+}) {
   const [hoverLine, setHoverLine] = useState(false);
   const [hoverAmount, setHoverAmount] = useState(false);
   const [copiedLine, setCopiedLine] = useState(false);
@@ -476,6 +487,24 @@ function PoAfeBreakdownLine({ ticketList, poAfe, totalAmount }: { ticketList: st
         }}
       >
         {formattedTotal}
+      </div>
+      <div
+        aria-hidden
+        style={{
+          flexShrink: 0,
+          alignSelf: 'center',
+          padding: '4px 4px 4px 0',
+          minWidth: '56px',
+          textAlign: 'right',
+          fontSize: '10px',
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          color: 'var(--text-tertiary)',
+          userSelect: 'none',
+        }}
+      >
+        {category === 'expense' ? 'Expense' : 'Labour'}
       </div>
     </div>
   );
@@ -1121,18 +1150,32 @@ function computeInvoicedGroupTotalsWithGst(
 function computeGroupExpenseTotal(
   tickets: (ServiceTicket & { recordId?: string })[],
   expensesByRecordId: Map<string, InvoiceExpenseLine[]>
-): { total: number; lines: { label: string; amount: number }[] } {
-  const lines: { label: string; amount: number }[] = [];
+): { total: number; lines: { label: string; amount: number; count: number }[] } {
+  const grouped = new Map<string, { amount: number; count: number }>();
   for (const t of tickets) {
     const rid = t.recordId;
     const exps = rid ? (expensesByRecordId.get(rid) ?? []) : [];
     for (const e of exps) {
       const amt = Math.round(e.quantity * e.rate * 100) / 100;
       if (amt > 0) {
-        lines.push({ label: formatInvoiceExpenseLineLabel(e), amount: amt });
+        const label = formatInvoiceExpenseLineLabel(e);
+        const existing = grouped.get(label);
+        if (existing) {
+          existing.amount += amt;
+          existing.count += 1;
+        } else {
+          grouped.set(label, { amount: amt, count: 1 });
+        }
       }
     }
   }
+  const lines = [...grouped.entries()]
+    .sort((a, b) => b[1].amount - a[1].amount)
+    .map(([label, { amount, count }]) => ({
+      label,
+      amount: Math.round(amount * 100) / 100,
+      count,
+    }));
   const total = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
   return { total, lines };
 }
@@ -2053,6 +2096,12 @@ export default function Invoices() {
   };
 
   const handleUnmarkAsInvoiced = (groupId: string) => {
+    const hasInvoice = !!(invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]);
+    const msg = hasInvoice
+      ? 'This will unmark the batch as invoiced and permanently delete the attached invoice PDF. Continue?'
+      : 'This will unmark the batch as invoiced and move it back to pending. Continue?';
+    if (!window.confirm(msg)) return;
+
     if (isDemoMode) {
       setLegacyMarkedInvoicedIds((prev) => {
         const next = new Set(prev);
@@ -3254,19 +3303,20 @@ export default function Invoices() {
                           <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
                         ))}
                         {(() => {
-                          const { total: expTotal, lines: expLines } = computeGroupExpenseTotal(
+                          const { lines: expLines } = computeGroupExpenseTotal(
                             groupTickets as (ServiceTicket & { recordId?: string })[],
                             expensesByRecordId
                           );
-                          if (expTotal <= 0) return null;
-                          const expLabel = expLines.map(l => `${l.label} ($${l.amount.toFixed(2)})`).join(', ');
-                          return (
+                          if (expLines.length === 0) return null;
+                          return expLines.map((l, i) => (
                             <PoAfeBreakdownLine
-                              ticketList={`Expenses: ${expLabel}`}
+                              key={`exp-${i}`}
+                              ticketList={l.count > 1 ? `${l.label} (×${l.count})` : l.label}
                               poAfe=""
-                              totalAmount={expTotal}
+                              totalAmount={l.amount}
+                              category="expense"
                             />
-                          );
+                          ));
                         })()}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
@@ -3700,19 +3750,20 @@ export default function Invoices() {
                     <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
                   ))}
                   {(() => {
-                    const { total: expTotal, lines: expLines } = computeGroupExpenseTotal(
+                    const { lines: expLines } = computeGroupExpenseTotal(
                       groupTickets as (ServiceTicket & { recordId?: string })[],
                       expensesByRecordId
                     );
-                    if (expTotal <= 0) return null;
-                    const expLabel = expLines.map(l => `${l.label} ($${l.amount.toFixed(2)})`).join(', ');
-                    return (
+                    if (expLines.length === 0) return null;
+                    return expLines.map((l, i) => (
                       <PoAfeBreakdownLine
-                        ticketList={`Expenses: ${expLabel}`}
+                        key={`exp-${i}`}
+                        ticketList={l.count > 1 ? `${l.label} (×${l.count})` : l.label}
                         poAfe=""
-                        totalAmount={expTotal}
+                        totalAmount={l.amount}
+                        category="expense"
                       />
-                    );
+                    ));
                   })()}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
