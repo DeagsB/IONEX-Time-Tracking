@@ -1155,12 +1155,21 @@ function mergedInvoiceBatchDownloadFilename(sourceInvoiceName: string | null | u
   return `${stem} - with service tickets.pdf`;
 }
 
+/** One row in the invoice copy/paste breakdown; splitRate/splitHours only used in "Split by rate" mode. */
+type InvoiceBreakdownLine = {
+  ticketList: string;
+  poAfe: string;
+  totalAmount: number;
+  splitRate?: number;
+  splitHours?: number;
+};
+
 /** Single line for non-CNRL period groups (no PO/AFE breakdown); poAfe empty so "PO/AFE/CC:" is not shown */
 function buildSingleLineBreakdown(
   tickets: (ServiceTicket & { recordId?: string })[],
   expensesByRecordId: Map<string, InvoiceExpenseLine[]>,
   includeExpenses = false
-): { ticketList: string; poAfe: string; totalAmount: number }[] {
+): InvoiceBreakdownLine[] {
   const nums = tickets.map((t) => t.ticketNumber).filter(Boolean) as string[];
   let totalAmount = 0;
   for (const t of tickets) {
@@ -1286,7 +1295,7 @@ function buildPoAfeBreakdown(
   getKey: (t: typeof tickets[0]) => InvoiceGroupKey,
   expensesByRecordId: Map<string, InvoiceExpenseLine[]>,
   includeExpenses = false
-): { ticketList: string; poAfe: string; totalAmount: number }[] {
+): InvoiceBreakdownLine[] {
   const byPoAfe = new Map<string, { nums: string[]; tickets: typeof tickets }>();
   for (const t of tickets) {
     const key = getKey(t);
@@ -1330,7 +1339,7 @@ function buildRateTypeBreakdown(
   tickets: (ServiceTicket & { recordId?: string })[],
   expensesByRecordId: Map<string, InvoiceExpenseLine[]>,
   includeExpenses = false
-): { ticketList: string; poAfe: string; totalAmount: number; splitRate?: number; splitHours?: number }[] {
+): InvoiceBreakdownLine[] {
   const RATE_TYPES = [
     { key: 'ST', label: 'Shop Time (ST)', rateField: 'rt' as const },
     { key: 'TT', label: 'Travel Time (TT)', rateField: 'tt' as const },
@@ -1372,7 +1381,7 @@ function buildRateTypeBreakdown(
     }
   }
   
-  const lines: { ticketList: string; poAfe: string; totalAmount: number; splitRate?: number; splitHours?: number }[] = [];
+  const lines: InvoiceBreakdownLine[] = [];
   
   for (const { key, label } of RATE_TYPES) {
     // Find all composite keys that start with this rate type
