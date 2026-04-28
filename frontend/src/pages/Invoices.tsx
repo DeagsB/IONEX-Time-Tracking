@@ -1118,6 +1118,25 @@ function computeInvoicedGroupTotalsWithGst(
   };
 }
 
+function computeGroupExpenseTotal(
+  tickets: (ServiceTicket & { recordId?: string })[],
+  expensesByRecordId: Map<string, InvoiceExpenseLine[]>
+): { total: number; lines: { label: string; amount: number }[] } {
+  const lines: { label: string; amount: number }[] = [];
+  for (const t of tickets) {
+    const rid = t.recordId;
+    const exps = rid ? (expensesByRecordId.get(rid) ?? []) : [];
+    for (const e of exps) {
+      const amt = Math.round(e.quantity * e.rate * 100) / 100;
+      if (amt > 0) {
+        lines.push({ label: formatInvoiceExpenseLineLabel(e), amount: amt });
+      }
+    }
+  }
+  const total = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+  return { total, lines };
+}
+
 /** Build PO/AFE/CC breakdown with totals: "PO/AFE/CC: xxxxxxxx; AR_xx1, AR_xx2 – $X,XXX.XX". Sorted by PO/AFE value (ascending), with (no PO/AFE/CC) last. */
 function buildPoAfeBreakdown(
   tickets: (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[],
@@ -3234,6 +3253,21 @@ export default function Invoices() {
                         {breakdownLines.map(({ ticketList, poAfe, totalAmount }, i) => (
                           <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
                         ))}
+                        {(() => {
+                          const { total: expTotal, lines: expLines } = computeGroupExpenseTotal(
+                            groupTickets as (ServiceTicket & { recordId?: string })[],
+                            expensesByRecordId
+                          );
+                          if (expTotal <= 0) return null;
+                          const expLabel = expLines.map(l => `${l.label} ($${l.amount.toFixed(2)})`).join(', ');
+                          return (
+                            <PoAfeBreakdownLine
+                              ticketList={`Expenses: ${expLabel}`}
+                              poAfe=""
+                              totalAmount={expTotal}
+                            />
+                          );
+                        })()}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
                         {groupTickets.map((t) => {
@@ -3665,6 +3699,21 @@ export default function Invoices() {
                   ).map(({ ticketList, poAfe, totalAmount }, i) => (
                     <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} />
                   ))}
+                  {(() => {
+                    const { total: expTotal, lines: expLines } = computeGroupExpenseTotal(
+                      groupTickets as (ServiceTicket & { recordId?: string })[],
+                      expensesByRecordId
+                    );
+                    if (expTotal <= 0) return null;
+                    const expLabel = expLines.map(l => `${l.label} ($${l.amount.toFixed(2)})`).join(', ');
+                    return (
+                      <PoAfeBreakdownLine
+                        ticketList={`Expenses: ${expLabel}`}
+                        poAfe=""
+                        totalAmount={expTotal}
+                      />
+                    );
+                  })()}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {groupTickets.map((t) => {
