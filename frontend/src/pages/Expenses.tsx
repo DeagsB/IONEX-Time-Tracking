@@ -958,7 +958,14 @@ export default function Expenses() {
 
   const expenseTypeOf = (exp: any): string => {
     if (exp._source === 'receipt') return 'Receipt';
-    return String(exp.expense_type || 'Other');
+    const t = String(exp.expense_type || 'Other');
+    if (t === 'Travel') {
+      const desc = String(exp.description || '').toLowerCase();
+      if (desc.includes('truck')) return 'Truck Hours';
+      if (desc.includes('mileage') || desc.includes('km')) return 'Mileage';
+      return 'Travel';
+    }
+    return t;
   };
 
   const adminTypeOptions = useMemo(() => {
@@ -978,6 +985,22 @@ export default function Expenses() {
     }
     return true;
   });
+
+  const adminFilteredTotals = useMemo(() => {
+    let amount = 0;
+    let gst = 0;
+    const byType: Record<string, { count: number; amount: number }> = {};
+    for (const exp of adminFilteredExpenses as any[]) {
+      const a = Number(exp._amount) || 0;
+      amount += a;
+      if (exp._source === 'receipt') gst += parseFloat(String(exp.gst || 0)) || 0;
+      const t = expenseTypeOf(exp);
+      if (!byType[t]) byType[t] = { count: 0, amount: 0 };
+      byType[t].count += 1;
+      byType[t].amount += a;
+    }
+    return { amount, gst, count: adminFilteredExpenses.length, byType };
+  }, [adminFilteredExpenses]);
 
   // Expense table: admin sees own only; non-admin sees own only (filtered for defense in depth)
   const myExpenses = useMemo(() => {
@@ -3412,6 +3435,35 @@ export default function Expenses() {
                   })
                 )}
               </tbody>
+              {adminFilteredExpenses.length > 0 && (
+                <tfoot>
+                  <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
+                    <td colSpan={2} style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Totals ({adminFilteredTotals.count} {adminFilteredTotals.count === 1 ? 'item' : 'items'})
+                    </td>
+                    <td style={{ padding: '12px 14px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {Object.keys(adminFilteredTotals.byType).length > 1 && (
+                        <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {Object.entries(adminFilteredTotals.byType)
+                            .sort((a, b) => b[1].amount - a[1].amount)
+                            .map(([t, v]) => (
+                              <span key={t} style={{ whiteSpace: 'nowrap' }}>
+                                <strong style={{ color: 'var(--text-primary)' }}>{t}:</strong> ${v.amount.toFixed(2)} ({v.count})
+                              </span>
+                            ))}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>
+                      ${adminFilteredTotals.amount.toFixed(2)}
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600, fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      {adminFilteredTotals.gst > 0 ? `$${adminFilteredTotals.gst.toFixed(2)}` : '—'}
+                    </td>
+                    <td colSpan={4} />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
