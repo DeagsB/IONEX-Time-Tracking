@@ -310,12 +310,38 @@ export default function Expenses() {
 
   /** Admin filter for the Awaiting Receipts section — by employee user_id. 'all' = no filter. */
   const [pendingReceiptEmpFilter, setPendingReceiptEmpFilter] = useState<string>('all');
+  const [pendingReceiptTypeFilter, setPendingReceiptTypeFilter] = useState<string>('all');
+  const [pendingReceiptDescFilter, setPendingReceiptDescFilter] = useState<string>('');
+
+  /**
+   * Only expense types that genuinely require a receipt before payroll reimbursement.
+   * Mileage / Truck Hours / Per Diem / basic Equipment are reimbursed automatically when
+   * `needs_reimbursement = true` — they should never appear in Awaiting Receipts.
+   */
+  const pendingReceiptRequiringTypes = useMemo(() => new Set(['Hotel', 'Expenses']), []);
 
   const pendingReceiptLinesView = useMemo(() => {
     const arr = pendingReceiptLines as any[];
-    if (!isAdmin || pendingReceiptEmpFilter === 'all') return arr;
-    return arr.filter((r) => String(r.service_tickets?.user_id ?? '') === pendingReceiptEmpFilter);
-  }, [pendingReceiptLines, isAdmin, pendingReceiptEmpFilter]);
+    return arr.filter((r) => {
+      if (!pendingReceiptRequiringTypes.has(String(r.expense_type || ''))) return false;
+      if (isAdmin && pendingReceiptEmpFilter !== 'all' && String(r.service_tickets?.user_id ?? '') !== pendingReceiptEmpFilter) return false;
+      if (pendingReceiptTypeFilter !== 'all' && String(r.expense_type || '') !== pendingReceiptTypeFilter) return false;
+      const q = pendingReceiptDescFilter.trim().toLowerCase();
+      if (q && !String(r.description || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [pendingReceiptLines, isAdmin, pendingReceiptEmpFilter, pendingReceiptTypeFilter, pendingReceiptDescFilter, pendingReceiptRequiringTypes]);
+
+  /** Pre-filter rows that pass the receipt-required gate (used for the type-options dropdown + count). */
+  const pendingReceiptLinesGated = useMemo(() => {
+    return (pendingReceiptLines as any[]).filter((r) => pendingReceiptRequiringTypes.has(String(r.expense_type || '')));
+  }, [pendingReceiptLines, pendingReceiptRequiringTypes]);
+
+  const pendingReceiptTypeOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of pendingReceiptLinesGated) set.add(String(r.expense_type || ''));
+    return [...set].sort();
+  }, [pendingReceiptLinesGated]);
 
   const pendingReceiptEmpOptions = useMemo(() => {
     if (!isAdmin) return [] as { id: string; name: string }[];
@@ -339,6 +365,40 @@ export default function Expenses() {
     queryFn: () => serviceTicketExpensesService.getPendingReceiptLinesForUser(linkReceiptUserId!),
     enabled: !!linkReceiptUserId,
   });
+
+  /** All ticket expenses currently linked to a receipt — grouped by user_expense_id. */
+  const { data: linkedTicketExpenses = [] } = useQuery({
+    queryKey: ['linkedTicketExpenses'],
+    queryFn: () => serviceTicketExpensesService.getLinkedTicketExpenses(),
+  });
+  const linkedByReceiptId = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const r of linkedTicketExpenses as any[]) {
+      const key = String(r.user_expense_id || '');
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    }
+    return map;
+  }, [linkedTicketExpenses]);
+
+  /** "View linked" expansion state — shows the list of ticket expenses a receipt covers, with unlink. */
+  const [expandedLinkedReceiptId, setExpandedLinkedReceiptId] = useState<string | null>(null);
+  const [unlinkingTicketExpenseId, setUnlinkingTicketExpenseId] = useState<string | null>(null);
+
+  const handleUnlinkTicketExpense = async (ticketExpenseId: string) => {
+    setUnlinkingTicketExpenseId(ticketExpenseId);
+    try {
+      await serviceTicketExpensesService.linkUserExpense([ticketExpenseId], null);
+      queryClient.invalidateQueries({ queryKey: ['linkedTicketExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
+      queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+    } catch (err: any) {
+      alert('Failed to unlink: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setUnlinkingTicketExpenseId(null);
+    }
+  };
 
   const hotelLinesStillNeedReceipt = useMemo(() => {
     return (hotelReimbLinesRaw as any[]).filter((row) => {
@@ -3571,24 +3631,122 @@ export default function Expenses() {
                             Mark Unpaid
                           </button>
                         )}
-                        {source === 'receipt' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setLinkReceiptModal({ receipt: exp });
-                              setLinkReceiptSelectedIds(new Set());
-                              setLinkReceiptError(null);
-                            }}
-                            style={{ marginLeft: '6px', padding: '3px 8px', backgroundColor: 'rgba(0, 137, 123, 0.1)', color: '#00897b', border: '1px solid rgba(0, 137, 123, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                            title="Link this receipt to ticket expenses awaiting it"
-                          >
-                            Link
-                          </button>
-                        )}
+                        {source === 'receipt' && (() => {
+                          const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
+                          const hasLinks = linkedRows.length > 0;
+                          const isExpanded = expandedLinkedReceiptId === String(exp.id);
+                          return (
+                            <>
+                              {hasLinks && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedLinkedReceiptId(isExpanded ? null : String(exp.id));
+                                  }}
+                                  style={{
+                                    marginLeft: '6px',
+                                    padding: '3px 8px',
+                                    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                                    color: '#15803d',
+                                    border: '1px solid rgba(34, 197, 94, 0.4)',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                  }}
+                                  title="View / unlink the ticket expenses this receipt covers"
+                                >
+                                  ✓ Linked ({linkedRows.length}) {isExpanded ? '▴' : '▾'}
+                                </button>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLinkReceiptModal({ receipt: exp });
+                                  setLinkReceiptSelectedIds(new Set());
+                                  setLinkReceiptError(null);
+                                }}
+                                style={{ marginLeft: '6px', padding: '3px 8px', backgroundColor: 'rgba(0, 137, 123, 0.1)', color: '#00897b', border: '1px solid rgba(0, 137, 123, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                title={hasLinks ? 'Link to additional ticket expenses' : 'Link this receipt to ticket expenses awaiting it'}
+                              >
+                                {hasLinks ? '+ Link more' : 'Link'}
+                              </button>
+                            </>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
-                  return summaryTr ? [summaryTr, expenseTr] : [expenseTr];
+                  // When admin expands a linked receipt, show its linked ticket expenses + per-row Unlink.
+                  let linkedTr: JSX.Element | null = null;
+                  if (source === 'receipt' && expandedLinkedReceiptId === String(exp.id)) {
+                    const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
+                    if (linkedRows.length > 0) {
+                      linkedTr = (
+                        <tr key={`${source}-${exp.id}-linked`} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(34, 197, 94, 0.04)' }}>
+                          <td colSpan={9} style={{ padding: '10px 16px 12px 42px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#15803d', marginBottom: '6px' }}>
+                              Receipt is linked to {linkedRows.length} ticket expense{linkedRows.length === 1 ? '' : 's'}
+                            </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '10px', textTransform: 'uppercase' }}>
+                                  <th style={{ padding: '4px 6px' }}>Type</th>
+                                  <th style={{ padding: '4px 6px' }}>Description</th>
+                                  <th style={{ padding: '4px 6px' }}>Ticket</th>
+                                  <th style={{ padding: '4px 6px' }}>Date</th>
+                                  <th style={{ padding: '4px 6px', textAlign: 'right' }}>Billed</th>
+                                  <th style={{ padding: '4px 6px', textAlign: 'right' }}>Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {linkedRows.map((lr: any) => {
+                                  const billed = (Number(lr.quantity) || 0) * (Number(lr.rate) || 0);
+                                  const tn = lr.service_tickets?.ticket_number || '—';
+                                  const dt = lr.service_tickets?.date || '—';
+                                  return (
+                                    <tr key={String(lr.id)} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                      <td style={{ padding: '6px', fontWeight: 600 }}>{lr.expense_type || '—'}</td>
+                                      <td style={{ padding: '6px', color: 'var(--text-secondary)' }}>{lr.description || '—'}</td>
+                                      <td style={{ padding: '6px', fontFamily: 'monospace' }}>
+                                        {lr.service_ticket_id ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setViewingTicketRecordId(String(lr.service_ticket_id))}
+                                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-color)', fontWeight: 600, fontFamily: 'monospace', fontSize: 'inherit', textDecoration: 'underline' }}
+                                          >
+                                            {tn}
+                                          </button>
+                                        ) : tn}
+                                      </td>
+                                      <td style={{ padding: '6px', color: 'var(--text-secondary)' }}>{dt}</td>
+                                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 600 }}>${billed.toFixed(2)}</td>
+                                      <td style={{ padding: '6px', textAlign: 'right' }}>
+                                        <button
+                                          type="button"
+                                          disabled={unlinkingTicketExpenseId === String(lr.id)}
+                                          onClick={() => handleUnlinkTicketExpense(String(lr.id))}
+                                          style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: unlinkingTicketExpenseId === String(lr.id) ? 'not-allowed' : 'pointer' }}
+                                        >
+                                          {unlinkingTicketExpenseId === String(lr.id) ? 'Unlinking…' : 'Unlink'}
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  }
+                  return [
+                    summaryTr,
+                    expenseTr,
+                    linkedTr,
+                  ].filter(Boolean) as JSX.Element[];
                 })}
                       </Fragment>
                     );
@@ -3946,6 +4104,9 @@ export default function Expenses() {
             queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
             queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
             queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+            queryClient.invalidateQueries({ queryKey: ['linkedTicketExpenses'] });
+            // Mark the receipt row as freshly linked so admin can see the result inline.
+            setExpandedLinkedReceiptId(String(receipt.id));
             closeModal();
           } catch (err: any) {
             setLinkReceiptError(err?.message || 'Failed to link.');

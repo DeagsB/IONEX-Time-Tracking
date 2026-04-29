@@ -2146,6 +2146,34 @@ export const serviceTicketExpensesService = {
   },
 
   /**
+   * Ticket expenses currently linked to a receipt (`user_expense_id` set).
+   * Used to show "this receipt covers X ticket expenses" on receipt rows in
+   * the admin Expense Management table, and to support unlinking.
+   */
+  async getLinkedTicketExpenses() {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .select(`
+        id,
+        service_ticket_id,
+        expense_type,
+        description,
+        quantity,
+        rate,
+        user_expense_id,
+        service_tickets (
+          id,
+          ticket_number,
+          date,
+          is_discarded
+        )
+      `)
+      .not('user_expense_id', 'is', null);
+    if (error) throw error;
+    return (data || []).filter((r: any) => !r.service_tickets?.is_discarded);
+  },
+
+  /**
    * Admin variant: ALL employees' reimbursable ticket expenses with no receipt
    * attached yet. Each row carries the joined ticket + employee user info so the
    * UI can render an employee column and group/filter by employee.
