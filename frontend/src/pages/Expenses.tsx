@@ -204,6 +204,8 @@ export default function Expenses() {
   const [adminEmployeeFilter, setAdminEmployeeFilter] = useState<string>('all');
   const [adminDateStart, setAdminDateStart] = useState<string>('');
   const [adminDateEnd, setAdminDateEnd] = useState<string>('');
+  /** Type filter values: 'all' | 'Receipt' (standalone receipts) | one of the ticket expense_type strings. */
+  const [adminTypeFilter, setAdminTypeFilter] = useState<string>('all');
   const [collapsedMyExpenseDateKeys, setCollapsedMyExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const [collapsedAdminExpenseDateKeys, setCollapsedAdminExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const hasSeededMyExpenseDateCollapse = useRef(false);
@@ -954,9 +956,21 @@ export default function Expenses() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [mergedAdminExpensesForApproval]);
 
+  const expenseTypeOf = (exp: any): string => {
+    if (exp._source === 'receipt') return 'Receipt';
+    return String(exp.expense_type || 'Other');
+  };
+
+  const adminTypeOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of mergedAdminExpensesForApproval as any[]) set.add(expenseTypeOf(e));
+    return [...set].sort();
+  }, [mergedAdminExpensesForApproval]);
+
   const adminFilteredExpenses = mergedAdminExpensesForApproval.filter((exp: any) => {
     if (adminStatusFilter !== 'all' && exp._status !== adminStatusFilter) return false;
     if (adminEmployeeFilter !== 'all' && String(exp._userId ?? '') !== adminEmployeeFilter) return false;
+    if (adminTypeFilter !== 'all' && expenseTypeOf(exp) !== adminTypeFilter) return false;
     if (adminDateStart || adminDateEnd) {
       const d = normalizeExpenseTableDateKey(String(exp._date || ''));
       if (adminDateStart && d < adminDateStart) return false;
@@ -3096,6 +3110,20 @@ export default function Expenses() {
             </div>
 
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Type</label>
+              <select
+                value={adminTypeFilter}
+                onChange={(e) => setAdminTypeFilter(e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+              >
+                <option value="all">All types</option>
+                {adminTypeOptions.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
               <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>From</label>
               <input
                 type="date"
@@ -3152,10 +3180,10 @@ export default function Expenses() {
               );
             })()}
 
-            {(adminEmployeeFilter !== 'all' || adminDateStart || adminDateEnd) && (
+            {(adminEmployeeFilter !== 'all' || adminTypeFilter !== 'all' || adminDateStart || adminDateEnd) && (
               <button
                 type="button"
-                onClick={() => { setAdminEmployeeFilter('all'); setAdminDateStart(''); setAdminDateEnd(''); }}
+                onClick={() => { setAdminEmployeeFilter('all'); setAdminTypeFilter('all'); setAdminDateStart(''); setAdminDateEnd(''); }}
                 style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
               >
                 Clear filters
