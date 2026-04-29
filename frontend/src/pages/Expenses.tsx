@@ -116,6 +116,100 @@ function splitTotalIntoAmountGst(
   return { amount, gst };
 }
 
+/**
+ * Auto-suggest which pending ticket-expense lines a receipt should link to.
+ *
+ * Strategies (first hit wins):
+ *   1. Single-line exact match — line.billed ≈ receiptTotal.
+ *   2. Same-rate group (hotel pattern) — N × rate ≈ receiptTotal, pick N
+ *      lines from that rate group whose ticket dates sit closest to receipt date.
+ *   3. Date-sorted greedy subset sum — sort lines by |ticketDate − receiptDate|,
+ *      add until cumulative ≈ receiptTotal within tolerance.
+ *
+ * Tolerance = max($1.00, 2% of receipt). Returns empty set if no confident match.
+ */
+function suggestReceiptLinkLines(
+  receipt: { expense_date?: string | null; amount?: unknown; gst?: unknown },
+  lines: Array<{
+    id: string;
+    quantity?: unknown;
+    rate?: unknown;
+    service_tickets?: { date?: string | null } | null;
+  }>
+): Set<string> {
+  const empty = new Set<string>();
+  const receiptTotal =
+    (parseFloat(String(receipt.amount)) || 0) + (parseFloat(String(receipt.gst)) || 0);
+  if (!(receiptTotal > 0) || lines.length === 0) return empty;
+  const tol = Math.max(1.0, receiptTotal * 0.02);
+
+  const receiptDateStr = String(receipt.expense_date || '').slice(0, 10);
+  const receiptDate = receiptDateStr
+    ? new Date(`${receiptDateStr}T12:00:00`).getTime()
+    : NaN;
+
+  type Cand = { id: string; billed: number; rate: number; daysAway: number };
+  const cands: Cand[] = lines.map((r) => {
+    const qty = Number(r.quantity) || 0;
+    const rate = Number(r.rate) || 0;
+    const billed = qty * rate;
+    const dStr = String(r.service_tickets?.date || '').slice(0, 10);
+    const dateMs = dStr ? new Date(`${dStr}T12:00:00`).getTime() : NaN;
+    const daysAway =
+      Number.isFinite(dateMs) && Number.isFinite(receiptDate)
+        ? Math.abs(dateMs - receiptDate) / 86400000
+        : 9999;
+    return { id: String(r.id), billed, rate, daysAway };
+  });
+
+  const singles = cands
+    .filter((c) => c.billed > 0 && Math.abs(c.billed - receiptTotal) <= tol)
+    .sort((a, b) => a.daysAway - b.daysAway);
+  if (singles.length > 0) return new Set([singles[0].id]);
+
+  const byRate = new Map<string, Cand[]>();
+  for (const c of cands) {
+    if (!(c.rate > 0)) continue;
+    const k = c.rate.toFixed(2);
+    if (!byRate.has(k)) byRate.set(k, []);
+    byRate.get(k)!.push(c);
+  }
+  let bestGroup: Cand[] | null = null;
+  let bestGroupScore = Infinity;
+  for (const [, group] of byRate) {
+    if (group.length < 2) continue;
+    const rate = group[0].rate;
+    const targetN = Math.round(receiptTotal / rate);
+    if (targetN < 2 || targetN > group.length) continue;
+    const expected = targetN * rate;
+    if (Math.abs(expected - receiptTotal) > tol) continue;
+    const picked = [...group].sort((a, b) => a.daysAway - b.daysAway).slice(0, targetN);
+    const avgDays = picked.reduce((s, c) => s + c.daysAway, 0) / picked.length;
+    const score = avgDays + Math.abs(expected - receiptTotal);
+    if (score < bestGroupScore) {
+      bestGroupScore = score;
+      bestGroup = picked;
+    }
+  }
+  if (bestGroup) return new Set(bestGroup.map((c) => c.id));
+
+  const sorted = [...cands].sort((a, b) => a.daysAway - b.daysAway);
+  const picked: Cand[] = [];
+  let running = 0;
+  for (const c of sorted) {
+    if (!(c.billed > 0)) continue;
+    if (running + c.billed > receiptTotal + tol) continue;
+    picked.push(c);
+    running += c.billed;
+    if (Math.abs(running - receiptTotal) <= tol) break;
+  }
+  if (picked.length >= 1 && Math.abs(running - receiptTotal) <= tol) {
+    return new Set(picked.map((c) => c.id));
+  }
+
+  return empty;
+}
+
 interface ReceiptLineItem {
   id: string;
   description: string;
@@ -205,6 +299,10 @@ export default function Expenses() {
   const [linkReceiptSelectedIds, setLinkReceiptSelectedIds] = useState<Set<string>>(new Set());
   const [isLinkingReceipt, setIsLinkingReceipt] = useState(false);
   const [linkReceiptError, setLinkReceiptError] = useState<string | null>(null);
+  /** IDs auto-picked by the suggester, so the modal can mark them as suggestions vs. user picks. */
+  const [linkReceiptSuggested, setLinkReceiptSuggested] = useState<Set<string>>(new Set());
+  /** Receipt id we already auto-applied for — prevents re-applying after the user clears. */
+  const linkReceiptAutoAppliedRef = useRef<string | null>(null);
   const [showTicketPickerModal, setShowTicketPickerModal] = useState(false);
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
 
@@ -391,6 +489,29 @@ export default function Expenses() {
     queryFn: () => serviceTicketExpensesService.getPendingReceiptLinesForUser(linkReceiptUserId!),
     enabled: !!linkReceiptUserId,
   });
+
+  // Auto-apply suggestions once per opened receipt, after candidate lines arrive.
+  useEffect(() => {
+    const receipt = linkReceiptModal?.receipt;
+    if (!receipt) {
+      linkReceiptAutoAppliedRef.current = null;
+      return;
+    }
+    const receiptId = String(receipt.id);
+    if (linkReceiptAutoAppliedRef.current === receiptId) return;
+    if (!linkReceiptPendingLines || (linkReceiptPendingLines as any[]).length === 0) return;
+    const candidateLines = (linkReceiptPendingLines as any[]).filter((r) =>
+      pendingReceiptRequiringTypes.has(String(r.expense_type || ''))
+    );
+    if (candidateLines.length === 0) {
+      linkReceiptAutoAppliedRef.current = receiptId;
+      return;
+    }
+    const suggested = suggestReceiptLinkLines(receipt, candidateLines);
+    setLinkReceiptSuggested(suggested);
+    if (suggested.size > 0) setLinkReceiptSelectedIds(new Set(suggested));
+    linkReceiptAutoAppliedRef.current = receiptId;
+  }, [linkReceiptModal, linkReceiptPendingLines, pendingReceiptRequiringTypes]);
 
   /** All ticket expenses currently linked to a receipt — grouped by user_expense_id. */
   const { data: linkedTicketExpenses = [] } = useQuery({
@@ -4515,7 +4636,11 @@ export default function Expenses() {
         const receipt = linkReceiptModal.receipt;
         const receiptAmount =
           (parseFloat(receipt.amount) || 0) + (parseFloat(receipt.gst) || 0);
-        const lines = (linkReceiptPendingLines as any[]).slice();
+        // Only show receipt-required types (Hotel / Expenses). Mileage, Truck Hours,
+        // Equipment, Per Diem etc. don't need receipts and shouldn't be link targets.
+        const lines = (linkReceiptPendingLines as any[]).filter((r) =>
+          pendingReceiptRequiringTypes.has(String(r.expense_type || ''))
+        );
         const selectedRows = lines.filter((r) => linkReceiptSelectedIds.has(String(r.id)));
         const selectedBilledTotal = selectedRows.reduce(
           (s, r) => s + (Number(r.quantity) || 0) * (Number(r.rate) || 0),
@@ -4524,7 +4649,9 @@ export default function Expenses() {
         const closeModal = () => {
           setLinkReceiptModal(null);
           setLinkReceiptSelectedIds(new Set());
+          setLinkReceiptSuggested(new Set());
           setLinkReceiptError(null);
+          linkReceiptAutoAppliedRef.current = null;
         };
         const handleLink = async () => {
           if (linkReceiptSelectedIds.size === 0) {
@@ -4582,6 +4709,47 @@ export default function Expenses() {
                   {' '}· {receipt._employeeName || ''}
                   {' '}· Receipt total: <strong style={{ color: 'var(--text-primary)' }}>${receiptAmount.toFixed(2)}</strong>
                 </div>
+                {linkReceiptSuggested.size > 0 && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      backgroundColor: 'rgba(33, 150, 243, 0.10)',
+                      border: '1px solid rgba(33, 150, 243, 0.35)',
+                      fontSize: '12px',
+                      color: 'var(--text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                    }}
+                  >
+                    <span>
+                      <strong style={{ color: '#1976d2' }}>Suggested matches pre-selected</strong>
+                      {' '}— based on amount and ticket date proximity. Review before linking.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLinkReceiptSuggested(new Set());
+                        setLinkReceiptSelectedIds(new Set());
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        backgroundColor: 'transparent',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
                 {linkReceiptError && (
@@ -4634,7 +4802,29 @@ export default function Expenses() {
                                 }}
                               />
                             </td>
-                            <td style={{ padding: '8px 6px', fontWeight: 600 }}>{row.expense_type || '—'}</td>
+                            <td style={{ padding: '8px 6px', fontWeight: 600 }}>
+                              {row.expense_type || '—'}
+                              {linkReceiptSuggested.has(id) && (
+                                <span
+                                  title="Auto-suggested by amount/date match"
+                                  style={{
+                                    marginLeft: '6px',
+                                    padding: '1px 6px',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    color: '#1976d2',
+                                    backgroundColor: 'rgba(33, 150, 243, 0.12)',
+                                    border: '1px solid rgba(33, 150, 243, 0.35)',
+                                    borderRadius: '10px',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.04em',
+                                    verticalAlign: 'middle',
+                                  }}
+                                >
+                                  Suggested
+                                </span>
+                              )}
+                            </td>
                             <td style={{ padding: '8px 6px', color: 'var(--text-secondary)' }}>{row.description || '—'}</td>
                             <td style={{ padding: '8px 6px', fontFamily: 'monospace' }}>{tn}</td>
                             <td style={{ padding: '8px 6px', color: 'var(--text-secondary)' }}>{dt || '—'}</td>
