@@ -82,7 +82,10 @@ export default function PayPeriodCalendar({ value, onChange, onClose, title }: P
 
   const selectedRange = useMemo(() => {
     if (!value.start || !value.end) return null;
-    return { start: parseYmd(value.start), end: parseYmd(value.end) };
+    // Compare by YYYY-MM-DD string to avoid time-of-day off-by-one (cells are
+    // built at 00:00, parseYmd gives 12:00 → "Apr 13 00:00 >= Apr 13 12:00" is
+    // false, dropping the start day from the highlight).
+    return { start: value.start, end: value.end };
   }, [value.start, value.end]);
 
   // Build a 6×7 grid starting from the Monday on/before the 1st of viewMonth.
@@ -171,7 +174,8 @@ export default function PayPeriodCalendar({ value, onChange, onClose, title }: P
           const stripeColor = idx % 2 === 0 ? 'rgba(33, 150, 243, 0.06)' : 'rgba(33, 150, 243, 0.13)';
           const isCurrentMonth = d.getMonth() === viewMonth.getMonth();
           const isHoveredPeriod = hoverIndex === idx;
-          const inSelected = !!selectedRange && d >= selectedRange.start && d <= selectedRange.end;
+          const dYmd = formatYmd(d);
+          const inSelected = !!selectedRange && dYmd >= selectedRange.start && dYmd <= selectedRange.end;
           const isToday = sameDay(d, today);
 
           let bg = stripeColor;
