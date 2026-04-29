@@ -201,6 +201,9 @@ export default function Expenses() {
 
   // Admin approval
   const [adminStatusFilter, setAdminStatusFilter] = useState<'unpaid' | 'paid' | 'all'>('unpaid');
+  const [adminEmployeeFilter, setAdminEmployeeFilter] = useState<string>('all');
+  const [adminDateStart, setAdminDateStart] = useState<string>('');
+  const [adminDateEnd, setAdminDateEnd] = useState<string>('');
   const [collapsedMyExpenseDateKeys, setCollapsedMyExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const [collapsedAdminExpenseDateKeys, setCollapsedAdminExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const hasSeededMyExpenseDateCollapse = useRef(false);
@@ -939,9 +942,27 @@ export default function Expenses() {
   // Expense Approvals shows everyone's expenses (admin's own are auto-approved)
   const mergedAdminExpensesForApproval = mergedAdminExpenses;
 
+  const adminEmployeeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const e of mergedAdminExpensesForApproval as any[]) {
+      const id = String(e._userId ?? '');
+      if (!id) continue;
+      if (!map.has(id)) map.set(id, String(e._employeeName || 'Unknown'));
+    }
+    return [...map.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [mergedAdminExpensesForApproval]);
+
   const adminFilteredExpenses = mergedAdminExpensesForApproval.filter((exp: any) => {
-    if (adminStatusFilter === 'all') return true;
-    return exp._status === adminStatusFilter;
+    if (adminStatusFilter !== 'all' && exp._status !== adminStatusFilter) return false;
+    if (adminEmployeeFilter !== 'all' && String(exp._userId ?? '') !== adminEmployeeFilter) return false;
+    if (adminDateStart || adminDateEnd) {
+      const d = normalizeExpenseTableDateKey(String(exp._date || ''));
+      if (adminDateStart && d < adminDateStart) return false;
+      if (adminDateEnd && d > adminDateEnd) return false;
+    }
+    return true;
   });
 
   // Expense table: admin sees own only; non-admin sees own only (filtered for defense in depth)
@@ -3036,27 +3057,110 @@ export default function Expenses() {
             Expense Management
           </h2>
 
-          {/* Status filter tabs */}
-          <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
-            {(['unpaid', 'paid', 'all'] as const).map((status) => (
-              <button
-                key={status}
-                onClick={() => setAdminStatusFilter(status)}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '6px',
-                  border: adminStatusFilter === status ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
-                  backgroundColor: adminStatusFilter === status ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
-                  color: adminStatusFilter === status ? 'var(--primary-color)' : 'var(--text-secondary)',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  textTransform: 'capitalize',
-                }}
+          {/* Status filter tabs + employee + date range */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {(['unpaid', 'paid', 'all'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setAdminStatusFilter(status)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    border: adminStatusFilter === status ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
+                    backgroundColor: adminStatusFilter === status ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
+                    color: adminStatusFilter === status ? 'var(--primary-color)' : 'var(--text-secondary)',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {status}{status !== 'all' ? ` (${mergedAdminExpensesForApproval.filter((e: any) => e._status === status).length})` : ` (${mergedAdminExpensesForApproval.length})`}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Employee</label>
+              <select
+                value={adminEmployeeFilter}
+                onChange={(e) => setAdminEmployeeFilter(e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
               >
-                {status}{status !== 'all' ? ` (${mergedAdminExpensesForApproval.filter((e: any) => e._status === status).length})` : ` (${mergedAdminExpensesForApproval.length})`}
+                <option value="all">All employees</option>
+                {adminEmployeeOptions.map((emp) => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>From</label>
+              <input
+                type="date"
+                value={adminDateStart}
+                onChange={(e) => setAdminDateStart(e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+              />
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
+              <input
+                type="date"
+                value={adminDateEnd}
+                onChange={(e) => setAdminDateEnd(e.target.value)}
+                style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+              />
+            </div>
+
+            {(() => {
+              const today = new Date();
+              const ymd = (d: Date) => d.toISOString().split('T')[0];
+              const presets: Array<{ label: string; start: string; end: string }> = [
+                (() => {
+                  const d = new Date(today);
+                  d.setDate(d.getDate() - 6);
+                  return { label: '7d', start: ymd(d), end: ymd(today) };
+                })(),
+                (() => {
+                  const d = new Date(today);
+                  d.setDate(d.getDate() - 29);
+                  return { label: '30d', start: ymd(d), end: ymd(today) };
+                })(),
+                (() => {
+                  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+                  return { label: 'This month', start: ymd(start), end: ymd(today) };
+                })(),
+                (() => {
+                  const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                  const end = new Date(today.getFullYear(), today.getMonth(), 0);
+                  return { label: 'Last month', start: ymd(start), end: ymd(end) };
+                })(),
+              ];
+              return (
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {presets.map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => { setAdminDateStart(p.start); setAdminDateEnd(p.end); }}
+                      style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {(adminEmployeeFilter !== 'all' || adminDateStart || adminDateEnd) && (
+              <button
+                type="button"
+                onClick={() => { setAdminEmployeeFilter('all'); setAdminDateStart(''); setAdminDateEnd(''); }}
+                style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Clear filters
               </button>
-            ))}
+            )}
           </div>
 
           <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
