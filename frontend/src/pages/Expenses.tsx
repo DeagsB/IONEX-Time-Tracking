@@ -4113,7 +4113,9 @@ export default function Expenses() {
                                     {unpaidCount} unpaid
                                   </span>
                                 )}
-                                {receiptPendingCount > 0 && (
+                                {/* Only show summary chip when collapsed; when expanded the per-row
+                                    "Receipt pending" badge already conveys the same info per line. */}
+                                {receiptPendingCount > 0 && collapsed && (
                                   <span style={{ padding: '1px 6px', borderRadius: '8px', backgroundColor: 'rgba(255, 152, 0, 0.18)', color: '#e65100', border: '1px solid rgba(255, 152, 0, 0.45)', fontSize: '11px' }}>
                                     📎 {receiptPendingCount} receipt pending
                                   </span>
