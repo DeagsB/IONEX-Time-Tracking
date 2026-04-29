@@ -659,10 +659,36 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
     amount: '',
     gst: '',
     expense_date: new Date().toISOString().split('T')[0],
-    markupType: 'dollar' as 'dollar' | 'percent',
+    markupType: 'percent' as 'percent' | 'bill',
     markupValue: '',
     is_billable: false,
   });
+
+  /**
+   * Split-receipt mode. When non-empty, the receipt covers multiple ticket-expense
+   * lines (e.g. one PDF with parts + labour). Each item creates its own
+   * service_ticket_expenses row + user_expenses row, all sharing one receipt URL.
+   * Only enabled for "Other" (Expenses) type creating a new line — not for hotel
+   * auto-markup or attach-to-existing-line flows.
+   */
+  type SplitLineItem = {
+    id: string;
+    description: string;
+    amount: string;
+    gst: string;
+    markupType: 'percent' | 'bill';
+    markupValue: string;
+  };
+  const newSplitLine = (init?: Partial<SplitLineItem>): SplitLineItem => ({
+    id: Math.random().toString(36).slice(2),
+    description: '',
+    amount: '',
+    gst: '',
+    markupType: 'percent',
+    markupValue: '',
+    ...init,
+  });
+  const [splitLineItems, setSplitLineItems] = useState<SplitLineItem[]>([]);
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
   const [receiptAutofillNote, setReceiptAutofillNote] = useState<string | null>(null);
@@ -761,7 +787,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         amount: prefillAmount,
         gst: '',
         expense_date: new Date().toISOString().split('T')[0],
-        markupType: 'dollar',
+        markupType: 'percent',
         markupValue: '',
         is_billable: true,
       });
@@ -2526,7 +2552,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         amount: '',
         gst: '',
         expense_date: new Date().toISOString().split('T')[0],
-        markupType: 'dollar',
+        markupType: 'percent',
         markupValue: '',
         is_billable: true,
       });
@@ -7398,27 +7424,139 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                       {receiptAutofillNote && !receiptAutofillBusy && (
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{receiptAutofillNote}</div>
                       )}
-                      <div>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Name / Description</label>
-                        <input type="text" value={receiptForm.description} onChange={(e) => setReceiptForm({ ...receiptForm, description: e.target.value })} placeholder="e.g. Hotel, Fuel, Parts..." style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Expense date</label>
-                        <input
-                          type="date"
-                          value={receiptForm.expense_date}
-                          onChange={(e) => setReceiptForm({ ...receiptForm, expense_date: e.target.value })}
-                          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
-                        <input type="number" step="0.01" value={receiptForm.amount} onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
-                      </div>
-                      <div>
-                        <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
-                        <input type="number" step="0.01" value={receiptForm.gst} onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
-                      </div>
+                      {(() => {
+                        const canSplit =
+                          pendingReimbursementExpense?.expense_type === 'Expenses' &&
+                          !attachReceiptContext;
+                        const inSplitMode = splitLineItems.length > 0;
+                        return (
+                          <>
+                            {splitLineItems.length === 0 && (
+                              <div>
+                                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Name / Description</label>
+                                <input type="text" value={receiptForm.description} onChange={(e) => setReceiptForm({ ...receiptForm, description: e.target.value })} placeholder="e.g. Hotel, Fuel, Parts..." style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                              </div>
+                            )}
+                            <div>
+                              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Expense date</label>
+                              <input
+                                type="date"
+                                value={receiptForm.expense_date}
+                                onChange={(e) => setReceiptForm({ ...receiptForm, expense_date: e.target.value })}
+                                style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                            {canSplit && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (inSplitMode) {
+                                    // Collapse back to single — keep first line's values
+                                    const first = splitLineItems[0];
+                                    setReceiptForm({
+                                      ...receiptForm,
+                                      description: first.description || receiptForm.description,
+                                      amount: first.amount,
+                                      gst: first.gst,
+                                      markupType: first.markupType,
+                                      markupValue: first.markupValue,
+                                    });
+                                    setSplitLineItems([]);
+                                  } else {
+                                    // Switch to split — seed first line from current single values
+                                    setSplitLineItems([
+                                      newSplitLine({
+                                        description: receiptForm.description,
+                                        amount: receiptForm.amount,
+                                        gst: receiptForm.gst,
+                                        markupType: receiptForm.markupType,
+                                        markupValue: receiptForm.markupValue,
+                                      }),
+                                      newSplitLine(),
+                                    ]);
+                                  }
+                                }}
+                                style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--primary-color)' }}
+                              >
+                                {inSplitMode ? '← Back to single line' : '+ Split into multiple lines'}
+                              </button>
+                            )}
+                            {!inSplitMode && (
+                              <>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
+                                  <input type="number" step="0.01" value={receiptForm.amount} onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
+                                  <input type="number" step="0.01" value={receiptForm.gst} onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
+                                </div>
+                              </>
+                            )}
+                            {inSplitMode && (
+                              <div>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Line Items</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 80px 70px 1fr 24px', gap: '6px', marginBottom: '4px', fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>
+                                  <span>Description</span>
+                                  <span>Amount</span>
+                                  <span>GST</span>
+                                  <span>Markup</span>
+                                  <span />
+                                </div>
+                                {splitLineItems.map((line, idx) => {
+                                  const amt = parseFloat(line.amount) || 0;
+                                  const gst = parseFloat(line.gst) || 0;
+                                  const expTotal = amt + gst;
+                                  const v = parseFloat(line.markupValue) || 0;
+                                  const markup = line.markupType === 'bill' ? v - expTotal : (expTotal * v) / 100;
+                                  const total = line.markupType === 'bill' ? v : expTotal + markup;
+                                  const updateLine = (patch: Partial<SplitLineItem>) =>
+                                    setSplitLineItems((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+                                  return (
+                                    <div key={line.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 80px 70px 1fr 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                                      <input type="text" value={line.description} onChange={(e) => updateLine({ description: e.target.value })} placeholder="e.g. Parts, Labour…" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                      <input type="number" step="0.01" value={line.amount} onChange={(e) => updateLine({ amount: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                      <input type="number" step="0.01" value={line.gst} onChange={(e) => updateLine({ gst: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', minWidth: 0 }}>
+                                        <input type="number" step="0.01" value={line.markupValue} onChange={(e) => updateLine({ markupValue: e.target.value })} placeholder={line.markupType === 'bill' ? 'Bill' : '%'} style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                        <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)', flexShrink: 0 }}>
+                                          <button type="button" onClick={() => updateLine({ markupType: 'percent' })} style={{ padding: '4px 7px', border: 'none', fontSize: '11px', fontWeight: 600, cursor: 'pointer', backgroundColor: line.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: line.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
+                                          <button type="button" onClick={() => updateLine({ markupType: 'bill' })} style={{ padding: '4px 7px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', backgroundColor: line.markupType === 'bill' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: line.markupType === 'bill' ? 'white' : 'var(--text-secondary)' }}>Bill</button>
+                                        </div>
+                                      </div>
+                                      {splitLineItems.length > 1 ? (
+                                        <button type="button" onClick={() => setSplitLineItems((prev) => prev.filter((_, i) => i !== idx))} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: '18px', lineHeight: 1, padding: 0 }}>×</button>
+                                      ) : <span />}
+                                    </div>
+                                  );
+                                })}
+                                {/* Totals + Add line */}
+                                {(() => {
+                                  let receiptTotal = 0;
+                                  let billedTotal = 0;
+                                  for (const l of splitLineItems) {
+                                    const a = parseFloat(l.amount) || 0;
+                                    const g = parseFloat(l.gst) || 0;
+                                    const exp = a + g;
+                                    const v = parseFloat(l.markupValue) || 0;
+                                    const t = l.markupType === 'bill' ? v : exp + (exp * v) / 100;
+                                    receiptTotal += exp;
+                                    billedTotal += t;
+                                  }
+                                  return (
+                                    <div style={{ display: 'flex', gap: '14px', borderTop: '1px solid var(--border-color)', paddingTop: '8px', marginTop: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                      <span>Receipt total: <strong style={{ color: 'var(--text-primary)' }}>${receiptTotal.toFixed(2)}</strong></span>
+                                      <span>Billed to client: <strong style={{ color: 'var(--text-primary)' }}>${billedTotal.toFixed(2)}</strong></span>
+                                      <span>Markup: <strong style={{ color: billedTotal - receiptTotal >= 0 ? '#2196F3' : '#b45309' }}>${(billedTotal - receiptTotal).toFixed(2)}</strong></span>
+                                    </div>
+                                  );
+                                })()}
+                                <button type="button" onClick={() => setSplitLineItems((prev) => [...prev, newSplitLine()])} style={{ marginTop: '6px', padding: '5px 10px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>+ Add line</button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                       {hotelReceiptAutoInfo.active && (
                         <div
                           style={{
@@ -7456,31 +7594,55 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                           )}
                         </div>
                       ) : (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Markup</label>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <input type="number" step="0.01" min="0" value={receiptForm.markupValue} onChange={(e) => setReceiptForm({ ...receiptForm, markupValue: e.target.value })} placeholder="0" style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
-                            <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                              <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'dollar' })} style={{ padding: '8px 12px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'dollar' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'dollar' ? 'white' : 'var(--text-secondary)' }}>$</button>
-                              <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'percent' })} style={{ padding: '8px 12px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
-                            </div>
-                          </div>
-                          {(() => {
-                            const amt = parseFloat(receiptForm.amount) || 0;
-                            const gst = parseFloat(receiptForm.gst) || 0;
-                            const expTotal = amt + gst;
-                            const val = parseFloat(receiptForm.markupValue) || 0;
-                            const markup = receiptForm.markupType === 'percent' ? (expTotal * val) / 100 : val;
-                            const total = expTotal + markup;
-                            if (markup > 0) return (
-                              <div style={{ marginTop: '6px', padding: '8px 10px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>Markup: </span><span style={{ fontWeight: '600', color: '#2196F3' }}>${markup.toFixed(2)}</span>
-                                <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>Total on ticket: </span><span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>${total.toFixed(2)}</span>
+                        splitLineItems.length === 0 && (
+                          <div>
+                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>
+                              {receiptForm.markupType === 'bill' ? 'Bill to client ($)' : 'Markup (%)'}
+                            </label>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={receiptForm.markupValue}
+                                onChange={(e) => setReceiptForm({ ...receiptForm, markupValue: e.target.value })}
+                                placeholder={receiptForm.markupType === 'bill' ? '0.00' : '0'}
+                                style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
+                              />
+                              <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                                <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'percent' })} style={{ padding: '8px 12px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
+                                <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'bill' })} style={{ padding: '8px 12px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'bill' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'bill' ? 'white' : 'var(--text-secondary)' }}>Bill</button>
                               </div>
-                            );
-                            return null;
-                          })()}
-                        </div>
+                            </div>
+                            {(() => {
+                              const amt = parseFloat(receiptForm.amount) || 0;
+                              const gst = parseFloat(receiptForm.gst) || 0;
+                              const expTotal = amt + gst;
+                              const val = parseFloat(receiptForm.markupValue) || 0;
+                              let markup: number;
+                              let total: number;
+                              if (receiptForm.markupType === 'bill') {
+                                total = val;
+                                markup = val - expTotal;
+                              } else {
+                                markup = (expTotal * val) / 100;
+                                total = expTotal + markup;
+                              }
+                              if (Math.abs(markup) >= 0.005 || receiptForm.markupType === 'bill') {
+                                return (
+                                  <div style={{ marginTop: '6px', padding: '8px 10px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>Markup: </span>
+                                    <span style={{ fontWeight: 600, color: markup >= 0 ? '#2196F3' : '#b45309' }}>
+                                      {markup >= 0 ? '' : '−'}${Math.abs(markup).toFixed(2)}
+                                    </span>
+                                    <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>Total on ticket: </span>
+                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>${total.toFixed(2)}</span>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+                        )
                       )}
                       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
                         <button onClick={() => {
@@ -7492,26 +7654,117 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                           setReceiptFile(null);
                           setReceiptAutofillNote(null);
                           setReceiptAutofillBusy(false);
+                          setSplitLineItems([]);
                         }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
                         <button
                           disabled={isUploadingReceipt}
                           onClick={async () => {
-                            if (!receiptForm.description.trim()) { setReceiptUploadError('Name is required'); return; }
-                            if (!receiptForm.amount || parseFloat(receiptForm.amount) <= 0) { setReceiptUploadError('Amount is required'); return; }
-                            if (
-                              pendingReimbursementExpense &&
-                              !receiptFile &&
-                              pendingReimbursementExpense.expense_type !== 'Travel' &&
-                              pendingReimbursementExpense.expense_type !== 'Equipment'
-                            ) {
-                              setReceiptUploadError('Receipt image or PDF is required for reimbursement');
-                              return;
+                            const inSplitMode = splitLineItems.length > 0;
+                            // Validation
+                            if (inSplitMode) {
+                              const validLines = splitLineItems.filter((l) => l.description.trim() && parseFloat(l.amount) > 0);
+                              if (validLines.length === 0) {
+                                setReceiptUploadError('Add at least one line with a description and amount > 0.');
+                                return;
+                              }
+                              for (const l of splitLineItems) {
+                                if (parseFloat(l.amount) > 0 && !l.description.trim()) {
+                                  setReceiptUploadError('Every line with an amount needs a description.');
+                                  return;
+                                }
+                              }
+                              if (!receiptFile) {
+                                setReceiptUploadError('Receipt image or PDF is required.');
+                                return;
+                              }
+                            } else {
+                              if (!receiptForm.description.trim()) { setReceiptUploadError('Name is required'); return; }
+                              if (!receiptForm.amount || parseFloat(receiptForm.amount) <= 0) { setReceiptUploadError('Amount is required'); return; }
+                              if (
+                                pendingReimbursementExpense &&
+                                !receiptFile &&
+                                pendingReimbursementExpense.expense_type !== 'Travel' &&
+                                pendingReimbursementExpense.expense_type !== 'Equipment'
+                              ) {
+                                setReceiptUploadError('Receipt image or PDF is required for reimbursement');
+                                return;
+                              }
                             }
                             const attachCtxAtSave = attachReceiptContext;
                             const pendingAtSave = pendingReimbursementExpense;
                             setIsUploadingReceipt(true);
                             setReceiptUploadError(null);
                             try {
+                              if (inSplitMode) {
+                                let storagePath: string | undefined;
+                                if (receiptFile) {
+                                  const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
+                                  storagePath = await userExpensesService.uploadReceipt(optimized);
+                                }
+                                const validLines = splitLineItems.filter((l) => l.description.trim() && parseFloat(l.amount) > 0);
+                                const expenseDateForLines =
+                                  receiptForm.expense_date.trim() || new Date().toISOString().split('T')[0];
+                                const newPendingRows: Array<{
+                                  expense_type: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
+                                  description: string;
+                                  quantity: number;
+                                  rate: number;
+                                  actual_cost?: number;
+                                  unit?: string;
+                                  tempId: string;
+                                  linkedUserExpenseId: string;
+                                  needs_reimbursement?: boolean;
+                                }> = [];
+                                for (const line of validLines) {
+                                  const lAmt = parseFloat(line.amount) || 0;
+                                  const lGst = parseFloat(line.gst) || 0;
+                                  const lExp = lAmt + lGst;
+                                  const lVal = parseFloat(line.markupValue) || 0;
+                                  const lMarkup = line.markupType === 'bill' ? lVal - lExp : (lExp * lVal) / 100;
+                                  const lTotal = line.markupType === 'bill' ? lVal : lExp + lMarkup;
+                                  const created = await userExpensesService.create({
+                                    description: line.description.trim(),
+                                    amount: lAmt,
+                                    expense_date: expenseDateForLines,
+                                    receipt_url: storagePath,
+                                    gst: lGst,
+                                    is_billable: true,
+                                    service_ticket_id: currentTicketRecordId || undefined,
+                                    markup_amount: Math.abs(lMarkup) >= 0.005 ? Math.round(lMarkup * 100) / 100 : undefined,
+                                    status: isAdmin ? 'approved' : 'pending',
+                                  });
+                                  if (created?.id) {
+                                    newPendingRows.push({
+                                      expense_type: 'Expenses',
+                                      description: line.description.trim(),
+                                      quantity: 1,
+                                      rate: lTotal,
+                                      actual_cost: lExp,
+                                      unit: '',
+                                      tempId: `receipt-${created.id}`,
+                                      linkedUserExpenseId: created.id,
+                                      needs_reimbursement: true,
+                                    });
+                                  }
+                                }
+                                if (currentTicketRecordId && newPendingRows.length > 0) {
+                                  setPendingAddExpenses((prev) => [...prev, ...newPendingRows]);
+                                }
+                                queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+                                queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+                                queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+                                queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+                                setShowReceiptModal(false);
+                                setPendingReimbursementExpense(null);
+                                setAttachReceiptContext(null);
+                                if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+                                setReceiptPreviewUrl(null);
+                                setReceiptFile(null);
+                                setReceiptAutofillNote(null);
+                                setReceiptAutofillBusy(false);
+                                setSplitLineItems([]);
+                                return;
+                              }
                               const amt = parseFloat(receiptForm.amount);
                               const gst = parseFloat(receiptForm.gst) || 0;
                               const expTotal = amt + gst;
@@ -7532,8 +7785,13 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 totalWithMarkup = clientBilled;
                               } else {
                                 const markupVal = parseFloat(receiptForm.markupValue) || 0;
-                                markup = receiptForm.markupType === 'percent' ? (expTotal * markupVal) / 100 : markupVal;
-                                totalWithMarkup = expTotal + markup;
+                                if (receiptForm.markupType === 'bill') {
+                                  totalWithMarkup = markupVal;
+                                  markup = markupVal - expTotal;
+                                } else {
+                                  markup = (expTotal * markupVal) / 100;
+                                  totalWithMarkup = expTotal + markup;
+                                }
                               }
                               let storagePath: string | undefined;
                               if (receiptFile) {
@@ -7550,7 +7808,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 gst: parseFloat(receiptForm.gst) || 0,
                                 is_billable: true,
                                 service_ticket_id: currentTicketRecordId || undefined,
-                                markup_amount: useHotelAutoMarkup ? markup : markup > 0 ? markup : undefined,
+                                markup_amount: useHotelAutoMarkup ? markup : Math.abs(markup) >= 0.005 ? Math.round(markup * 100) / 100 : undefined,
                                 status: isAdmin ? 'approved' : 'pending',
                               });
                               if (currentTicketRecordId && createdReceipt?.id) {
@@ -7614,6 +7872,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               setReceiptFile(null);
                               setReceiptAutofillNote(null);
                               setReceiptAutofillBusy(false);
+                              setSplitLineItems([]);
                             } catch (err: any) {
                               setReceiptUploadError(err.message || 'Failed to save receipt');
                             } finally {
