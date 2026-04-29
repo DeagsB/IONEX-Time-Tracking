@@ -324,6 +324,17 @@ export default function Expenses() {
   const [adminDateEnd, setAdminDateEnd] = useState<string>('');
   /** Type filter values: 'all' | 'Receipt' (standalone receipts) | one of the ticket expense_type strings. */
   const [adminTypeFilter, setAdminTypeFilter] = useState<string>('all');
+  const [adminFiltersOpen, setAdminFiltersOpen] = useState(false);
+  const adminFiltersAnchorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!adminFiltersOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!adminFiltersAnchorRef.current) return;
+      if (!adminFiltersAnchorRef.current.contains(e.target as Node)) setAdminFiltersOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [adminFiltersOpen]);
   const [collapsedMyExpenseDateKeys, setCollapsedMyExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const [collapsedAdminExpenseDateKeys, setCollapsedAdminExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const hasSeededMyExpenseDateCollapse = useRef(false);
@@ -456,7 +467,7 @@ export default function Expenses() {
   const [pendingReceiptEmpFilter, setPendingReceiptEmpFilter] = useState<string>('all');
   const [pendingReceiptTypeFilter, setPendingReceiptTypeFilter] = useState<string>('all');
   const [pendingReceiptDescFilter, setPendingReceiptDescFilter] = useState<string>('');
-  const [pendingReceiptCollapsed, setPendingReceiptCollapsed] = useState<boolean>(false);
+  const [pendingReceiptCollapsed, setPendingReceiptCollapsed] = useState<boolean>(true);
 
   /**
    * Only expense types that genuinely require a receipt before payroll reimbursement.
@@ -3765,125 +3776,242 @@ export default function Expenses() {
             Expense Management
           </h2>
 
-          {/* Status filter tabs + employee + date range */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {(['unpaid', 'paid', 'all'] as const).map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setAdminStatusFilter(status)}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '6px',
-                    border: adminStatusFilter === status ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
-                    backgroundColor: adminStatusFilter === status ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
-                    color: adminStatusFilter === status ? 'var(--primary-color)' : 'var(--text-secondary)',
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    textTransform: 'capitalize',
-                  }}
-                >
-                  {status}{status !== 'all' ? ` (${mergedAdminExpensesForApproval.filter((e: any) => e._status === status).length})` : ` (${mergedAdminExpensesForApproval.length})`}
-                </button>
-              ))}
-            </div>
+          {/* Status tabs (primary) + active-filter chips + Filters popover. */}
+          {(() => {
+            const today = new Date();
+            const ymd = (d: Date) => d.toISOString().split('T')[0];
+            const presets: Array<{ label: string; start: string; end: string }> = [
+              (() => {
+                const d = new Date(today); d.setDate(d.getDate() - 6);
+                return { label: '7d', start: ymd(d), end: ymd(today) };
+              })(),
+              (() => {
+                const d = new Date(today); d.setDate(d.getDate() - 29);
+                return { label: '30d', start: ymd(d), end: ymd(today) };
+              })(),
+              (() => {
+                const start = new Date(today.getFullYear(), today.getMonth(), 1);
+                return { label: 'This month', start: ymd(start), end: ymd(today) };
+              })(),
+              (() => {
+                const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                const end = new Date(today.getFullYear(), today.getMonth(), 0);
+                return { label: 'Last month', start: ymd(start), end: ymd(end) };
+              })(),
+            ];
+            const activePreset = presets.find((p) => p.start === adminDateStart && p.end === adminDateEnd) || null;
+            const activeEmpName =
+              adminEmployeeFilter !== 'all'
+                ? adminEmployeeOptions.find((e) => e.id === adminEmployeeFilter)?.name || null
+                : null;
+            const activeFilterCount =
+              (adminEmployeeFilter !== 'all' ? 1 : 0) +
+              (adminTypeFilter !== 'all' ? 1 : 0) +
+              ((adminDateStart || adminDateEnd) ? 1 : 0);
+            const fmtDate = (s: string) =>
+              s ? new Date(`${s}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '…';
+            const dateChipLabel =
+              activePreset
+                ? activePreset.label
+                : (adminDateStart || adminDateEnd)
+                  ? `${fmtDate(adminDateStart)} → ${fmtDate(adminDateEnd)}`
+                  : null;
 
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Employee</label>
-              <select
-                value={adminEmployeeFilter}
-                onChange={(e) => setAdminEmployeeFilter(e.target.value)}
-                style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-              >
-                <option value="all">All employees</option>
-                {adminEmployeeOptions.map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
-            </div>
+            const chipStyle: React.CSSProperties = {
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '4px 8px 4px 10px', borderRadius: '999px',
+              backgroundColor: 'rgba(33, 150, 243, 0.10)',
+              color: 'var(--primary-color)', fontSize: '12px', fontWeight: 600,
+              border: '1px solid rgba(33, 150, 243, 0.25)',
+            };
+            const chipXStyle: React.CSSProperties = {
+              border: 'none', background: 'transparent', color: 'inherit',
+              cursor: 'pointer', fontSize: '14px', lineHeight: 1, padding: 0,
+              opacity: 0.7,
+            };
 
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Type</label>
-              <select
-                value={adminTypeFilter}
-                onChange={(e) => setAdminTypeFilter(e.target.value)}
-                style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-              >
-                <option value="all">All types</option>
-                {adminTypeOptions.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>From</label>
-              <input
-                type="date"
-                value={adminDateStart}
-                onChange={(e) => setAdminDateStart(e.target.value)}
-                style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-              />
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>To</label>
-              <input
-                type="date"
-                value={adminDateEnd}
-                onChange={(e) => setAdminDateEnd(e.target.value)}
-                style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-              />
-            </div>
-
-            {(() => {
-              const today = new Date();
-              const ymd = (d: Date) => d.toISOString().split('T')[0];
-              const presets: Array<{ label: string; start: string; end: string }> = [
-                (() => {
-                  const d = new Date(today);
-                  d.setDate(d.getDate() - 6);
-                  return { label: '7d', start: ymd(d), end: ymd(today) };
-                })(),
-                (() => {
-                  const d = new Date(today);
-                  d.setDate(d.getDate() - 29);
-                  return { label: '30d', start: ymd(d), end: ymd(today) };
-                })(),
-                (() => {
-                  const start = new Date(today.getFullYear(), today.getMonth(), 1);
-                  return { label: 'This month', start: ymd(start), end: ymd(today) };
-                })(),
-                (() => {
-                  const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                  const end = new Date(today.getFullYear(), today.getMonth(), 0);
-                  return { label: 'Last month', start: ymd(start), end: ymd(end) };
-                })(),
-              ];
-              return (
+            return (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', gap: '4px' }}>
-                  {presets.map((p) => (
+                  {(['unpaid', 'paid', 'all'] as const).map((status) => (
                     <button
-                      key={p.label}
-                      type="button"
-                      onClick={() => { setAdminDateStart(p.start); setAdminDateEnd(p.end); }}
-                      style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                      key={status}
+                      onClick={() => setAdminStatusFilter(status)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '6px',
+                        border: adminStatusFilter === status ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
+                        backgroundColor: adminStatusFilter === status ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
+                        color: adminStatusFilter === status ? 'var(--primary-color)' : 'var(--text-secondary)',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        textTransform: 'capitalize',
+                      }}
                     >
-                      {p.label}
+                      {status}{status !== 'all' ? ` (${mergedAdminExpensesForApproval.filter((e: any) => e._status === status).length})` : ` (${mergedAdminExpensesForApproval.length})`}
                     </button>
                   ))}
                 </div>
-              );
-            })()}
 
-            {(adminEmployeeFilter !== 'all' || adminTypeFilter !== 'all' || adminDateStart || adminDateEnd) && (
-              <button
-                type="button"
-                onClick={() => { setAdminEmployeeFilter('all'); setAdminTypeFilter('all'); setAdminDateStart(''); setAdminDateEnd(''); }}
-                style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+                {/* Active filter chips. */}
+                {activeEmpName && (
+                  <span style={chipStyle}>
+                    {activeEmpName}
+                    <button type="button" onClick={() => setAdminEmployeeFilter('all')} style={chipXStyle} aria-label="Remove employee filter">×</button>
+                  </span>
+                )}
+                {adminTypeFilter !== 'all' && (
+                  <span style={chipStyle}>
+                    {adminTypeFilter}
+                    <button type="button" onClick={() => setAdminTypeFilter('all')} style={chipXStyle} aria-label="Remove type filter">×</button>
+                  </span>
+                )}
+                {dateChipLabel && (
+                  <span style={chipStyle}>
+                    {dateChipLabel}
+                    <button type="button" onClick={() => { setAdminDateStart(''); setAdminDateEnd(''); }} style={chipXStyle} aria-label="Remove date filter">×</button>
+                  </span>
+                )}
+
+                <div ref={adminFiltersAnchorRef} style={{ position: 'relative', marginLeft: 'auto' }}>
+                  <button
+                    type="button"
+                    onClick={() => setAdminFiltersOpen((v) => !v)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      padding: '6px 12px', borderRadius: '6px',
+                      border: activeFilterCount > 0 ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
+                      backgroundColor: activeFilterCount > 0 ? 'rgba(33, 150, 243, 0.08)' : 'var(--bg-secondary)',
+                      color: activeFilterCount > 0 ? 'var(--primary-color)' : 'var(--text-secondary)',
+                      fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                    }}
+                    aria-expanded={adminFiltersOpen}
+                  >
+                    <span aria-hidden>⚙</span>
+                    Filters
+                    {activeFilterCount > 0 && (
+                      <span style={{
+                        minWidth: '18px', padding: '0 6px', height: '18px',
+                        borderRadius: '999px', backgroundColor: 'var(--primary-color)',
+                        color: 'white', fontSize: '11px', fontWeight: 700,
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      }}>{activeFilterCount}</span>
+                    )}
+                    <span aria-hidden style={{ fontSize: '10px', opacity: 0.7 }}>{adminFiltersOpen ? '▲' : '▼'}</span>
+                  </button>
+
+                  {adminFiltersOpen && (
+                    <div
+                      role="dialog"
+                      style={{
+                        position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                        zIndex: 50, width: 'min(420px, 90vw)',
+                        backgroundColor: 'var(--bg-primary)',
+                        border: '1px solid var(--border-color)', borderRadius: '8px',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                        padding: '14px',
+                        display: 'flex', flexDirection: 'column', gap: '12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Employee</label>
+                        <select
+                          value={adminEmployeeFilter}
+                          onChange={(e) => setAdminEmployeeFilter(e.target.value)}
+                          style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+                        >
+                          <option value="all">All employees</option>
+                          {adminEmployeeOptions.map((emp) => (
+                            <option key={emp.id} value={emp.id}>{emp.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Type</label>
+                        <select
+                          value={adminTypeFilter}
+                          onChange={(e) => setAdminTypeFilter(e.target.value)}
+                          style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+                        >
+                          <option value="all">All types</option>
+                          {adminTypeOptions.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Date range</label>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {presets.map((p) => {
+                            const isActive = activePreset?.label === p.label;
+                            return (
+                              <button
+                                key={p.label}
+                                type="button"
+                                onClick={() => { setAdminDateStart(p.start); setAdminDateEnd(p.end); }}
+                                style={{
+                                  padding: '5px 10px', borderRadius: '6px',
+                                  border: isActive ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
+                                  backgroundColor: isActive ? 'rgba(33, 150, 243, 0.10)' : 'var(--bg-secondary)',
+                                  color: isActive ? 'var(--primary-color)' : 'var(--text-secondary)',
+                                  fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                                }}
+                              >
+                                {p.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <input
+                            type="date"
+                            value={adminDateStart}
+                            onChange={(e) => setAdminDateStart(e.target.value)}
+                            style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+                          />
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>→</span>
+                          <input
+                            type="date"
+                            value={adminDateEnd}
+                            onChange={(e) => setAdminDateEnd(e.target.value)}
+                            style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+                        <button
+                          type="button"
+                          onClick={() => { setAdminEmployeeFilter('all'); setAdminTypeFilter('all'); setAdminDateStart(''); setAdminDateEnd(''); }}
+                          disabled={activeFilterCount === 0}
+                          style={{
+                            padding: '5px 10px', borderRadius: '6px', border: 'none',
+                            background: 'transparent',
+                            color: activeFilterCount === 0 ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                            fontSize: '12px',
+                            cursor: activeFilterCount === 0 ? 'not-allowed' : 'pointer',
+                            textDecoration: activeFilterCount === 0 ? 'none' : 'underline',
+                          }}
+                        >
+                          Clear all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAdminFiltersOpen(false)}
+                          style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
             <div style={{ overflowX: 'auto' }}>
