@@ -2319,14 +2319,18 @@ export const serviceTicketExpensesService = {
     const cutoffDate = new Date(periodEndMs);
     const cutoff = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
 
-    // Identify employees opted-in to approval.
-    const { data: approvalEmps } = await supabase
+    // Identify employees opted-in to approval, plus contractors (who never need receipts).
+    const { data: emps } = await supabase
       .from('employees')
-      .select('user_id')
-      .eq('expenses_require_approval', true);
-    const approvalUserIds = new Set(
-      (approvalEmps || []).map((e: any) => String(e.user_id)).filter(Boolean)
-    );
+      .select('user_id, employment_type, expenses_require_approval');
+    const approvalUserIds = new Set<string>();
+    const contractorUserIds = new Set<string>();
+    for (const e of (emps || []) as any[]) {
+      const uid = String(e.user_id || '');
+      if (!uid) continue;
+      if (e.expenses_require_approval) approvalUserIds.add(uid);
+      if ((e.employment_type || 'Employee') === 'Contractor') contractorUserIds.add(uid);
+    }
 
     const { data: rows, error: selectError } = await supabase
       .from('service_ticket_expenses')
@@ -2347,15 +2351,19 @@ export const serviceTicketExpensesService = {
       if (r.reimbursement_status === 'paid') return false;
       const d = r.service_tickets?.date;
       if (!d || d > cutoff) return false;
-      // Receipt-required types only paid when receipt attached.
-      const t = String(r.expense_type || '').toLowerCase();
-      const needsReceipt = t === 'hotel' || t === 'expenses' || (r.description || '').toLowerCase().includes('hotel');
-      if (needsReceipt) {
-        const hasReceipt = (Number(r.actual_cost) || 0) > 0 || !!r.user_expense_id;
-        if (!hasReceipt) return false;
+      const ownerId = String(r.service_tickets?.user_id ?? '');
+      const isContractor = contractorUserIds.has(ownerId);
+      // Receipt-required types only paid when receipt attached. Contractors are
+      // exempt — they invoice us for expenses, so no receipt is expected.
+      if (!isContractor) {
+        const t = String(r.expense_type || '').toLowerCase();
+        const needsReceipt = t === 'hotel' || t === 'expenses' || (r.description || '').toLowerCase().includes('hotel');
+        if (needsReceipt) {
+          const hasReceipt = (Number(r.actual_cost) || 0) > 0 || !!r.user_expense_id;
+          if (!hasReceipt) return false;
+        }
       }
       // Per-employee opt-in approval gate.
-      const ownerId = String(r.service_tickets?.user_id ?? '');
       if (approvalUserIds.has(ownerId) && r.reimbursement_status !== 'approved') return false;
       return true;
     });

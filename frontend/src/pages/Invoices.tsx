@@ -3579,9 +3579,26 @@ export default function Invoices() {
               const batchStatusId = batchSnap?.statusId ?? batchWorkflow?.statuses?.[0]?.id;
               const batchCurrentStatus = batchWorkflow?.statuses?.find((s) => s.id === batchStatusId);
               const statusSinceDate = batchSnap?.statusChangedAt ?? batchMarkRow?.marked_at;
-              const daysSinceStatus = statusSinceDate
-                ? Math.floor((Date.now() - new Date(statusSinceDate).getTime()) / (1000 * 60 * 60 * 24))
-                : null;
+              // Calendar-day diff (local time), so something set 23h ago is "yesterday", not "today".
+              const daysSinceStatus = (() => {
+                if (!statusSinceDate) return null;
+                const then = new Date(statusSinceDate);
+                if (Number.isNaN(then.getTime())) return null;
+                const now = new Date();
+                const a = new Date(then.getFullYear(), then.getMonth(), then.getDate()).getTime();
+                const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                return Math.round((b - a) / 86400000);
+              })();
+              const statusSinceTitle = statusSinceDate
+                ? new Date(statusSinceDate).toLocaleString(undefined, {
+                    weekday: 'short',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
+                : '';
               return (
                 <div
                   key={persistId}
@@ -3654,8 +3671,15 @@ export default function Invoices() {
                           {batchCurrentStatus.label}
                         </span>
                         {daysSinceStatus !== null && (
-                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                            {daysSinceStatus === 0 ? 'today' : daysSinceStatus === 1 ? '1 day' : `${daysSinceStatus} days`}
+                          <span
+                            title={statusSinceTitle}
+                            style={{ fontSize: '11px', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}
+                          >
+                            {daysSinceStatus <= 0
+                              ? 'today'
+                              : daysSinceStatus === 1
+                              ? 'yesterday'
+                              : `${daysSinceStatus} days ago`}
                           </span>
                         )}
                       </span>

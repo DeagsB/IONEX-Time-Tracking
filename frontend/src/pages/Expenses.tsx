@@ -431,6 +431,27 @@ export default function Expenses() {
     enabled: !!user?.id,
   });
 
+  /** Employees roster — used early for contractor lookup; admin overview uses it again later. */
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => employeesService.getAll(),
+    enabled: isAdmin,
+  });
+
+  /**
+   * user_id → true if employee.employment_type === 'Contractor'.
+   * Contractors invoice us for their expenses, so they don't need receipts and
+   * their lines auto-pay with the pay period (no receipt-pending gate).
+   */
+  const contractorByUserId = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const e of (employees as any[])) {
+      if (!e.user_id) continue;
+      map.set(String(e.user_id), (e.employment_type || 'Employee') === 'Contractor');
+    }
+    return map;
+  }, [employees]);
+
   /** Admin filter for the Awaiting Receipts section — by employee user_id. 'all' = no filter. */
   const [pendingReceiptEmpFilter, setPendingReceiptEmpFilter] = useState<string>('all');
   const [pendingReceiptTypeFilter, setPendingReceiptTypeFilter] = useState<string>('all');
@@ -448,18 +469,26 @@ export default function Expenses() {
     const arr = pendingReceiptLines as any[];
     return arr.filter((r) => {
       if (!pendingReceiptRequiringTypes.has(String(r.expense_type || ''))) return false;
-      if (isAdmin && pendingReceiptEmpFilter !== 'all' && String(r.service_tickets?.user_id ?? '') !== pendingReceiptEmpFilter) return false;
+      // Contractors invoice us — never expect a receipt, never block them in this list.
+      const ownerId = String(r.service_tickets?.user_id ?? '');
+      if (ownerId && contractorByUserId.get(ownerId)) return false;
+      if (isAdmin && pendingReceiptEmpFilter !== 'all' && ownerId !== pendingReceiptEmpFilter) return false;
       if (pendingReceiptTypeFilter !== 'all' && String(r.expense_type || '') !== pendingReceiptTypeFilter) return false;
       const q = pendingReceiptDescFilter.trim().toLowerCase();
       if (q && !String(r.description || '').toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [pendingReceiptLines, isAdmin, pendingReceiptEmpFilter, pendingReceiptTypeFilter, pendingReceiptDescFilter, pendingReceiptRequiringTypes]);
+  }, [pendingReceiptLines, isAdmin, pendingReceiptEmpFilter, pendingReceiptTypeFilter, pendingReceiptDescFilter, pendingReceiptRequiringTypes, contractorByUserId]);
 
   /** Pre-filter rows that pass the receipt-required gate (used for the type-options dropdown + count). */
   const pendingReceiptLinesGated = useMemo(() => {
-    return (pendingReceiptLines as any[]).filter((r) => pendingReceiptRequiringTypes.has(String(r.expense_type || '')));
-  }, [pendingReceiptLines, pendingReceiptRequiringTypes]);
+    return (pendingReceiptLines as any[]).filter((r) => {
+      if (!pendingReceiptRequiringTypes.has(String(r.expense_type || ''))) return false;
+      const ownerId = String(r.service_tickets?.user_id ?? '');
+      if (ownerId && contractorByUserId.get(ownerId)) return false;
+      return true;
+    });
+  }, [pendingReceiptLines, pendingReceiptRequiringTypes, contractorByUserId]);
 
   const pendingReceiptTypeOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1169,13 +1198,6 @@ export default function Expenses() {
     enabled: isAdmin,
   });
 
-  // Fetch employees for admin employee overview and ticket expense names
-  const { data: employees = [] } = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => employeesService.getAll(),
-    enabled: isAdmin,
-  });
-
   /**
    * Batch flip status for many selected rows at once. Receipts hit user_expenses.status,
    * ticket expenses hit service_ticket_expenses.reimbursement_status. Used by the
@@ -1209,12 +1231,15 @@ export default function Expenses() {
   const handleAdminStatusChange = async (itemId: string, newStatus: 'pending' | 'paid', source: 'receipt' | 'ticket', expRow?: any) => {
     // Guard: marking a receipt-required ticket expense (Hotel / Other) paid when no
     // receipt is attached is almost always accidental — confirm before letting it through.
+    // Contractors are exempt: they invoice us, no receipt expected.
     if (newStatus === 'paid' && source === 'ticket' && expRow) {
       const t = String(expRow.expense_type || '').toLowerCase();
       const desc = String(expRow.description || '').toLowerCase();
       const needsReceipt = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
       const hasReceipt = (Number(expRow.actual_cost) || 0) > 0 || !!expRow.user_expense_id;
-      if (needsReceipt && !hasReceipt) {
+      const ownerId = String(expRow.service_tickets?.user_id ?? expRow._userId ?? '');
+      const isContractor = ownerId ? !!contractorByUserId.get(ownerId) : false;
+      if (needsReceipt && !hasReceipt && !isContractor) {
         const proceed = window.confirm(
           'This ticket expense does not have a receipt attached yet. Mark as paid anyway?\n\n' +
           'You can still find it later in the Awaiting Receipts section.'
@@ -3905,7 +3930,9 @@ export default function Expenses() {
                         const desc = String(it.description || '').toLowerCase();
                         const needsR = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
                         const hasR = (Number(it.actual_cost) || 0) > 0 || !!it.user_expense_id;
-                        if (needsR && !hasR) receiptPendingCount += 1;
+                        const ownerId = String(it.service_tickets?.user_id ?? it._userId ?? '');
+                        const isContractor = ownerId ? !!contractorByUserId.get(ownerId) : false;
+                        if (needsR && !hasR && !isContractor) receiptPendingCount += 1;
                       }
                     }
                     return (
@@ -4135,11 +4162,35 @@ export default function Expenses() {
                           // Receipt-required types (Hotel, Other) flag a "Receipt pending" badge when
                           // they're reimbursable but no receipt is attached (no actual_cost AND no
                           // user_expense_id). Click opens the service ticket so admin can attach.
+                          // Contractors invoice us for expenses → never need a receipt → show
+                          // a neutral "Contractor" pill instead.
                           if (!exp.needs_reimbursement) return null;
                           const t = String(exp.expense_type || '').toLowerCase();
                           const desc = String(exp.description || '').toLowerCase();
                           const needsReceipt = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
                           if (!needsReceipt) return null;
+                          const ownerId = String(exp.service_tickets?.user_id ?? exp._userId ?? '');
+                          const isContractor = ownerId ? !!contractorByUserId.get(ownerId) : false;
+                          if (isContractor) {
+                            return (
+                              <span
+                                style={{
+                                  marginLeft: '6px',
+                                  padding: '3px 8px',
+                                  backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                                  color: '#4f46e5',
+                                  border: '1px solid rgba(99, 102, 241, 0.35)',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title="Contractor — invoices us for expenses, no receipt required"
+                              >
+                                Contractor
+                              </span>
+                            );
+                          }
                           const hasReceipt =
                             (Number(exp.actual_cost) || 0) > 0 || !!exp.user_expense_id;
                           if (hasReceipt) return null;
