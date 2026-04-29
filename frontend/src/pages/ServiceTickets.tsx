@@ -323,7 +323,7 @@ function parseLinkedUserExpenseIdFromReceiptTempId(tempId: string | undefined): 
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rest) ? rest : undefined;
 }
 
-export default function ServiceTickets() {
+export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { modalOnlyMode?: { onClose: () => void }; pendingOpenRecord?: string } = {}) {
   const { user, isAdmin, isDeveloper } = useAuth();
   const { isDemoMode } = useDemoMode();
   const queryClient = useQueryClient();
@@ -1201,6 +1201,7 @@ export default function ServiceTickets() {
     initialEditableTicketRef.current = null;
     initialServiceRowsRef.current = [];
     originalTimeEntryRowsRef.current = [];
+    modalOnlyMode?.onClose();
   };
 
   const hasPendingChanges = useMemo(() => {
@@ -4000,11 +4001,13 @@ export default function ServiceTickets() {
 
   useEffect(() => {
     if (existingTickets === undefined) return;
-    let pending: string | null = null;
-    try {
-      pending = sessionStorage.getItem(PENDING_OPEN_RECORD_KEY);
-    } catch {
-      return;
+    let pending: string | null = pendingOpenRecord ?? null;
+    if (!pending) {
+      try {
+        pending = sessionStorage.getItem(PENDING_OPEN_RECORD_KEY);
+      } catch {
+        return;
+      }
     }
     if (!pending) {
       pendingOpenWidenedForRef.current = null;
@@ -4095,10 +4098,18 @@ export default function ServiceTickets() {
         pendingOpenInflightRef.current = false;
       }
     })();
-  }, [tickets, existingTickets, isDemoMode, isAdmin, user?.id, startDate, endDate]);
+  }, [tickets, existingTickets, isDemoMode, isAdmin, user?.id, startDate, endDate, pendingOpenRecord]);
 
   return (
     <div>
+      {modalOnlyMode && !selectedTicket && !editableTicket && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '32px 48px', fontSize: '15px', color: 'var(--text-secondary)' }}>
+            Loading ticket…
+          </div>
+        </div>
+      )}
+      {!modalOnlyMode && <>
       {/* Bulk delete permanently confirm modal - top level so it shows when no panel open */}
       {showBulkDeleteConfirm && selectedTicketIds.size > 0 && (
         <div
@@ -5504,6 +5515,8 @@ export default function ServiceTickets() {
           </div>
         </div>
       )}
+
+      </>}
 
       {/* Ticket Preview Modal */}
       {selectedTicket && editableTicket && (

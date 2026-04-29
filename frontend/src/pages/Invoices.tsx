@@ -36,6 +36,7 @@ import { generateAndStorePdf, mergePdfBlobs, generateBatchSummaryPdf } from '../
 import { saveAs } from 'file-saver';
 import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
 import SearchableSelect from '../components/SearchableSelect';
+import ServiceTickets from './ServiceTickets';
 
 const STATUS_COLOR_MAP: Record<string, string> = {
   gray: '#6b7280',
@@ -1939,6 +1940,7 @@ export default function Invoices() {
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<string>('all');
   const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
+  const [editTicketRecordId, setEditTicketRecordId] = useState<string | null>(null);
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
   const [combinedExpenseGroupIds, setCombinedExpenseGroupIds] = useState<Set<string>>(new Set());
   const [splitRateGroupIds, setSplitRateGroupIds] = useState<Set<string>>(new Set());
@@ -4121,7 +4123,7 @@ export default function Invoices() {
                             <button
                               key={t.id}
                               type="button"
-                              onClick={() => setInvoiceTicketModalTicket(ticket)}
+                              onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
                               style={{
                                 padding: '4px 10px',
                                 backgroundColor: 'var(--bg-tertiary)',
@@ -4683,7 +4685,7 @@ export default function Invoices() {
                       <button
                         key={t.id}
                         type="button"
-                        onClick={() => setInvoiceTicketModalTicket(ticket)}
+                        onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
                         style={{
                           padding: '4px 10px',
                           backgroundColor: 'var(--bg-tertiary)',
@@ -4717,6 +4719,19 @@ export default function Invoices() {
               : []
           }
           onClose={() => setInvoiceTicketModalTicket(null)}
+        />
+      )}
+
+      {editTicketRecordId && (
+        <ServiceTickets
+          pendingOpenRecord={editTicketRecordId}
+          modalOnlyMode={{
+            onClose: () => {
+              setEditTicketRecordId(null);
+              queryClient.invalidateQueries({ queryKey: ['ticketsReadyForExport'] });
+              queryClient.invalidateQueries({ queryKey: ['billableEntriesForInvoices'] });
+            },
+          }}
         />
       )}
     </div>
