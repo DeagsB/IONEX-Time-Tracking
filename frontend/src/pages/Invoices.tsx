@@ -1952,6 +1952,26 @@ export default function Invoices() {
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [editingLabourNotesGroupId, setEditingLabourNotesGroupId] = useState<string | null>(null);
   const [editingLabourNotes, setEditingLabourNotes] = useState<Record<string, string>>({});
+  const [editingPeriodModal, setEditingPeriodModal] = useState<{
+    projectId: string | null;
+    customerId: string | null;
+    value: string;
+  } | null>(null);
+
+  const updatePeriodGroupingMutation = useMutation({
+    mutationFn: async ({ projectId, customerId, value }: { projectId: string | null; customerId: string | null; value: string }) => {
+      if (projectId) {
+        return projectsService.update(projectId, { invoice_date_grouping: value || null });
+      } else if (customerId) {
+        return customersService.update(customerId, { invoice_date_grouping: value || null });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setEditingPeriodModal(null);
+    },
+  });
 
   const markProjectCompletedMutation = useMutation({
     mutationFn: (projectId: string) => projectsService.update(projectId, { status: 'completed' }),
@@ -4350,6 +4370,33 @@ export default function Invoices() {
                       added through {periodAccumulationHintLabel(key.periodLabel)} — this batch is not complete for final
                       invoicing.
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const proj = projIdForPeriod ? projects?.find((p: { id: string; invoice_date_grouping?: string }) => p.id === projIdForPeriod) : null;
+                        const cust = !projIdForPeriod ? customers?.find((c: { id: string; invoice_date_grouping?: string }) => c.id === custIdForPeriod) : null;
+                        setEditingPeriodModal({
+                          projectId: projIdForPeriod || null,
+                          customerId: projIdForPeriod ? null : (custIdForPeriod || null),
+                          value: proj?.invoice_date_grouping ?? cust?.invoice_date_grouping ?? '',
+                        });
+                      }}
+                      style={{
+                        flexShrink: 0,
+                        alignSelf: 'center',
+                        padding: '4px 10px',
+                        backgroundColor: 'var(--bg-tertiary)',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Edit Period
+                    </button>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
@@ -4720,6 +4767,115 @@ export default function Invoices() {
           }
           onClose={() => setInvoiceTicketModalTicket(null)}
         />
+      )}
+
+      {editingPeriodModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10050,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setEditingPeriodModal(null);
+          }}
+        >
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: 400,
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border-color)' }}>
+              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Edit Invoice Period</h2>
+              <div style={{ marginTop: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                {editingPeriodModal.projectId
+                  ? `Updating project-level setting`
+                  : `Updating customer-level setting`}
+              </div>
+            </div>
+            <div style={{ padding: '16px 20px 20px', display: 'grid', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
+                  Invoice Grouping
+                </label>
+                <select
+                  value={editingPeriodModal.value}
+                  onChange={(e) => setEditingPeriodModal({ ...editingPeriodModal, value: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '13px',
+                  }}
+                >
+                  {editingPeriodModal.projectId && <option value="">Use customer default</option>}
+                  {!editingPeriodModal.projectId && <option value="">App default (monthly)</option>}
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="bi-weekly">Bi-weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="project-completion">Project Completion</option>
+                  <option value="progress">Progress</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingPeriodModal(null)}
+                  style={{
+                    padding: '7px 16px',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={updatePeriodGroupingMutation.isPending}
+                  onClick={() => updatePeriodGroupingMutation.mutate({
+                    projectId: editingPeriodModal.projectId,
+                    customerId: editingPeriodModal.customerId,
+                    value: editingPeriodModal.value,
+                  })}
+                  style={{
+                    padding: '7px 16px',
+                    backgroundColor: 'var(--primary-color)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: updatePeriodGroupingMutation.isPending ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {updatePeriodGroupingMutation.isPending ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {editTicketRecordId && (
