@@ -1536,6 +1536,9 @@ export default function Expenses() {
                 Select one or more, then upload the actual receipt to attach it. The receipt amount may differ from
                 what was billed to the client — the company absorbs the difference.
               </p>
+              <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-primary)', lineHeight: 1.45, maxWidth: '720px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0, 137, 123, 0.08)', border: '1px solid rgba(0, 137, 123, 0.3)' }}>
+                <strong style={{ color: '#00897b' }}>Reimbursement note:</strong> as soon as a receipt is attached, this expense is included on the next payroll for reimbursement to the employee. Lines that don't need a receipt (Mileage, Truck Hours, Per Diem, basic Equipment) are reimbursed automatically on the next payroll once flagged needs-reimbursement.
+              </p>
             </div>
             {pendingReceiptSelectedIds.size > 0 && (() => {
               const selectedHotelIds = (pendingReceiptLines as any[])

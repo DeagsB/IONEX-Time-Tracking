@@ -675,6 +675,12 @@ export default function Payroll() {
         }
       } else if (expType === 'hotel' || desc.includes('hotel')) {
         if (exp.needs_reimbursement === false) continue;
+        // Hotel requires a receipt before payroll reimbursement.
+        // Eligible if actual_cost is set (single-line attach) OR a linked user_expense receipt exists.
+        const hasReceipt =
+          (Number(exp.actual_cost) || 0) > 0 ||
+          ticketExpenseHasPayrollEligibleLinkedReceipt(exp, payrollLinkedApprovedReceipts as any[]);
+        if (!hasReceipt) continue;
         reimbRate = Number(employee?.hotel_reimb_rate) || 1.0;
         category = 'Hotel';
       } else if (expType === 'equipment' && desc.includes('truck')) {
