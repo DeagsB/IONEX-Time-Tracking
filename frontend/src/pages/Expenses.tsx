@@ -2421,26 +2421,35 @@ export default function Expenses() {
             </div>
 
             <div>
+              {/* Section header with "mark all" toggle */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={labelStyle}>Line Items</label>
+                {receiptForm.lineItems.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allOn = receiptForm.lineItems.every((li) => li.is_billable);
+                      setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li) => ({ ...li, is_billable: !allOn })) });
+                    }}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: 'var(--primary-color)', fontWeight: 600 }}
+                  >
+                    {receiptForm.lineItems.every((li) => li.is_billable) ? 'Clear all billable' : 'Mark all billable'}
+                  </button>
+                )}
+              </div>
+
               {/* Column headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 72px 24px', gap: '6px', marginBottom: '4px', alignItems: 'center' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 78px 24px', gap: '6px', marginBottom: '4px' }}>
                 <span style={labelStyle}>Description</span>
                 <span style={labelStyle}>Amount ($)</span>
                 <span style={labelStyle}>GST ($)</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span style={labelStyle}>Billable</span>
-                  <input
-                    type="checkbox"
-                    title="Toggle all billable"
-                    checked={receiptForm.lineItems.length > 0 && receiptForm.lineItems.every((li) => li.is_billable)}
-                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li) => ({ ...li, is_billable: e.target.checked })) })}
-                  />
-                </div>
+                <span />
                 <span />
               </div>
 
               {/* Line item rows */}
               {receiptForm.lineItems.map((item, idx) => (
-                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 72px 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 78px 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
                   <input
                     type="text"
                     value={item.description}
@@ -2462,13 +2471,24 @@ export default function Expenses() {
                     placeholder="0.00"
                     style={{ ...inputStyle, margin: 0 }}
                   />
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={item.is_billable}
-                      onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, is_billable: e.target.checked } : li) })}
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, is_billable: !li.is_billable } : li) })}
+                    style={{
+                      padding: '6px 0',
+                      borderRadius: '20px',
+                      border: `1px solid ${item.is_billable ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                      backgroundColor: item.is_billable ? 'var(--primary-color)' : 'transparent',
+                      color: item.is_billable ? 'white' : 'var(--text-tertiary)',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      letterSpacing: '0.03em',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {item.is_billable ? '✓ Billable' : 'Billable'}
+                  </button>
                   {receiptForm.lineItems.length > 1 ? (
                     <button
                       type="button"
@@ -2484,7 +2504,7 @@ export default function Expenses() {
 
               {/* Totals row — only when multiple items */}
               {receiptForm.lineItems.length > 1 && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 72px 24px', gap: '6px', borderTop: '1px solid var(--border-color)', paddingTop: '6px', marginBottom: '4px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 78px 24px', gap: '6px', borderTop: '1px solid var(--border-color)', paddingTop: '6px', marginBottom: '4px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>Total</span>
                   <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     ${receiptForm.lineItems.reduce((s, li) => s + (parseFloat(li.amount) || 0), 0).toFixed(2)}
