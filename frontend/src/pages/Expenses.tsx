@@ -1614,17 +1614,28 @@ export default function Expenses() {
           role="region"
           aria-label="Ticket expenses awaiting receipts"
         >
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#b45309', marginBottom: '6px' }}>
-                Awaiting Receipts ({pendingReceiptLinesView.length}{pendingReceiptLinesView.length !== pendingReceiptLinesGated.length ? ` of ${pendingReceiptLinesGated.length}` : ''})
-                {isAdmin && <span style={{ marginLeft: '8px', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(33, 150, 243, 0.18)', color: '#2196F3' }}>ADMIN VIEW</span>}
-              </div>
-              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: pendingReceiptCollapsed ? 0 : '12px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <button
+                type="button"
+                onClick={() => setPendingReceiptCollapsed((v) => !v)}
+                aria-expanded={!pendingReceiptCollapsed}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'inherit' }}
+              >
+                <span style={{ fontSize: '11px', color: '#b45309', transition: 'transform 0.15s', transform: pendingReceiptCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', display: 'inline-block', width: '12px' }}>▶</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#b45309' }}>
+                  Awaiting Receipts ({pendingReceiptLinesView.length}{pendingReceiptLinesView.length !== pendingReceiptLinesGated.length ? ` of ${pendingReceiptLinesGated.length}` : ''})
+                </span>
+                {isAdmin && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(33, 150, 243, 0.18)', color: '#2196F3' }}>ADMIN VIEW</span>}
+              </button>
+              {!pendingReceiptCollapsed && (
+              <p style={{ margin: '8px 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
                 {isAdmin
                   ? "All reimbursable ticket charges across employees that don't have a receipt attached yet. Filter by employee, then submit a receipt or link an existing one."
                   : "Reimbursable charges you've added to service tickets that don't have a receipt attached yet. Select one or more, then upload the actual receipt to attach it. The receipt amount may differ from what was billed to the client — the company absorbs the difference."}
               </p>
+              )}
+              {!pendingReceiptCollapsed && (<>
               <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-primary)', lineHeight: 1.45, maxWidth: '720px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0, 137, 123, 0.08)', border: '1px solid rgba(0, 137, 123, 0.3)' }}>
                 <strong style={{ color: '#00897b' }}>Reimbursement note:</strong> as soon as a receipt is attached, this expense is included on the next payroll for reimbursement to the employee. Lines that don't need a receipt (Mileage, Truck Hours, Per Diem, basic Equipment) are reimbursed automatically on the next payroll once flagged needs-reimbursement.
               </p>
@@ -1679,8 +1690,9 @@ export default function Expenses() {
                   </button>
                 )}
               </div>
+              </>)}
             </div>
-            {pendingReceiptSelectedIds.size > 0 && (() => {
+            {!pendingReceiptCollapsed && pendingReceiptSelectedIds.size > 0 && (() => {
               const selectedHotelIds = pendingReceiptLinesView
                 .filter((r) => pendingReceiptSelectedIds.has(String(r.id)) && String(r.expense_type) === 'Hotel')
                 .map((r) => String(r.id));
@@ -1728,6 +1740,7 @@ export default function Expenses() {
             })()}
           </div>
 
+          {!pendingReceiptCollapsed && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
@@ -1833,6 +1846,7 @@ export default function Expenses() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
 
