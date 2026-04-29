@@ -2295,14 +2295,19 @@ export const serviceTicketExpensesService = {
    * and they were approved before/during the period. Skips re-approved after period end.
    */
   /**
-   * Auto-sweep: mark approved reimbursable ticket expenses as paid when the pay
-   * period that included them has fully passed (today is past the period's payday).
-   * Pay periods are 14-day stripes anchored on 2026-01-19; payday is 5 days after
-   * the period end.
+   * Auto-sweep: mark reimbursable ticket expenses as paid when the pay period
+   * that included them has fully passed. Approval workflow currently bypassed —
+   * every needs_reimbursement row whose status is not 'paid' flips to paid past
+   * the cutoff. Pay periods are 14-day stripes anchored on 2026-01-19; payday
+   * is 5 days after the period end.
+   *
+   * For receipt-required types (Hotel, Other) we additionally require the line
+   * to have a receipt attached: either actual_cost set OR user_expense_id linked.
+   * This matches the payroll inclusion rule.
    */
   async autoMarkPastPaydaysPaid(): Promise<{ count: number; cutoff: string | null }> {
     const ANCHOR_MS = new Date(2026, 0, 19).getTime();
-    const PAYDAY_OFFSET_DAYS = 18; // period_length(14) - 1 + days_until_payday(5) = 18
+    const PAYDAY_OFFSET_DAYS = 18;
     const MS_PER_DAY = 86400000;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -2313,8 +2318,44 @@ export const serviceTicketExpensesService = {
     const periodEndMs = ANCHOR_MS + (idx * 14 + 13) * MS_PER_DAY;
     const cutoffDate = new Date(periodEndMs);
     const cutoff = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
-    const result = await this.markReimbursementPaidForPeriod('2026-01-19', cutoff);
-    return { count: result.count, cutoff };
+
+    const { data: rows, error: selectError } = await supabase
+      .from('service_ticket_expenses')
+      .select(`
+        id,
+        expense_type,
+        description,
+        actual_cost,
+        user_expense_id,
+        reimbursement_status,
+        service_tickets!inner ( date, is_discarded )
+      `)
+      .eq('needs_reimbursement', true);
+    if (selectError) throw selectError;
+
+    const toMark = (rows || []).filter((r: any) => {
+      if (r.service_tickets?.is_discarded) return false;
+      if (r.reimbursement_status === 'paid') return false;
+      const d = r.service_tickets?.date;
+      if (!d || d > cutoff) return false;
+      // Receipt-required types only paid when receipt attached.
+      const t = String(r.expense_type || '').toLowerCase();
+      const needsReceipt = t === 'hotel' || t === 'expenses' || (r.description || '').toLowerCase().includes('hotel');
+      if (needsReceipt) {
+        const hasReceipt = (Number(r.actual_cost) || 0) > 0 || !!r.user_expense_id;
+        if (!hasReceipt) return false;
+      }
+      return true;
+    });
+
+    if (toMark.length === 0) return { count: 0, cutoff };
+    const ids = toMark.map((r: any) => r.id);
+    const { error: updateError } = await supabase
+      .from('service_ticket_expenses')
+      .update({ reimbursement_status: 'paid' })
+      .in('id', ids);
+    if (updateError) throw updateError;
+    return { count: ids.length, cutoff };
   },
 
   async markReimbursementPaidForPeriod(startDate: string, endDate: string): Promise<{ count: number }> {
@@ -2614,9 +2655,11 @@ export const userExpensesService = {
    * Mark unpaid (pending) receipt expenses as paid for a given period.
    */
   /**
-   * Auto-sweep: mark approved receipt expenses as paid when the pay period that
-   * contained their expense_date has fully passed. Conservative — only flips rows
-   * with status='approved' so pending/rejected stay alone.
+   * Auto-sweep: mark receipt expenses as paid when the pay period that contained
+   * their expense_date has fully passed. The approval workflow (pending/approved/
+   * rejected) is currently bypassed — every non-paid receipt flips to paid past
+   * the cutoff. (When per-employee approval is reintroduced later, gate this on
+   * status='approved' for those employees only.)
    */
   async autoMarkPastPaydaysPaid(): Promise<{ count: number; cutoff: string | null }> {
     const ANCHOR_MS = new Date(2026, 0, 19).getTime();
@@ -2634,7 +2677,7 @@ export const userExpensesService = {
     const { data: rows, error: selectError } = await supabase
       .from('user_expenses')
       .select('id')
-      .eq('status', 'approved')
+      .neq('status', 'paid')
       .lte('expense_date', cutoff);
     if (selectError) throw selectError;
     if (!rows || rows.length === 0) return { count: 0, cutoff };
