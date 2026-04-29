@@ -236,6 +236,9 @@ export default function Expenses() {
   const [showExpenseEmployeeOverview, setShowExpenseEmployeeOverview] = useState(true);
   const [expandedExpenseEmployeeId, setExpandedExpenseEmployeeId] = useState<string | null>(null);
   const [expandedExpenseStatusSections, setExpandedExpenseStatusSections] = useState<Record<string, Set<string>>>({});
+  /** Selected rows in Employee Overview for batch actions. Key format: "<source>-<id>". */
+  const [overviewSelectedKeys, setOverviewSelectedKeys] = useState<Set<string>>(new Set());
+  const [overviewBatchBusy, setOverviewBatchBusy] = useState(false);
 
   const toggleExpenseStatusSection = (empId: string, key: string) => {
     setExpandedExpenseStatusSections(prev => {
@@ -1052,7 +1055,52 @@ export default function Expenses() {
     enabled: isAdmin,
   });
 
-  const handleAdminStatusChange = async (itemId: string, newStatus: 'pending' | 'paid', source: 'receipt' | 'ticket') => {
+  /**
+   * Batch flip status for many selected rows at once. Receipts hit user_expenses.status,
+   * ticket expenses hit service_ticket_expenses.reimbursement_status. Used by the
+   * Employee Overview bulk-action bar.
+   */
+  const handleOverviewBatchStatusChange = async (
+    rows: Array<{ id: string; source: 'receipt' | 'ticket' }>,
+    newStatus: 'pending' | 'paid'
+  ) => {
+    if (rows.length === 0) return;
+    setOverviewBatchBusy(true);
+    try {
+      await Promise.all(
+        rows.map((r) =>
+          r.source === 'ticket'
+            ? serviceTicketExpensesService.updateReimbursementStatus(r.id, newStatus)
+            : userExpensesService.update(r.id, { status: newStatus })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+      setOverviewSelectedKeys(new Set());
+    } catch (err: any) {
+      alert('Failed to update some rows: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setOverviewBatchBusy(false);
+    }
+  };
+
+  const handleAdminStatusChange = async (itemId: string, newStatus: 'pending' | 'paid', source: 'receipt' | 'ticket', expRow?: any) => {
+    // Guard: marking a receipt-required ticket expense (Hotel / Other) paid when no
+    // receipt is attached is almost always accidental — confirm before letting it through.
+    if (newStatus === 'paid' && source === 'ticket' && expRow) {
+      const t = String(expRow.expense_type || '').toLowerCase();
+      const desc = String(expRow.description || '').toLowerCase();
+      const needsReceipt = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
+      const hasReceipt = (Number(expRow.actual_cost) || 0) > 0 || !!expRow.user_expense_id;
+      if (needsReceipt && !hasReceipt) {
+        const proceed = window.confirm(
+          'This ticket expense does not have a receipt attached yet. Mark as paid anyway?\n\n' +
+          'You can still find it later in the Awaiting Receipts section.'
+        );
+        if (!proceed) return;
+      }
+    }
     setUpdatingExpenseId(itemId);
     try {
       if (source === 'ticket') {
@@ -2741,78 +2789,169 @@ export default function Expenses() {
                             <span style={{ color: emp.paid > 0 ? '#3b82f6' : 'var(--text-tertiary)' }}>{emp.paid}</span>
                           </td>
                         </tr>
-                        {isExpanded && (
+                        {isExpanded && (() => {
+                          const allItems = [...expandedExpenseEmployeeByStatus.unpaid, ...expandedExpenseEmployeeByStatus.paid] as any[];
+                          const selectedRowsForEmp = allItems
+                            .filter((it) => overviewSelectedKeys.has(`${it._source}-${it.id}`))
+                            .map((it) => ({ id: String(it.id), source: it._source as 'receipt' | 'ticket', status: it._status as 'paid' | 'unpaid' }));
+                          const selectedAmount = allItems
+                            .filter((it) => overviewSelectedKeys.has(`${it._source}-${it.id}`))
+                            .reduce((s, it) => s + (Number(it._amount) || 0), 0);
+                          return (
                           <tr>
                             <td colSpan={3} style={{ padding: '0' }}>
                               <div style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-color)', padding: '4px 0' }}>
+                                {/* Batch action bar — shows when any rows in this employee are selected. */}
+                                {selectedRowsForEmp.length > 0 && (
+                                  <div style={{ padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'rgba(33, 150, 243, 0.06)', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                      {selectedRowsForEmp.length} selected · ${selectedAmount.toFixed(2)}
+                                    </span>
+                                    {selectedRowsForEmp.some((r) => r.status === 'unpaid') && (
+                                      <button
+                                        type="button"
+                                        disabled={overviewBatchBusy}
+                                        onClick={() => handleOverviewBatchStatusChange(selectedRowsForEmp.filter((r) => r.status === 'unpaid').map(({ id, source }) => ({ id, source })), 'paid')}
+                                        style={{ padding: '4px 10px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: overviewBatchBusy ? 'not-allowed' : 'pointer' }}
+                                      >
+                                        {overviewBatchBusy ? 'Working…' : 'Mark Paid'}
+                                      </button>
+                                    )}
+                                    {selectedRowsForEmp.some((r) => r.status === 'paid') && (
+                                      <button
+                                        type="button"
+                                        disabled={overviewBatchBusy}
+                                        onClick={() => handleOverviewBatchStatusChange(selectedRowsForEmp.filter((r) => r.status === 'paid').map(({ id, source }) => ({ id, source })), 'pending')}
+                                        style={{ padding: '4px 10px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: overviewBatchBusy ? 'not-allowed' : 'pointer' }}
+                                      >
+                                        {overviewBatchBusy ? 'Working…' : 'Mark Unpaid'}
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => setOverviewSelectedKeys(new Set())}
+                                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: 'var(--text-secondary)', textDecoration: 'underline' }}
+                                    >
+                                      Clear selection
+                                    </button>
+                                  </div>
+                                )}
                                 {([
                                   { key: 'unpaid', label: 'Unpaid', color: '#ff9800', items: expandedExpenseEmployeeByStatus.unpaid },
                                   { key: 'paid', label: 'Paid', color: '#3b82f6', items: expandedExpenseEmployeeByStatus.paid },
                                 ] as const).map(section => {
                                   const sectionOpen = expandedExpenseStatusSections[emp.userId]?.has(section.key) || false;
+                                  const sectionKeys = section.items.map((it: any) => `${it._source}-${it.id}`);
+                                  const allSelected = sectionKeys.length > 0 && sectionKeys.every((k) => overviewSelectedKeys.has(k));
+                                  const anySelected = sectionKeys.some((k) => overviewSelectedKeys.has(k));
                                   return (
                                     <div key={section.key}>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); toggleExpenseStatusSection(emp.userId, section.key); }}
+                                      <div
                                         style={{
                                           display: 'flex',
                                           alignItems: 'center',
                                           gap: '8px',
                                           width: '100%',
-                                          padding: '8px 16px 8px 32px',
-                                          background: 'none',
-                                          border: 'none',
-                                          cursor: 'pointer',
-                                          fontSize: '13px',
-                                          fontWeight: '600',
-                                          color: section.color,
-                                          textAlign: 'left',
+                                          padding: '8px 16px 8px 16px',
                                         }}
-                                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.03)'; }}
-                                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                                       >
-                                        <span style={{
-                                          display: 'inline-block',
-                                          fontSize: '9px',
-                                          transition: 'transform 0.2s ease',
-                                          transform: sectionOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                                        }}>&#9654;</span>
-                                        {section.label}
-                                        <span style={{
-                                          padding: '1px 7px',
-                                          borderRadius: '8px',
-                                          fontSize: '11px',
-                                          fontWeight: '700',
-                                          backgroundColor: section.items.length > 0 ? `${section.color}18` : 'transparent',
-                                          color: section.items.length > 0 ? section.color : 'var(--text-tertiary)',
-                                        }}>{section.items.length}</span>
-                                      </button>
+                                        {section.items.length > 0 && (
+                                          <input
+                                            type="checkbox"
+                                            checked={allSelected}
+                                            ref={(el) => { if (el) el.indeterminate = !allSelected && anySelected; }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onChange={(e) => {
+                                              setOverviewSelectedKeys((prev) => {
+                                                const next = new Set(prev);
+                                                if (e.target.checked) sectionKeys.forEach((k) => next.add(k));
+                                                else sectionKeys.forEach((k) => next.delete(k));
+                                                return next;
+                                              });
+                                            }}
+                                            style={{ marginLeft: '8px' }}
+                                            title={allSelected ? `Deselect all ${section.label.toLowerCase()}` : `Select all ${section.label.toLowerCase()}`}
+                                          />
+                                        )}
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); toggleExpenseStatusSection(emp.userId, section.key); }}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            flex: 1,
+                                            padding: 0,
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            fontSize: '13px',
+                                            fontWeight: '600',
+                                            color: section.color,
+                                            textAlign: 'left',
+                                          }}
+                                        >
+                                          <span style={{
+                                            display: 'inline-block',
+                                            fontSize: '9px',
+                                            transition: 'transform 0.2s ease',
+                                            transform: sectionOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                                          }}>&#9654;</span>
+                                          {section.label}
+                                          <span style={{
+                                            padding: '1px 7px',
+                                            borderRadius: '8px',
+                                            fontSize: '11px',
+                                            fontWeight: '700',
+                                            backgroundColor: section.items.length > 0 ? `${section.color}18` : 'transparent',
+                                            color: section.items.length > 0 ? section.color : 'var(--text-tertiary)',
+                                          }}>{section.items.length}</span>
+                                        </button>
+                                      </div>
                                       {sectionOpen && section.items.length > 0 && (
                                         <div style={{ paddingBottom: '4px' }}>
-                                          {section.items.map((exp: any) => (
-                                            <div
-                                              key={`${exp._source}-${exp.id}`}
-                                              role={exp._source === 'receipt' ? 'button' : undefined}
-                                              tabIndex={exp._source === 'receipt' ? 0 : undefined}
-                                              onClick={exp._source === 'receipt' ? () => handleStartEdit(exp) : undefined}
-                                              onKeyDown={exp._source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
-                                              style={{
-                                                padding: '8px 16px 8px 48px',
-                                                fontSize: '13px',
-                                                color: 'var(--text-secondary)',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                borderBottom: '1px solid var(--border-color)',
-                                                cursor: exp._source === 'receipt' ? 'pointer' : 'default',
-                                              }}
-                                              onMouseEnter={exp._source === 'receipt' ? (e) => { e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.04)'; } : undefined}
-                                              onMouseLeave={exp._source === 'receipt' ? (e) => { e.currentTarget.style.backgroundColor = 'transparent'; } : undefined}
-                                            >
-                                              <span>{exp.description} {exp._ticketNumber ? `(${exp._ticketNumber})` : ''}</span>
-                                              <span style={{ fontWeight: '600' }}>${exp._amount.toFixed(2)}</span>
-                                            </div>
-                                          ))}
+                                          {section.items.map((exp: any) => {
+                                            const key = `${exp._source}-${exp.id}`;
+                                            const isChecked = overviewSelectedKeys.has(key);
+                                            return (
+                                              <div
+                                                key={key}
+                                                style={{
+                                                  padding: '8px 16px 8px 36px',
+                                                  fontSize: '13px',
+                                                  color: 'var(--text-secondary)',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '10px',
+                                                  borderBottom: '1px solid var(--border-color)',
+                                                  backgroundColor: isChecked ? 'rgba(33, 150, 243, 0.06)' : undefined,
+                                                }}
+                                              >
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isChecked}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  onChange={(e) => {
+                                                    setOverviewSelectedKeys((prev) => {
+                                                      const next = new Set(prev);
+                                                      if (e.target.checked) next.add(key);
+                                                      else next.delete(key);
+                                                      return next;
+                                                    });
+                                                  }}
+                                                />
+                                                <span
+                                                  role={exp._source === 'receipt' ? 'button' : undefined}
+                                                  tabIndex={exp._source === 'receipt' ? 0 : undefined}
+                                                  onClick={exp._source === 'receipt' ? () => handleStartEdit(exp) : undefined}
+                                                  onKeyDown={exp._source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
+                                                  style={{ flex: 1, cursor: exp._source === 'receipt' ? 'pointer' : 'default' }}
+                                                >
+                                                  {exp.description} {exp._ticketNumber ? `(${exp._ticketNumber})` : ''}
+                                                </span>
+                                                <span style={{ fontWeight: '600' }}>${exp._amount.toFixed(2)}</span>
+                                              </div>
+                                            );
+                                          })}
                                         </div>
                                       )}
                                     </div>
@@ -2821,7 +2960,8 @@ export default function Expenses() {
                               </div>
                             </td>
                           </tr>
-                        )}
+                          );
+                        })()}
                       </Fragment>
                     );
                   })}
@@ -3627,6 +3767,26 @@ export default function Expenses() {
                     const collapsed = collapsedAdminExpenseDateKeys.has(dateKey);
                     const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(items);
                     const receiptGroupTotals = sharedReceiptGroupTotalsInOrder(items, sharedReceiptMeta);
+                    // Per-group summary: total $ + GST + paid/unpaid + receipt-pending count + per-employee.
+                    let groupAmount = 0;
+                    let groupGst = 0;
+                    let paidCount = 0;
+                    let unpaidCount = 0;
+                    let receiptPendingCount = 0;
+                    const empSet = new Set<string>();
+                    for (const it of items as any[]) {
+                      groupAmount += Number(it._amount) || 0;
+                      if (it._source === 'receipt') groupGst += parseFloat(String(it.gst || 0)) || 0;
+                      if (it._status === 'paid') paidCount += 1; else unpaidCount += 1;
+                      if (it._employeeName) empSet.add(String(it._employeeName));
+                      if (it._source === 'ticket' && it.needs_reimbursement) {
+                        const t = String(it.expense_type || '').toLowerCase();
+                        const desc = String(it.description || '').toLowerCase();
+                        const needsR = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
+                        const hasR = (Number(it.actual_cost) || 0) > 0 || !!it.user_expense_id;
+                        if (needsR && !hasR) receiptPendingCount += 1;
+                      }
+                    }
                     return (
                       <Fragment key={dateKey}>
                         <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
@@ -3649,6 +3809,7 @@ export default function Expenses() {
                                 fontWeight: '600',
                                 color: 'var(--text-primary)',
                                 fontFamily: 'inherit',
+                                flexWrap: 'wrap',
                               }}
                             >
                               <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
@@ -3657,6 +3818,33 @@ export default function Expenses() {
                               <span>{formatExpenseGroupDateLabel(dateKey)}</span>
                               <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-tertiary)' }}>
                                 ({items.length} {items.length === 1 ? 'item' : 'items'})
+                              </span>
+                              <span style={{ marginLeft: 'auto', display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', fontSize: '12px', fontWeight: 500 }}>
+                                <span>
+                                  <span style={{ color: 'var(--text-tertiary)' }}>Total: </span>
+                                  <strong style={{ color: 'var(--text-primary)' }}>${groupAmount.toFixed(2)}</strong>
+                                </span>
+                                {groupGst > 0 && (
+                                  <span style={{ color: 'var(--text-tertiary)' }}>GST <strong style={{ color: 'var(--text-secondary)' }}>${groupGst.toFixed(2)}</strong></span>
+                                )}
+                                {paidCount > 0 && (
+                                  <span style={{ padding: '1px 6px', borderRadius: '8px', backgroundColor: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', fontSize: '11px' }}>
+                                    {paidCount} paid
+                                  </span>
+                                )}
+                                {unpaidCount > 0 && (
+                                  <span style={{ padding: '1px 6px', borderRadius: '8px', backgroundColor: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b', fontSize: '11px' }}>
+                                    {unpaidCount} unpaid
+                                  </span>
+                                )}
+                                {receiptPendingCount > 0 && (
+                                  <span style={{ padding: '1px 6px', borderRadius: '8px', backgroundColor: 'rgba(255, 152, 0, 0.18)', color: '#e65100', border: '1px solid rgba(255, 152, 0, 0.45)', fontSize: '11px' }}>
+                                    📎 {receiptPendingCount} receipt pending
+                                  </span>
+                                )}
+                                {empSet.size > 1 && (
+                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>{empSet.size} employees</span>
+                                )}
                               </span>
                             </button>
                           </td>
@@ -3807,7 +3995,7 @@ export default function Expenses() {
                         {status === 'unpaid' && (
                           <button
                             disabled={isUpdating}
-                            onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'paid', source); }}
+                            onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'paid', source, exp); }}
                             style={{ padding: '3px 8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
                           >
                             Mark Paid
