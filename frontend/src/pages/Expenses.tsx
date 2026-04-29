@@ -9,6 +9,7 @@ import { allocateProportionalCents } from '../utils/allocateProportionalCents';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { extractReceiptAutoFill } from '../utils/receiptAutoFill';
+import ServiceTickets from './ServiceTickets';
 
 function normalizeExpenseTableDateKey(raw: string): string {
   const t = String(raw || '').trim();
@@ -199,6 +200,8 @@ export default function Expenses() {
   const [applyExpenseId, setApplyExpenseId] = useState<string | null>(null);
   /** Admin "Link to ticket expenses" modal — opens for a receipt and offers that user's pending ticket expenses. */
   const [linkReceiptModal, setLinkReceiptModal] = useState<{ receipt: any } | null>(null);
+  /** Service-ticket modal record id (open ticket from clicked ticket-number badge). */
+  const [viewingTicketRecordId, setViewingTicketRecordId] = useState<string | null>(null);
   const [linkReceiptSelectedIds, setLinkReceiptSelectedIds] = useState<Set<string>>(new Set());
   const [isLinkingReceipt, setIsLinkingReceipt] = useState(false);
   const [linkReceiptError, setLinkReceiptError] = useState<string | null>(null);
@@ -3471,7 +3474,18 @@ export default function Expenses() {
                         </span>
                       </td>
                       <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '12px' }}>
-                        {exp._ticketNumber || '-'}
+                        {exp._ticketNumber && exp.service_ticket_id ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setViewingTicketRecordId(String(exp.service_ticket_id)); }}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-color)', fontWeight: 600, fontFamily: 'inherit', fontSize: 'inherit', textDecoration: 'underline' }}
+                            title="Open service ticket"
+                          >
+                            {exp._ticketNumber}
+                          </button>
+                        ) : (
+                          exp._ticketNumber || '-'
+                        )}
                       </td>
                       <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                         {status === 'unpaid' && (
@@ -4182,6 +4196,20 @@ export default function Expenses() {
             Undo
           </button>
         </div>
+      )}
+
+      {viewingTicketRecordId && (
+        <ServiceTickets
+          pendingOpenRecord={viewingTicketRecordId}
+          modalOnlyMode={{
+            onClose: () => {
+              setViewingTicketRecordId(null);
+              queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+              queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+              queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
+            },
+          }}
+        />
       )}
     </div>
   );
