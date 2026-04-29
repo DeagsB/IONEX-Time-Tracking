@@ -2376,8 +2376,11 @@ export default function Expenses() {
 
                   {/* Existing-receipt picker — for the case where a receipt was already submitted before the new linking flow. */}
                   {(() => {
-                    // Only list receipts uploaded by the same user the selected ticket lines belong to.
-                    // Falls back to the current user if no lines have been selected yet.
+                    // Non-admin: only own receipts (privacy). Admin: any unlinked receipt
+                    // is a valid candidate — hotel bills are often paid by one employee
+                    // covering field work that spans multiple employees' tickets, so the
+                    // strict same-user match was hiding legitimate matches. Owner name
+                    // is shown in the option label so admins can pick correctly.
                     const targetUserId =
                       splitSelectedRows[0]?.service_tickets?.user_id
                       ?? hotelLinesStillNeedReceipt[0]?.service_tickets?.user_id
@@ -2386,13 +2389,22 @@ export default function Expenses() {
                     const candidates = (expenses as any[])
                       .filter((e) => {
                         if (!e.receipt_url) return false;
-                        if (!targetUserId || e.user_id !== targetUserId) return false;
+                        if (!isAdmin) {
+                          if (!targetUserId || e.user_id !== targetUserId) return false;
+                        }
                         // Skip receipts already applied to a ticket directly OR linked via service_ticket_expenses.user_expense_id.
                         if (e.service_ticket_id) return false;
                         if (linkedByReceiptId.has(String(e.id))) return false;
                         return true;
                       })
-                      .sort((a, b) => String(b.expense_date || '').localeCompare(String(a.expense_date || '')))
+                      .sort((a, b) => {
+                        // Pin receipts whose owner matches the selected ticket lines to the top
+                        // (most likely match) — then date desc within each group.
+                        const aMatch = targetUserId && a.user_id === targetUserId ? 0 : 1;
+                        const bMatch = targetUserId && b.user_id === targetUserId ? 0 : 1;
+                        if (aMatch !== bMatch) return aMatch - bMatch;
+                        return String(b.expense_date || '').localeCompare(String(a.expense_date || ''));
+                      })
                       .slice(0, 200);
                     return (
                       <div>
