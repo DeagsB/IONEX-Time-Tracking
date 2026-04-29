@@ -441,6 +441,8 @@ export default function Expenses() {
   });
   const [splitError, setSplitError] = useState<string | null>(null);
   const [splitSaving, setSplitSaving] = useState(false);
+  /** When set, the split wizard uses this existing user_expenses row instead of uploading a new file. */
+  const [splitExistingReceiptId, setSplitExistingReceiptId] = useState<string | null>(null);
   const splitFileInputRef = useRef<HTMLInputElement>(null);
   /** Step 3: per-line total receipt cost (subtotal + tax) allocated to each ticket; keyed by service_ticket_expenses.id */
   const [splitManualCostOverrides, setSplitManualCostOverrides] = useState<Record<string, string>>({});
@@ -580,6 +582,7 @@ export default function Expenses() {
     setSplitError(null);
     setSplitSaving(false);
     setSplitManualCostOverrides({});
+    setSplitExistingReceiptId(null);
     prevSplitAllocKeyRef.current = '';
     setSplitWizardOpen(true);
   };
@@ -601,6 +604,7 @@ export default function Expenses() {
     setSplitError(null);
     setSplitSaving(false);
     setSplitManualCostOverrides({});
+    setSplitExistingReceiptId(null);
     prevSplitAllocKeyRef.current = '';
   };
 
@@ -679,7 +683,8 @@ export default function Expenses() {
   }, [splitAllocationPreview, splitManualCostOverrides, splitForm.amount, splitForm.gst]);
 
   const handleSplitWizardSave = async () => {
-    if (!splitEffectiveAllocation || splitEffectiveAllocation.lines.length < 2 || !splitFile) return;
+    if (!splitEffectiveAllocation || splitEffectiveAllocation.lines.length < 2) return;
+    if (!splitFile && !splitExistingReceiptId) return;
     const amt = parseFloat(splitForm.amount) || 0;
     const gst = parseFloat(splitForm.gst) || 0;
     if (amt <= 0) {
@@ -702,8 +707,22 @@ export default function Expenses() {
     setSplitSaving(true);
     setSplitError(null);
     try {
-      const optimized = await optimizeImage(splitFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
-      const storagePath = await userExpensesService.uploadReceipt(optimized);
+      // Re-use the file path from an existing user_expenses row when the admin chose
+      // "use existing receipt" instead of uploading a new file. Otherwise upload normally.
+      let storagePath: string;
+      if (splitExistingReceiptId) {
+        const existing = (expenses as any[]).find((e) => String(e.id) === splitExistingReceiptId);
+        if (!existing?.receipt_url) {
+          throw new Error('Selected existing receipt has no stored file. Please upload a new file instead.');
+        }
+        storagePath = existing.receipt_url;
+      } else {
+        if (!splitFile) {
+          throw new Error('Pick a receipt file or choose an existing receipt before saving.');
+        }
+        const optimized = await optimizeImage(splitFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
+        storagePath = await userExpensesService.uploadReceipt(optimized);
+      }
       const expenseDate =
         splitForm.expense_date.trim() || new Date().toISOString().split('T')[0];
 
@@ -1775,7 +1794,8 @@ export default function Expenses() {
               <tbody>
                 {pendingReceiptLinesView.map((row) => {
                   const id = String(row.id);
-                  const tn = row.service_tickets?.ticket_number || '—';
+                  const hasTicketNumber = !!(row.service_tickets?.ticket_number);
+                  const tn = row.service_tickets?.ticket_number || 'Unassigned';
                   const dt = row.service_tickets?.date || '';
                   const billed = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
                   const isSelected = pendingReceiptSelectedIds.has(id);
@@ -1808,17 +1828,19 @@ export default function Expenses() {
                       <td style={{ padding: '10px 6px', color: 'var(--text-secondary)' }}>
                         {row.description || '—'}
                       </td>
-                      <td style={{ padding: '10px 6px', fontFamily: 'monospace' }}>
+                      <td style={{ padding: '10px 6px', fontFamily: hasTicketNumber ? 'monospace' : 'inherit' }}>
                         {row.service_ticket_id ? (
                           <button
                             type="button"
                             onClick={() => setViewingTicketRecordId(String(row.service_ticket_id))}
-                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-color)', fontWeight: 600, fontFamily: 'monospace', fontSize: 'inherit', textDecoration: 'underline' }}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: hasTicketNumber ? 'var(--primary-color)' : 'var(--text-tertiary)', fontWeight: 600, fontFamily: hasTicketNumber ? 'monospace' : 'inherit', fontSize: 'inherit', textDecoration: 'underline', fontStyle: hasTicketNumber ? 'normal' : 'italic' }}
                             title="Open service ticket"
                           >
                             {tn}
                           </button>
-                        ) : tn}
+                        ) : (
+                          <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{tn}</span>
+                        )}
                       </td>
                       <td style={{ padding: '10px 6px', color: 'var(--text-secondary)' }}>{dt || '—'}</td>
                       <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 600 }}>${billed.toFixed(2)}</td>
@@ -2122,8 +2144,78 @@ export default function Expenses() {
               {splitWizardStep === 1 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    Upload the combined hotel bill or invoice (PDF or photo). Enter the <strong>room subtotal</strong> and <strong>GST / taxes</strong> exactly as shown on the bill (before credits). The next step chooses which ticket lines belong to this stay.
+                    Upload the combined hotel bill or invoice (PDF or photo) — or pick an already-submitted receipt for legacy/historical entries. Enter the <strong>room subtotal</strong> and <strong>GST / taxes</strong> exactly as shown on the bill (before credits). The next step chooses which ticket lines belong to this stay.
                   </p>
+
+                  {/* Existing-receipt picker — for the case where a receipt was already submitted before the new linking flow. */}
+                  {(() => {
+                    const candidates = (expenses as any[])
+                      .filter((e) => !!e.receipt_url && (isAdmin || e.user_id === user?.id))
+                      .sort((a, b) => String(b.expense_date || '').localeCompare(String(a.expense_date || '')))
+                      .slice(0, 200);
+                    return (
+                      <div>
+                        <label style={labelStyle}>Use an existing receipt (optional)</label>
+                        <select
+                          value={splitExistingReceiptId ?? ''}
+                          onChange={(e) => {
+                            const id = e.target.value || null;
+                            setSplitExistingReceiptId(id);
+                            if (id) {
+                              const r = candidates.find((c) => String(c.id) === id);
+                              if (r) {
+                                // Pre-fill the wizard fields from the existing receipt and clear any uploaded file.
+                                setSplitForm({
+                                  amount: String(parseFloat(r.amount) || 0),
+                                  gst: String(parseFloat(r.gst || 0) || 0),
+                                  expense_date: r.expense_date || new Date().toISOString().split('T')[0],
+                                });
+                                if (splitPreviewUrl) URL.revokeObjectURL(splitPreviewUrl);
+                                setSplitPreviewUrl(null);
+                                setSplitFile(null);
+                              }
+                            }
+                          }}
+                          style={{ ...inputStyle, marginTop: '4px' }}
+                        >
+                          <option value="">— Upload a new file instead —</option>
+                          {candidates.map((r: any) => {
+                            const empName = r.users
+                              ? `${r.users.first_name || ''} ${r.users.last_name || ''}`.trim() || r.users.email || ''
+                              : '';
+                            const total = (parseFloat(r.amount) || 0) + (parseFloat(r.gst) || 0);
+                            return (
+                              <option key={String(r.id)} value={String(r.id)}>
+                                {r.expense_date || '?'} · {r.description || 'Receipt'} · ${total.toFixed(2)}{isAdmin && empName ? ` · ${empName}` : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {splitExistingReceiptId && (() => {
+                          const r = candidates.find((c) => String(c.id) === splitExistingReceiptId);
+                          if (!r) return null;
+                          return (
+                            <div style={{ marginTop: '6px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0, 137, 123, 0.08)', border: '1px solid rgba(0, 137, 123, 0.3)', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              Using existing receipt: <strong style={{ color: 'var(--text-primary)' }}>{r.description || 'Receipt'}</strong>
+                              {' '}· ${((parseFloat(r.amount) || 0) + (parseFloat(r.gst) || 0)).toFixed(2)}
+                              {' '}· {r.expense_date || '—'}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSplitExistingReceiptId(null);
+                                  setSplitForm({ amount: '', gst: '', expense_date: new Date().toISOString().split('T')[0] });
+                                }}
+                                style={{ marginLeft: '10px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-color)', fontSize: '12px', textDecoration: 'underline' }}
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })()}
+
                   {splitAutofillBusy && (
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reading receipt…</div>
                   )}
@@ -2146,7 +2238,7 @@ export default function Expenses() {
                       setSplitFile(file);
                     }}
                   />
-                  {!splitPreviewUrl ? (
+                  {splitExistingReceiptId ? null : !splitPreviewUrl ? (
                     <button
                       type="button"
                       onClick={() => splitFileInputRef.current?.click()}
@@ -2444,8 +2536,8 @@ export default function Expenses() {
                   onClick={() => {
                     setSplitError(null);
                     if (splitWizardStep === 1) {
-                      if (!splitFile) {
-                        setSplitError('Choose the receipt file first.');
+                      if (!splitFile && !splitExistingReceiptId) {
+                        setSplitError('Choose the receipt file or pick an existing receipt.');
                         return;
                       }
                       if (!(parseFloat(splitForm.amount) > 0)) {
@@ -2489,7 +2581,7 @@ export default function Expenses() {
                   disabled={
                     splitSaving ||
                     !splitEffectiveAllocation ||
-                    !splitFile ||
+                    (!splitFile && !splitExistingReceiptId) ||
                     splitEffectiveAllocation.sumAllocated > splitEffectiveAllocation.totalBill + 0.02
                   }
                   onClick={() => void handleSplitWizardSave()}
@@ -2503,14 +2595,14 @@ export default function Expenses() {
                     cursor:
                       splitSaving ||
                       !splitEffectiveAllocation ||
-                      !splitFile ||
+                      (!splitFile && !splitExistingReceiptId) ||
                       splitEffectiveAllocation.sumAllocated > splitEffectiveAllocation.totalBill + 0.02
                         ? 'not-allowed'
                         : 'pointer',
                     opacity:
                       splitSaving ||
                       !splitEffectiveAllocation ||
-                      !splitFile ||
+                      (!splitFile && !splitExistingReceiptId) ||
                       splitEffectiveAllocation.sumAllocated > splitEffectiveAllocation.totalBill + 0.02
                         ? 0.6
                         : 1,
@@ -3286,7 +3378,18 @@ export default function Expenses() {
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '13px' }}>
-                    {exp.service_tickets?.ticket_number || (
+                    {exp.service_tickets?.ticket_number ? (
+                      exp.service_ticket_id ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setViewingTicketRecordId(String(exp.service_ticket_id)); }}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-color)', fontWeight: 600, fontFamily: 'inherit', fontSize: 'inherit', textDecoration: 'underline' }}
+                          title="Open service ticket"
+                        >
+                          {exp.service_tickets.ticket_number}
+                        </button>
+                      ) : exp.service_tickets.ticket_number
+                    ) : (
                       exp.is_billable && !exp.service_ticket_id ? (
                         <button
                           onClick={(e) => { e.stopPropagation(); setApplyExpenseId(exp.id); setShowTicketPickerModal(true); setTicketSearchQuery(''); }}
