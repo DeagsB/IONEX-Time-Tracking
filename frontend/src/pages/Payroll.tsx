@@ -423,9 +423,52 @@ export default function Payroll() {
 
   const isLoading = isLoadingTimeEntries || (isAdmin && isLoadingEmployees);
 
+  /** When true, hide contractors from the employee list (and grand totals). */
+  const [excludeContractors, setExcludeContractors] = useState<boolean>(false);
+  /** 'hours' shows quarter-hour decimals; 'dollars' multiplies each cell by its rate. */
+  const [displayMode, setDisplayMode] = useState<'hours' | 'dollars'>('hours');
+
   // Calculate grand totals (already rounded from employeeHours)
+  /** Map user_id → contractor flag, for the contractor-exclude toggle. */
+  const contractorByUserId = useMemo(() => {
+    const map = new Map<string, boolean>();
+    if (!allEmployees) return map;
+    for (const e of allEmployees as any[]) {
+      if (!e.user_id) continue;
+      map.set(e.user_id, (e.employment_type || 'Employee') === 'Contractor');
+    }
+    return map;
+  }, [allEmployees]);
+
+  /** Per-rate-type pay rates per user, used to render the table in dollars instead of hours. */
+  const empRatesByUserId = useMemo(() => {
+    const map = new Map<string, { shopRate: number; shopOtRate: number; ftRate: number; foRate: number }>();
+    if (!allEmployees) return map;
+    for (const e of allEmployees as any[]) {
+      if (!e.user_id) continue;
+      const shopRate = Number(e.shop_pay_rate) || 0;
+      const shopOtRate = Number(e.shop_ot_pay_rate) || shopRate * 1.5;
+      const fieldRate = Number(e.field_pay_rate) || shopRate;
+      const fieldOtRate = Number(e.field_ot_pay_rate) || fieldRate * 1.5;
+      const isPanelShop = e.department === 'Panel Shop';
+      map.set(e.user_id, {
+        shopRate,
+        shopOtRate,
+        ftRate: isPanelShop ? (fieldRate || shopRate) : fieldRate,
+        foRate: isPanelShop ? (fieldOtRate || shopOtRate) : fieldOtRate,
+      });
+    }
+    return map;
+  }, [allEmployees]);
+
+  /** Employees actually rendered in the table, after the exclude-contractors toggle. */
+  const displayedEmployeeHours = useMemo(() => {
+    if (!excludeContractors) return employeeHours;
+    return employeeHours.filter((emp) => !contractorByUserId.get(emp.userId));
+  }, [employeeHours, excludeContractors, contractorByUserId]);
+
   const grandTotals = useMemo(() => {
-    return employeeHours.reduce(
+    return displayedEmployeeHours.reduce(
       (totals, emp) => ({
         internalShopTime: totals.internalShopTime + emp.internalShopTime,
         internalShopOvertime: totals.internalShopOvertime + emp.internalShopOvertime,
@@ -442,7 +485,27 @@ export default function Payroll() {
       }),
       { internalShopTime: 0, internalShopOvertime: 0, internalTravelTime: 0, internalFieldTime: 0, internalFieldOvertime: 0, shopTime: 0, shopOvertime: 0, travelTime: 0, fieldTime: 0, fieldOvertime: 0, totalHours: 0, internalHours: 0 }
     );
-  }, [employeeHours]);
+  }, [displayedEmployeeHours]);
+
+  /** Per-cell rate lookup. Maps an employee + kind to the pay rate ($/hr) used to convert hours → dollars. */
+  const cellRate = (userId: string, kind: 'internal' | 'shop' | 'shopOt' | 'travel' | 'field' | 'fieldOt'): number => {
+    const r = empRatesByUserId.get(userId);
+    if (!r) return 0;
+    switch (kind) {
+      case 'internal': return r.shopRate;
+      case 'shop': return r.shopRate;
+      case 'shopOt': return r.shopOtRate;
+      case 'travel': return r.shopRate;
+      case 'field': return r.ftRate;
+      case 'fieldOt': return r.foRate;
+    }
+  };
+
+  /** Render a value cell as either hours (decimal) or dollars (hours × rate). */
+  const formatCell = (hours: number, rate: number): string => {
+    if (displayMode === 'dollars') return `$${(hours * rate).toFixed(2)}`;
+    return hours.toFixed(2);
+  };
 
   // Placeholder for totalCost — computed after payrollBreakdownByUser
   const grandTotalsCosts = { totalCost: 0 };
@@ -1016,6 +1079,38 @@ export default function Payroll() {
             <span style={{ fontSize: '12px', fontWeight: '600', color: '#4caf50' }}>{paydayLabel}</span>
           </div>
         </div>
+
+        {isAdmin && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginTop: '12px' }}>
+            {/* Display mode toggle: Hours vs Dollars */}
+            <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+              <button
+                type="button"
+                onClick={() => setDisplayMode('hours')}
+                style={{ padding: '6px 14px', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer', backgroundColor: displayMode === 'hours' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: displayMode === 'hours' ? 'white' : 'var(--text-secondary)' }}
+              >
+                Hours
+              </button>
+              <button
+                type="button"
+                onClick={() => setDisplayMode('dollars')}
+                style={{ padding: '6px 14px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', backgroundColor: displayMode === 'dollars' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: displayMode === 'dollars' ? 'white' : 'var(--text-secondary)' }}
+              >
+                Dollars
+              </button>
+            </div>
+
+            {/* Exclude contractors toggle */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={excludeContractors}
+                onChange={(e) => setExcludeContractors(e.target.checked)}
+              />
+              Exclude contractors
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Loading / Error States */}
@@ -1063,7 +1158,7 @@ export default function Payroll() {
                 {isAdmin ? 'Employee Hours by Rate Type' : 'Hours by Rate Type'}
               </h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                {startDate} to {endDate}{isAdmin ? ` • ${employeeHours.length} employee${employeeHours.length !== 1 ? 's' : ''}` : ''}
+                {startDate} to {endDate}{isAdmin ? ` • ${displayedEmployeeHours.length} employee${displayedEmployeeHours.length !== 1 ? 's' : ''}${excludeContractors ? ' (contractors hidden)' : ''}` : ''}
               </p>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1099,7 +1194,7 @@ export default function Payroll() {
                 </tr>
               </thead>
               <tbody>
-                {employeeHours.map((emp) => {
+                {displayedEmployeeHours.map((emp) => {
                   const isExpanded = expandedUsers.has(emp.userId);
                   const breakdown = payrollBreakdownByUser.get(emp.userId);
                   return (
@@ -1143,22 +1238,22 @@ export default function Payroll() {
                       </div>
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.internalHours > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
-                      {emp.internalHours.toFixed(2)}
+                      {formatCell(emp.internalHours, cellRate(emp.userId, 'internal'))}
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.shopTime > 0 ? '#4caf50' : 'var(--text-secondary)' }}>
-                      {emp.shopTime.toFixed(2)}
+                      {formatCell(emp.shopTime, cellRate(emp.userId, 'shop'))}
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.shopOvertime > 0 ? '#ff9800' : 'var(--text-secondary)' }}>
-                      {emp.shopOvertime.toFixed(2)}
+                      {formatCell(emp.shopOvertime, cellRate(emp.userId, 'shopOt'))}
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.travelTime > 0 ? '#2196f3' : 'var(--text-secondary)' }}>
-                      {emp.travelTime.toFixed(2)}
+                      {formatCell(emp.travelTime, cellRate(emp.userId, 'travel'))}
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.fieldTime > 0 ? '#9c27b0' : 'var(--text-secondary)' }}>
-                      {emp.fieldTime.toFixed(2)}
+                      {formatCell(emp.fieldTime, cellRate(emp.userId, 'field'))}
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.fieldOvertime > 0 ? '#e91e63' : 'var(--text-secondary)' }}>
-                      {emp.fieldOvertime.toFixed(2)}
+                      {formatCell(emp.fieldOvertime, cellRate(emp.userId, 'fieldOt'))}
                     </td>
                     <td
                       style={{
@@ -1180,7 +1275,9 @@ export default function Payroll() {
                       ${(reimbursementsByUser.get(emp.userId)?.total || 0).toFixed(2)}
                     </td>
                     <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                      {emp.totalHours.toFixed(2)}
+                      {displayMode === 'dollars'
+                        ? `$${(breakdown?.basePay ?? 0).toFixed(2)}`
+                        : emp.totalHours.toFixed(2)}
                     </td>
                   </tr>
                   {isExpanded && isAdmin && breakdown && (
@@ -1288,35 +1385,50 @@ export default function Payroll() {
                   );
                 })}
                 {/* Totals Row */}
+                {(() => {
+                  let totInternal = 0, totShop = 0, totShopOt = 0, totTravel = 0, totField = 0, totFieldOt = 0, totBasePay = 0;
+                  for (const emp of displayedEmployeeHours) {
+                    totInternal += emp.internalHours * cellRate(emp.userId, 'internal');
+                    totShop += emp.shopTime * cellRate(emp.userId, 'shop');
+                    totShopOt += emp.shopOvertime * cellRate(emp.userId, 'shopOt');
+                    totTravel += emp.travelTime * cellRate(emp.userId, 'travel');
+                    totField += emp.fieldTime * cellRate(emp.userId, 'field');
+                    totFieldOt += emp.fieldOvertime * cellRate(emp.userId, 'fieldOt');
+                    totBasePay += payrollBreakdownByUser.get(emp.userId)?.basePay || 0;
+                  }
+                  const fmt = (hours: number, dollars: number) => displayMode === 'dollars' ? `$${dollars.toFixed(2)}` : hours.toFixed(2);
+                  return (
                 <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
                   <td style={{ padding: '14px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>
                     TOTALS
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#dc3545' }}>
-                    {grandTotals.internalHours.toFixed(2)}
+                    {fmt(grandTotals.internalHours, totInternal)}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#4caf50' }}>
-                    {grandTotals.shopTime.toFixed(2)}
+                    {fmt(grandTotals.shopTime, totShop)}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#ff9800' }}>
-                    {grandTotals.shopOvertime.toFixed(2)}
+                    {fmt(grandTotals.shopOvertime, totShopOt)}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#2196f3' }}>
-                    {grandTotals.travelTime.toFixed(2)}
+                    {fmt(grandTotals.travelTime, totTravel)}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#9c27b0' }}>
-                    {grandTotals.fieldTime.toFixed(2)}
+                    {fmt(grandTotals.fieldTime, totField)}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#e91e63' }}>
-                    {grandTotals.fieldOvertime.toFixed(2)}
+                    {fmt(grandTotals.fieldOvertime, totFieldOt)}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#00897b' }}>
                     ${grandTotalReimbursements.toFixed(2)}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                    {grandTotals.totalHours.toFixed(2)}
+                    {displayMode === 'dollars' ? `$${totBasePay.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
                   </td>
                 </tr>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
