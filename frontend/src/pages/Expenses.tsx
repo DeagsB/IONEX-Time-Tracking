@@ -312,6 +312,7 @@ export default function Expenses() {
   const [pendingReceiptEmpFilter, setPendingReceiptEmpFilter] = useState<string>('all');
   const [pendingReceiptTypeFilter, setPendingReceiptTypeFilter] = useState<string>('all');
   const [pendingReceiptDescFilter, setPendingReceiptDescFilter] = useState<string>('');
+  const [pendingReceiptCollapsed, setPendingReceiptCollapsed] = useState<boolean>(false);
 
   /**
    * Only expense types that genuinely require a receipt before payroll reimbursement.
@@ -1601,7 +1602,7 @@ export default function Expenses() {
         Internal Expenses & Receipts
       </h1>
 
-      {(pendingReceiptLines as any[]).length > 0 && (
+      {pendingReceiptLinesGated.length > 0 && (
         <div
           style={{
             marginBottom: '24px',
@@ -1616,7 +1617,7 @@ export default function Expenses() {
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
             <div>
               <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#b45309', marginBottom: '6px' }}>
-                Awaiting Receipts ({pendingReceiptLinesView.length}{isAdmin && pendingReceiptEmpFilter !== 'all' ? ` of ${(pendingReceiptLines as any[]).length}` : ''})
+                Awaiting Receipts ({pendingReceiptLinesView.length}{pendingReceiptLinesView.length !== pendingReceiptLinesGated.length ? ` of ${pendingReceiptLinesGated.length}` : ''})
                 {isAdmin && <span style={{ marginLeft: '8px', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(33, 150, 243, 0.18)', color: '#2196F3' }}>ADMIN VIEW</span>}
               </div>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
@@ -1627,21 +1628,57 @@ export default function Expenses() {
               <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-primary)', lineHeight: 1.45, maxWidth: '720px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0, 137, 123, 0.08)', border: '1px solid rgba(0, 137, 123, 0.3)' }}>
                 <strong style={{ color: '#00897b' }}>Reimbursement note:</strong> as soon as a receipt is attached, this expense is included on the next payroll for reimbursement to the employee. Lines that don't need a receipt (Mileage, Truck Hours, Per Diem, basic Equipment) are reimbursed automatically on the next payroll once flagged needs-reimbursement.
               </p>
-              {isAdmin && pendingReceiptEmpOptions.length > 0 && (
-                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Employee</label>
-                  <select
-                    value={pendingReceiptEmpFilter}
-                    onChange={(e) => { setPendingReceiptEmpFilter(e.target.value); setPendingReceiptSelectedIds(new Set()); }}
-                    style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-                  >
-                    <option value="all">All employees</option>
-                    {pendingReceiptEmpOptions.map((emp) => (
-                      <option key={emp.id} value={emp.id}>{emp.name}</option>
-                    ))}
-                  </select>
+              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                {isAdmin && pendingReceiptEmpOptions.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Employee</label>
+                    <select
+                      value={pendingReceiptEmpFilter}
+                      onChange={(e) => { setPendingReceiptEmpFilter(e.target.value); setPendingReceiptSelectedIds(new Set()); }}
+                      style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+                    >
+                      <option value="all">All employees</option>
+                      {pendingReceiptEmpOptions.map((emp) => (
+                        <option key={emp.id} value={emp.id}>{emp.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {pendingReceiptTypeOptions.length > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Type</label>
+                    <select
+                      value={pendingReceiptTypeFilter}
+                      onChange={(e) => { setPendingReceiptTypeFilter(e.target.value); setPendingReceiptSelectedIds(new Set()); }}
+                      style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+                    >
+                      <option value="all">All types</option>
+                      {pendingReceiptTypeOptions.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Description</label>
+                  <input
+                    type="text"
+                    value={pendingReceiptDescFilter}
+                    onChange={(e) => { setPendingReceiptDescFilter(e.target.value); setPendingReceiptSelectedIds(new Set()); }}
+                    placeholder="Search…"
+                    style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', minWidth: '160px' }}
+                  />
                 </div>
-              )}
+                {(pendingReceiptEmpFilter !== 'all' || pendingReceiptTypeFilter !== 'all' || pendingReceiptDescFilter) && (
+                  <button
+                    type="button"
+                    onClick={() => { setPendingReceiptEmpFilter('all'); setPendingReceiptTypeFilter('all'); setPendingReceiptDescFilter(''); setPendingReceiptSelectedIds(new Set()); }}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: 'var(--text-secondary)', textDecoration: 'underline' }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
             </div>
             {pendingReceiptSelectedIds.size > 0 && (() => {
               const selectedHotelIds = pendingReceiptLinesView
