@@ -604,8 +604,13 @@ export default function Payroll() {
 
       if (expType === 'travel') {
         if (exp.needs_reimbursement === false) continue;
-        reimbRate = Number(employee?.mileage_reimb_rate) || 0.90;
-        category = 'Mileage';
+        if (desc.includes('truck')) {
+          reimbRate = Number(employee?.truck_reimb_rate) || 1.00;
+          category = 'Truck Hours';
+        } else {
+          reimbRate = Number(employee?.mileage_reimb_rate) || 0.90;
+          category = 'Mileage';
+        }
       } else if (expType === 'hotel' || desc.includes('hotel')) {
         if (exp.needs_reimbursement === false) continue;
         reimbRate = Number(employee?.hotel_reimb_rate) || 1.0;
