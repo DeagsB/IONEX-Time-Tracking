@@ -189,7 +189,7 @@ const getPresetRange = (preset: string): { start: string; end: string } | null =
   }
 };
 
-const PRESET_KEYS = ['currentPayPeriod', 'previousPayPeriod', 'thisWeek', 'lastWeek', 'last2Weeks', 'thisMonth', 'lastMonth'] as const;
+const PRESET_KEYS = ['previousPayPeriod', 'currentPayPeriod', 'thisWeek', 'lastWeek', 'last2Weeks', 'thisMonth', 'lastMonth'] as const;
 
 export default function Payroll() {
   const { user, isAdmin } = useAuth();
@@ -1049,8 +1049,25 @@ export default function Payroll() {
 
           {/* Quick Presets — active preset is highlighted */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {PRESET_KEYS.map((key) => {
-              const label = key === 'currentPayPeriod' ? 'Current Pay Period' : key === 'previousPayPeriod' ? 'Previous Pay Period' : key === 'last2Weeks' ? 'Last 2 Weeks' : key === 'thisWeek' ? 'This Week' : key === 'lastWeek' ? 'Last Week' : key === 'thisMonth' ? 'This Month' : 'Last Month';
+            {(() => {
+              // Compute payday dates for the two pay-period presets so the buttons read
+              // "Pay 1 May" / "Pay 15 May" instead of the abstract "Previous/Current Pay Period".
+              const period = getCurrentPayPeriod();
+              const fmtPay = (offsetDays: number) => {
+                const d = new Date(period.end + 'T12:00:00');
+                d.setDate(d.getDate() + offsetDays + 5);
+                return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+              };
+              const upcomingPayday = fmtPay(-14); // previous period's payday = next Friday's payroll
+              const followingPayday = fmtPay(0);  // current accumulating period's payday
+              return PRESET_KEYS.map((key) => {
+              const label =
+                key === 'previousPayPeriod' ? `Pay ${upcomingPayday}` :
+                key === 'currentPayPeriod' ? `Next pay (${followingPayday})` :
+                key === 'last2Weeks' ? 'Last 2 Weeks' :
+                key === 'thisWeek' ? 'This Week' :
+                key === 'lastWeek' ? 'Last Week' :
+                key === 'thisMonth' ? 'This Month' : 'Last Month';
               const isActive = activePreset === key;
               return (
                 <button
@@ -1062,7 +1079,8 @@ export default function Payroll() {
                   {label}
                 </button>
               );
-            })}
+            });
+            })()}
           </div>
           
           {/* Payday indicator */}
