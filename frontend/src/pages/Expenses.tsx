@@ -115,22 +115,32 @@ function splitTotalIntoAmountGst(
   return { amount, gst };
 }
 
-interface ReceiptFormState {
+interface ReceiptLineItem {
+  id: string;
   description: string;
   amount: string;
   gst: string;
   is_billable: boolean;
-  expense_date: string;
-  notes: string;
 }
 
-const initialReceiptForm: ReceiptFormState = {
+interface ReceiptFormState {
+  expense_date: string;
+  notes: string;
+  lineItems: ReceiptLineItem[];
+}
+
+const newLineItem = (): ReceiptLineItem => ({
+  id: Math.random().toString(36).slice(2),
   description: '',
   amount: '',
   gst: '',
   is_billable: false,
+});
+
+const initialReceiptForm: ReceiptFormState = {
   expense_date: new Date().toISOString().split('T')[0],
   notes: '',
+  lineItems: [newLineItem()],
 };
 
 /** After delete, server row is removed only after this delay unless the user clicks Undo. */
@@ -1076,9 +1086,16 @@ export default function Expenses() {
       setReceiptAutofillBusy(false);
       setReceiptForm((prev) => ({
         ...prev,
-        ...(r.amount ? { amount: r.amount } : {}),
-        ...(r.gst !== '' ? { gst: r.gst } : {}),
         expense_date: r.expenseDate || prev.expense_date,
+        lineItems: prev.lineItems.map((item, i) =>
+          i === 0
+            ? {
+                ...item,
+                ...(r.amount ? { amount: r.amount } : {}),
+                ...(r.gst !== '' ? { gst: r.gst } : {}),
+              }
+            : item
+        ),
       }));
       const parts: string[] = [];
       if (r.method === 'pdf-text') parts.push('Filled from PDF text.');
@@ -1152,8 +1169,19 @@ export default function Expenses() {
   }, [splitWizardOpen, splitFile]);
 
   const handleSubmitReceipt = async () => {
-    if (!receiptForm.description.trim()) { setUploadError('Name / description is required'); return; }
-    if (!receiptForm.amount || parseFloat(receiptForm.amount) <= 0) { setUploadError('Amount must be greater than 0'); return; }
+    const validItems = receiptForm.lineItems.filter(
+      (item) => item.description.trim() && item.amount && parseFloat(item.amount) > 0
+    );
+    if (validItems.length === 0) {
+      setUploadError('At least one line item with a description and amount > 0 is required');
+      return;
+    }
+    for (const item of receiptForm.lineItems) {
+      if (item.amount && parseFloat(item.amount) > 0 && !item.description.trim()) {
+        setUploadError('All line items with an amount must have a description');
+        return;
+      }
+    }
     setIsUploading(true);
     setUploadError(null);
     try {
@@ -1162,16 +1190,18 @@ export default function Expenses() {
         const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
         storagePath = await userExpensesService.uploadReceipt(optimized);
       }
-      await userExpensesService.create({
-        description: receiptForm.description.trim(),
-        amount: parseFloat(receiptForm.amount),
-        expense_date: receiptForm.expense_date,
-        receipt_url: storagePath,
-        gst: parseFloat(receiptForm.gst) || 0,
-        is_billable: receiptForm.is_billable,
-        notes: receiptForm.notes.trim() || undefined,
-        status: 'pending',
-      });
+      for (const item of validItems) {
+        await userExpensesService.create({
+          description: item.description.trim(),
+          amount: parseFloat(item.amount),
+          expense_date: receiptForm.expense_date,
+          receipt_url: storagePath,
+          gst: parseFloat(item.gst) || 0,
+          is_billable: item.is_billable,
+          notes: receiptForm.notes.trim() || undefined,
+          status: 'pending',
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
@@ -2386,27 +2416,95 @@ export default function Expenses() {
             )}
 
             <div>
-              <label style={labelStyle}>Name / Description</label>
-              <input type="text" value={receiptForm.description} onChange={(e) => setReceiptForm({ ...receiptForm, description: e.target.value })} placeholder="e.g. Hotel, Fuel, Parts..." style={inputStyle} />
-            </div>
-            <div>
               <label style={labelStyle}>Date</label>
               <input type="date" value={receiptForm.expense_date} onChange={(e) => setReceiptForm({ ...receiptForm, expense_date: e.target.value })} style={inputStyle} />
             </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Amount ($)</label>
-                <input type="number" step="0.01" value={receiptForm.amount} onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })} placeholder="0.00" style={inputStyle} />
+
+            <div>
+              {/* Column headers */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 72px 24px', gap: '6px', marginBottom: '4px', alignItems: 'center' }}>
+                <span style={labelStyle}>Description</span>
+                <span style={labelStyle}>Amount ($)</span>
+                <span style={labelStyle}>GST ($)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={labelStyle}>Billable</span>
+                  <input
+                    type="checkbox"
+                    title="Toggle all billable"
+                    checked={receiptForm.lineItems.length > 0 && receiptForm.lineItems.every((li) => li.is_billable)}
+                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li) => ({ ...li, is_billable: e.target.checked })) })}
+                  />
+                </div>
+                <span />
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>GST ($)</label>
-                <input type="number" step="0.01" value={receiptForm.gst} onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })} placeholder="0.00" style={inputStyle} />
-              </div>
+
+              {/* Line item rows */}
+              {receiptForm.lineItems.map((item, idx) => (
+                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 72px 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={item.description}
+                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, description: e.target.value } : li) })}
+                    placeholder="e.g. Fuel, Hotel…"
+                    style={{ ...inputStyle, margin: 0 }}
+                  />
+                  <input
+                    type="number" step="0.01"
+                    value={item.amount}
+                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, amount: e.target.value } : li) })}
+                    placeholder="0.00"
+                    style={{ ...inputStyle, margin: 0 }}
+                  />
+                  <input
+                    type="number" step="0.01"
+                    value={item.gst}
+                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, gst: e.target.value } : li) })}
+                    placeholder="0.00"
+                    style={{ ...inputStyle, margin: 0 }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={item.is_billable}
+                      onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, is_billable: e.target.checked } : li) })}
+                    />
+                  </div>
+                  {receiptForm.lineItems.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.filter((_, i) => i !== idx) })}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: '18px', lineHeight: 1, padding: 0 }}
+                      title="Remove line item"
+                    >
+                      ×
+                    </button>
+                  ) : <span />}
+                </div>
+              ))}
+
+              {/* Totals row — only when multiple items */}
+              {receiptForm.lineItems.length > 1 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 72px 24px', gap: '6px', borderTop: '1px solid var(--border-color)', paddingTop: '6px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>Total</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    ${receiptForm.lineItems.reduce((s, li) => s + (parseFloat(li.amount) || 0), 0).toFixed(2)}
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    ${receiptForm.lineItems.reduce((s, li) => s + (parseFloat(li.gst) || 0), 0).toFixed(2)}
+                  </span>
+                  <span /><span />
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setReceiptForm({ ...receiptForm, lineItems: [...receiptForm.lineItems, newLineItem()] })}
+                style={{ marginTop: '4px', padding: '5px 10px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+              >
+                + Add line item
+              </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input type="checkbox" id="exp-billable" checked={receiptForm.is_billable} onChange={(e) => setReceiptForm({ ...receiptForm, is_billable: e.target.checked })} />
-              <label htmlFor="exp-billable" style={{ fontSize: '14px', color: 'var(--text-primary)', cursor: 'pointer' }}>Billable</label>
-            </div>
+
             <div>
               <label style={labelStyle}>Notes (optional)</label>
               <textarea value={receiptForm.notes} onChange={(e) => setReceiptForm({ ...receiptForm, notes: e.target.value })} rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
