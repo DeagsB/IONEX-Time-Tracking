@@ -72,31 +72,28 @@ const formatPeriodDate = (d: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-// Current payroll period: 2 weeks, payday Friday 5 days after period end.
-// Reference: 19 Jan–1 Feb 2026 → payday Friday 6 Feb 2026.
+// "Current" pay period for payroll purposes = the period whose payday is the
+// soonest upcoming Friday (or today, if today IS payday). This is the one the
+// admin is about to run payroll for. After the payday passes, "current" rolls
+// forward to the next period.
+//
+// Reference: period 0 = 19 Jan–1 Feb 2026 → payday Friday 6 Feb 2026.
 const getCurrentPayPeriod = (): { start: string; end: string } => {
   try {
-    const referenceStart = new Date(2026, 0, 19); // Jan 19, 2026
+    const referenceStart = new Date(2026, 0, 19); // Jan 19, 2026 = period 0 start
     const periodLengthDays = 14;
     const daysUntilPayday = 5;
+    const msPerDay = 1000 * 60 * 60 * 24;
+
+    // Period 0's payday = referenceStart + (14-1) + 5 = + 18 days.
+    const referencePayday = new Date(referenceStart.getTime() + (periodLengthDays - 1 + daysUntilPayday) * msPerDay);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const msPerDay = 1000 * 60 * 60 * 24;
-    const daysSinceReference = Math.floor((today.getTime() - referenceStart.getTime()) / msPerDay);
-
-    let periodNumber: number;
-    if (daysSinceReference >= 0) {
-      periodNumber = Math.floor(daysSinceReference / periodLengthDays);
-      const periodEndDate = new Date(referenceStart.getTime() + (periodNumber + 1) * periodLengthDays * msPerDay);
-      periodEndDate.setDate(periodEndDate.getDate() - 1); // last day of period
-      const paydayDate = new Date(periodEndDate);
-      paydayDate.setDate(paydayDate.getDate() + daysUntilPayday);
-      if (today > paydayDate) periodNumber++;
-    } else {
-      periodNumber = Math.floor(daysSinceReference / periodLengthDays);
-    }
+    // Smallest N such that payday(N) ≥ today, where payday(N) = referencePayday + N*14.
+    const daysSincePayday0 = (today.getTime() - referencePayday.getTime()) / msPerDay;
+    const periodNumber = daysSincePayday0 <= 0 ? 0 : Math.ceil(daysSincePayday0 / periodLengthDays);
 
     const periodStart = new Date(referenceStart.getTime() + periodNumber * periodLengthDays * msPerDay);
     const periodEnd = new Date(periodStart.getTime() + (periodLengthDays - 1) * msPerDay);
@@ -190,7 +187,7 @@ const getPresetRange = (preset: string): { start: string; end: string } | null =
   }
 };
 
-const PRESET_KEYS = ['previousPayPeriod', 'currentPayPeriod', 'thisWeek', 'lastWeek', 'last2Weeks', 'thisMonth', 'lastMonth'] as const;
+const PRESET_KEYS = ['currentPayPeriod', 'previousPayPeriod', 'thisWeek', 'lastWeek', 'last2Weeks', 'thisMonth', 'lastMonth'] as const;
 
 export default function Payroll() {
   const { user, isAdmin } = useAuth();
@@ -1103,12 +1100,12 @@ export default function Payroll() {
                 d.setDate(d.getDate() + offsetDays + 5);
                 return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
               };
-              const upcomingPayday = fmtPay(-14); // previous period's payday = next Friday's payroll
-              const followingPayday = fmtPay(0);  // current accumulating period's payday
+              const upcomingPayday = fmtPay(0);    // current period's payday = next payroll
+              const lastPaidPayday = fmtPay(-14);  // previous period's payday = already paid
               return PRESET_KEYS.map((key) => {
               const label =
-                key === 'previousPayPeriod' ? `Pay ${upcomingPayday}` :
-                key === 'currentPayPeriod' ? `Next pay (${followingPayday})` :
+                key === 'currentPayPeriod' ? `Pay ${upcomingPayday}` :
+                key === 'previousPayPeriod' ? `Last paid (${lastPaidPayday})` :
                 key === 'last2Weeks' ? 'Last 2 Weeks' :
                 key === 'thisWeek' ? 'This Week' :
                 key === 'lastWeek' ? 'Last Week' :
