@@ -6649,16 +6649,14 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               style={{
                                 display: 'grid',
                                 gridTemplateColumns:
-                                  editingExpense.expense_type === 'Hotel' ||
-                                  (editingExpense.expense_type === 'Expenses' && editingExpense.needs_reimbursement && !editingExpense.id)
+                                  editingExpense.expense_type === 'Hotel'
                                     ? '1fr'
                                     : '1fr 1fr',
                                 gap: '12px',
                                 marginBottom: '12px',
                               }}
                             >
-                              {editingExpense.expense_type !== 'Hotel' &&
-                                !(editingExpense.expense_type === 'Expenses' && editingExpense.needs_reimbursement && !editingExpense.id) && (
+                              {editingExpense.expense_type !== 'Hotel' && (
                                 <div>
                                   <label style={labelStyle}>Quantity</label>
                                   <input
@@ -6676,14 +6674,13 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                       const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                       setEditingExpense({ ...editingExpense, quantity: isNaN(val) ? 0 : val });
                                     }}
-                                    placeholder="0.00"
+                                    placeholder={editingExpense.expense_type === 'Expenses' && editingExpense.needs_reimbursement && !editingExpense.id ? '1' : '0.00'}
                                   />
                                 </div>
                               )}
                               <div>
                                 <label style={labelStyle}>
-                                  {editingExpense.expense_type === 'Hotel' ||
-                                  (editingExpense.expense_type === 'Expenses' && editingExpense.needs_reimbursement && !editingExpense.id)
+                                  {editingExpense.expense_type === 'Hotel'
                                     ? 'Amount billed to client ($)'
                                     : 'Billed Rate ($)'}
                                 </label>
@@ -6713,11 +6710,18 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 )}
                                 {editingExpense.expense_type === 'Expenses' &&
                                   editingExpense.needs_reimbursement &&
-                                  !editingExpense.id && (
-                                    <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-                                      What the client is charged on this ticket (line bills as 1 × this amount). When you attach the receipt later, markup auto-fills as this minus receipt total.
-                                    </div>
-                                  )}
+                                  !editingExpense.id && (() => {
+                                    const q = Number(editingExpense.quantity) || 1;
+                                    const r = Number(editingExpense.rate) || 0;
+                                    const sub = Math.round(q * r * 100) / 100;
+                                    return (
+                                      <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                                        Per-unit rate billed to client. Line total = qty × this rate
+                                        {q > 1 && r > 0 ? <> (<strong style={{ color: 'var(--text-primary)' }}>${sub.toFixed(2)}</strong>)</> : null}.
+                                        When you attach the receipt later, markup auto-fills as this minus receipt total.
+                                      </div>
+                                    );
+                                  })()}
                               </div>
                             </div>
                           )}
@@ -6896,16 +6900,18 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   }
                                   clearTicketExpenseFormIssues();
                                   try {
-                                    const isFixedQtyOne =
-                                      editingExpense.expense_type === 'Hotel' ||
-                                      editingExpense.expense_type === 'Expenses';
+                                    const isHotelFixed = editingExpense.expense_type === 'Hotel';
+                                    const enteredQty = Number(editingExpense.quantity) || 0;
                                     await createExpenseMutation.mutateAsync({
                                       service_ticket_id: currentTicketRecordId,
                                       expense_type: editingExpense.expense_type,
                                       description: editingExpense.description.trim(),
-                                      quantity: isFixedQtyOne ? 1 : Number(editingExpense.quantity) || 0,
+                                      // Hotel fixed at qty=1; Other reimbursable defaults to 1 if blank but accepts user-entered qty.
+                                      quantity: isHotelFixed
+                                        ? 1
+                                        : (editingExpense.expense_type === 'Expenses' && enteredQty <= 0 ? 1 : enteredQty),
                                       rate: Number(editingExpense.rate) || 0,
-                                      unit: isFixedQtyOne ? undefined : editingExpense.unit?.trim() || undefined,
+                                      unit: isHotelFixed ? undefined : editingExpense.unit?.trim() || undefined,
                                       actual_cost: Number(editingExpense.actual_cost) || 0,
                                       needs_reimbursement: true,
                                       reimbursement_status: initialReimbursementStatusForTicketExpense({
