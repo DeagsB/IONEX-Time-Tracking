@@ -2376,13 +2376,16 @@ export default function Expenses() {
 
                   {/* Existing-receipt picker — for the case where a receipt was already submitted before the new linking flow. */}
                   {(() => {
-                    // Non-admin: only own receipts (privacy). Admin: any unlinked receipt
-                    // is a valid candidate — hotel bills are often paid by one employee
-                    // covering field work that spans multiple employees' tickets, so the
-                    // strict same-user match was hiding legitimate matches. Owner name
-                    // is shown in the option label so admins can pick correctly.
+                    // Filter rules:
+                    //   - Non-admin: only own receipts (privacy).
+                    //   - Admin with ticket lines selected: restrict to that user — admin
+                    //     already committed to whose stay this is, so other employees'
+                    //     receipts are noise.
+                    //   - Admin with no lines selected yet: show all unlinked receipts so
+                    //     they can pick a shared hotel bill before checking lines.
+                    const selectedUserId = splitSelectedRows[0]?.service_tickets?.user_id ?? null;
                     const targetUserId =
-                      splitSelectedRows[0]?.service_tickets?.user_id
+                      selectedUserId
                       ?? hotelLinesStillNeedReceipt[0]?.service_tickets?.user_id
                       ?? user?.id
                       ?? null;
@@ -2391,6 +2394,8 @@ export default function Expenses() {
                         if (!e.receipt_url) return false;
                         if (!isAdmin) {
                           if (!targetUserId || e.user_id !== targetUserId) return false;
+                        } else if (selectedUserId) {
+                          if (e.user_id !== selectedUserId) return false;
                         }
                         // Skip receipts already applied to a ticket directly OR linked via service_ticket_expenses.user_expense_id.
                         if (e.service_ticket_id) return false;
