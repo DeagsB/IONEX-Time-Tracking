@@ -24,17 +24,31 @@ export function ticketExpenseLineHasAttachedReceipt(
 }
 
 /**
- * Payroll / totals: do not double-count a linked user_expense when the ticket already has a matching
- * reimbursable line (same normalized description).
+ * Payroll / totals: do not double-count a linked user_expense when the ticket already
+ * covers it. Two ways a ticket-expense line can claim a receipt:
+ *   1. Explicit link via service_ticket_expenses.user_expense_id === receipt.id
+ *      (the receipt-linking flow — one receipt fans out to many ticket lines).
+ *   2. Direct apply-to-ticket: receipt.service_ticket_id matches a reimbursable
+ *      line on that ticket with the same description (legacy flow).
+ * Either case → reimbursement comes from the ticket lines, so the receipt itself
+ * must be skipped to avoid paying it twice.
  */
 export function linkedUserExpenseRedundantWithTicketExpenseLine(
-  receipt: { description?: string | null; service_ticket_id?: string | null },
+  receipt: { id?: string | null; description?: string | null; service_ticket_id?: string | null },
   ticketExpenseRows: Array<{
     service_ticket_id?: string;
     description?: string | null;
     needs_reimbursement?: boolean | null;
+    user_expense_id?: string | null;
   }>
 ): boolean {
+  const rid = receipt.id ? String(receipt.id) : '';
+  if (rid) {
+    const linkedById = ticketExpenseRows.some(
+      (te) => String(te.user_expense_id ?? '') === rid && te.needs_reimbursement !== false
+    );
+    if (linkedById) return true;
+  }
   const tid = receipt.service_ticket_id;
   if (!tid) return false;
   const rd = normalizedTicketExpenseDescription(receipt.description);

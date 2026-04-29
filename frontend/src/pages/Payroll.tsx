@@ -584,6 +584,38 @@ export default function Payroll() {
     [receiptExpenses, catchUpReceipts]
   );
 
+  /** All receipt ids in this payroll set — used to find any service_ticket_expenses
+   * rows that reference them via user_expense_id, regardless of ticket date. A receipt
+   * linked to even one ticket line (in any period) is paid through that line, never
+   * via the receipt itself, so payroll must skip it to avoid double-reimbursement. */
+  const payrollReceiptIds = useMemo(
+    () => [...new Set((receiptExpensesForReimbursements as any[]).map((r) => String(r.id)).filter(Boolean))],
+    [receiptExpensesForReimbursements]
+  );
+
+  const { data: linkedTicketExpensesForReceipts = [] } = useQuery({
+    queryKey: ['payrollLinkedTicketExpensesForReceipts', payrollReceiptIds.slice().sort().join(',')],
+    queryFn: async () => {
+      if (payrollReceiptIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('service_ticket_expenses')
+        .select('user_expense_id, needs_reimbursement')
+        .in('user_expense_id', payrollReceiptIds)
+        .eq('needs_reimbursement', true);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: payrollReceiptIds.length > 0,
+  });
+
+  const receiptIdsCoveredByTicketLink = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of linkedTicketExpensesForReceipts as any[]) {
+      if (r.user_expense_id) s.add(String(r.user_expense_id));
+    }
+    return s;
+  }, [linkedTicketExpensesForReceipts]);
+
   const queryClient = useQueryClient();
   const markPaidMutation = useMutation({
     mutationFn: async () => {
@@ -720,8 +752,13 @@ export default function Payroll() {
       });
     }
 
-    // Process receipt expenses (subtotal + GST = employee out-of-pocket); includes catch-up for current period
+    // Process receipt expenses (subtotal + GST = employee out-of-pocket); includes catch-up for current period.
+    // Skip receipts that are paid through a ticket-expense line — either via the
+    // legacy direct-apply (matched by description on this period's ticket lines),
+    // or via the new user_expense_id link (matched against ANY period's ticket
+    // lines so a receipt linked to past-period tickets isn't paid again here).
     for (const exp of receiptExpensesForReimbursements as any[]) {
+      if (receiptIdsCoveredByTicketLink.has(String(exp.id))) continue;
       if (linkedUserExpenseRedundantWithTicketExpenseLine(exp, ticketExpenses as any[])) continue;
       const userId = exp.user_id;
       if (!userId) continue;
@@ -740,7 +777,7 @@ export default function Payroll() {
     }
 
     return map;
-  }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts]);
+  }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink]);
 
   const grandTotalReimbursements = useMemo(() => {
     const employeeIds = new Set(employeeHours.map((e) => e.userId));
