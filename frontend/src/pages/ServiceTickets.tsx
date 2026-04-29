@@ -674,7 +674,10 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
   type SplitLineItem = {
     id: string;
     description: string;
-    amount: string;
+    /** Number of units; default '1'. Line subtotal = quantity × rate. */
+    quantity: string;
+    /** Per-unit rate ($). When quantity is '1', this equals the line subtotal. */
+    rate: string;
     gst: string;
     markupType: 'percent' | 'bill';
     markupValue: string;
@@ -682,12 +685,20 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
   const newSplitLine = (init?: Partial<SplitLineItem>): SplitLineItem => ({
     id: Math.random().toString(36).slice(2),
     description: '',
-    amount: '',
+    quantity: '1',
+    rate: '',
     gst: '',
     markupType: 'percent',
     markupValue: '',
     ...init,
   });
+  /** Compute split-line subtotal = quantity × rate. */
+  const splitLineSubtotal = (l: { quantity: string; rate: string }): number => {
+    const q = parseFloat(l.quantity);
+    const r = parseFloat(l.rate);
+    if (!Number.isFinite(q) || !Number.isFinite(r)) return 0;
+    return Math.round(q * r * 100) / 100;
+  };
   const [splitLineItems, setSplitLineItems] = useState<SplitLineItem[]>([]);
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
@@ -7452,23 +7463,25 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 type="button"
                                 onClick={() => {
                                   if (inSplitMode) {
-                                    // Collapse back to single — keep first line's values
+                                    // Collapse back to single — keep first line's values (combine qty × rate into single Amount)
                                     const first = splitLineItems[0];
+                                    const subtotal = splitLineSubtotal(first);
                                     setReceiptForm({
                                       ...receiptForm,
                                       description: first.description || receiptForm.description,
-                                      amount: first.amount,
+                                      amount: subtotal > 0 ? subtotal.toFixed(2) : '',
                                       gst: first.gst,
                                       markupType: first.markupType,
                                       markupValue: first.markupValue,
                                     });
                                     setSplitLineItems([]);
                                   } else {
-                                    // Switch to split — seed first line from current single values
+                                    // Switch to split — seed first line from current single values (single line = qty 1 × rate=amount)
                                     setSplitLineItems([
                                       newSplitLine({
                                         description: receiptForm.description,
-                                        amount: receiptForm.amount,
+                                        quantity: '1',
+                                        rate: receiptForm.amount,
                                         gst: receiptForm.gst,
                                         markupType: receiptForm.markupType,
                                         markupValue: receiptForm.markupValue,
@@ -7497,26 +7510,34 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                             {inSplitMode && (
                               <div>
                                 <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Line Items</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 80px 70px 1fr 24px', gap: '6px', marginBottom: '4px', fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 50px 75px 65px 1fr 24px', gap: '6px', marginBottom: '4px', fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>
                                   <span>Description</span>
-                                  <span>Amount</span>
+                                  <span>Qty</span>
+                                  <span>Rate</span>
                                   <span>GST</span>
                                   <span>Markup</span>
                                   <span />
                                 </div>
                                 {splitLineItems.map((line, idx) => {
-                                  const amt = parseFloat(line.amount) || 0;
+                                  const subtotal = splitLineSubtotal(line);
                                   const gst = parseFloat(line.gst) || 0;
-                                  const expTotal = amt + gst;
+                                  const expTotal = subtotal + gst;
                                   const v = parseFloat(line.markupValue) || 0;
-                                  const markup = line.markupType === 'bill' ? v - expTotal : (expTotal * v) / 100;
-                                  const total = line.markupType === 'bill' ? v : expTotal + markup;
+                                  const qtyNum = parseFloat(line.quantity) || 0;
                                   const updateLine = (patch: Partial<SplitLineItem>) =>
                                     setSplitLineItems((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
                                   return (
-                                    <div key={line.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 80px 70px 1fr 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
-                                      <input type="text" value={line.description} onChange={(e) => updateLine({ description: e.target.value })} placeholder="e.g. Parts, Labour…" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
-                                      <input type="number" step="0.01" value={line.amount} onChange={(e) => updateLine({ amount: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                    <div key={line.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 50px 75px 65px 1fr 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                                      <div>
+                                        <input type="text" value={line.description} onChange={(e) => updateLine({ description: e.target.value })} placeholder="e.g. Parts, Labour…" style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                        {qtyNum > 1 && subtotal > 0 && (
+                                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                            Subtotal: ${subtotal.toFixed(2)}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <input type="number" step="0.01" min="0" value={line.quantity} onChange={(e) => updateLine({ quantity: e.target.value })} placeholder="1" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                      <input type="number" step="0.01" value={line.rate} onChange={(e) => updateLine({ rate: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
                                       <input type="number" step="0.01" value={line.gst} onChange={(e) => updateLine({ gst: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
                                       <div style={{ display: 'flex', gap: '4px', alignItems: 'center', minWidth: 0 }}>
                                         <input type="number" step="0.01" value={line.markupValue} onChange={(e) => updateLine({ markupValue: e.target.value })} placeholder={line.markupType === 'bill' ? 'Bill' : '%'} style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
@@ -7536,9 +7557,9 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   let receiptTotal = 0;
                                   let billedTotal = 0;
                                   for (const l of splitLineItems) {
-                                    const a = parseFloat(l.amount) || 0;
+                                    const subtotal = splitLineSubtotal(l);
                                     const g = parseFloat(l.gst) || 0;
-                                    const exp = a + g;
+                                    const exp = subtotal + g;
                                     const v = parseFloat(l.markupValue) || 0;
                                     const t = l.markupType === 'bill' ? v : exp + (exp * v) / 100;
                                     receiptTotal += exp;
@@ -7663,14 +7684,18 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                             const inSplitMode = splitLineItems.length > 0;
                             // Validation
                             if (inSplitMode) {
-                              const validLines = splitLineItems.filter((l) => l.description.trim() && parseFloat(l.amount) > 0);
+                              const validLines = splitLineItems.filter((l) => l.description.trim() && splitLineSubtotal(l) > 0);
                               if (validLines.length === 0) {
-                                setReceiptUploadError('Add at least one line with a description and amount > 0.');
+                                setReceiptUploadError('Add at least one line with a description and qty × rate > 0.');
                                 return;
                               }
                               for (const l of splitLineItems) {
-                                if (parseFloat(l.amount) > 0 && !l.description.trim()) {
+                                if (splitLineSubtotal(l) > 0 && !l.description.trim()) {
                                   setReceiptUploadError('Every line with an amount needs a description.');
+                                  return;
+                                }
+                                if (l.description.trim() && (parseFloat(l.quantity) || 0) <= 0) {
+                                  setReceiptUploadError('Quantity must be greater than 0.');
                                   return;
                                 }
                               }
@@ -7702,7 +7727,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
                                   storagePath = await userExpensesService.uploadReceipt(optimized);
                                 }
-                                const validLines = splitLineItems.filter((l) => l.description.trim() && parseFloat(l.amount) > 0);
+                                const validLines = splitLineItems.filter((l) => l.description.trim() && splitLineSubtotal(l) > 0);
                                 const expenseDateForLines =
                                   receiptForm.expense_date.trim() || new Date().toISOString().split('T')[0];
                                 const newPendingRows: Array<{
@@ -7717,15 +7742,17 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   needs_reimbursement?: boolean;
                                 }> = [];
                                 for (const line of validLines) {
-                                  const lAmt = parseFloat(line.amount) || 0;
+                                  const lQty = parseFloat(line.quantity) || 1;
+                                  const lSubtotal = splitLineSubtotal(line);
                                   const lGst = parseFloat(line.gst) || 0;
-                                  const lExp = lAmt + lGst;
+                                  const lExp = lSubtotal + lGst;
                                   const lVal = parseFloat(line.markupValue) || 0;
                                   const lMarkup = line.markupType === 'bill' ? lVal - lExp : (lExp * lVal) / 100;
                                   const lTotal = line.markupType === 'bill' ? lVal : lExp + lMarkup;
                                   const created = await userExpensesService.create({
                                     description: line.description.trim(),
-                                    amount: lAmt,
+                                    amount: lSubtotal,
+                                    quantity: lQty,
                                     expense_date: expenseDateForLines,
                                     receipt_url: storagePath,
                                     gst: lGst,
@@ -7735,11 +7762,14 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                     status: isAdmin ? 'approved' : 'pending',
                                   });
                                   if (created?.id) {
+                                    // Customer-facing ticket line preserves qty × rate breakdown.
+                                    // Per-unit billed rate = total billed / qty so the invoice shows "qty × $rate = $total".
+                                    const billedRatePerUnit = lQty > 0 ? Math.round((lTotal / lQty) * 100) / 100 : lTotal;
                                     newPendingRows.push({
                                       expense_type: 'Expenses',
                                       description: line.description.trim(),
-                                      quantity: 1,
-                                      rate: lTotal,
+                                      quantity: lQty,
+                                      rate: billedRatePerUnit,
                                       actual_cost: lExp,
                                       unit: '',
                                       tempId: `receipt-${created.id}`,

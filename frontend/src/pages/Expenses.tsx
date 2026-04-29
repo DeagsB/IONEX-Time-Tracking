@@ -118,7 +118,10 @@ function splitTotalIntoAmountGst(
 interface ReceiptLineItem {
   id: string;
   description: string;
-  amount: string;
+  /** Number of units; default '1'. Line total = quantity × rate. */
+  quantity: string;
+  /** Per-unit rate ($). When quantity is '1', this equals the line subtotal. */
+  rate: string;
   gst: string;
   is_billable: boolean;
 }
@@ -132,10 +135,19 @@ interface ReceiptFormState {
 const newLineItem = (): ReceiptLineItem => ({
   id: Math.random().toString(36).slice(2),
   description: '',
-  amount: '',
+  quantity: '1',
+  rate: '',
   gst: '',
   is_billable: false,
 });
+
+/** Compute line subtotal = quantity × rate (zero if either invalid). */
+const lineItemSubtotal = (li: { quantity: string; rate: string }): number => {
+  const q = parseFloat(li.quantity);
+  const r = parseFloat(li.rate);
+  if (!Number.isFinite(q) || !Number.isFinite(r)) return 0;
+  return Math.round(q * r * 100) / 100;
+};
 
 const initialReceiptForm: ReceiptFormState = {
   expense_date: new Date().toISOString().split('T')[0],
@@ -230,7 +242,7 @@ export default function Expenses() {
 
   // Edit receipt
   const [editingExpense, setEditingExpense] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ description: '', amount: '', gst: '', is_billable: false, expense_date: '', notes: '' });
+  const [editForm, setEditForm] = useState({ description: '', quantity: '1', rate: '', gst: '', is_billable: false, expense_date: '', notes: '' });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editReceiptPreviewUrl, setEditReceiptPreviewUrl] = useState<string | null>(null);
   const [editReceiptIsPdf, setEditReceiptIsPdf] = useState(false);
@@ -836,9 +848,13 @@ export default function Expenses() {
 
   const handleStartEdit = (exp: any) => {
     setEditingExpense(exp);
+    const qty = Number(exp.quantity) || 1;
+    const amt = parseFloat(exp.amount) || 0;
+    const ratePerUnit = qty > 0 ? amt / qty : amt;
     setEditForm({
       description: exp.description || '',
-      amount: String(parseFloat(exp.amount)),
+      quantity: String(qty),
+      rate: String(Math.round(ratePerUnit * 100) / 100),
       gst: String(parseFloat(exp.gst || 0)),
       is_billable: exp.is_billable || false,
       expense_date: exp.expense_date || '',
@@ -849,12 +865,17 @@ export default function Expenses() {
   const handleSaveEdit = async () => {
     if (!editingExpense) return;
     if (!editForm.description.trim()) { alert('Description is required'); return; }
-    if (!editForm.amount || parseFloat(editForm.amount) <= 0) { alert('Amount must be greater than 0'); return; }
+    const qty = parseFloat(editForm.quantity) || 0;
+    const rate = parseFloat(editForm.rate) || 0;
+    if (qty <= 0) { alert('Quantity must be greater than 0'); return; }
+    if (rate <= 0) { alert('Rate must be greater than 0'); return; }
+    const newAmount = Math.round(qty * rate * 100) / 100;
     setIsSavingEdit(true);
     try {
       await userExpensesService.updateAndSyncTicket(editingExpense.id, {
         description: editForm.description.trim(),
-        amount: parseFloat(editForm.amount),
+        amount: newAmount,
+        quantity: qty,
         gst: parseFloat(editForm.gst) || 0,
         is_billable: editForm.is_billable,
         expense_date: editForm.expense_date,
@@ -1169,7 +1190,8 @@ export default function Expenses() {
           i === 0
             ? {
                 ...item,
-                ...(r.amount ? { amount: r.amount } : {}),
+                // Auto-fill treats receipt total as a single-unit line: qty=1, rate=amount.
+                ...(r.amount ? { quantity: '1', rate: r.amount } : {}),
                 ...(r.gst !== '' ? { gst: r.gst } : {}),
               }
             : item
@@ -1279,7 +1301,8 @@ export default function Expenses() {
         {
           id: Math.random().toString(36).slice(2),
           description,
-          amount: totalBilled.toFixed(2),
+          quantity: '1',
+          rate: totalBilled.toFixed(2),
           gst: '',
           is_billable: false,
         },
@@ -1306,15 +1329,19 @@ export default function Expenses() {
   const handleSubmitReceipt = async () => {
     const isLinking = linkingTicketExpenseIds.length > 0;
     const validItems = receiptForm.lineItems.filter(
-      (item) => item.description.trim() && item.amount && parseFloat(item.amount) > 0
+      (item) => item.description.trim() && lineItemSubtotal(item) > 0
     );
     if (validItems.length === 0) {
-      setUploadError('At least one line item with a description and amount > 0 is required');
+      setUploadError('At least one line item with a description and qty × rate > 0 is required');
       return;
     }
     for (const item of receiptForm.lineItems) {
-      if (item.amount && parseFloat(item.amount) > 0 && !item.description.trim()) {
+      if (lineItemSubtotal(item) > 0 && !item.description.trim()) {
         setUploadError('All line items with an amount must have a description');
+        return;
+      }
+      if (item.description.trim() && parseFloat(item.quantity) <= 0) {
+        setUploadError('Quantity must be greater than 0');
         return;
       }
     }
@@ -1332,9 +1359,12 @@ export default function Expenses() {
       }
       let firstCreatedId: string | null = null;
       for (const item of validItems) {
+        const qty = parseFloat(item.quantity) || 1;
+        const subtotal = lineItemSubtotal(item);
         const created = await userExpensesService.create({
           description: item.description.trim(),
-          amount: parseFloat(item.amount),
+          amount: subtotal,
+          quantity: qty,
           expense_date: receiptForm.expense_date,
           receipt_url: storagePath,
           gst: parseFloat(item.gst) || 0,
@@ -1386,6 +1416,10 @@ export default function Expenses() {
       markup = val;
     }
     const totalWithMarkup = expTotal + markup;
+    // Preserve qty × rate breakdown on the customer-facing ticket line.
+    // Per-unit billed rate = total / qty so the invoice renders "qty × $rate = $total".
+    const ticketQty = Number(expense.quantity) || 1;
+    const ticketRate = ticketQty > 0 ? Math.round((totalWithMarkup / ticketQty) * 100) / 100 : totalWithMarkup;
 
     setIsApplyingMarkup(true);
     try {
@@ -1397,8 +1431,8 @@ export default function Expenses() {
         service_ticket_id: markupModalTicket.id,
         expense_type: 'Expenses',
         description: expense.description,
-        quantity: 1,
-        rate: totalWithMarkup,
+        quantity: ticketQty,
+        rate: ticketRate,
         unit: '',
         needs_reimbursement: true,
         reimbursement_status: 'pending',
@@ -2626,7 +2660,7 @@ export default function Expenses() {
                 0
               );
               const receiptAmount = receiptForm.lineItems.reduce(
-                (sum, li) => sum + (parseFloat(li.amount) || 0) + (parseFloat(li.gst) || 0),
+                (sum, li) => sum + lineItemSubtotal(li) + (parseFloat(li.gst) || 0),
                 0
               );
               const diff = receiptAmount - billedTotal;
@@ -2733,28 +2767,46 @@ export default function Expenses() {
               </div>
 
               {/* Column headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 78px 24px', gap: '6px', marginBottom: '4px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 80px 72px 78px 24px', gap: '6px', marginBottom: '4px' }}>
                 <span style={labelStyle}>Description</span>
-                <span style={labelStyle}>Amount ($)</span>
+                <span style={labelStyle}>Qty</span>
+                <span style={labelStyle}>Rate ($)</span>
                 <span style={labelStyle}>GST ($)</span>
                 <span />
                 <span />
               </div>
 
               {/* Line item rows */}
-              {receiptForm.lineItems.map((item, idx) => (
-                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 78px 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+              {receiptForm.lineItems.map((item, idx) => {
+                const subtotal = lineItemSubtotal(item);
+                const qtyNum = parseFloat(item.quantity) || 0;
+                return (
+                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 56px 80px 72px 78px 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                  <div>
+                    <input
+                      type="text"
+                      value={item.description}
+                      onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, description: e.target.value } : li) })}
+                      placeholder="e.g. Power cord, Fuel…"
+                      style={{ ...inputStyle, margin: 0 }}
+                    />
+                    {qtyNum > 1 && subtotal > 0 && (
+                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                        Line subtotal: ${subtotal.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
                   <input
-                    type="text"
-                    value={item.description}
-                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, description: e.target.value } : li) })}
-                    placeholder="e.g. Fuel, Hotel…"
+                    type="number" step="0.01" min="0"
+                    value={item.quantity}
+                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, quantity: e.target.value } : li) })}
+                    placeholder="1"
                     style={{ ...inputStyle, margin: 0 }}
                   />
                   <input
                     type="number" step="0.01"
-                    value={item.amount}
-                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, amount: e.target.value } : li) })}
+                    value={item.rate}
+                    onChange={(e) => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, rate: e.target.value } : li) })}
                     placeholder="0.00"
                     style={{ ...inputStyle, margin: 0 }}
                   />
@@ -2794,14 +2846,16 @@ export default function Expenses() {
                     </button>
                   ) : <span />}
                 </div>
-              ))}
+                );
+              })}
 
               {/* Totals row — only when multiple items */}
               {receiptForm.lineItems.length > 1 && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px 72px 78px 24px', gap: '6px', borderTop: '1px solid var(--border-color)', paddingTop: '6px', marginBottom: '4px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 56px 80px 72px 78px 24px', gap: '6px', borderTop: '1px solid var(--border-color)', paddingTop: '6px', marginBottom: '4px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>Total</span>
+                  <span />
                   <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    ${receiptForm.lineItems.reduce((s, li) => s + (parseFloat(li.amount) || 0), 0).toFixed(2)}
+                    ${receiptForm.lineItems.reduce((s, li) => s + lineItemSubtotal(li), 0).toFixed(2)}
                   </span>
                   <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     ${receiptForm.lineItems.reduce((s, li) => s + (parseFloat(li.gst) || 0), 0).toFixed(2)}
@@ -3828,16 +3882,32 @@ export default function Expenses() {
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Description</label>
                   <input type="text" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} style={inputStyle} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr 1fr', gap: '12px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
-                    <input type="number" step="0.01" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} style={inputStyle} />
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Qty</label>
+                    <input type="number" step="0.01" min="0" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Rate ($)</label>
+                    <input type="number" step="0.01" min="0" value={editForm.rate} onChange={(e) => setEditForm({ ...editForm, rate: e.target.value })} style={inputStyle} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
                     <input type="number" step="0.01" min="0" value={editForm.gst} onChange={(e) => setEditForm({ ...editForm, gst: e.target.value })} style={inputStyle} />
                   </div>
                 </div>
+                {(() => {
+                  const q = parseFloat(editForm.quantity) || 0;
+                  const r = parseFloat(editForm.rate) || 0;
+                  if (q > 1 && r > 0) {
+                    return (
+                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                        Line subtotal: <strong style={{ color: 'var(--text-primary)' }}>${(Math.round(q * r * 100) / 100).toFixed(2)}</strong>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Date</label>
                   <input type="date" value={editForm.expense_date} onChange={(e) => setEditForm({ ...editForm, expense_date: e.target.value })} style={inputStyle} />

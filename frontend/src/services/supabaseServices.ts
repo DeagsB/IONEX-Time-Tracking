@@ -2470,6 +2470,7 @@ export const userExpensesService = {
     gst?: number;
     is_billable?: boolean;
     markup_amount?: number;
+    quantity?: number;
     status?: 'pending' | 'approved' | 'rejected' | 'paid';
   }) {
     // Note: user_id will be handled by RLS via auth.uid() if we don't supply it. 
@@ -2498,6 +2499,7 @@ export const userExpensesService = {
     gst: number;
     is_billable: boolean;
     markup_amount: number | null;
+    quantity: number;
     status: 'pending' | 'approved' | 'rejected' | 'paid';
   }>) {
     const payload = { ...updates };
@@ -2563,10 +2565,11 @@ export const userExpensesService = {
     notes: string;
     gst: number;
     is_billable: boolean;
+    quantity: number;
   }>) {
     const { data: existing } = await supabase
       .from('user_expenses')
-      .select('service_ticket_id, markup_amount, amount, gst, description')
+      .select('service_ticket_id, markup_amount, amount, gst, description, quantity')
       .eq('id', id)
       .single();
 
@@ -2588,10 +2591,15 @@ export const userExpensesService = {
     if (existing?.service_ticket_id && updates.is_billable !== false) {
       const newAmount = updates.amount ?? existing.amount;
       const newGst = updates.gst ?? existing.gst ?? 0;
+      const newQty = Number(updates.quantity ?? existing.quantity ?? 1) || 1;
       const expTotal = Number(newAmount) + Number(newGst);
       const markupAmount = Number(existing.markup_amount) || 0;
       const newDescription = updates.description ?? existing.description;
       const totalWithMarkup = expTotal + markupAmount;
+      // Preserve qty × rate breakdown on the customer-facing line.
+      const ticketRatePerUnit = newQty > 0
+        ? Math.round((totalWithMarkup / newQty) * 100) / 100
+        : totalWithMarkup;
 
       const { data: linkedExpenses } = await supabase
         .from('service_ticket_expenses')
@@ -2602,7 +2610,7 @@ export const userExpensesService = {
       if (linkedExpenses && linkedExpenses.length > 0) {
         await supabase
           .from('service_ticket_expenses')
-          .update({ description: newDescription, rate: totalWithMarkup })
+          .update({ description: newDescription, quantity: newQty, rate: ticketRatePerUnit })
           .eq('id', linkedExpenses[0].id);
       }
     }
