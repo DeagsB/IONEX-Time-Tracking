@@ -197,6 +197,11 @@ export default function Expenses() {
 
   // "Apply to Ticket" modal state
   const [applyExpenseId, setApplyExpenseId] = useState<string | null>(null);
+  /** Admin "Link to ticket expenses" modal — opens for a receipt and offers that user's pending ticket expenses. */
+  const [linkReceiptModal, setLinkReceiptModal] = useState<{ receipt: any } | null>(null);
+  const [linkReceiptSelectedIds, setLinkReceiptSelectedIds] = useState<Set<string>>(new Set());
+  const [isLinkingReceipt, setIsLinkingReceipt] = useState(false);
+  const [linkReceiptError, setLinkReceiptError] = useState<string | null>(null);
   const [showTicketPickerModal, setShowTicketPickerModal] = useState(false);
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
 
@@ -295,6 +300,14 @@ export default function Expenses() {
     queryKey: ['pendingReceiptLines', user?.id],
     queryFn: () => serviceTicketExpensesService.getPendingReceiptLinesForUser(user!.id),
     enabled: !!user?.id,
+  });
+
+  /** Pending receipt lines for the user whose receipt is being linked (admin flow). */
+  const linkReceiptUserId = linkReceiptModal?.receipt?.user_id ?? null;
+  const { data: linkReceiptPendingLines = [] } = useQuery({
+    queryKey: ['pendingReceiptLines', 'forLinkModal', linkReceiptUserId],
+    queryFn: () => serviceTicketExpensesService.getPendingReceiptLinesForUser(linkReceiptUserId!),
+    enabled: !!linkReceiptUserId,
   });
 
   const hotelLinesStillNeedReceipt = useMemo(() => {
@@ -3479,6 +3492,20 @@ export default function Expenses() {
                             Mark Unpaid
                           </button>
                         )}
+                        {source === 'receipt' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLinkReceiptModal({ receipt: exp });
+                              setLinkReceiptSelectedIds(new Set());
+                              setLinkReceiptError(null);
+                            }}
+                            style={{ marginLeft: '6px', padding: '3px 8px', backgroundColor: 'rgba(0, 137, 123, 0.1)', color: '#00897b', border: '1px solid rgba(0, 137, 123, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                            title="Link this receipt to ticket expenses awaiting it"
+                          >
+                            Link
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -3807,6 +3834,186 @@ export default function Expenses() {
           </div>
         </div>
       )}
+
+      {/* Admin: Link receipt to ticket expenses modal */}
+      {linkReceiptModal && (() => {
+        const receipt = linkReceiptModal.receipt;
+        const receiptAmount =
+          (parseFloat(receipt.amount) || 0) + (parseFloat(receipt.gst) || 0);
+        const lines = (linkReceiptPendingLines as any[]).slice();
+        const selectedRows = lines.filter((r) => linkReceiptSelectedIds.has(String(r.id)));
+        const selectedBilledTotal = selectedRows.reduce(
+          (s, r) => s + (Number(r.quantity) || 0) * (Number(r.rate) || 0),
+          0
+        );
+        const closeModal = () => {
+          setLinkReceiptModal(null);
+          setLinkReceiptSelectedIds(new Set());
+          setLinkReceiptError(null);
+        };
+        const handleLink = async () => {
+          if (linkReceiptSelectedIds.size === 0) {
+            setLinkReceiptError('Select at least one ticket expense to link.');
+            return;
+          }
+          setIsLinkingReceipt(true);
+          setLinkReceiptError(null);
+          try {
+            await serviceTicketExpensesService.linkUserExpense(
+              [...linkReceiptSelectedIds],
+              String(receipt.id)
+            );
+            queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
+            queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+            queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+            queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+            closeModal();
+          } catch (err: any) {
+            setLinkReceiptError(err?.message || 'Failed to link.');
+          } finally {
+            setIsLinkingReceipt(false);
+          }
+        };
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10005,
+              backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', padding: '16px',
+            }}
+            onMouseDown={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+          >
+            <div
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                backgroundColor: 'var(--bg-primary)', borderRadius: '12px',
+                width: '100%', maxWidth: 720, maxHeight: '85vh',
+                display: 'flex', flexDirection: 'column',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border-color)' }}>
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
+                  Link receipt to ticket expenses
+                </h2>
+                <div style={{ marginTop: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <strong style={{ color: 'var(--text-primary)' }}>{receipt.description || 'Receipt'}</strong>
+                  {' '}· {receipt._employeeName || ''}
+                  {' '}· Receipt total: <strong style={{ color: 'var(--text-primary)' }}>${receiptAmount.toFixed(2)}</strong>
+                </div>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
+                {linkReceiptError && (
+                  <div style={{ color: '#ef5350', fontSize: '13px', marginBottom: '8px' }}>{linkReceiptError}</div>
+                )}
+                {lines.length === 0 ? (
+                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '13px' }}>
+                    No ticket expenses for this employee are awaiting a receipt.
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '8px 6px', width: '32px' }}>
+                          <input
+                            type="checkbox"
+                            checked={lines.length > 0 && linkReceiptSelectedIds.size === lines.length}
+                            onChange={(e) => {
+                              if (e.target.checked) setLinkReceiptSelectedIds(new Set(lines.map((r: any) => String(r.id))));
+                              else setLinkReceiptSelectedIds(new Set());
+                            }}
+                          />
+                        </th>
+                        <th style={{ padding: '8px 6px' }}>Type</th>
+                        <th style={{ padding: '8px 6px' }}>Description</th>
+                        <th style={{ padding: '8px 6px' }}>Ticket</th>
+                        <th style={{ padding: '8px 6px' }}>Date</th>
+                        <th style={{ padding: '8px 6px', textAlign: 'right' }}>Billed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((row: any) => {
+                        const id = String(row.id);
+                        const tn = row.service_tickets?.ticket_number || '—';
+                        const dt = row.service_tickets?.date || '';
+                        const billed = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
+                        const isSel = linkReceiptSelectedIds.has(id);
+                        return (
+                          <tr key={id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <td style={{ padding: '8px 6px' }}>
+                              <input
+                                type="checkbox"
+                                checked={isSel}
+                                onChange={(e) => {
+                                  setLinkReceiptSelectedIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(id); else next.delete(id);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '8px 6px', fontWeight: 600 }}>{row.expense_type || '—'}</td>
+                            <td style={{ padding: '8px 6px', color: 'var(--text-secondary)' }}>{row.description || '—'}</td>
+                            <td style={{ padding: '8px 6px', fontFamily: 'monospace' }}>{tn}</td>
+                            <td style={{ padding: '8px 6px', color: 'var(--text-secondary)' }}>{dt || '—'}</td>
+                            <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600 }}>${billed.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              {linkReceiptSelectedIds.size > 0 && (() => {
+                const diff = receiptAmount - selectedBilledTotal;
+                return (
+                  <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-color)', backgroundColor: 'rgba(33, 150, 243, 0.05)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Selected (billed)</div>
+                      <div style={{ fontSize: '14px', fontWeight: 700 }}>${selectedBilledTotal.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Receipt</div>
+                      <div style={{ fontSize: '14px', fontWeight: 700 }}>${receiptAmount.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Difference</div>
+                      <div
+                        style={{ fontSize: '14px', fontWeight: 700, color: Math.abs(diff) < 0.005 ? 'var(--text-tertiary)' : diff > 0 ? '#15803d' : '#b45309' }}
+                      >
+                        {diff >= 0 ? '+' : ''}${diff.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  style={{ padding: '8px 16px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isLinkingReceipt || linkReceiptSelectedIds.size === 0}
+                  onClick={handleLink}
+                  style={{ padding: '8px 16px', backgroundColor: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: isLinkingReceipt ? 'not-allowed' : 'pointer', opacity: isLinkingReceipt ? 0.7 : 1 }}
+                >
+                  {isLinkingReceipt
+                    ? 'Linking…'
+                    : `Link ${linkReceiptSelectedIds.size} ticket expense${linkReceiptSelectedIds.size === 1 ? '' : 's'}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Edit Expense Modal */}
       {editingExpense && (

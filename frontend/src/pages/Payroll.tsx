@@ -1197,7 +1197,8 @@ export default function Payroll() {
                 {startDate} to {endDate}{isAdmin ? ` • ${displayedEmployeeHours.length} employee${displayedEmployeeHours.length !== 1 ? 's' : ''}${excludeContractors ? ' (contractors hidden)' : ''}` : ''}
               </p>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
@@ -1467,6 +1468,7 @@ export default function Payroll() {
                 })()}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
