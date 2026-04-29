@@ -524,6 +524,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
     actual_cost?: number;
     unit?: string;
     needs_reimbursement?: boolean;
+    user_expense_id?: string | null;
   }>>([]);
   const [editingExpense, setEditingExpense] = useState<{
     id?: string;
@@ -3173,11 +3174,13 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
     for (const expense of lines) {
       const idStr = String(expense.id ?? '');
       const linkedUe = (expense as { linkedUserExpenseId?: string }).linkedUserExpenseId;
+      const dbLinkedUe = (expense as { user_expense_id?: string | null }).user_expense_id;
       if (
         expense.needs_reimbursement &&
         (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses') &&
         !idStr.startsWith('receipt-') &&
         !linkedUe &&
+        !dbLinkedUe &&
         !ticketExpenseLineHasAttachedReceipt(expense.description, attachedReceipts)
       ) {
         n += 1;
@@ -6968,13 +6971,19 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                       {[...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))), ...pendingAddExpenses.map((e) => ({ ...e, id: e.tempId }))].map((expense) => {
                         const idStr = String(expense.id ?? '');
                         const linkedUe = (expense as { linkedUserExpenseId?: string }).linkedUserExpenseId;
+                        const dbLinkedUe = (expense as { user_expense_id?: string | null }).user_expense_id;
                         const showDeferredReceiptAttach =
                           (!effectiveLockedForEditing || allowDeferredReceiptAttachWhenLocked) &&
                           expense.needs_reimbursement &&
                           (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses') &&
                           !idStr.startsWith('receipt-') &&
                           !linkedUe &&
+                          !dbLinkedUe &&
                           !ticketExpenseLineHasAttachedReceipt(expense.description, attachedReceipts);
+                        const showReceiptAttached =
+                          !!dbLinkedUe &&
+                          expense.needs_reimbursement &&
+                          (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses');
                         return (
                         <Fragment key={expense.id ?? expense.description + expense.expense_type}>
                         <div
@@ -7008,6 +7017,24 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   }}
                                 >
                                   Receipt pending
+                                </span>
+                              )}
+                              {showReceiptAttached && (
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: '700',
+                                    textTransform: 'none',
+                                    letterSpacing: '0.02em',
+                                    color: '#15803d',
+                                    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                    border: '1px solid rgba(34, 197, 94, 0.4)',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                  }}
+                                  title="Receipt attached for reimbursement"
+                                >
+                                  ✓ Receipt attached
                                 </span>
                               )}
                             </span>

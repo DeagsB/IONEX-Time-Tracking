@@ -162,6 +162,18 @@ export default function Expenses() {
   const [receiptForm, setReceiptForm] = useState<ReceiptFormState>(initialReceiptForm);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  /**
+   * "Linking mode": when non-empty, the receipt being submitted will be linked to
+   * these service_ticket_expenses rows (one receipt covering multiple ticket charges,
+   * e.g. one hotel bill across several days). Single line item is enforced; the
+   * billed total is shown alongside the receipt total so the discrepancy is visible.
+   */
+  const [linkingTicketExpenseIds, setLinkingTicketExpenseIds] = useState<string[]>([]);
+  const [linkingTicketExpenseRows, setLinkingTicketExpenseRows] = useState<any[]>([]);
+  // Selection state for the "Awaiting Receipts" table
+  const [pendingReceiptSelectedIds, setPendingReceiptSelectedIds] = useState<Set<string>>(new Set());
+  const receiptFormSectionRef = useRef<HTMLDivElement>(null);
   const [receiptAutofillNote, setReceiptAutofillNote] = useState<string | null>(null);
   const [receiptAutofillBusy, setReceiptAutofillBusy] = useState(false);
   const [hotelAttachAutofillNote, setHotelAttachAutofillNote] = useState<string | null>(null);
@@ -259,6 +271,12 @@ export default function Expenses() {
   const { data: hotelReimbLinesRaw = [] } = useQuery({
     queryKey: ['hotelTicketLinesNeedingReceipt', user?.id],
     queryFn: () => serviceTicketExpensesService.getHotelReimbursementLinesForUser(user!.id),
+    enabled: !!user?.id,
+  });
+
+  const { data: pendingReceiptLines = [] } = useQuery({
+    queryKey: ['pendingReceiptLines', user?.id],
+    queryFn: () => serviceTicketExpensesService.getPendingReceiptLinesForUser(user!.id),
     enabled: !!user?.id,
   });
 
@@ -1168,7 +1186,65 @@ export default function Expenses() {
     };
   }, [splitWizardOpen, splitFile]);
 
+  /**
+   * Begin "linking mode" — switch the receipt-upload form into a state where the
+   * uploaded receipt will be attached to the selected service_ticket_expenses rows.
+   * Pre-populates description/date/amount based on the selected lines and forces a
+   * single line item (multi-line receipts are only for non-linked submissions).
+   */
+  const startReceiptLinkingForLines = (lineIds: string[]) => {
+    const rows = (pendingReceiptLines as any[]).filter((r) => lineIds.includes(String(r.id)));
+    if (rows.length === 0) return;
+    const totalBilled = rows.reduce(
+      (sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.rate) || 0),
+      0
+    );
+    const types = [...new Set(rows.map((r) => String(r.expense_type || 'Expense')))];
+    const description =
+      rows.length === 1
+        ? rows[0].description || types[0]
+        : `${types.join(' / ')} — ${rows.length} ticket lines`;
+    const earliestDate =
+      rows
+        .map((r: any) => r.service_tickets?.date)
+        .filter(Boolean)
+        .sort()[0] || new Date().toISOString().split('T')[0];
+
+    setLinkingTicketExpenseIds(lineIds);
+    setLinkingTicketExpenseRows(rows);
+    setReceiptForm({
+      expense_date: earliestDate,
+      notes: '',
+      lineItems: [
+        {
+          id: Math.random().toString(36).slice(2),
+          description,
+          amount: totalBilled.toFixed(2),
+          gst: '',
+          is_billable: false,
+        },
+      ],
+    });
+    setUploadError(null);
+    setPendingReceiptSelectedIds(new Set());
+    setTimeout(() => {
+      receiptFormSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  const cancelReceiptLinking = () => {
+    setLinkingTicketExpenseIds([]);
+    setLinkingTicketExpenseRows([]);
+    setReceiptForm(initialReceiptForm);
+    setReceiptFile(null);
+    setReceiptPreviewUrl(null);
+    setUploadError(null);
+    setReceiptAutofillNote(null);
+    setReceiptAutofillBusy(false);
+  };
+
   const handleSubmitReceipt = async () => {
+    const isLinking = linkingTicketExpenseIds.length > 0;
     const validItems = receiptForm.lineItems.filter(
       (item) => item.description.trim() && item.amount && parseFloat(item.amount) > 0
     );
@@ -1182,6 +1258,10 @@ export default function Expenses() {
         return;
       }
     }
+    if (isLinking && validItems.length > 1) {
+      setUploadError('When linking to ticket expenses, the receipt must be a single line item.');
+      return;
+    }
     setIsUploading(true);
     setUploadError(null);
     try {
@@ -1190,8 +1270,9 @@ export default function Expenses() {
         const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
         storagePath = await userExpensesService.uploadReceipt(optimized);
       }
+      let firstCreatedId: string | null = null;
       for (const item of validItems) {
-        await userExpensesService.create({
+        const created = await userExpensesService.create({
           description: item.description.trim(),
           amount: parseFloat(item.amount),
           expense_date: receiptForm.expense_date,
@@ -1201,15 +1282,22 @@ export default function Expenses() {
           notes: receiptForm.notes.trim() || undefined,
           status: 'pending',
         });
+        if (!firstCreatedId) firstCreatedId = String(created?.id || '');
+      }
+      if (isLinking && firstCreatedId) {
+        await serviceTicketExpensesService.linkUserExpense(linkingTicketExpenseIds, firstCreatedId);
       }
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+      queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
       setReceiptFile(null);
       setReceiptPreviewUrl(null);
       setReceiptForm(initialReceiptForm);
       setReceiptAutofillNote(null);
       setReceiptAutofillBusy(false);
+      setLinkingTicketExpenseIds([]);
+      setLinkingTicketExpenseRows([]);
     } catch (err: any) {
       setUploadError(err.message || 'Failed to save expense');
     } finally {
@@ -1315,6 +1403,140 @@ export default function Expenses() {
       <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 24px', color: 'var(--text-primary)' }}>
         Internal Expenses & Receipts
       </h1>
+
+      {(pendingReceiptLines as any[]).length > 0 && (
+        <div
+          style={{
+            marginBottom: '24px',
+            padding: '16px 18px',
+            borderRadius: '10px',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+          }}
+          role="region"
+          aria-label="Ticket expenses awaiting receipts"
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#b45309', marginBottom: '6px' }}>
+                Awaiting Receipts ({(pendingReceiptLines as any[]).length})
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
+                Reimbursable charges you've added to service tickets that don't have a receipt attached yet.
+                Select one or more, then upload the actual receipt to attach it. The receipt amount may differ from
+                what was billed to the client — the company absorbs the difference.
+              </p>
+            </div>
+            {pendingReceiptSelectedIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => startReceiptLinkingForLines([...pendingReceiptSelectedIds])}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  backgroundColor: 'var(--primary-color)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  alignSelf: 'center',
+                }}
+              >
+                Submit receipt for {pendingReceiptSelectedIds.size} item
+                {pendingReceiptSelectedIds.size === 1 ? '' : 's'}
+              </button>
+            )}
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase' }}>
+                  <th style={{ padding: '8px 6px', width: '32px' }}>
+                    <input
+                      type="checkbox"
+                      checked={
+                        (pendingReceiptLines as any[]).length > 0 &&
+                        pendingReceiptSelectedIds.size === (pendingReceiptLines as any[]).length
+                      }
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setPendingReceiptSelectedIds(
+                            new Set((pendingReceiptLines as any[]).map((r) => String(r.id)))
+                          );
+                        } else {
+                          setPendingReceiptSelectedIds(new Set());
+                        }
+                      }}
+                    />
+                  </th>
+                  <th style={{ padding: '8px 6px' }}>Type</th>
+                  <th style={{ padding: '8px 6px' }}>Description</th>
+                  <th style={{ padding: '8px 6px' }}>Ticket</th>
+                  <th style={{ padding: '8px 6px' }}>Date</th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right' }}>Billed to client</th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(pendingReceiptLines as any[]).map((row) => {
+                  const id = String(row.id);
+                  const tn = row.service_tickets?.ticket_number || '—';
+                  const dt = row.service_tickets?.date || '';
+                  const billed = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
+                  const isSelected = pendingReceiptSelectedIds.has(id);
+                  return (
+                    <tr key={id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '10px 6px' }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            setPendingReceiptSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(id);
+                              else next.delete(id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '10px 6px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {row.expense_type || '—'}
+                      </td>
+                      <td style={{ padding: '10px 6px', color: 'var(--text-secondary)' }}>
+                        {row.description || '—'}
+                      </td>
+                      <td style={{ padding: '10px 6px', fontFamily: 'monospace' }}>{tn}</td>
+                      <td style={{ padding: '10px 6px', color: 'var(--text-secondary)' }}>{dt || '—'}</td>
+                      <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 600 }}>${billed.toFixed(2)}</td>
+                      <td style={{ padding: '10px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => startReceiptLinkingForLines([id])}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            backgroundColor: 'var(--primary-color)',
+                            color: 'white',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Submit receipt
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {hotelLinesStillNeedReceipt.length > 0 && (
         <div
@@ -2333,7 +2555,7 @@ export default function Expenses() {
           e.target.value = '';
         }}
       />
-      {!receiptPreviewUrl && (
+      {!receiptPreviewUrl && linkingTicketExpenseIds.length === 0 && (
         <div
           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
           onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
@@ -2367,9 +2589,9 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* Split View: Receipt Preview + Form */}
-      {receiptPreviewUrl && (
-        <div style={{
+      {/* Split View: Receipt Preview + Form (also shown in linking mode without a file yet) */}
+      {(receiptPreviewUrl || linkingTicketExpenseIds.length > 0) && (
+        <div ref={receiptFormSectionRef} style={{
           display: 'flex',
           gap: '20px',
           marginBottom: '24px',
@@ -2379,7 +2601,7 @@ export default function Expenses() {
           overflow: 'hidden',
           minHeight: '400px',
         }}>
-          {/* Left: Receipt Preview */}
+          {/* Left: Receipt Preview (or drop zone if linking mode without file yet) */}
           <div style={{
             flex: 1,
             backgroundColor: 'var(--bg-tertiary)',
@@ -2389,24 +2611,61 @@ export default function Expenses() {
             padding: '16px',
             overflow: 'auto',
           }}>
-            {receiptFile && receiptFile.type === 'application/pdf' ? (
-              <iframe
-                src={receiptPreviewUrl!}
-                title="PDF receipt preview"
-                style={{ width: '100%', height: '100%', minHeight: '380px', border: 'none', borderRadius: '4px' }}
-              />
+            {receiptPreviewUrl ? (
+              receiptFile && receiptFile.type === 'application/pdf' ? (
+                <iframe
+                  src={receiptPreviewUrl}
+                  title="PDF receipt preview"
+                  style={{ width: '100%', height: '100%', minHeight: '380px', border: 'none', borderRadius: '4px' }}
+                />
+              ) : (
+                <img
+                  src={receiptPreviewUrl}
+                  alt="Receipt preview"
+                  style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '4px' }}
+                />
+              )
             ) : (
-              <img
-                src={receiptPreviewUrl!}
-                alt="Receipt preview"
-                style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain', borderRadius: '4px' }}
-              />
+              <div
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
+                onDrop={(e) => {
+                  e.preventDefault(); e.stopPropagation();
+                  setIsDragOver(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) handleFileDrop(file);
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  width: '100%',
+                  minHeight: '360px',
+                  padding: '24px',
+                  borderRadius: '10px',
+                  border: `2px dashed ${isDragOver ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                  backgroundColor: isDragOver ? 'rgba(33, 150, 243, 0.04)' : 'var(--bg-secondary)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--text-tertiary)',
+                  fontSize: '14px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'border-color 0.2s, background-color 0.2s',
+                }}
+              >
+                <div style={{ fontSize: '28px', marginBottom: '8px', opacity: 0.5 }}>&#128206;</div>
+                <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Drop the receipt here</div>
+                <div style={{ fontSize: '12px', marginTop: '4px' }}>or click to upload (image/PDF)</div>
+              </div>
             )}
           </div>
 
           {/* Right: Form Inputs */}
           <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>New Receipt Expense</h3>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              {linkingTicketExpenseIds.length > 0 ? 'Submit Receipt for Ticket Expenses' : 'New Receipt Expense'}
+            </h3>
             {uploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{uploadError}</div>}
             {receiptAutofillBusy && (
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reading receipt…</div>
@@ -2414,6 +2673,95 @@ export default function Expenses() {
             {receiptAutofillNote && !receiptAutofillBusy && (
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{receiptAutofillNote}</div>
             )}
+
+            {linkingTicketExpenseIds.length > 0 && (() => {
+              const billedTotal = linkingTicketExpenseRows.reduce(
+                (sum, r: any) => sum + (Number(r.quantity) || 0) * (Number(r.rate) || 0),
+                0
+              );
+              const receiptAmount = receiptForm.lineItems.reduce(
+                (sum, li) => sum + (parseFloat(li.amount) || 0) + (parseFloat(li.gst) || 0),
+                0
+              );
+              const diff = receiptAmount - billedTotal;
+              return (
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(33, 150, 243, 0.35)',
+                    backgroundColor: 'rgba(33, 150, 243, 0.06)',
+                    fontSize: '12px',
+                    lineHeight: 1.5,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px' }}>
+                    <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>
+                      Linking to {linkingTicketExpenseRows.length} ticket expense
+                      {linkingTicketExpenseRows.length === 1 ? '' : 's'}
+                    </strong>
+                    <button
+                      type="button"
+                      onClick={cancelReceiptLinking}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: 'var(--text-secondary)', textDecoration: 'underline' }}
+                    >
+                      Cancel link
+                    </button>
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', maxHeight: '120px', overflowY: 'auto' }}>
+                    {linkingTicketExpenseRows.map((r: any) => {
+                      const tn = r.service_tickets?.ticket_number || '—';
+                      const dt = r.service_tickets?.date || '';
+                      const billed = (Number(r.quantity) || 0) * (Number(r.rate) || 0);
+                      return (
+                        <li key={r.id} style={{ marginBottom: '2px' }}>
+                          {r.expense_type} — {tn} {dt ? `(${dt})` : ''} <span style={{ float: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>${billed.toFixed(2)}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr 1fr',
+                      gap: '8px',
+                      marginTop: '10px',
+                      paddingTop: '10px',
+                      borderTop: '1px solid rgba(33, 150, 243, 0.25)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>Billed to client</div>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>${billedTotal.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>Your receipt</div>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>${receiptAmount.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>Difference</div>
+                      <div
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          color: Math.abs(diff) < 0.005 ? 'var(--text-tertiary)' : diff > 0 ? '#b45309' : '#15803d',
+                        }}
+                      >
+                        {diff >= 0 ? '+' : ''}${diff.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                  {Math.abs(diff) >= 0.005 && (
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                      {diff > 0
+                        ? 'Receipt is more than billed — company absorbs the difference. You will be reimbursed for the receipt amount.'
+                        : 'Receipt is less than billed — the client was billed more than your actual cost.'}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <div>
               <label style={labelStyle}>Date</label>
@@ -2516,13 +2864,15 @@ export default function Expenses() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => setReceiptForm({ ...receiptForm, lineItems: [...receiptForm.lineItems, newLineItem()] })}
-                style={{ marginTop: '4px', padding: '5px 10px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
-              >
-                + Add line item
-              </button>
+              {linkingTicketExpenseIds.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => setReceiptForm({ ...receiptForm, lineItems: [...receiptForm.lineItems, newLineItem()] })}
+                  style={{ marginTop: '4px', padding: '5px 10px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  + Add line item
+                </button>
+              )}
             </div>
 
             <div>
@@ -2533,12 +2883,16 @@ export default function Expenses() {
             <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '12px' }}>
               <button
                 onClick={() => {
-                  setReceiptFile(null);
-                  setReceiptPreviewUrl(null);
-                  setReceiptForm(initialReceiptForm);
-                  setUploadError(null);
-                  setReceiptAutofillNote(null);
-                  setReceiptAutofillBusy(false);
+                  if (linkingTicketExpenseIds.length > 0) {
+                    cancelReceiptLinking();
+                  } else {
+                    setReceiptFile(null);
+                    setReceiptPreviewUrl(null);
+                    setReceiptForm(initialReceiptForm);
+                    setUploadError(null);
+                    setReceiptAutofillNote(null);
+                    setReceiptAutofillBusy(false);
+                  }
                 }}
                 style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}
               >

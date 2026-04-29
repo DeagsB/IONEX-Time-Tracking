@@ -1978,6 +1978,7 @@ export type ServiceTicketExpenseRow = {
   needs_reimbursement?: boolean;
   reimbursement_status?: string;
   reimbursement_approved_at?: string;
+  user_expense_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -2044,6 +2045,7 @@ export const serviceTicketExpensesService = {
       if (typeof nrRaw === 'boolean') out.needs_reimbursement = nrRaw;
       if (r.reimbursement_status != null) out.reimbursement_status = String(r.reimbursement_status);
       if (r.reimbursement_approved_at != null) out.reimbursement_approved_at = String(r.reimbursement_approved_at);
+      if (r.user_expense_id != null) out.user_expense_id = String(r.user_expense_id);
       if (r.created_at != null) out.created_at = String(r.created_at);
       if (r.updated_at != null) out.updated_at = String(r.updated_at);
       return out;
@@ -2141,6 +2143,65 @@ export const serviceTicketExpensesService = {
         !r.service_tickets?.is_discarded &&
         String(r.service_tickets?.user_id ?? '') === String(userId)
     );
+  },
+
+  /**
+   * Reimbursable ticket expenses owned by the user that have NO receipt attached yet
+   * (`needs_reimbursement = true` AND `user_expense_id IS NULL`). Used by the
+   * "Awaiting Receipts" section in the Expenses page.
+   */
+  async getPendingReceiptLinesForUser(userId: string) {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .select(`
+        id,
+        service_ticket_id,
+        expense_type,
+        description,
+        quantity,
+        rate,
+        unit,
+        actual_cost,
+        needs_reimbursement,
+        reimbursement_status,
+        user_expense_id,
+        created_at,
+        service_tickets!inner (
+          id,
+          user_id,
+          date,
+          ticket_number,
+          is_discarded,
+          customer_id,
+          project_id,
+          customer:customers(id, name),
+          project:projects(id, name, project_number)
+        )
+      `)
+      .eq('needs_reimbursement', true)
+      .is('user_expense_id', null)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).filter(
+      (r: any) =>
+        !r.service_tickets?.is_discarded &&
+        String(r.service_tickets?.user_id ?? '') === String(userId)
+    );
+  },
+
+  /**
+   * Bulk-link a single user_expenses receipt to one or more service_ticket_expenses rows.
+   * Set `userExpenseId` to null to detach.
+   */
+  async linkUserExpense(ticketExpenseIds: string[], userExpenseId: string | null) {
+    if (ticketExpenseIds.length === 0) return { count: 0 };
+    const { error } = await supabase
+      .from('service_ticket_expenses')
+      .update({ user_expense_id: userExpenseId })
+      .in('id', ticketExpenseIds);
+    if (error) throw error;
+    return { count: ticketExpenseIds.length };
   },
 
   async updateReimbursementStatus(id: string, status: 'pending' | 'approved' | 'rejected' | 'paid') {
