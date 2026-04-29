@@ -2150,7 +2150,14 @@ export default function Expenses() {
                   {/* Existing-receipt picker — for the case where a receipt was already submitted before the new linking flow. */}
                   {(() => {
                     const candidates = (expenses as any[])
-                      .filter((e) => !!e.receipt_url && (isAdmin || e.user_id === user?.id))
+                      .filter((e) => {
+                        if (!e.receipt_url) return false;
+                        if (!isAdmin && e.user_id !== user?.id) return false;
+                        // Skip receipts already applied to a ticket directly OR linked via service_ticket_expenses.user_expense_id.
+                        if (e.service_ticket_id) return false;
+                        if (linkedByReceiptId.has(String(e.id))) return false;
+                        return true;
+                      })
                       .sort((a, b) => String(b.expense_date || '').localeCompare(String(a.expense_date || '')))
                       .slice(0, 200);
                     return (
