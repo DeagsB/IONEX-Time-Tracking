@@ -270,6 +270,28 @@ export default function Expenses() {
       .finally(() => { setLoadingEditReceipt(false); });
   }, [editingExpense?.id, editingExpense?.receipt_url]);
 
+  // Auto-mark approved expenses as paid for any past payday that has fully passed.
+  // Runs once per admin session on mount; safe re-runs are idempotent.
+  const hasAutoSweptRef = useRef(false);
+  useEffect(() => {
+    if (!isAdmin || hasAutoSweptRef.current) return;
+    hasAutoSweptRef.current = true;
+    (async () => {
+      try {
+        const [r1, r2] = await Promise.all([
+          userExpensesService.autoMarkPastPaydaysPaid(),
+          serviceTicketExpensesService.autoMarkPastPaydaysPaid(),
+        ]);
+        if ((r1.count || 0) + (r2.count || 0) > 0) {
+          queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+          queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+        }
+      } catch {
+        // Silent fail — admin can still mark paid manually.
+      }
+    })();
+  }, [isAdmin, queryClient]);
+
   // Dashboard action items: open Employee Overview and set tab from URL params
   useEffect(() => {
     const overview = searchParams.get('overview');
@@ -2149,10 +2171,17 @@ export default function Expenses() {
 
                   {/* Existing-receipt picker — for the case where a receipt was already submitted before the new linking flow. */}
                   {(() => {
+                    // Only list receipts uploaded by the same user the selected ticket lines belong to.
+                    // Falls back to the current user if no lines have been selected yet.
+                    const targetUserId =
+                      splitSelectedRows[0]?.service_tickets?.user_id
+                      ?? hotelLinesStillNeedReceipt[0]?.service_tickets?.user_id
+                      ?? user?.id
+                      ?? null;
                     const candidates = (expenses as any[])
                       .filter((e) => {
                         if (!e.receipt_url) return false;
-                        if (!isAdmin && e.user_id !== user?.id) return false;
+                        if (!targetUserId || e.user_id !== targetUserId) return false;
                         // Skip receipts already applied to a ticket directly OR linked via service_ticket_expenses.user_expense_id.
                         if (e.service_ticket_id) return false;
                         if (linkedByReceiptId.has(String(e.id))) return false;
@@ -3795,7 +3824,23 @@ export default function Expenses() {
                         {source === 'receipt' && (() => {
                           const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
                           const hasLinks = linkedRows.length > 0;
+                          // A receipt is "applied" if either: it was directly assigned to a ticket
+                          // (service_ticket_id) via the Apply-to-Ticket flow, OR a service_ticket_expense
+                          // row points back to it via user_expense_id (the new linking flow).
+                          const directTicketNumber = exp.service_tickets?.ticket_number || null;
+                          const isDirectApplied = !!exp.service_ticket_id;
                           const isExpanded = expandedLinkedReceiptId === String(exp.id);
+                          if (isDirectApplied && !hasLinks) {
+                            // Already applied via the legacy Apply-to-Ticket flow — show a badge instead of Link.
+                            return (
+                              <span
+                                style={{ marginLeft: '6px', padding: '3px 8px', backgroundColor: 'rgba(34, 197, 94, 0.12)', color: '#15803d', border: '1px solid rgba(34, 197, 94, 0.4)', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}
+                                title={`Applied to ticket ${directTicketNumber ?? ''}`}
+                              >
+                                ✓ Applied{directTicketNumber ? ` to ${directTicketNumber}` : ''}
+                              </span>
+                            );
+                          }
                           return (
                             <>
                               {hasLinks && (

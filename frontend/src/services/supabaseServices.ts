@@ -2294,6 +2294,29 @@ export const serviceTicketExpensesService = {
    * Mark approved ticket reimbursement expenses (needs_reimbursement) as paid when the ticket's period has passed
    * and they were approved before/during the period. Skips re-approved after period end.
    */
+  /**
+   * Auto-sweep: mark approved reimbursable ticket expenses as paid when the pay
+   * period that included them has fully passed (today is past the period's payday).
+   * Pay periods are 14-day stripes anchored on 2026-01-19; payday is 5 days after
+   * the period end.
+   */
+  async autoMarkPastPaydaysPaid(): Promise<{ count: number; cutoff: string | null }> {
+    const ANCHOR_MS = new Date(2026, 0, 19).getTime();
+    const PAYDAY_OFFSET_DAYS = 18; // period_length(14) - 1 + days_until_payday(5) = 18
+    const MS_PER_DAY = 86400000;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const refPaydayMs = ANCHOR_MS + PAYDAY_OFFSET_DAYS * MS_PER_DAY;
+    const periodsSince = (today.getTime() - refPaydayMs) / MS_PER_DAY / 14;
+    if (periodsSince < 0) return { count: 0, cutoff: null };
+    const idx = Math.floor(periodsSince);
+    const periodEndMs = ANCHOR_MS + (idx * 14 + 13) * MS_PER_DAY;
+    const cutoffDate = new Date(periodEndMs);
+    const cutoff = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
+    const result = await this.markReimbursementPaidForPeriod('2026-01-19', cutoff);
+    return { count: result.count, cutoff };
+  },
+
   async markReimbursementPaidForPeriod(startDate: string, endDate: string): Promise<{ count: number }> {
     const endOfDay = endDate + 'T23:59:59.999Z';
     const { data: rows, error: selectError } = await supabase
@@ -2590,6 +2613,40 @@ export const userExpensesService = {
   /**
    * Mark unpaid (pending) receipt expenses as paid for a given period.
    */
+  /**
+   * Auto-sweep: mark approved receipt expenses as paid when the pay period that
+   * contained their expense_date has fully passed. Conservative — only flips rows
+   * with status='approved' so pending/rejected stay alone.
+   */
+  async autoMarkPastPaydaysPaid(): Promise<{ count: number; cutoff: string | null }> {
+    const ANCHOR_MS = new Date(2026, 0, 19).getTime();
+    const PAYDAY_OFFSET_DAYS = 18;
+    const MS_PER_DAY = 86400000;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const refPaydayMs = ANCHOR_MS + PAYDAY_OFFSET_DAYS * MS_PER_DAY;
+    const periodsSince = (today.getTime() - refPaydayMs) / MS_PER_DAY / 14;
+    if (periodsSince < 0) return { count: 0, cutoff: null };
+    const idx = Math.floor(periodsSince);
+    const periodEndMs = ANCHOR_MS + (idx * 14 + 13) * MS_PER_DAY;
+    const cutoffDate = new Date(periodEndMs);
+    const cutoff = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
+    const { data: rows, error: selectError } = await supabase
+      .from('user_expenses')
+      .select('id')
+      .eq('status', 'approved')
+      .lte('expense_date', cutoff);
+    if (selectError) throw selectError;
+    if (!rows || rows.length === 0) return { count: 0, cutoff };
+    const ids = rows.map((r: any) => r.id);
+    const { error: updateError } = await supabase
+      .from('user_expenses')
+      .update({ status: 'paid' })
+      .in('id', ids);
+    if (updateError) throw updateError;
+    return { count: ids.length, cutoff };
+  },
+
   async markPaidForPeriod(startDate: string, endDate: string): Promise<{ count: number }> {
     const { data: rows, error: selectError } = await supabase
       .from('user_expenses')
