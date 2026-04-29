@@ -6629,25 +6629,25 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               editingExpense.expense_type === 'Expenses' &&
                               editingExpense.needs_reimbursement && (
                               <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                                Other covers costs outside the usual travel/laptop lines. If this needs reimbursement, enter a short description, then drop the receipt below—you’ll enter amount, GST, and markup there; that sets your actual cost and the billed rate on the ticket.
+                                Enter the amount billed to the client now. Drop the receipt below to also set your actual cost and markup, or use Add and attach the receipt later from the line ("Attach receipt"). The line is reimbursable either way.
                               </div>
                             )}
                           </div>
-                          {!(
-                            !editingExpense.id &&
-                            editingExpense.needs_reimbursement &&
-                            editingExpense.expense_type === 'Expenses'
-                          ) && (
+                          {(
                             <div
                               style={{
                                 display: 'grid',
                                 gridTemplateColumns:
-                                  editingExpense.expense_type === 'Hotel' ? '1fr' : '1fr 1fr',
+                                  editingExpense.expense_type === 'Hotel' ||
+                                  (editingExpense.expense_type === 'Expenses' && editingExpense.needs_reimbursement && !editingExpense.id)
+                                    ? '1fr'
+                                    : '1fr 1fr',
                                 gap: '12px',
                                 marginBottom: '12px',
                               }}
                             >
-                              {editingExpense.expense_type !== 'Hotel' && (
+                              {editingExpense.expense_type !== 'Hotel' &&
+                                !(editingExpense.expense_type === 'Expenses' && editingExpense.needs_reimbursement && !editingExpense.id) && (
                                 <div>
                                   <label style={labelStyle}>Quantity</label>
                                   <input
@@ -6671,7 +6671,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               )}
                               <div>
                                 <label style={labelStyle}>
-                                  {editingExpense.expense_type === 'Hotel'
+                                  {editingExpense.expense_type === 'Hotel' ||
+                                  (editingExpense.expense_type === 'Expenses' && editingExpense.needs_reimbursement && !editingExpense.id)
                                     ? 'Amount billed to client ($)'
                                     : 'Billed Rate ($)'}
                                 </label>
@@ -6699,6 +6700,13 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                       : 'Hotel lines bill as 1 × this amount (quantity is fixed at 1).'}
                                   </div>
                                 )}
+                                {editingExpense.expense_type === 'Expenses' &&
+                                  editingExpense.needs_reimbursement &&
+                                  !editingExpense.id && (
+                                    <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
+                                      What the client is charged on this ticket (line bills as 1 × this amount). When you attach the receipt later, markup auto-fills as this minus receipt total.
+                                    </div>
+                                  )}
                               </div>
                             </div>
                           )}
@@ -6735,7 +6743,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                     : editingExpense.expense_type === 'Equipment'
                                       ? 'Needs reimbursement'
                                       : editingExpense.expense_type === 'Expenses'
-                                        ? 'Needs reimbursement (receipt required—drop below after description)'
+                                        ? 'Needs reimbursement (attach receipt now or add the line and attach later)'
                                         : 'Needs reimbursement'}
                               </label>
                             </div>
@@ -6752,7 +6760,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   }}
                                 >
                                   {editingExpense.expense_type === 'Expenses'
-                                    ? 'Receipt (opens amount, GST and markup)'
+                                    ? 'Optional: attach receipt now (sets actual cost & markup) — or use Add and attach later'
                                     : 'Optional: attach receipt now — or use Add, then "Attach receipt" on the line when your final bill arrives'}
                                 </label>
                                 <input
@@ -6813,7 +6821,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                     cursor: 'pointer',
                                   }}
                                 >
-                                  Drop receipt here or click to choose (optional for hotel if you use Add first)
+                                  Drop receipt here or click to choose (optional — you can also Add the line and attach later)
                                 </div>
                                 {ticketExpenseFormIssues.receipt && (
                                   <div style={{ marginTop: '6px', fontSize: '12px', color: '#ef5350', lineHeight: 1.35 }}>
@@ -6855,16 +6863,19 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   });
                                   return;
                                 }
-                                // Mileage/Truck Hours, Laptop/Basic Equipment, or Hotel + reimbursement: add line directly. Hotel receipt can be attached later via "Attach receipt".
+                                // Mileage/Truck Hours, Laptop/Basic Equipment, Hotel, or Other + reimbursement: add line directly.
+                                // Receipt can be attached later via "Attach receipt" / Awaiting Receipts flow.
                                 if (
                                   !editingExpense.id &&
                                   editingExpense.needs_reimbursement &&
                                   (editingExpense.expense_type === 'Travel' ||
                                     editingExpense.expense_type === 'Equipment' ||
-                                    editingExpense.expense_type === 'Hotel')
+                                    editingExpense.expense_type === 'Hotel' ||
+                                    editingExpense.expense_type === 'Expenses')
                                 ) {
                                   if (
-                                    editingExpense.expense_type === 'Hotel' &&
+                                    (editingExpense.expense_type === 'Hotel' ||
+                                      editingExpense.expense_type === 'Expenses') &&
                                     !(Number(editingExpense.rate) > 0)
                                   ) {
                                     setTicketExpenseFormIssues({
@@ -6874,14 +6885,16 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   }
                                   clearTicketExpenseFormIssues();
                                   try {
-                                    const isHotelAdd = editingExpense.expense_type === 'Hotel';
+                                    const isFixedQtyOne =
+                                      editingExpense.expense_type === 'Hotel' ||
+                                      editingExpense.expense_type === 'Expenses';
                                     await createExpenseMutation.mutateAsync({
                                       service_ticket_id: currentTicketRecordId,
                                       expense_type: editingExpense.expense_type,
                                       description: editingExpense.description.trim(),
-                                      quantity: isHotelAdd ? 1 : Number(editingExpense.quantity) || 0,
+                                      quantity: isFixedQtyOne ? 1 : Number(editingExpense.quantity) || 0,
                                       rate: Number(editingExpense.rate) || 0,
-                                      unit: isHotelAdd ? undefined : editingExpense.unit?.trim() || undefined,
+                                      unit: isFixedQtyOne ? undefined : editingExpense.unit?.trim() || undefined,
                                       actual_cost: Number(editingExpense.actual_cost) || 0,
                                       needs_reimbursement: true,
                                       reimbursement_status: initialReimbursementStatusForTicketExpense({
@@ -6904,18 +6917,6 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                     }
                                     setTicketExpenseFormIssues({ save: message });
                                   }
-                                  return;
-                                }
-                                // Other + reimbursement: receipt flow only (not Add)
-                                if (
-                                  !editingExpense.id &&
-                                  editingExpense.needs_reimbursement &&
-                                  editingExpense.expense_type === 'Expenses'
-                                ) {
-                                  setTicketExpenseFormIssues({
-                                    receipt:
-                                      'Use the receipt area below: drop or select a file to open amount, GST, and markup. Saving there adds this line to the ticket.',
-                                  });
                                   return;
                                 }
                                 try {
