@@ -2146,6 +2146,48 @@ export const serviceTicketExpensesService = {
   },
 
   /**
+   * Admin variant: ALL employees' reimbursable ticket expenses with no receipt
+   * attached yet. Each row carries the joined ticket + employee user info so the
+   * UI can render an employee column and group/filter by employee.
+   */
+  async getAllPendingReceiptLines() {
+    const { data, error } = await supabase
+      .from('service_ticket_expenses')
+      .select(`
+        id,
+        service_ticket_id,
+        expense_type,
+        description,
+        quantity,
+        rate,
+        unit,
+        actual_cost,
+        needs_reimbursement,
+        reimbursement_status,
+        user_expense_id,
+        created_at,
+        service_tickets!inner (
+          id,
+          user_id,
+          date,
+          ticket_number,
+          is_discarded,
+          customer_id,
+          project_id,
+          customer:customers(id, name),
+          project:projects(id, name, project_number),
+          user:users!service_tickets_user_id_fkey(id, first_name, last_name, email)
+        )
+      `)
+      .eq('needs_reimbursement', true)
+      .is('user_expense_id', null)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).filter((r: any) => !r.service_tickets?.is_discarded);
+  },
+
+  /**
    * Reimbursable ticket expenses owned by the user that have NO receipt attached yet
    * (`needs_reimbursement = true` AND `user_expense_id IS NULL`). Used by the
    * "Awaiting Receipts" section in the Expenses page.

@@ -300,10 +300,37 @@ export default function Expenses() {
   });
 
   const { data: pendingReceiptLines = [] } = useQuery({
-    queryKey: ['pendingReceiptLines', user?.id],
-    queryFn: () => serviceTicketExpensesService.getPendingReceiptLinesForUser(user!.id),
+    queryKey: ['pendingReceiptLines', isAdmin ? 'all' : user?.id],
+    queryFn: () =>
+      isAdmin
+        ? serviceTicketExpensesService.getAllPendingReceiptLines()
+        : serviceTicketExpensesService.getPendingReceiptLinesForUser(user!.id),
     enabled: !!user?.id,
   });
+
+  /** Admin filter for the Awaiting Receipts section — by employee user_id. 'all' = no filter. */
+  const [pendingReceiptEmpFilter, setPendingReceiptEmpFilter] = useState<string>('all');
+
+  const pendingReceiptLinesView = useMemo(() => {
+    const arr = pendingReceiptLines as any[];
+    if (!isAdmin || pendingReceiptEmpFilter === 'all') return arr;
+    return arr.filter((r) => String(r.service_tickets?.user_id ?? '') === pendingReceiptEmpFilter);
+  }, [pendingReceiptLines, isAdmin, pendingReceiptEmpFilter]);
+
+  const pendingReceiptEmpOptions = useMemo(() => {
+    if (!isAdmin) return [] as { id: string; name: string }[];
+    const map = new Map<string, string>();
+    for (const r of pendingReceiptLines as any[]) {
+      const u = r.service_tickets?.user;
+      const id = String(r.service_tickets?.user_id ?? '');
+      if (!id) continue;
+      if (!map.has(id)) {
+        const name = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown' : 'Unknown';
+        map.set(id, name);
+      }
+    }
+    return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [pendingReceiptLines, isAdmin]);
 
   /** Pending receipt lines for the user whose receipt is being linked (admin flow). */
   const linkReceiptUserId = linkReceiptModal?.receipt?.user_id ?? null;
@@ -1529,19 +1556,35 @@ export default function Expenses() {
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
             <div>
               <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#b45309', marginBottom: '6px' }}>
-                Awaiting Receipts ({(pendingReceiptLines as any[]).length})
+                Awaiting Receipts ({pendingReceiptLinesView.length}{isAdmin && pendingReceiptEmpFilter !== 'all' ? ` of ${(pendingReceiptLines as any[]).length}` : ''})
+                {isAdmin && <span style={{ marginLeft: '8px', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(33, 150, 243, 0.18)', color: '#2196F3' }}>ADMIN VIEW</span>}
               </div>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
-                Reimbursable charges you've added to service tickets that don't have a receipt attached yet.
-                Select one or more, then upload the actual receipt to attach it. The receipt amount may differ from
-                what was billed to the client — the company absorbs the difference.
+                {isAdmin
+                  ? "All reimbursable ticket charges across employees that don't have a receipt attached yet. Filter by employee, then submit a receipt or link an existing one."
+                  : "Reimbursable charges you've added to service tickets that don't have a receipt attached yet. Select one or more, then upload the actual receipt to attach it. The receipt amount may differ from what was billed to the client — the company absorbs the difference."}
               </p>
               <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-primary)', lineHeight: 1.45, maxWidth: '720px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0, 137, 123, 0.08)', border: '1px solid rgba(0, 137, 123, 0.3)' }}>
                 <strong style={{ color: '#00897b' }}>Reimbursement note:</strong> as soon as a receipt is attached, this expense is included on the next payroll for reimbursement to the employee. Lines that don't need a receipt (Mileage, Truck Hours, Per Diem, basic Equipment) are reimbursed automatically on the next payroll once flagged needs-reimbursement.
               </p>
+              {isAdmin && pendingReceiptEmpOptions.length > 0 && (
+                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Employee</label>
+                  <select
+                    value={pendingReceiptEmpFilter}
+                    onChange={(e) => { setPendingReceiptEmpFilter(e.target.value); setPendingReceiptSelectedIds(new Set()); }}
+                    style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+                  >
+                    <option value="all">All employees</option>
+                    {pendingReceiptEmpOptions.map((emp) => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
             {pendingReceiptSelectedIds.size > 0 && (() => {
-              const selectedHotelIds = (pendingReceiptLines as any[])
+              const selectedHotelIds = pendingReceiptLinesView
                 .filter((r) => pendingReceiptSelectedIds.has(String(r.id)) && String(r.expense_type) === 'Hotel')
                 .map((r) => String(r.id));
               const canSplitHotel = selectedHotelIds.length >= 2;
@@ -1596,13 +1639,13 @@ export default function Expenses() {
                     <input
                       type="checkbox"
                       checked={
-                        (pendingReceiptLines as any[]).length > 0 &&
-                        pendingReceiptSelectedIds.size === (pendingReceiptLines as any[]).length
+                        pendingReceiptLinesView.length > 0 &&
+                        pendingReceiptSelectedIds.size === pendingReceiptLinesView.length
                       }
                       onChange={(e) => {
                         if (e.target.checked) {
                           setPendingReceiptSelectedIds(
-                            new Set((pendingReceiptLines as any[]).map((r) => String(r.id)))
+                            new Set(pendingReceiptLinesView.map((r) => String(r.id)))
                           );
                         } else {
                           setPendingReceiptSelectedIds(new Set());
@@ -1610,6 +1653,7 @@ export default function Expenses() {
                       }}
                     />
                   </th>
+                  {isAdmin && <th style={{ padding: '8px 6px' }}>Employee</th>}
                   <th style={{ padding: '8px 6px' }}>Type</th>
                   <th style={{ padding: '8px 6px' }}>Description</th>
                   <th style={{ padding: '8px 6px' }}>Ticket</th>
@@ -1619,7 +1663,7 @@ export default function Expenses() {
                 </tr>
               </thead>
               <tbody>
-                {(pendingReceiptLines as any[]).map((row) => {
+                {pendingReceiptLinesView.map((row) => {
                   const id = String(row.id);
                   const tn = row.service_tickets?.ticket_number || '—';
                   const dt = row.service_tickets?.date || '';
@@ -1641,13 +1685,31 @@ export default function Expenses() {
                           }}
                         />
                       </td>
+                      {isAdmin && (() => {
+                        const u = row.service_tickets?.user;
+                        const empName = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown' : 'Unknown';
+                        return (
+                          <td style={{ padding: '10px 6px', color: 'var(--text-primary)', fontWeight: 600 }}>{empName}</td>
+                        );
+                      })()}
                       <td style={{ padding: '10px 6px', fontWeight: 600, color: 'var(--text-primary)' }}>
                         {row.expense_type || '—'}
                       </td>
                       <td style={{ padding: '10px 6px', color: 'var(--text-secondary)' }}>
                         {row.description || '—'}
                       </td>
-                      <td style={{ padding: '10px 6px', fontFamily: 'monospace' }}>{tn}</td>
+                      <td style={{ padding: '10px 6px', fontFamily: 'monospace' }}>
+                        {row.service_ticket_id ? (
+                          <button
+                            type="button"
+                            onClick={() => setViewingTicketRecordId(String(row.service_ticket_id))}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-color)', fontWeight: 600, fontFamily: 'monospace', fontSize: 'inherit', textDecoration: 'underline' }}
+                            title="Open service ticket"
+                          >
+                            {tn}
+                          </button>
+                        ) : tn}
+                      </td>
                       <td style={{ padding: '10px 6px', color: 'var(--text-secondary)' }}>{dt || '—'}</td>
                       <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: 600 }}>${billed.toFixed(2)}</td>
                       <td style={{ padding: '10px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
