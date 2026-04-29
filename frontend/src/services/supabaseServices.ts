@@ -2319,6 +2319,15 @@ export const serviceTicketExpensesService = {
     const cutoffDate = new Date(periodEndMs);
     const cutoff = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
 
+    // Identify employees opted-in to approval.
+    const { data: approvalEmps } = await supabase
+      .from('employees')
+      .select('user_id')
+      .eq('expenses_require_approval', true);
+    const approvalUserIds = new Set(
+      (approvalEmps || []).map((e: any) => String(e.user_id)).filter(Boolean)
+    );
+
     const { data: rows, error: selectError } = await supabase
       .from('service_ticket_expenses')
       .select(`
@@ -2328,7 +2337,7 @@ export const serviceTicketExpensesService = {
         actual_cost,
         user_expense_id,
         reimbursement_status,
-        service_tickets!inner ( date, is_discarded )
+        service_tickets!inner ( date, is_discarded, user_id )
       `)
       .eq('needs_reimbursement', true);
     if (selectError) throw selectError;
@@ -2345,6 +2354,9 @@ export const serviceTicketExpensesService = {
         const hasReceipt = (Number(r.actual_cost) || 0) > 0 || !!r.user_expense_id;
         if (!hasReceipt) return false;
       }
+      // Per-employee opt-in approval gate.
+      const ownerId = String(r.service_tickets?.user_id ?? '');
+      if (approvalUserIds.has(ownerId) && r.reimbursement_status !== 'approved') return false;
       return true;
     });
 
@@ -2656,10 +2668,9 @@ export const userExpensesService = {
    */
   /**
    * Auto-sweep: mark receipt expenses as paid when the pay period that contained
-   * their expense_date has fully passed. The approval workflow (pending/approved/
-   * rejected) is currently bypassed — every non-paid receipt flips to paid past
-   * the cutoff. (When per-employee approval is reintroduced later, gate this on
-   * status='approved' for those employees only.)
+   * their expense_date has fully passed. By default (employees.expenses_require_approval = false)
+   * any non-paid receipt flips to paid past the cutoff. For employees flagged as
+   * requiring approval, only status='approved' rows are flipped.
    */
   async autoMarkPastPaydaysPaid(): Promise<{ count: number; cutoff: string | null }> {
     const ANCHOR_MS = new Date(2026, 0, 19).getTime();
@@ -2674,14 +2685,41 @@ export const userExpensesService = {
     const periodEndMs = ANCHOR_MS + (idx * 14 + 13) * MS_PER_DAY;
     const cutoffDate = new Date(periodEndMs);
     const cutoff = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
-    const { data: rows, error: selectError } = await supabase
+
+    // Identify employees opted-in to the approval workflow.
+    const { data: approvalEmps } = await supabase
+      .from('employees')
+      .select('user_id')
+      .eq('expenses_require_approval', true);
+    const approvalUserIds = (approvalEmps || []).map((e: any) => e.user_id).filter(Boolean);
+
+    // Pass A: default (no approval needed) — flip any non-paid past cutoff.
+    let queryA = supabase
       .from('user_expenses')
       .select('id')
       .neq('status', 'paid')
       .lte('expense_date', cutoff);
-    if (selectError) throw selectError;
-    if (!rows || rows.length === 0) return { count: 0, cutoff };
-    const ids = rows.map((r: any) => r.id);
+    if (approvalUserIds.length > 0) {
+      queryA = queryA.not('user_id', 'in', `(${approvalUserIds.map((id) => `"${id}"`).join(',')})`);
+    }
+    const { data: rowsA, error: errA } = await queryA;
+    if (errA) throw errA;
+
+    // Pass B: approval-required employees — only status='approved' flips.
+    let rowsB: any[] = [];
+    if (approvalUserIds.length > 0) {
+      const { data, error } = await supabase
+        .from('user_expenses')
+        .select('id')
+        .eq('status', 'approved')
+        .lte('expense_date', cutoff)
+        .in('user_id', approvalUserIds);
+      if (error) throw error;
+      rowsB = data || [];
+    }
+
+    const ids = [...(rowsA || []), ...rowsB].map((r: any) => r.id);
+    if (ids.length === 0) return { count: 0, cutoff };
     const { error: updateError } = await supabase
       .from('user_expenses')
       .update({ status: 'paid' })

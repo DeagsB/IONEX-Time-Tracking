@@ -3822,7 +3822,49 @@ export default function Expenses() {
                             Mark Unpaid
                           </button>
                         )}
+                        {source === 'ticket' && (() => {
+                          // Receipt-required types (Hotel, Other) flag a "Receipt pending" badge when
+                          // they're reimbursable but no receipt is attached (no actual_cost AND no
+                          // user_expense_id). Click opens the service ticket so admin can attach.
+                          if (!exp.needs_reimbursement) return null;
+                          const t = String(exp.expense_type || '').toLowerCase();
+                          const desc = String(exp.description || '').toLowerCase();
+                          const needsReceipt = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
+                          if (!needsReceipt) return null;
+                          const hasReceipt =
+                            (Number(exp.actual_cost) || 0) > 0 || !!exp.user_expense_id;
+                          if (hasReceipt) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (exp.service_ticket_id) {
+                                  setViewingTicketRecordId(String(exp.service_ticket_id));
+                                }
+                              }}
+                              style={{
+                                marginLeft: '6px',
+                                padding: '3px 8px',
+                                backgroundColor: 'rgba(255, 152, 0, 0.18)',
+                                color: '#e65100',
+                                border: '1px solid rgba(255, 152, 0, 0.45)',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title="Receipt not attached yet — click to open ticket and attach"
+                            >
+                              📎 Receipt pending
+                            </button>
+                          );
+                        })()}
                         {source === 'receipt' && (() => {
+                          // Non-billable receipts (e.g. internal tools, supplies kept for shop)
+                          // never get linked to a service-ticket expense — hide all link UI.
+                          if (!exp.is_billable) return null;
                           const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
                           const hasLinks = linkedRows.length > 0;
                           // A receipt is "applied" if either: it was directly assigned to a ticket

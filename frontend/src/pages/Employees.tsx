@@ -30,6 +30,7 @@ export default function Employees() {
     truck_reimb_rate: '1.00',
     per_diem_reimb_rate: '1.00',
     employment_type: 'Employee',
+    expenses_require_approval: false,
     sick_pay_pct: '0',
     stat_holiday_pay_pct: '0',
     vacation_pay_pct: '0',
@@ -85,6 +86,7 @@ export default function Employees() {
         truck_reimb_rate: data.truck_reimb_rate ? parseFloat(data.truck_reimb_rate) : 1.00,
         per_diem_reimb_rate: data.per_diem_reimb_rate ? parseFloat(data.per_diem_reimb_rate) : 1.00,
         employment_type: data.employment_type || 'Employee',
+        expenses_require_approval: !!data.expenses_require_approval,
         sick_pay_pct: data.sick_pay_pct ? parseFloat(data.sick_pay_pct) : 0,
         stat_holiday_pay_pct: data.stat_holiday_pay_pct ? parseFloat(data.stat_holiday_pay_pct) : 0,
         vacation_pay_pct: data.vacation_pay_pct ? parseFloat(data.vacation_pay_pct) : 0,
@@ -140,6 +142,7 @@ export default function Employees() {
         truck_reimb_rate: data.truck_reimb_rate ? parseFloat(data.truck_reimb_rate) : 1.00,
         per_diem_reimb_rate: data.per_diem_reimb_rate ? parseFloat(data.per_diem_reimb_rate) : 1.00,
         employment_type: data.employment_type || 'Employee',
+        expenses_require_approval: !!data.expenses_require_approval,
         sick_pay_pct: data.sick_pay_pct ? parseFloat(data.sick_pay_pct) : 0,
         stat_holiday_pay_pct: data.stat_holiday_pay_pct ? parseFloat(data.stat_holiday_pay_pct) : 0,
         vacation_pay_pct: data.vacation_pay_pct ? parseFloat(data.vacation_pay_pct) : 0,
@@ -193,6 +196,7 @@ export default function Employees() {
       truck_reimb_rate: '1.00',
       per_diem_reimb_rate: '1.00',
       employment_type: 'Employee',
+    expenses_require_approval: false,
       sick_pay_pct: '0',
       stat_holiday_pay_pct: '0',
       vacation_pay_pct: '0',
@@ -219,6 +223,7 @@ export default function Employees() {
       truck_reimb_rate: employee.truck_reimb_rate?.toString() || '1.00',
       per_diem_reimb_rate: employee.per_diem_reimb_rate?.toString() || '1.00',
       employment_type: employee.employment_type || 'Employee',
+      expenses_require_approval: !!employee.expenses_require_approval,
       sick_pay_pct: employee.sick_pay_pct?.toString() || '0',
       stat_holiday_pay_pct: employee.stat_holiday_pay_pct?.toString() || '0',
       vacation_pay_pct: employee.vacation_pay_pct?.toString() || '0',
@@ -378,6 +383,24 @@ export default function Employees() {
                     Contractors are invoiced with 5% GST. They do not receive employee benefits or contribute to EI/CPP.
                   </div>
                 )}
+
+                <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      style={{ marginTop: '2px' }}
+                      checked={!!formData.expenses_require_approval}
+                      onChange={(e) => setFormData({ ...formData, expenses_require_approval: e.target.checked })}
+                    />
+                    <span>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Expenses require approval</span>
+                      <div style={{ marginTop: '2px', fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                        Off (default): receipts and reimbursable ticket expenses auto-mark paid once the pay period's payday passes.
+                        On: an admin must explicitly approve each expense (status = approved) before the auto-sweep will mark it paid.
+                      </div>
+                    </span>
+                  </label>
+                </div>
               </>
             )}
 
