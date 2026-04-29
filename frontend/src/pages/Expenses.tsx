@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, Fragment, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { userExpensesService, serviceTicketExpensesService, employeesService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
 import { optimizeImage } from '../utils/imageOptimizer';
@@ -438,10 +438,12 @@ export default function Expenses() {
     }
   };
 
-  const openSplitWizard = () => {
-    const ids = hotelLinesStillNeedReceipt.map((r: any) => String(r.id));
+  const openSplitWizard = (preselectedIds?: string[]) => {
+    const allHotelIds = hotelLinesStillNeedReceipt.map((r: any) => String(r.id));
+    const fromArg = (preselectedIds || []).filter((id) => allHotelIds.includes(id));
+    const initial = fromArg.length >= 2 ? fromArg : allHotelIds.length >= 2 ? allHotelIds : [];
     setSplitWizardStep(1);
-    setSplitSelectedLineIds(new Set(ids.length >= 2 ? ids : []));
+    setSplitSelectedLineIds(new Set(initial));
     setSplitFile(null);
     setSplitPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -1427,26 +1429,52 @@ export default function Expenses() {
                 what was billed to the client — the company absorbs the difference.
               </p>
             </div>
-            {pendingReceiptSelectedIds.size > 0 && (
-              <button
-                type="button"
-                onClick={() => startReceiptLinkingForLines([...pendingReceiptSelectedIds])}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '6px',
-                  backgroundColor: 'var(--primary-color)',
-                  color: 'white',
-                  border: 'none',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  alignSelf: 'center',
-                }}
-              >
-                Submit receipt for {pendingReceiptSelectedIds.size} item
-                {pendingReceiptSelectedIds.size === 1 ? '' : 's'}
-              </button>
-            )}
+            {pendingReceiptSelectedIds.size > 0 && (() => {
+              const selectedHotelIds = (pendingReceiptLines as any[])
+                .filter((r) => pendingReceiptSelectedIds.has(String(r.id)) && String(r.expense_type) === 'Hotel')
+                .map((r) => String(r.id));
+              const canSplitHotel = selectedHotelIds.length >= 2;
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, alignSelf: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => startReceiptLinkingForLines([...pendingReceiptSelectedIds])}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      backgroundColor: 'var(--primary-color)',
+                      color: 'white',
+                      border: 'none',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Submit receipt for {pendingReceiptSelectedIds.size} item
+                    {pendingReceiptSelectedIds.size === 1 ? '' : 's'}
+                  </button>
+                  {canSplitHotel && (
+                    <button
+                      type="button"
+                      onClick={() => openSplitWizard(selectedHotelIds)}
+                      title="One hotel bill covering several nights — splits subtotal+tax across selected hotel lines proportionally"
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(245, 158, 11, 0.6)',
+                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                        color: '#92400e',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Split hotel bill across {selectedHotelIds.length} nights
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -1527,146 +1555,6 @@ export default function Expenses() {
                           }}
                         >
                           Submit receipt
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {hotelLinesStillNeedReceipt.length > 0 && (
-        <div
-          style={{
-            marginBottom: '24px',
-            padding: '16px 18px',
-            borderRadius: '10px',
-            border: '1px solid rgba(245, 158, 11, 0.45)',
-            backgroundColor: 'rgba(245, 158, 11, 0.08)',
-          }}
-          role="region"
-          aria-label="Hotel lines waiting for a receipt"
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#b45309', marginBottom: '6px' }}>
-                Receipt still needed — service ticket hotel
-              </div>
-              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
-                Use <strong>Add receipt</strong> for a single ticket. If the hotel sent <strong>one bill</strong> that covers several nights (each night on its own service ticket), use <strong>Split hotel bill across tickets</strong> — we split the room subtotal and tax by how much you billed on each ticket, attach the same PDF to each, and set markup per line automatically.
-              </p>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, alignSelf: 'center' }}>
-              {hotelLinesStillNeedReceipt.length >= 2 && (
-                <button
-                  type="button"
-                  onClick={openSplitWizard}
-                  style={{
-                    padding: '8px 14px',
-                    borderRadius: '6px',
-                    border: '1px solid rgba(245, 158, 11, 0.6)',
-                    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                    color: '#92400e',
-                    fontSize: '13px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Split hotel bill across tickets
-                </button>
-              )}
-              <Link
-                to="/service-tickets?filterNeedsReceipt=1"
-                onClick={() => {
-                  try {
-                    const ids = [
-                      ...new Set(hotelLinesStillNeedReceipt.map((r: any) => String(r.service_ticket_id))),
-                    ];
-                    sessionStorage.setItem(ST_NEEDS_RECEIPT_TICKET_IDS_KEY, JSON.stringify(ids));
-                  } catch {
-                    /* ignore */
-                  }
-                }}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '6px',
-                  backgroundColor: 'var(--primary-color)',
-                  color: 'white',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  textDecoration: 'none',
-                  textAlign: 'center',
-                }}
-              >
-                Open Service Tickets
-              </Link>
-            </div>
-          </div>
-          <div style={{ marginTop: '14px', overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase' }}>
-                  <th style={{ padding: '8px 6px' }}>Description</th>
-                  <th style={{ padding: '8px 6px' }}>Ticket</th>
-                  <th style={{ padding: '8px 6px' }}>Date</th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right' }}>Billed to client</th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hotelLinesStillNeedReceipt.map((row: any) => {
-                  const tn = row.service_tickets?.ticket_number || '—';
-                  const dt = row.service_tickets?.date || '';
-                  const billed = (Number(row.quantity) || 0) * (Number(row.rate) || 0);
-                  return (
-                    <tr key={row.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '10px 6px', fontWeight: '600', color: 'var(--text-primary)' }}>{row.description || 'Hotel'}</td>
-                      <td style={{ padding: '10px 6px', fontFamily: 'monospace' }}>{tn}</td>
-                      <td style={{ padding: '10px 6px', color: 'var(--text-secondary)' }}>{dt || '—'}</td>
-                      <td style={{ padding: '10px 6px', textAlign: 'right', fontWeight: '600' }}>${billed.toFixed(2)}</td>
-                      <td style={{ padding: '10px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => openHotelAttachModal(row)}
-                          style={{
-                            marginRight: '8px',
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            border: 'none',
-                            backgroundColor: 'var(--primary-color)',
-                            color: 'white',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Add receipt
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            try {
-                              sessionStorage.setItem(ST_PENDING_OPEN_RECORD_KEY, String(row.service_ticket_id));
-                            } catch {
-                              /* ignore */
-                            }
-                            navigate('/service-tickets');
-                          }}
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-color)',
-                            backgroundColor: 'var(--bg-secondary)',
-                            color: 'var(--text-primary)',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Open ticket
                         </button>
                       </td>
                     </tr>
