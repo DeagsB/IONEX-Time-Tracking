@@ -426,7 +426,6 @@ export default function Payroll() {
   /** 'hours' shows quarter-hour decimals; 'dollars' multiplies each cell by its rate. */
   const [displayMode, setDisplayMode] = useState<'hours' | 'dollars'>('hours');
   const [calendarOpen, setCalendarOpen] = useState<boolean>(false);
-  const [showCustomDates, setShowCustomDates] = useState<boolean>(false);
 
   // Calculate grand totals (already rounded from employeeHours)
   /** Map user_id → contractor flag, for the contractor-exclude toggle. */
@@ -1064,29 +1063,6 @@ export default function Payroll() {
                 />
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setShowCustomDates((v) => !v)}
-              style={{ background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer', fontSize: '11px', color: 'var(--text-tertiary)', textDecoration: 'underline', display: 'block' }}
-            >
-              {showCustomDates ? 'Hide custom dates' : 'Custom dates'}
-            </button>
-            {showCustomDates && (
-              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  style={{ padding: '6px 10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
-                />
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  style={{ padding: '6px 10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
-                />
-              </div>
-            )}
           </div>
 
           {/* Quick Presets — active preset is highlighted */}
