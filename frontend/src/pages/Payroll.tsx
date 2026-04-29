@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabaseClient';
 import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
 import { ticketExpenseReimbursementBase } from '../utils/ticketExpenseReimbursement';
 import { linkedUserExpenseRedundantWithTicketExpenseLine } from '../utils/ticketExpenseReceiptMatch';
+import PayPeriodCalendar from '../components/PayPeriodCalendar';
 import {
   ticketExpenseRequiresLinkedReceiptForPayroll,
   ticketExpenseHasPayrollEligibleLinkedReceipt,
@@ -427,6 +428,8 @@ export default function Payroll() {
   const [excludeContractors, setExcludeContractors] = useState<boolean>(false);
   /** 'hours' shows quarter-hour decimals; 'dollars' multiplies each cell by its rate. */
   const [displayMode, setDisplayMode] = useState<'hours' | 'dollars'>('hours');
+  const [calendarOpen, setCalendarOpen] = useState<boolean>(false);
+  const [showCustomDates, setShowCustomDates] = useState<boolean>(false);
 
   // Calculate grand totals (already rounded from employeeHours)
   /** Map user_id → contractor flag, for the contractor-exclude toggle. */
@@ -1011,40 +1014,82 @@ export default function Payroll() {
       {/* Filters */}
       <div className="card" style={{ marginBottom: '24px', padding: '20px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
-          {/* Date Range */}
+          {/* Date Range — pay-period calendar picker, with collapsible custom inputs */}
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase' }}>
-              Start Date
+              Date Range
             </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase' }}>
-              End Date
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{
-                padding: '8px 12px',
-                backgroundColor: 'var(--bg-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-              }}
-            />
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <button
+                type="button"
+                onClick={() => setCalendarOpen((v) => !v)}
+                aria-expanded={calendarOpen}
+                style={{
+                  padding: '8px 14px',
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontFamily: 'inherit',
+                  minWidth: '230px',
+                }}
+                title="Pick a pay period"
+              >
+                <span style={{ fontSize: '14px' }}>📅</span>
+                <span>
+                  {(() => {
+                    const fmt = (s: string) => {
+                      try {
+                        return new Date(s + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      } catch {
+                        return s;
+                      }
+                    };
+                    return `${fmt(startDate)} – ${fmt(endDate)}`;
+                  })()}
+                </span>
+                <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-tertiary)' }}>▼</span>
+              </button>
+              {calendarOpen && (
+                <PayPeriodCalendar
+                  value={{ start: startDate, end: endDate }}
+                  onChange={({ start, end }) => {
+                    setStartDate(start);
+                    setEndDate(end);
+                  }}
+                  onClose={() => setCalendarOpen(false)}
+                />
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCustomDates((v) => !v)}
+              style={{ background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer', fontSize: '11px', color: 'var(--text-tertiary)', textDecoration: 'underline', display: 'block' }}
+            >
+              {showCustomDates ? 'Hide custom dates' : 'Custom dates'}
+            </button>
+            {showCustomDates && (
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={{ padding: '6px 10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
+                />
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={{ padding: '6px 10px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Quick Presets — active preset is highlighted */}
