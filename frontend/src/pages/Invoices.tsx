@@ -173,6 +173,101 @@ function emptyHoursByRateType(): ServiceTicket['hoursByRateType'] {
   };
 }
 
+/** Build PDF entries from saved rec data alone (no time-entry match). Mirrors augment branch order:
+ *  edited_entry_overrides first, then edited_hours+edited_descriptions. Used for standalone tickets
+ *  where billable time entries don't exist (deleted post-approval, manual entry tickets). */
+function buildEntriesFromRecOnly(
+  rec: ApprovedRecord,
+  date: string,
+  userId: string,
+  projectId: string | undefined
+): { entries: ServiceTicket['entries']; hoursByRateType: ServiceTicket['hoursByRateType']; totalHours: number } | null {
+  const overrides = rec.edited_entry_overrides;
+  if (overrides && Object.keys(overrides).length > 0) {
+    const rows = Object.entries(overrides).map(([id, ov]) => ({
+      id,
+      description: ov.description,
+      st: ov.st || 0,
+      tt: ov.tt || 0,
+      ft: ov.ft || 0,
+      so: ov.so || 0,
+      fo: ov.fo || 0,
+    }));
+    const out: ServiceTicket['entries'] = [];
+    let seq = 0;
+    const cols: [keyof (typeof rows)[0], string][] = [
+      ['st', 'Shop Time'],
+      ['tt', 'Travel Time'],
+      ['ft', 'Field Time'],
+      ['so', 'Shop Overtime'],
+      ['fo', 'Field Overtime'],
+    ];
+    for (const row of rows) {
+      for (const [key, rateType] of cols) {
+        const h = row[key] as number;
+        if (h > 0) {
+          out.push({
+            id: `syn-${row.id}-${rateType}-${seq++}`,
+            date,
+            hours: h,
+            description: row.description?.trim() ? row.description : 'Work performed',
+            rate_type: rateType,
+            user_id: userId,
+            project_id: projectId,
+          } as ServiceTicket['entries'][number]);
+        }
+      }
+    }
+    if (out.length > 0) {
+      const hoursByRateType = emptyHoursByRateType();
+      for (const e of out) {
+        const rt = e.rate_type as keyof ServiceTicket['hoursByRateType'];
+        if (rt in hoursByRateType) hoursByRateType[rt] += Number(e.hours) || 0;
+      }
+      return { entries: out, hoursByRateType, totalHours: Object.values(hoursByRateType).reduce((s, h) => s + h, 0) };
+    }
+  }
+
+  const editedHours = rec.edited_hours as Record<string, number | number[]> | null | undefined;
+  if (editedHours && Object.keys(editedHours).length > 0) {
+    const editedDesc = (rec.edited_descriptions || {}) as Record<string, string[]>;
+    const out: ServiceTicket['entries'] = [];
+    const hoursByRateType = emptyHoursByRateType();
+    let synIdx = 0;
+    for (const rateType of PDF_EXPORT_RATE_ORDER) {
+      const hRaw = editedHours[rateType];
+      if (hRaw === undefined || hRaw === null) continue;
+      const hList = (Array.isArray(hRaw) ? hRaw : [hRaw]).map((x) => Number(x) || 0);
+      const dList = editedDesc[rateType] || [];
+      let sumForType = 0;
+      for (let i = 0; i < hList.length; i++) {
+        const h = hList[i];
+        if (h <= 0) continue;
+        sumForType += h;
+        const descFromEdited = dList[i];
+        const desc = descFromEdited != null && String(descFromEdited).trim() !== '' ? descFromEdited : 'Work performed';
+        out.push({
+          id: `syn-${rateType}-${synIdx++}`,
+          date,
+          hours: h,
+          description: desc,
+          rate_type: rateType,
+          user_id: userId,
+          project_id: projectId,
+        } as ServiceTicket['entries'][number]);
+      }
+      if (sumForType > 0) {
+        (hoursByRateType as Record<string, number>)[rateType] = sumForType;
+      }
+    }
+    if (out.length > 0) {
+      return { entries: out, hoursByRateType, totalHours: Object.values(hoursByRateType).reduce((s, h) => s + h, 0) };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Align invoice-batch PDFs with the Approved tab on Service Tickets.
  * Prefer edited_entry_overrides (per-entry source-of-truth, same as ServiceTickets modal load);
@@ -1694,6 +1789,17 @@ export default function Invoices() {
             totalHours: pdfAugment.totalHours ?? match.totalHours,
             entries: pdfAugment.entries,
           };
+        } else {
+          // Augment couldn't build from match (empty match.entries, etc). Fall back to rec data.
+          const fromRec = buildEntriesFromRecOnly(rec, match.date, match.userId, rec.project_id ?? match.projectId);
+          if (fromRec) {
+            ticketToUse = {
+              ...match,
+              hoursByRateType: fromRec.hoursByRateType,
+              totalHours: fromRec.totalHours,
+              entries: fromRec.entries,
+            };
+          }
         }
         const pf = getProjectHeaderFields(proj);
         const rawTicket: ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string } = {
@@ -1736,6 +1842,21 @@ export default function Invoices() {
             totalHours = th;
             hoursByRateType['Shop Time'] = th;
           }
+        }
+        // Build entries from saved rec data so per-ticket PDF preserves descriptions
+        // (without entries the PDF falls back to "Work performed").
+        const standaloneFromRec = buildEntriesFromRecOnly(
+          rec,
+          rec.date,
+          rec.user_id,
+          rec.project_id ?? undefined
+        );
+        const standaloneEntries: ServiceTicket['entries'] = standaloneFromRec?.entries ?? [];
+        if (standaloneFromRec) {
+          (Object.keys(standaloneFromRec.hoursByRateType) as Array<keyof ServiceTicket['hoursByRateType']>).forEach((rt) => {
+            (hoursByRateType as Record<string, number>)[rt] = standaloneFromRec.hoursByRateType[rt];
+          });
+          totalHours = standaloneFromRec.totalHours;
         }
         const customer = customers?.find((c: { id: string }) => c.id === rec.customer_id);
         const customerName = customer?.name || 'Unknown Customer';
@@ -1783,7 +1904,7 @@ export default function Invoices() {
           userInitials,
           ticketNumber: rec.ticket_number,
           totalHours,
-          entries: [],
+          entries: standaloneEntries,
           hoursByRateType,
           rates,
           recordId: rec.id,
