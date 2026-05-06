@@ -175,11 +175,28 @@ function emptyHoursByRateType(): ServiceTicket['hoursByRateType'] {
 
 /**
  * Align invoice-batch PDFs with the Approved tab on Service Tickets.
- * Prefer edited_hours + edited_descriptions (same snapshot as buildLockedTicketFromRecord); then total_hours;
- * only then merge edited_entry_overrides into live entries. Stale override keys (no longer matching time entry
- * ids) used to win first and left PDFs at raw entry hours while the list showed corrected totals.
+ * Prefer edited_entry_overrides (per-entry source-of-truth, same as ServiceTickets modal load);
+ * then edited_hours + edited_descriptions snapshot; then total_hours fallback. Approval flow rewrites
+ * edited_descriptions from raw time entries, so it can be stale even when overrides hold the user's edits.
  */
 function augmentMatchTicketForInvoicePdf(rec: ApprovedRecord, match: ServiceTicket): Partial<ServiceTicket> | null {
+  const overrides = rec.edited_entry_overrides;
+  if (overrides && Object.keys(overrides).length > 0 && match.entries.length > 0) {
+    const rows = mergePdfEntryOverridesIntoRows(match.entries, overrides);
+    const entries = serviceRowsToTicketPdfEntries(rows, match);
+    if (entries.length > 0) {
+      const hoursByRateType = emptyHoursByRateType();
+      for (const e of entries) {
+        const rt = e.rate_type as keyof ServiceTicket['hoursByRateType'];
+        if (rt in hoursByRateType) {
+          hoursByRateType[rt] += Number(e.hours) || 0;
+        }
+      }
+      const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
+      return { entries, hoursByRateType, totalHours };
+    }
+  }
+
   const editedHours = rec.edited_hours as Record<string, number | number[]> | null | undefined;
   const hasEditedHoursSnapshot = editedHours && Object.keys(editedHours).length > 0;
 
@@ -247,22 +264,6 @@ function augmentMatchTicketForInvoicePdf(rec: ApprovedRecord, match: ServiceTick
     if (entries.length > 0) {
       return { entries, hoursByRateType, totalHours };
     }
-  }
-
-  const overrides = rec.edited_entry_overrides;
-  if (overrides && Object.keys(overrides).length > 0 && match.entries.length > 0) {
-    const rows = mergePdfEntryOverridesIntoRows(match.entries, overrides);
-    const entries = serviceRowsToTicketPdfEntries(rows, match);
-    if (entries.length === 0) return null;
-    const hoursByRateType = emptyHoursByRateType();
-    for (const e of entries) {
-      const rt = e.rate_type as keyof ServiceTicket['hoursByRateType'];
-      if (rt in hoursByRateType) {
-        hoursByRateType[rt] += Number(e.hours) || 0;
-      }
-    }
-    const totalHours = Object.values(hoursByRateType).reduce((s, h) => s + h, 0);
-    return { entries, hoursByRateType, totalHours };
   }
 
   if (rec.total_hours != null && match.entries.length > 0) {
