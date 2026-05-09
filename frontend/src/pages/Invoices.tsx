@@ -1684,6 +1684,13 @@ export default function Invoices() {
     [customers, allWorkflows, defaultWorkflow]
   );
 
+  /** A workflow that includes a 'submitted_approval' status drives the multi-step Portal Approval flow. */
+  const isPortalApprovalWorkflow = useCallback(
+    (wf: InvoiceWorkflowRow | undefined) =>
+      !!wf?.statuses?.some((s) => s.id === 'submitted_approval'),
+    []
+  );
+
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => projectsService.getAll(),
@@ -2619,6 +2626,66 @@ export default function Invoices() {
         },
         onError: (err) => {
           setExportError(err instanceof Error ? err.message : 'Could not save marked as invoiced');
+        },
+      }
+    );
+  };
+
+  /**
+   * Portal Approval workflow: from pending, jump straight to the 'submitted_approval'
+   * status (skipping 'draft'). Mirrors handleMarkAsInvoiced — same persistence, same
+   * snapshot, same history-log call — just a different starting status.
+   */
+  const handleMarkAsSubmittedForApproval = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+    const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
+    const customerName = group.tickets[0]?.customerName;
+    const wf = getWorkflowForCustomer(customerName);
+    const submittedStatus = wf?.statuses?.find((s) => s.id === 'submitted_approval');
+    if (!submittedStatus || !wf) {
+      setExportError('Customer is not on a Portal Approval workflow.');
+      return;
+    }
+    const now = new Date().toISOString();
+    const snapshot = getMergedMarkSnapshot(group, isCombined || undefined, submittedStatus.id);
+    if (snapshot.statusId && !snapshot.statusChangedAt) {
+      snapshot.statusChangedAt = now;
+    }
+    if (isDemoMode) {
+      setLegacyMarkedInvoicedIds((prev) => {
+        const next = new Set(prev);
+        next.add(persistId);
+        persistMarkedInvoiceIdsToLocalStorage(next);
+        return next;
+      });
+      setFrozenInvoicedGroups((prev) => {
+        const mergedSnap = mergeMarkSnapshotForGroup(group, prev[persistId], isCombined || undefined, submittedStatus.id, pendingLabourNotes[getGroupId(group)]);
+        const next = { ...prev, [persistId]: mergedSnap };
+        try {
+          localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+      return;
+    }
+    markInvoicedMutation.mutate(
+      { groupId: persistId, snapshot },
+      {
+        onSuccess: () => {
+          invoiceStatusHistoryService.logEntry({
+            group_id: persistId,
+            customer_name: customerName,
+            project_number: group.key.projectNumber || undefined,
+            workflow_id: wf.id,
+            status_id: submittedStatus.id,
+            status_label: submittedStatus.label,
+            entered_at: now,
+          }).catch(() => {});
+        },
+        onError: (err) => {
+          setExportError(err instanceof Error ? err.message : 'Could not mark as submitted for approval');
         },
       }
     );
@@ -4593,6 +4660,8 @@ export default function Invoices() {
                 !String(key.periodKey).startsWith('pc:') &&
                 !String(key.periodKey).startsWith('prog:') &&
                 isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping);
+              const groupWorkflow = getWorkflowForCustomer(firstTicket?.customerName);
+              const groupIsPortalApproval = isPortalApprovalWorkflow(groupWorkflow);
               return (
               <div
                 key={groupId}
@@ -4776,68 +4845,92 @@ export default function Invoices() {
                     >
                       Edit descriptions
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleMarkAsInvoiced(group)}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.dataTransfer.types?.includes('Files')) setMarkInvoicedDropOverGroupId(groupId);
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.dataTransfer.types?.includes('Files')) {
-                          e.dataTransfer.dropEffect = 'copy';
-                          setMarkInvoicedDropOverGroupId(groupId);
-                        }
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    {groupIsPortalApproval ? (
+                      <button
+                        type="button"
+                        onClick={() => handleMarkAsSubmittedForApproval(group)}
+                        disabled={!!exportProgress || !!qboProgress || markInvoicedMutation.isPending}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor:
+                            exportProgress || qboProgress || markInvoicedMutation.isPending
+                              ? 'not-allowed'
+                              : 'pointer',
+                        }}
+                        title="Move this batch into the Submitted for Approval list. The customer will review the service tickets; once they approve, drop the signed batch PDF on the card to advance to Approved."
+                      >
+                        {markInvoicedMutation.isPending ? 'Saving…' : 'Mark as sent for approval'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleMarkAsInvoiced(group)}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (e.dataTransfer.types?.includes('Files')) setMarkInvoicedDropOverGroupId(groupId);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (e.dataTransfer.types?.includes('Files')) {
+                            e.dataTransfer.dropEffect = 'copy';
+                            setMarkInvoicedDropOverGroupId(groupId);
+                          }
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
+                          }
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
+                          const file = e.dataTransfer?.files?.[0];
+                          if (!file) return;
+                          await handleDropInvoiceOnMarkAsInvoiced(group, file);
+                        }}
+                        disabled={
+                          !!exportProgress ||
+                          !!qboProgress ||
+                          markInvoicedMutation.isPending ||
+                          uploadingInvoiceGroupId === groupId
                         }
-                      }}
-                      onDrop={async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
-                        const file = e.dataTransfer?.files?.[0];
-                        if (!file) return;
-                        await handleDropInvoiceOnMarkAsInvoiced(group, file);
-                      }}
-                      disabled={
-                        !!exportProgress ||
-                        !!qboProgress ||
-                        markInvoicedMutation.isPending ||
-                        uploadingInvoiceGroupId === groupId
-                      }
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor:
-                          markInvoicedDropOverGroupId === groupId ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-tertiary)',
-                        color: 'var(--text-secondary)',
-                        border:
-                          markInvoicedDropOverGroupId === groupId
-                            ? '2px dashed var(--primary-color)'
-                            : '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor:
-                          exportProgress || qboProgress || markInvoicedMutation.isPending || uploadingInvoiceGroupId === groupId
-                            ? 'not-allowed'
-                            : 'pointer',
-                      }}
-                      title="Save this batch as invoiced and lock these service tickets until unmarked (no PDF required). Or drop an invoice PDF here to attach, mark, and download the merged batch."
-                    >
-                      {uploadingInvoiceGroupId === groupId
-                        ? 'Attaching…'
-                        : markInvoicedMutation.isPending
-                          ? 'Saving…'
-                          : 'Mark as invoiced'}
-                    </button>
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor:
+                            markInvoicedDropOverGroupId === groupId ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-tertiary)',
+                          color: 'var(--text-secondary)',
+                          border:
+                            markInvoicedDropOverGroupId === groupId
+                              ? '2px dashed var(--primary-color)'
+                              : '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor:
+                            exportProgress || qboProgress || markInvoicedMutation.isPending || uploadingInvoiceGroupId === groupId
+                              ? 'not-allowed'
+                              : 'pointer',
+                        }}
+                        title="Save this batch as invoiced and lock these service tickets until unmarked (no PDF required). Or drop an invoice PDF here to attach, mark, and download the merged batch."
+                      >
+                        {uploadingInvoiceGroupId === groupId
+                          ? 'Attaching…'
+                          : markInvoicedMutation.isPending
+                            ? 'Saving…'
+                            : 'Mark as invoiced'}
+                      </button>
+                    )}
                   </div>
                 </div>
                 {/* Labour notes editor */}
