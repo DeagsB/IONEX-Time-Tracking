@@ -3202,6 +3202,84 @@ export const invoicedBatchInvoicesService = {
   },
 };
 
+/**
+ * Signed/approved batch PDFs (Portal Approval workflow). Same bucket as invoices,
+ * stored under an _approvals/ prefix so the two PDF kinds don't collide.
+ */
+export const invoicedBatchApprovalsService = {
+  async uploadApproval(groupId: string, file: File): Promise<{ storagePath: string; filename: string }> {
+    const safeId = sanitizeStoragePathSegment(groupId);
+    const timestamp = Date.now();
+    const { label, storageFileSegment } = normalizeInvoiceUploadLabel(file.name || 'approval.pdf');
+    const safeName = sanitizeStoragePathSegment(storageFileSegment);
+    const storagePath = `_approvals/${safeId}/${timestamp}_${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(INVOICED_BATCH_BUCKET)
+      .upload(storagePath, file, { contentType: 'application/pdf', upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const now = new Date().toISOString();
+    const { error: upsertError } = await supabase
+      .from('invoiced_batch_approvals')
+      .upsert(
+        {
+          group_id: groupId,
+          approval_filename: label,
+          storage_path: storagePath,
+          uploaded_by: user?.id ?? null,
+          uploaded_at: now,
+          updated_at: now,
+        },
+        { onConflict: 'group_id' }
+      );
+
+    if (upsertError) throw upsertError;
+    return { storagePath, filename: label };
+  },
+
+  async getMetadataByGroupIds(groupIds: string[]): Promise<Record<string, { filename: string; storagePath: string }>> {
+    if (groupIds.length === 0) return {};
+    const { data, error } = await supabase
+      .from('invoiced_batch_approvals')
+      .select('group_id, approval_filename, storage_path')
+      .in('group_id', groupIds);
+
+    if (error) throw error;
+    const out: Record<string, { filename: string; storagePath: string }> = {};
+    for (const row of data || []) {
+      out[row.group_id] = {
+        filename: displayInvoiceFilename(row.approval_filename),
+        storagePath: row.storage_path,
+      };
+    }
+    return out;
+  },
+
+  async downloadApproval(storagePath: string): Promise<Blob> {
+    const { data, error } = await supabase.storage.from(INVOICED_BATCH_BUCKET).download(storagePath);
+    if (error) throw error;
+    if (!data) throw new Error('No data returned');
+    return data;
+  },
+
+  async deleteApproval(groupId: string): Promise<void> {
+    const { data: rows } = await supabase
+      .from('invoiced_batch_approvals')
+      .select('storage_path')
+      .eq('group_id', groupId)
+      .limit(1);
+
+    if (rows?.[0]?.storage_path) {
+      await supabase.storage.from(INVOICED_BATCH_BUCKET).remove([rows[0].storage_path]);
+    }
+    const { error } = await supabase.from('invoiced_batch_approvals').delete().eq('group_id', groupId);
+    if (error) throw error;
+  },
+};
+
 export type InvoicedBatchMarkRow = {
   group_id: string;
   key_snapshot: { key: unknown; ticketIds: string[] } | null;
