@@ -10,6 +10,7 @@ import {
   employeesService,
   projectsService,
   invoicedBatchInvoicesService,
+  invoicedBatchApprovalsService,
   invoicedBatchMarksService,
   type InvoicedBatchMarkRow,
   invoiceFilenameForDownload,
@@ -2536,6 +2537,62 @@ export default function Invoices() {
     },
   });
 
+  /**
+   * Portal Approval: drop the signed batch PDF on a submitted-for-approval card.
+   * Uploads to invoiced_batch_approvals and advances status to 'approved'.
+   */
+  const uploadApprovalMutation = useMutation({
+    mutationFn: async ({ groupId, file, customerName, projectNumber, workflow }: {
+      groupId: string;
+      file: File;
+      customerName?: string;
+      projectNumber?: string;
+      workflow: InvoiceWorkflowRow;
+    }) => {
+      await invoicedBatchApprovalsService.uploadApproval(groupId, file);
+      const approvedStatus = workflow.statuses.find((s) => s.id === 'approved');
+      if (!approvedStatus) return;
+      await updateBatchStatusMutation.mutateAsync({
+        groupId,
+        statusId: approvedStatus.id,
+        prevStatusId: 'submitted_approval',
+        statusLabel: approvedStatus.label,
+        customerName,
+        projectNumber,
+        workflowId: workflow.id,
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchApprovals'] });
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+    },
+  });
+
+  /**
+   * Portal Approval final step: from approved → submitted_portal.
+   * Used by the "Mark as invoiced" button on Approved-section cards.
+   */
+  const markFinalInvoicedMutation = useMutation({
+    mutationFn: async ({ groupId, customerName, projectNumber, workflow }: {
+      groupId: string;
+      customerName?: string;
+      projectNumber?: string;
+      workflow: InvoiceWorkflowRow;
+    }) => {
+      const finalStatus = workflow.statuses.find((s) => s.id === 'submitted_portal');
+      if (!finalStatus) return;
+      await updateBatchStatusMutation.mutateAsync({
+        groupId,
+        statusId: finalStatus.id,
+        prevStatusId: 'approved',
+        statusLabel: finalStatus.label,
+        customerName,
+        projectNumber,
+        workflowId: workflow.id,
+      });
+    },
+  });
+
   const saveLabourNotesMutation = useMutation({
     mutationFn: async ({ groupId, labourNotes }: { groupId: string; labourNotes: Record<string, string> }) => {
       const row = invoicedMarkRows.find((r) => r.group_id === groupId);
@@ -2843,6 +2900,17 @@ export default function Invoices() {
     }
   }, [invoicedMarkRows, frozenInvoicedGroups]);
 
+  /** Read the persisted statusId for a group, falling back to the first status of its workflow. */
+  const getGroupStatusId = useCallback(
+    (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string | undefined => {
+      const pid = resolvedPersistGroupId(group, invoicedMarkRows);
+      const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
+      const wf = getWorkflowForCustomer(group.tickets[0]?.customerName);
+      return snap?.statusId ?? wf?.statuses?.[0]?.id;
+    },
+    [invoicedMarkRows, getWorkflowForCustomer]
+  );
+
   /** Invoiced groups are reconstructed from DB mark rows' frozen snapshots.
    *  This guarantees grouping mode changes NEVER affect already-invoiced batches —
    *  the original key, ticket membership, and group_id are preserved exactly as when marked. */
@@ -2900,6 +2968,27 @@ export default function Invoices() {
     ticketsForCustomer,
   ]);
 
+  /** Portal Approval batches in the submitted_approval status (waiting for customer approval). */
+  const submittedApprovalGroups = useMemo(
+    () => invoicedGroups.filter((g) => getGroupStatusId(g) === 'submitted_approval'),
+    [invoicedGroups, getGroupStatusId]
+  );
+
+  /** Portal Approval batches in the approved status (signed batch attached, waiting for invoice). */
+  const approvedGroups = useMemo(
+    () => invoicedGroups.filter((g) => getGroupStatusId(g) === 'approved'),
+    [invoicedGroups, getGroupStatusId]
+  );
+
+  /** Final invoiced batches — everything not in the submitted/approved intermediate states. Used by the See invoiced tab. */
+  const finalInvoicedGroups = useMemo(
+    () => invoicedGroups.filter((g) => {
+      const sid = getGroupStatusId(g);
+      return sid !== 'submitted_approval' && sid !== 'approved';
+    }),
+    [invoicedGroups, getGroupStatusId]
+  );
+
   /** groupedTickets already excludes invoiced tickets, so all groups here are uninvoiced. */
   const uninvoicedGroups = groupedTickets;
 
@@ -2921,6 +3010,13 @@ export default function Invoices() {
     enabled: showInvoiced && invoicedGroupIdsFromDb.length > 0,
   });
 
+  /** Approval (signed batch) PDF metadata for marked batches. Used by the Submitted-for-approval and Approved sections. */
+  const { data: savedApprovalMetadata } = useQuery({
+    queryKey: ['invoicedBatchApprovals', [...invoicedGroupIdsFromDb].sort().join(',')],
+    queryFn: () => invoicedBatchApprovalsService.getMetadataByGroupIds(invoicedGroupIdsFromDb),
+    enabled: invoicedGroupIdsFromDb.length > 0,
+  });
+
   const getInvoiceLabel = useCallback((group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
     const pid = resolvedPersistGroupId(group, invoicedMarkRows);
     return invoiceFilesByGroupId[pid]?.name ?? savedInvoiceMetadata?.[pid]?.filename ?? null;
@@ -2934,7 +3030,7 @@ export default function Invoices() {
 
   const activeStatusLabels = useMemo(() => {
     const map = new Map<string, { id: string; label: string; color: string; count: number }>();
-    for (const g of invoicedGroups) {
+    for (const g of finalInvoicedGroups) {
       const pid = resolvedPersistGroupId(g, invoicedMarkRows);
       const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
       const wf = getWorkflowForCustomer(g.tickets[0]?.customerName);
@@ -2947,10 +3043,10 @@ export default function Invoices() {
       else map.set(sid, { id: sid, label: st.label, color: st.color, count: 1 });
     }
     return [...map.values()];
-  }, [invoicedGroups, invoicedMarkRows, getWorkflowForCustomer]);
+  }, [finalInvoicedGroups, invoicedMarkRows, getWorkflowForCustomer]);
 
   const sortedFilteredInvoicedGroups = useMemo(() => {
-    let groups = [...invoicedGroups];
+    let groups = [...finalInvoicedGroups];
     groups.sort((a, b) => extractInvoiceNumber(getInvoiceLabel(b)) - extractInvoiceNumber(getInvoiceLabel(a)));
 
     if (invoiceStatusFilter !== 'all') {
@@ -2973,7 +3069,7 @@ export default function Invoices() {
       const ticketNums = g.tickets.map(t => t.ticketNumber?.toLowerCase() ?? '').join(' ');
       return label.includes(q) || custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
     });
-  }, [invoicedGroups, invoiceSearchQuery, invoiceStatusFilter, getInvoiceLabel, extractInvoiceNumber, invoicedMarkRows]);
+  }, [finalInvoicedGroups, invoiceSearchQuery, invoiceStatusFilter, getInvoiceLabel, extractInvoiceNumber, invoicedMarkRows]);
 
   const markTicketsAsPdfExported = async (groupTickets: ServiceTicket[]) => {
     const recordIds = groupTickets
@@ -3701,7 +3797,7 @@ export default function Invoices() {
             ? 'No approved tickets for this customer in the selected date range. Approve service tickets first in the Service Tickets page.'
             : 'No approved tickets ready for export. Approve service tickets first in the Service Tickets page.'}
         </div>
-      ) : groupedTickets.length === 0 && !showInvoiced ? (
+      ) : groupedTickets.length === 0 && !showInvoiced && submittedApprovalGroups.length === 0 && approvedGroups.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All batches are marked as invoiced.
           <div style={{ marginTop: '12px' }}>
@@ -3718,7 +3814,7 @@ export default function Invoices() {
                 cursor: 'pointer',
               }}
             >
-              See invoiced ({invoicedGroups.length})
+              See invoiced ({finalInvoicedGroups.length})
             </button>
           </div>
         </div>
@@ -3745,11 +3841,11 @@ export default function Invoices() {
                 Invoiced batches (locked)
               </span>
               <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                {invoicedGroups.length} group(s) — service tickets in these batches cannot be edited until unmarked. A linked invoice PDF is optional.
+                {finalInvoicedGroups.length} group(s) — service tickets in these batches cannot be edited until unmarked. A linked invoice PDF is optional.
               </span>
             </div>
           </div>
-          {invoicedGroups.length === 0 ? (
+          {finalInvoicedGroups.length === 0 ? (
             <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
               No invoiced groups. Use "Back to pending" to return.
             </div>
@@ -4508,10 +4604,10 @@ export default function Invoices() {
           </>
           )}
         </div>
-      ) : uninvoicedGroups.length === 0 ? (
+      ) : uninvoicedGroups.length === 0 && submittedApprovalGroups.length === 0 && approvedGroups.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All groups have been marked as invoiced.
-          {invoicedGroups.length > 0 && (
+          {finalInvoicedGroups.length > 0 && (
             <div style={{ marginTop: '16px' }}>
               <button
                 type="button"
@@ -4528,7 +4624,7 @@ export default function Invoices() {
                   cursor: 'pointer',
                 }}
               >
-                See invoiced — locked ({invoicedGroups.length})
+                See invoiced — locked ({finalInvoicedGroups.length})
               </button>
             </div>
           )}
@@ -4601,7 +4697,7 @@ export default function Invoices() {
               }}
               title="View batches already marked as invoiced (service tickets locked until unmarked; PDF optional)"
             >
-              See invoiced — locked ({invoicedGroups.length})
+              See invoiced — locked ({finalInvoicedGroups.length})
             </button>
           </div>
 
@@ -5118,6 +5214,348 @@ export default function Invoices() {
             );
             })}
           </div>
+
+          {/* Portal Approval workflow: Submitted for approval section */}
+          {submittedApprovalGroups.length > 0 && (
+            <div style={{ marginTop: '32px' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                  Submitted for approval ({submittedApprovalGroups.length})
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                  Waiting for the customer to approve. When the signed batch comes back, drop the PDF on the card to advance to Approved.
+                </p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {submittedApprovalGroups.map((group) => {
+                  const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+                  const customerName = group.tickets[0]?.customerName;
+                  const wf = getWorkflowForCustomer(customerName);
+                  const status = wf?.statuses?.find((s) => s.id === 'submitted_approval');
+                  const statusHex = status ? statusColorHex(status.color) : '#888';
+                  const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
+                  const periodLine = group.key.periodLabel || '';
+                  const ticketCount = group.tickets.length;
+                  const isUploading = uploadApprovalMutation.isPending && uploadApprovalMutation.variables?.groupId === persistId;
+                  return (
+                    <div
+                      key={persistId}
+                      style={{
+                        padding: '16px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: `inset 3px 0 0 0 ${statusHex}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                        {projectLine && (
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
+                        )}
+                        {periodLine && (
+                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
+                        )}
+                        {status && (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '2px 10px',
+                              borderRadius: '999px',
+                              backgroundColor: `${statusHex}18`,
+                              color: statusHex,
+                              border: `1px solid ${statusHex}40`,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            {status.label}
+                          </span>
+                        )}
+                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
+                      </div>
+                      <div
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = statusHex; }}
+                        onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.style.borderColor = '';
+                          const file = e.dataTransfer?.files?.[0];
+                          if (file?.type !== 'application/pdf' || !wf) return;
+                          setExportError(null);
+                          try {
+                            await uploadApprovalMutation.mutateAsync({
+                              groupId: persistId,
+                              file,
+                              customerName,
+                              projectNumber: group.key.projectNumber || undefined,
+                              workflow: wf,
+                            });
+                          } catch (err) {
+                            setExportError(err instanceof Error ? err.message : 'Upload failed');
+                          }
+                        }}
+                        onClick={() => document.getElementById(`approval-file-${persistId}`)?.click()}
+                        style={{
+                          border: '2px dashed var(--border-color)',
+                          borderRadius: '8px',
+                          padding: '14px 16px',
+                          cursor: isUploading ? 'wait' : 'pointer',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          textAlign: 'center',
+                          fontSize: '13px',
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        <input
+                          id={`approval-file-${persistId}`}
+                          type="file"
+                          accept=".pdf,application/pdf"
+                          style={{ display: 'none' }}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (!file || !wf) return;
+                            setExportError(null);
+                            try {
+                              await uploadApprovalMutation.mutateAsync({
+                                groupId: persistId,
+                                file,
+                                customerName,
+                                projectNumber: group.key.projectNumber || undefined,
+                                workflow: wf,
+                              });
+                            } catch (err) {
+                              setExportError(err instanceof Error ? err.message : 'Upload failed');
+                            }
+                          }}
+                        />
+                        {isUploading ? 'Uploading approval…' : 'Drop signed batch PDF here, or click to choose a file'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Portal Approval workflow: Approved section */}
+          {approvedGroups.length > 0 && (
+            <div style={{ marginTop: '32px' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                  Approved ({approvedGroups.length})
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                  Customer has approved the batch. Drop the invoice PDF here, then click <strong>Mark as invoiced</strong> to finalise.
+                </p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {approvedGroups.map((group) => {
+                  const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+                  const customerName = group.tickets[0]?.customerName;
+                  const wf = getWorkflowForCustomer(customerName);
+                  const status = wf?.statuses?.find((s) => s.id === 'approved');
+                  const statusHex = status ? statusColorHex(status.color) : '#3b82f6';
+                  const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
+                  const periodLine = group.key.periodLabel || '';
+                  const ticketCount = group.tickets.length;
+                  const approval = savedApprovalMetadata?.[persistId];
+                  const invoice = savedInvoiceMetadata?.[persistId];
+                  const hasInvoice = !!invoice;
+                  const isUploadingInvoice = uploadingInvoiceGroupId === persistId;
+                  const isMarking = markFinalInvoicedMutation.isPending && markFinalInvoicedMutation.variables?.groupId === persistId;
+                  return (
+                    <div
+                      key={persistId}
+                      style={{
+                        padding: '16px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: `inset 3px 0 0 0 ${statusHex}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                        {projectLine && (
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
+                        )}
+                        {periodLine && (
+                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
+                        )}
+                        {status && (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '2px 10px',
+                              borderRadius: '999px',
+                              backgroundColor: `${statusHex}18`,
+                              color: statusHex,
+                              border: `1px solid ${statusHex}40`,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            {status.label}
+                          </span>
+                        )}
+                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
+                      </div>
+                      {/* Attached approval pill */}
+                      {approval && (
+                        <div style={{ marginBottom: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          Approval: <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const blob = await invoicedBatchApprovalsService.downloadApproval(approval.storagePath);
+                                saveAs(blob, invoiceFilenameForDownload(approval.filename));
+                              } catch (err) {
+                                setExportError(err instanceof Error ? err.message : 'Download failed');
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              color: 'var(--primary-color)',
+                              textDecoration: 'underline',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {approval.filename}
+                          </button>
+                        </div>
+                      )}
+                      {/* Invoice drop zone — only until invoice attached */}
+                      {!hasInvoice && (
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
+                          onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
+                          onDrop={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.currentTarget.style.borderColor = '';
+                            const file = e.dataTransfer?.files?.[0];
+                            if (file?.type !== 'application/pdf') return;
+                            setUploadingInvoiceGroupId(persistId);
+                            setExportError(null);
+                            try {
+                              const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
+                              const fileForUi = new File([file], storedName, { type: file.type });
+                              setInvoiceFileForGroup(persistId, fileForUi);
+                              await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                            } catch (err) {
+                              setExportError(err instanceof Error ? err.message : 'Upload failed');
+                            } finally {
+                              setUploadingInvoiceGroupId(null);
+                            }
+                          }}
+                          onClick={() => document.getElementById(`invoice-file-approved-${persistId}`)?.click()}
+                          style={{
+                            border: '2px dashed var(--border-color)',
+                            borderRadius: '8px',
+                            padding: '14px 16px',
+                            cursor: isUploadingInvoice ? 'wait' : 'pointer',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            textAlign: 'center',
+                            fontSize: '13px',
+                            color: 'var(--text-secondary)',
+                            marginBottom: '8px',
+                          }}
+                        >
+                          <input
+                            id={`invoice-file-approved-${persistId}`}
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            style={{ display: 'none' }}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (!file) return;
+                              setUploadingInvoiceGroupId(persistId);
+                              setExportError(null);
+                              try {
+                                const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
+                                const fileForUi = new File([file], storedName, { type: file.type });
+                                setInvoiceFileForGroup(persistId, fileForUi);
+                                await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                              } catch (err) {
+                                setExportError(err instanceof Error ? err.message : 'Upload failed');
+                              } finally {
+                                setUploadingInvoiceGroupId(null);
+                              }
+                            }}
+                          />
+                          {isUploadingInvoice ? 'Uploading invoice…' : 'Drop invoice PDF here, or click to choose a file'}
+                        </div>
+                      )}
+                      {hasInvoice && (
+                        <div style={{ marginBottom: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          Invoice: <button
+                            type="button"
+                            onClick={async () => {
+                              if (!invoice) return;
+                              try {
+                                const blob = await invoicedBatchInvoicesService.downloadInvoice(invoice.storagePath);
+                                saveAs(blob, invoiceFilenameForDownload(invoice.filename));
+                              } catch (err) {
+                                setExportError(err instanceof Error ? err.message : 'Download failed');
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              color: 'var(--primary-color)',
+                              textDecoration: 'underline',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {invoice.filename}
+                          </button>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!wf) return;
+                          markFinalInvoicedMutation.mutate({
+                            groupId: persistId,
+                            customerName,
+                            projectNumber: group.key.projectNumber || undefined,
+                            workflow: wf,
+                          });
+                        }}
+                        disabled={!hasInvoice || isMarking}
+                        title={hasInvoice ? 'Move to Submitted to Portal (final state)' : 'Attach the invoice PDF first'}
+                        style={{
+                          padding: '8px 14px',
+                          backgroundColor: hasInvoice ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                          color: hasInvoice ? 'white' : 'var(--text-tertiary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: hasInvoice && !isMarking ? 'pointer' : 'not-allowed',
+                        }}
+                      >
+                        {isMarking ? 'Saving…' : 'Mark as invoiced'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
 
