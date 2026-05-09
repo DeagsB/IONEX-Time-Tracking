@@ -46,9 +46,13 @@ interface Props {
   onClose: () => void;
   /** Optional label shown above the calendar grid. */
   title?: string;
+  /** Default selection mode. Defaults to 'period' (snap to 14-day pay period). */
+  initialMode?: 'period' | 'custom';
+  /** Hide the Pay Period / Custom Range toggle and the payroll stripe shading. Use on pages where pay periods are irrelevant (e.g. Invoices). */
+  hideModeToggle?: boolean;
 }
 
-export default function PayPeriodCalendar({ value, onChange, onClose, title }: Props) {
+export default function PayPeriodCalendar({ value, onChange, onClose, title, initialMode = 'period', hideModeToggle = false }: Props) {
   // Initialize the visible month from the current selection so the user lands on it.
   const initialMonth = useMemo(() => {
     const d = value.start ? parseYmd(value.start) : new Date();
@@ -58,7 +62,7 @@ export default function PayPeriodCalendar({ value, onChange, onClose, title }: P
   const [viewMonth, setViewMonth] = useState<Date>(initialMonth);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   /** 'period' = click any day → that day's full 14-day period. 'custom' = two-click arbitrary range. */
-  const [mode, setMode] = useState<'period' | 'custom'>('period');
+  const [mode, setMode] = useState<'period' | 'custom'>(initialMode);
   /** Custom-mode: first click sets pendingStart; second click finalises start/end. */
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   const [hoverDay, setHoverDay] = useState<string | null>(null);
@@ -157,22 +161,24 @@ export default function PayPeriodCalendar({ value, onChange, onClose, title }: P
       }}
     >
       {/* Mode toggle: Pay Period vs Custom range */}
-      <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '10px' }}>
-        <button
-          type="button"
-          onClick={() => { setMode('period'); setPendingStart(null); }}
-          style={{ flex: 1, padding: '6px 10px', border: 'none', fontSize: '11px', fontWeight: 600, cursor: 'pointer', backgroundColor: mode === 'period' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: mode === 'period' ? 'white' : 'var(--text-secondary)' }}
-        >
-          Pay Period
-        </button>
-        <button
-          type="button"
-          onClick={() => { setMode('custom'); setPendingStart(null); }}
-          style={{ flex: 1, padding: '6px 10px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', backgroundColor: mode === 'custom' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: mode === 'custom' ? 'white' : 'var(--text-secondary)' }}
-        >
-          Custom Range
-        </button>
-      </div>
+      {!hideModeToggle && (
+        <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '10px' }}>
+          <button
+            type="button"
+            onClick={() => { setMode('period'); setPendingStart(null); }}
+            style={{ flex: 1, padding: '6px 10px', border: 'none', fontSize: '11px', fontWeight: 600, cursor: 'pointer', backgroundColor: mode === 'period' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: mode === 'period' ? 'white' : 'var(--text-secondary)' }}
+          >
+            Pay Period
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('custom'); setPendingStart(null); }}
+            style={{ flex: 1, padding: '6px 10px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', backgroundColor: mode === 'custom' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: mode === 'custom' ? 'white' : 'var(--text-secondary)' }}
+          >
+            Custom Range
+          </button>
+        </div>
+      )}
 
       {/* Header: month nav */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -208,7 +214,11 @@ export default function PayPeriodCalendar({ value, onChange, onClose, title }: P
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
         {cells.map((d, i) => {
           const idx = periodIndexFor(d);
-          const stripeColor = idx % 2 === 0 ? 'rgba(33, 150, 243, 0.06)' : 'rgba(33, 150, 243, 0.13)';
+          const stripeColor = hideModeToggle
+            ? 'transparent'
+            : idx % 2 === 0
+              ? 'rgba(33, 150, 243, 0.06)'
+              : 'rgba(33, 150, 243, 0.13)';
           const isCurrentMonth = d.getMonth() === viewMonth.getMonth();
           const dYmd = formatYmd(d);
           const isToday = sameDay(d, today);

@@ -3478,6 +3478,8 @@ export default function Invoices() {
                   setEndDate(end);
                 }}
                 onClose={() => setCalendarOpen(false)}
+                initialMode="custom"
+                hideModeToggle
               />
             )}
           </div>
