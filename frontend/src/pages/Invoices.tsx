@@ -3461,37 +3461,39 @@ export default function Invoices() {
             }}
           />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Custom range download</label>
-          <button
-            type="button"
-            onClick={handleDownloadCustomRange}
-            disabled={downloadingCustomRange || ticketsForCustomer.length === 0}
-            title={
-              ticketsForCustomer.length === 0
-                ? 'No tickets match the current filters'
-                : `Merge all ${ticketsForCustomer.length} ticket(s) in this range into one PDF (ignores batch grouping; does not mark as exported).`
-            }
-            style={{
-              padding: '8px 12px',
-              backgroundColor: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: downloadingCustomRange || ticketsForCustomer.length === 0 ? 'not-allowed' : 'pointer',
-              opacity: downloadingCustomRange || ticketsForCustomer.length === 0 ? 0.6 : 1,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {downloadingCustomRange
-              ? 'Downloading...'
-              : `Download ${ticketsForCustomer.length} ticket(s) as PDF`}
-          </button>
-        </div>
+        {selectedCustomerId && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Custom range download</label>
+            <button
+              type="button"
+              onClick={handleDownloadCustomRange}
+              disabled={downloadingCustomRange || ticketsForCustomer.length === 0}
+              title={
+                ticketsForCustomer.length === 0
+                  ? 'No tickets match the current filters'
+                  : `Merge all ${ticketsForCustomer.length} ticket(s) in this range into one PDF (ignores batch grouping; does not mark as exported).`
+              }
+              style={{
+                padding: '8px 12px',
+                backgroundColor: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: downloadingCustomRange || ticketsForCustomer.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: downloadingCustomRange || ticketsForCustomer.length === 0 ? 0.6 : 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {downloadingCustomRange
+                ? 'Downloading...'
+                : `Download ${ticketsForCustomer.length} ticket(s) as PDF`}
+            </button>
+          </div>
+        )}
         <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
-          Filters pick which approved tickets can form pending batches (same idea as Service Tickets → Approved). Marked batches are not listed here—use See invoiced. Use <strong>Custom range download</strong> to merge every ticket in this range (incl. invoiced) into one PDF for ad-hoc client requests.
+          Filters pick which approved tickets can form pending batches (same idea as Service Tickets → Approved). Marked batches are not listed here—use See invoiced.{selectedCustomerId ? ' Use ' : ' Pick a customer to enable '}<strong>Custom range download</strong>{selectedCustomerId ? ' to merge every ticket in this range (incl. invoiced) into one PDF for ad-hoc client requests.' : ' for ad-hoc client requests outside the regular invoice cadence.'}
         </span>
         </div>
       </div>
