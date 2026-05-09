@@ -35,6 +35,7 @@ import {
 import { generateAndStorePdf, mergePdfBlobs, generateBatchSummaryPdf } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
 import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
+import PayPeriodCalendar from '../components/PayPeriodCalendar';
 import SearchableSelect from '../components/SearchableSelect';
 import ServiceTickets from './ServiceTickets';
 
@@ -1615,6 +1616,7 @@ export default function Invoices() {
   // Date range filter - matches Service Tickets Approved tab (only show tickets in this range)
   const [startDate, setStartDate] = useState('2026-01-01');
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(() => {
     try { return localStorage.getItem('ionex-inv-customer') || ''; } catch { return ''; }
@@ -3430,36 +3432,55 @@ export default function Invoices() {
           </div>
         )}
         <div>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Start Date</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              fontSize: '14px',
-            }}
-          />
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>End Date</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              fontSize: '14px',
-            }}
-          />
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Date Range</label>
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <button
+              type="button"
+              onClick={() => setCalendarOpen((v) => !v)}
+              aria-expanded={calendarOpen}
+              title="Pick a date range"
+              style={{
+                padding: '8px 14px',
+                backgroundColor: 'var(--bg-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontFamily: 'inherit',
+                minWidth: '230px',
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>📅</span>
+              <span>
+                {(() => {
+                  const fmt = (s: string) => {
+                    try {
+                      return new Date(s + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    } catch {
+                      return s;
+                    }
+                  };
+                  return `${fmt(startDate)} – ${fmt(endDate)}`;
+                })()}
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-tertiary)' }}>▼</span>
+            </button>
+            {calendarOpen && (
+              <PayPeriodCalendar
+                value={{ start: startDate, end: endDate }}
+                onChange={({ start, end }) => {
+                  setStartDate(start);
+                  setEndDate(end);
+                }}
+                onClose={() => setCalendarOpen(false)}
+              />
+            )}
+          </div>
         </div>
         {selectedCustomerId && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
