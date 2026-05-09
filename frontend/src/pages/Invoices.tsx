@@ -1610,6 +1610,7 @@ export default function Invoices() {
   const [qboProgress, setQboProgress] = useState<{ current: number; total: number; label: string } | null>(null);
   const [qboError, setQboError] = useState<string | null>(null);
   const [qboCreatedIds, setQboCreatedIds] = useState<string[]>([]);
+  const [downloadingCustomRange, setDownloadingCustomRange] = useState(false);
 
   // Date range filter - matches Service Tickets Approved tab (only show tickets in this range)
   const [startDate, setStartDate] = useState('2026-01-01');
@@ -3037,6 +3038,76 @@ export default function Invoices() {
     }
   };
 
+  /**
+   * Download every ticket matching the current customer/project/date filters as a single merged PDF.
+   * Independent of batch grouping (bi-weekly, monthly, etc.) — used when a client requests an ad-hoc
+   * range like "all April tickets" that doesn't line up with the regular invoice cadence.
+   * Does not mark tickets as pdf_exported, since this is outside the invoice flow.
+   */
+  const handleDownloadCustomRange = async () => {
+    const ticketsToExport = ticketsForCustomer;
+    if (ticketsToExport.length === 0) return;
+
+    const customerLabel = selectedCustomerId
+      ? (selectedCustomer?.name ?? 'Customer')
+      : 'AllCustomers';
+    const projectLabel = selectedProjectId
+      ? (() => {
+          const p = projects?.find((p: { id: string; name?: string; project_number?: string }) => p.id === selectedProjectId);
+          return p?.project_number || p?.name || '';
+        })()
+      : '';
+    const sanitize = (s: string) => s.replace(/[/\\?*:|"<>]/g, '_').trim();
+    const parts = [
+      'Service-Tickets',
+      sanitize(customerLabel),
+      projectLabel ? sanitize(projectLabel) : '',
+      `${startDate}_to_${endDate}`,
+    ].filter(Boolean);
+    const filename = `${parts.join('_')}.pdf`;
+
+    const total = ticketsToExport.length;
+    setDownloadingCustomRange(true);
+    setExportError(null);
+    setExportProgress({ current: 0, total, label: `Preparing ${total} ticket(s)...` });
+
+    try {
+      const blobs: Blob[] = [];
+      let processed = 0;
+      for (const ticket of ticketsToExport) {
+        const t = ticket as ServiceTicket & { recordId?: string };
+        const recordId = t.recordId;
+        let expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+        if (recordId) {
+          try {
+            expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+          } catch {
+            expenses = [];
+          }
+        }
+        const result = await generateAndStorePdf(ticket, expenses, {
+          uploadToStorage: false,
+          downloadLocally: false,
+        });
+        blobs.push(result.blob);
+        processed++;
+        setExportProgress({ current: processed, total, label: `Generating PDF ${processed}/${total}` });
+      }
+
+      if (blobs.length > 0) {
+        const merged = await mergePdfBlobs(blobs);
+        saveAs(merged, filename);
+      }
+      setExportProgress(null);
+    } catch (err) {
+      console.error('Custom range download error:', err);
+      setExportError(err instanceof Error ? err.message : 'Download failed');
+      setExportProgress(null);
+    } finally {
+      setDownloadingCustomRange(false);
+    }
+  };
+
   const handleExportForInvoicing = async () => {
     setExportError(null);
     const total = uninvoicedGroups.reduce((sum, g) => sum + g.tickets.length, 0);
@@ -3390,8 +3461,37 @@ export default function Invoices() {
             }}
           />
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Custom range download</label>
+          <button
+            type="button"
+            onClick={handleDownloadCustomRange}
+            disabled={downloadingCustomRange || ticketsForCustomer.length === 0}
+            title={
+              ticketsForCustomer.length === 0
+                ? 'No tickets match the current filters'
+                : `Merge all ${ticketsForCustomer.length} ticket(s) in this range into one PDF (ignores batch grouping; does not mark as exported).`
+            }
+            style={{
+              padding: '8px 12px',
+              backgroundColor: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-primary)',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: downloadingCustomRange || ticketsForCustomer.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: downloadingCustomRange || ticketsForCustomer.length === 0 ? 0.6 : 1,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {downloadingCustomRange
+              ? 'Downloading...'
+              : `Download ${ticketsForCustomer.length} ticket(s) as PDF`}
+          </button>
+        </div>
         <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
-          Filters pick which approved tickets can form pending batches (same idea as Service Tickets → Approved). Marked batches are not listed here—use See invoiced.
+          Filters pick which approved tickets can form pending batches (same idea as Service Tickets → Approved). Marked batches are not listed here—use See invoiced. Use <strong>Custom range download</strong> to merge every ticket in this range (incl. invoiced) into one PDF for ad-hoc client requests.
         </span>
         </div>
       </div>
