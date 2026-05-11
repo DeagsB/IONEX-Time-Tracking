@@ -4815,64 +4815,9 @@ export default function Invoices() {
             </p>
           </div>
           <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
-              onClick={handleExportForInvoicing}
-              disabled={!!exportProgress || !!qboProgress || uninvoicedGroups.length === 0}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: 'var(--primary-color)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: exportProgress || qboProgress ? 'not-allowed' : 'pointer',
-              }}
-            >
-              Export for invoicing
-            </button>
-            <button
-              onClick={handleCreateInQuickBooks}
-              disabled={!effectiveQboConnected || !!exportProgress || !!qboProgress || uninvoicedGroups.length === 0}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: effectiveQboConnected ? '#0ea5e9' : 'var(--bg-tertiary)',
-                color: effectiveQboConnected ? 'white' : 'var(--text-tertiary)',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: effectiveQboConnected && !exportProgress && !qboProgress ? 'pointer' : 'not-allowed',
-              }}
-              title={!effectiveQboConnected ? 'Connect QuickBooks in Profile (admin) first' : 'Create invoices in QuickBooks Online'}
-            >
-              Create in QuickBooks
-            </button>
-            {!effectiveQboConnected && (
-              <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-                Connect QuickBooks in Profile (admin) to create invoices
-              </span>
-            )}
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              {uninvoicedGroups.reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {uninvoicedGroups.length} group(s)
+              {(activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups).reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {(activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups).length} group(s)
             </span>
-            <button
-              onClick={() => setShowInvoiced(true)}
-              style={{
-                padding: '6px 14px',
-                backgroundColor: 'var(--bg-tertiary)',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                marginLeft: 'auto',
-              }}
-              title="View batches already marked as invoiced (service tickets locked until unmarked; PDF optional)"
-            >
-              See invoiced — locked ({finalInvoicedGroups.length})
-            </button>
           </div>
 
           <div style={{ marginBottom: '12px' }}>
