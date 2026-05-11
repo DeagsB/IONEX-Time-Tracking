@@ -5779,11 +5779,13 @@ export default function Invoices() {
               if (!c?.invoice_workflow_id) return null;
               return allWorkflows.find((w) => w.id === c.invoice_workflow_id)?.name ?? null;
             };
-            const customerGrouping = (cid: string | null | undefined) => {
-              if (!cid) return null;
-              const c = customers?.find((x: any) => x.id === cid);
-              return c?.invoice_date_grouping ?? null;
+            /** Effective grouping for a customer when no explicit value: CNRL → bi-weekly, else monthly. */
+            const effectiveCustomerGrouping = (cust: any): string => {
+              if (cust?.invoice_date_grouping) return cust.invoice_date_grouping;
+              return (cust?.name ?? '').toUpperCase().includes('CNRL') ? 'bi-weekly' : 'monthly';
             };
+            const customerById = (cid: string | null | undefined) =>
+              cid ? customers?.find((x: any) => x.id === cid) : undefined;
 
             return (
               <div>
@@ -5867,9 +5869,9 @@ export default function Invoices() {
                               <select
                                 value={c.invoice_date_grouping ?? ''}
                                 onChange={(e) => updatePeriodGroupingMutation.mutate({ customerId: c.id, projectId: null, value: e.target.value })}
-                                style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '160px' }}
+                                style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '200px' }}
                               >
-                                <option value="">App default (monthly)</option>
+                                <option value="">App default ({effectiveCustomerGrouping(c)}{(c.name ?? '').toUpperCase().includes('CNRL') ? ' — CNRL' : ''})</option>
                                 {groupingOptions.map((opt) => (
                                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
@@ -5897,8 +5899,12 @@ export default function Invoices() {
                         ) : filteredProjects.map((p: any) => {
                           const inheritedWf = customerWorkflowName(p.customer_id);
                           const wfFallback = inheritedWf ? `Inherit from customer (${inheritedWf})` : `Inherit from customer (${defaultWorkflowName})`;
-                          const inheritedGrp = customerGrouping(p.customer_id);
-                          const grpFallback = inheritedGrp ? `Inherit from customer (${inheritedGrp})` : 'Inherit from customer (monthly)';
+                          const inheritedCust = customerById(p.customer_id);
+                          const inheritedGrpEffective = inheritedCust ? effectiveCustomerGrouping(inheritedCust) : 'monthly';
+                          const inheritedGrpExplicit = !!inheritedCust?.invoice_date_grouping;
+                          const grpFallback = inheritedGrpExplicit
+                            ? `Inherit from customer (${inheritedGrpEffective})`
+                            : `Inherit from customer (${inheritedGrpEffective}${(inheritedCust?.name ?? '').toUpperCase().includes('CNRL') ? ' — CNRL default' : ' — app default'})`;
                           const label = [p.project_number, p.name].filter(Boolean).join(' – ') || p.id;
                           return (
                             <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
