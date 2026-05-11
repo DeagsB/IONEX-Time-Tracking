@@ -2137,6 +2137,7 @@ export default function Invoices() {
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
   const [bulkSendProgress, setBulkSendProgress] = useState<{ customer: string; current: number; total: number } | null>(null);
+  const [redownloadingApprovalId, setRedownloadingApprovalId] = useState<string | null>(null);
   const [editingLabourNotesGroupId, setEditingLabourNotesGroupId] = useState<string | null>(null);
   const [editingLabourNotes, setEditingLabourNotes] = useState<Record<string, string>>({});
   const [editingPeriodModal, setEditingPeriodModal] = useState<{
@@ -5641,6 +5642,67 @@ export default function Invoices() {
                           }}
                         />
                         {isUploading ? 'Uploading approval…' : 'Drop signed batch PDF here, or click to choose a file'}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          disabled={redownloadingApprovalId === persistId}
+                          onClick={async () => {
+                            setExportError(null);
+                            setRedownloadingApprovalId(persistId);
+                            try {
+                              const merged = await buildMergedBatchPdfBlob(group);
+                              const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+                              saveAs(merged, filename);
+                            } catch (err) {
+                              console.error('Re-download approval batch error:', err);
+                              setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
+                            } finally {
+                              setRedownloadingApprovalId(null);
+                            }
+                          }}
+                          title="Re-generate and download the merged batch PDF (Approver - Period.pdf). Does not change status."
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            color: 'var(--text-primary)',
+                            cursor: redownloadingApprovalId === persistId ? 'wait' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <span aria-hidden>📥</span>
+                          {redownloadingApprovalId === persistId ? 'Building…' : 'Download batch again'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={unmarkInvoicedMutation.isPending}
+                          onClick={() => {
+                            if (!window.confirm(`Move this batch back to Ready? It will no longer count as submitted for approval.`)) return;
+                            handleUnmarkAsInvoiced(persistId);
+                          }}
+                          title="Undo submitted-for-approval. Returns the batch to the Ready tab so you can re-prepare or edit before re-sending."
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            border: '1px solid rgba(239, 68, 68, 0.55)',
+                            backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                            color: '#b91c1c',
+                            cursor: unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          ↺ Undo — return to Ready
+                        </button>
                       </div>
                     </div>
                   );

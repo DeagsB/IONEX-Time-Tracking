@@ -622,6 +622,17 @@ export async function generateBatchSummaryPdf(
   const totalLabourAmount = labourLines.reduce((sum, l) => sum + l.amount, 0);
   const grandTotal = totalLabourAmount + expensesTotal;
 
+  // Sorted unique ticket numbers for the cover row — gives the approver a quick reference
+  // matching the per-ticket PDFs that follow in the merged bundle.
+  const ticketNumbers = [...new Set(
+    groupTickets.map((t) => (t.ticketNumber || '').toString().trim()).filter((s) => s.length > 0)
+  )].sort((a, b) => {
+    const an = parseInt(a.replace(/\D+/g, ''), 10);
+    const bn = parseInt(b.replace(/\D+/g, ''), 10);
+    if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
+    return a.localeCompare(b);
+  });
+
   const html = buildBatchSummaryPdfHtml(
     firstTicket,
     groupedExpenses,
@@ -633,7 +644,8 @@ export async function generateBatchSummaryPdf(
     totalLabourAmount,
     expensesTotal,
     grandTotal,
-    labourNotes
+    labourNotes,
+    ticketNumbers
   );
 
   const container = document.createElement('div');
@@ -672,7 +684,8 @@ function buildBatchSummaryPdfHtml(
   totalLabourAmount: number,
   expensesTotal: number,
   grandTotal: number,
-  labourNotes?: Record<string, string>
+  labourNotes?: Record<string, string>,
+  ticketNumbers: string[] = []
 ): string {
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket);
   const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
@@ -699,7 +712,7 @@ function buildBatchSummaryPdfHtml(
         </div>
         <div style="flex: 1; text-align: center;">
           <div style="font-size: 16pt; font-weight: bold; letter-spacing: 2px;">SERVICE TICKET SUMMARY</div>
-          <div style="font-size: 8pt; color: #555; margin-top: 2px;">Summary of all service tickets attached below</div>
+          <div style="font-size: 8pt; color: #555; margin-top: 2px;">Summary of all service tickets attached below${ticketNumbers.length > 0 ? ` &nbsp;·&nbsp; <span style="font-weight:600;">${ticketNumbers.length} ticket${ticketNumbers.length === 1 ? '' : 's'}:</span> ${ticketNumbers.join(', ')}` : ''}</div>
         </div>
         <div style="width: 140px; text-align: right;">
         </div>
