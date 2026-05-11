@@ -4942,21 +4942,21 @@ export default function Invoices() {
           {activeTab === 'ready' && bulkApprovalCandidates.length > 0 && (
             <div style={{ marginBottom: '16px', padding: '12px 14px', backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '8px' }}>
               <div style={{ fontSize: '13px', fontWeight: 700, color: '#b45309', marginBottom: '8px' }}>
-                Bulk send for approval — zip per customer
+                Prepare approval batches — download zip per customer
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {bulkApprovalCandidates.map(({ customer, groups }) => {
                   const isBusy = bulkSendProgress?.customer === customer;
                   const label = isBusy
                     ? `Building ${bulkSendProgress!.current}/${bulkSendProgress!.total}…`
-                    : `📤 Send all ${groups.length} batch${groups.length === 1 ? '' : 'es'} for ${customer} (zip)`;
+                    : `📥 Download ${groups.length} batch${groups.length === 1 ? '' : 'es'} for ${customer} (zip) & mark ready to send`;
                   return (
                     <button
                       key={customer}
                       type="button"
                       disabled={!!bulkSendProgress}
                       onClick={() => handleBulkSendForApproval(customer, groups)}
-                      title={`Generates one merged PDF per batch (Approver_Period.pdf), zips them as ${customer}_for-approval_<date>.zip, downloads, then marks each batch as sent for approval.`}
+                      title={`Generates one merged PDF per batch (Approver_Period.pdf), zips them as ${customer}_for-approval_<date>.zip, downloads the zip, then marks each batch as ready to send. Nothing is sent automatically — you email/submit the zip to the approver yourself.`}
                       style={{
                         alignSelf: 'flex-start',
                         padding: '8px 14px',
@@ -5239,10 +5239,10 @@ export default function Invoices() {
                           alignItems: 'center',
                           gap: '6px',
                         }}
-                        title="Portal Approval flow: download the batch PDF and send to the approver. Marks this batch as sent. When you get the signed PDF back, drop it on the card under the Submitted tab to advance to Approved."
+                        title="Portal Approval flow: downloads the batch PDF for you to email/submit to the approver, then marks the batch as ready-to-send so it moves to the Submitted tab. Nothing is sent automatically. When the signed PDF comes back, drop it on the card under Submitted to advance to Approved."
                       >
                         <span aria-hidden style={{ fontSize: '13px' }}>📤</span>
-                        {markInvoicedMutation.isPending ? 'Saving…' : 'Send for approval (download + mark sent)'}
+                        {markInvoicedMutation.isPending ? 'Saving…' : 'Download for approval & mark ready to send'}
                       </button>
                     ) : (
                       <button
@@ -5507,7 +5507,7 @@ export default function Invoices() {
           {activeTab === 'submitted' && (
             submittedApprovalGroups.length === 0 ? (
               <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-                No batches awaiting approval. Submit a batch from the Pending tab using <strong>Mark as sent for approval</strong>.
+                No batches awaiting approval. From the Ready tab, click <strong>Download for approval & mark ready to send</strong> on a batch to prepare it for the approver.
               </div>
             ) : (
             <div>
