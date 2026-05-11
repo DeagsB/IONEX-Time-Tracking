@@ -2084,7 +2084,7 @@ export default function Invoices() {
     return set;
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
-  type InvoiceTab = 'pending' | 'submitted' | 'approved' | 'invoiced' | 'settings';
+  type InvoiceTab = 'pending' | 'ready' | 'submitted' | 'approved' | 'invoiced' | 'settings';
   const [activeTab, setActiveTab] = useState<InvoiceTab>('pending');
   const showInvoiced = activeTab === 'invoiced';
   const setShowInvoiced = (v: boolean) => setActiveTab(v ? 'invoiced' : 'pending');
@@ -3027,17 +3027,48 @@ export default function Invoices() {
   /** groupedTickets already excludes invoiced tickets, so all groups here are uninvoiced. */
   const uninvoicedGroups = groupedTickets;
 
+  /** A group is "accumulating" when its period is still open (more tickets expected) — these belong on Pending.
+   *  Closed periods (or project-completion / progress batches) belong on Ready. */
+  const isGroupAccumulating = useCallback(
+    (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+      const firstTicket = group.tickets[0];
+      const custIdForPeriod = firstTicket?.customerId ?? '';
+      const projIdForPeriod =
+        (firstTicket as ServiceTicket & { recordProjectId?: string })?.recordProjectId ??
+        firstTicket?.projectId ??
+        '';
+      const periodGrouping = cnrlPeriodGrouping(getGroupingForTicket(custIdForPeriod, projIdForPeriod));
+      return (
+        !!group.key.periodKey &&
+        !String(group.key.periodKey).startsWith('pc:') &&
+        !String(group.key.periodKey).startsWith('prog:') &&
+        isInvoicePeriodStillAccumulating(group.key.periodKey, periodGrouping)
+      );
+    },
+    [getGroupingForTicket]
+  );
+
+  const pendingAccumulatingGroups = useMemo(
+    () => uninvoicedGroups.filter(isGroupAccumulating),
+    [uninvoicedGroups, isGroupAccumulating]
+  );
+  const readyGroups = useMemo(
+    () => uninvoicedGroups.filter((g) => !isGroupAccumulating(g)),
+    [uninvoicedGroups, isGroupAccumulating]
+  );
+
   const filteredUninvoicedGroups = useMemo(() => {
-    if (!invoiceSearchQuery.trim()) return uninvoicedGroups;
+    const base = activeTab === 'pending' ? pendingAccumulatingGroups : activeTab === 'ready' ? readyGroups : uninvoicedGroups;
+    if (!invoiceSearchQuery.trim()) return base;
     const q = invoiceSearchQuery.trim().toLowerCase();
-    return uninvoicedGroups.filter((g) => {
+    return base.filter((g) => {
       const custName = g.tickets[0]?.customerName?.toLowerCase() ?? '';
       const projName = g.key.projectName?.toLowerCase() ?? '';
       const projNum = g.key.projectNumber?.toLowerCase() ?? '';
       const ticketNums = g.tickets.map(t => t.ticketNumber?.toLowerCase() ?? '').join(' ');
       return custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
     });
-  }, [uninvoicedGroups, invoiceSearchQuery]);
+  }, [uninvoicedGroups, pendingAccumulatingGroups, readyGroups, invoiceSearchQuery, activeTab]);
 
   const { data: savedInvoiceMetadata } = useQuery({
     queryKey: ['invoicedBatchInvoices', [...invoicedGroupIdsFromDb].sort().join(',')],
@@ -3569,7 +3600,8 @@ export default function Invoices() {
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
         {([
-          { id: 'pending' as const, label: 'Pending', count: uninvoicedGroups.length },
+          { id: 'pending' as const, label: 'Pending', count: pendingAccumulatingGroups.length },
+          { id: 'ready' as const, label: 'Ready for invoicing', count: readyGroups.length },
           { id: 'submitted' as const, label: 'Submitted', count: submittedApprovalGroups.length },
           { id: 'approved' as const, label: 'Approved', count: approvedGroups.length },
           { id: 'invoiced' as const, label: 'Invoiced', count: finalInvoicedGroups.length },
@@ -3865,13 +3897,13 @@ export default function Invoices() {
         </div>
       )}
 
-      {groupedTickets.length === 0 && invoicedGroups.length === 0 && activeTab === 'pending' ? (
+      {groupedTickets.length === 0 && invoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           {selectedCustomerId
             ? 'No approved tickets for this customer in the selected date range. Approve service tickets first in the Service Tickets page.'
             : 'No approved tickets ready for export. Approve service tickets first in the Service Tickets page.'}
         </div>
-      ) : groupedTickets.length === 0 && activeTab === 'pending' ? (
+      ) : groupedTickets.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All batches are marked as invoiced.
           <div style={{ marginTop: '12px' }}>
@@ -4314,9 +4346,9 @@ export default function Invoices() {
                                 fontWeight: 600,
                                 cursor: 'pointer',
                               }}
-                              title="Add a short note that appears in brackets after each labour type (ST/TT/FT/SO/FO) on the batch summary PDF cover page"
+                              title="Short description for each rate type (ST/TT/FT/SO/FO) — used to justify or explain rates on the batch summary PDF cover page (e.g. 'overtime > 8 hrs')"
                             >
-                              Edit summary PDF notes
+                              Edit rate descriptions
                             </button>
                             <button
                               type="button"
@@ -4350,10 +4382,10 @@ export default function Invoices() {
                           borderLeft: '4px solid var(--primary-color)',
                         }}>
                           <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            Batch Summary PDF — Labour Type Notes
+                            Rate descriptions (justify/annotate each rate type)
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
-                            These notes appear on the <strong>batch summary PDF</strong> (the cover page of the exported invoice bundle), in brackets after each labour type's hours line — e.g. <em>Shop Time (ST) (Conveyor installation)</em>. Leave a field blank to omit. They do not appear on per-ticket PDFs or in QuickBooks.
+                            Short justification or explanation for each rate type. Appears in brackets after the rate on the <strong>batch summary PDF</strong> (cover page of the exported invoice bundle) — e.g. <em>Shop Time (ST) (overtime &gt; 8 hrs)</em>. Leave a field blank to omit. Does not appear on per-ticket PDFs or in QuickBooks.
                           </div>
                           {SUMMARY_LABOUR_TYPES.map(({ key: ltKey, label: ltLabel }) => (
                             <div key={ltKey} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
@@ -4678,7 +4710,7 @@ export default function Invoices() {
           </>
           )}
         </div>
-      ) : uninvoicedGroups.length === 0 && activeTab === 'pending' ? (
+      ) : uninvoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All groups have been marked as invoiced.
           {finalInvoicedGroups.length > 0 && (
@@ -4705,10 +4737,10 @@ export default function Invoices() {
         </div>
       ) : (
         <>
-          {activeTab === 'pending' && (<>
+          {(activeTab === 'pending' || activeTab === 'ready') && (<>
           <div style={{ marginBottom: '14px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 6px', color: 'var(--text-primary)' }}>
-              Pending
+              {activeTab === 'ready' ? 'Ready for invoicing' : 'Pending'}
             </h2>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '900px' }}>
               Batches here are not marked as invoiced yet. <strong>Mark as invoiced</strong> saves the batch and locks the
@@ -5012,9 +5044,9 @@ export default function Invoices() {
                         fontWeight: 600,
                         cursor: 'pointer',
                       }}
-                      title="Add a short note that appears in brackets after each labour type (ST/TT/FT/SO/FO) on the batch summary PDF cover page"
+                      title="Short description for each rate type (ST/TT/FT/SO/FO) — used to justify or explain rates on the batch summary PDF cover page (e.g. 'overtime > 8 hrs')"
                     >
-                      Edit summary PDF notes
+                      Edit rate descriptions
                     </button>
                     {groupIsPortalApproval ? (
                       <button
@@ -5023,20 +5055,24 @@ export default function Invoices() {
                         disabled={!!exportProgress || !!qboProgress || markInvoicedMutation.isPending}
                         style={{
                           padding: '6px 12px',
-                          backgroundColor: 'var(--bg-tertiary)',
-                          color: 'var(--text-secondary)',
-                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                          color: '#b45309',
+                          border: '1px solid rgba(245, 158, 11, 0.55)',
                           borderRadius: '6px',
                           fontSize: '12px',
-                          fontWeight: 600,
+                          fontWeight: 700,
                           cursor:
                             exportProgress || qboProgress || markInvoicedMutation.isPending
                               ? 'not-allowed'
                               : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
                         }}
-                        title="Move this batch into the Submitted for Approval list. The customer will review the service tickets; once they approve, drop the signed batch PDF on the card to advance to Approved."
+                        title="Portal Approval flow: download the batch PDF and send to the approver. Marks this batch as sent. When you get the signed PDF back, drop it on the card under the Submitted tab to advance to Approved."
                       >
-                        {markInvoicedMutation.isPending ? 'Saving…' : 'Mark as sent for approval'}
+                        <span aria-hidden style={{ fontSize: '13px' }}>📤</span>
+                        {markInvoicedMutation.isPending ? 'Saving…' : 'Send for approval (download + mark sent)'}
                       </button>
                     ) : (
                       <button
@@ -5079,27 +5115,33 @@ export default function Invoices() {
                         style={{
                           padding: '6px 12px',
                           backgroundColor:
-                            markInvoicedDropOverGroupId === groupId ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-tertiary)',
-                          color: 'var(--text-secondary)',
+                            markInvoicedDropOverGroupId === groupId
+                              ? 'rgba(34, 197, 94, 0.18)'
+                              : 'rgba(34, 197, 94, 0.12)',
+                          color: '#15803d',
                           border:
                             markInvoicedDropOverGroupId === groupId
-                              ? '2px dashed var(--primary-color)'
-                              : '1px solid var(--border-color)',
+                              ? '2px dashed #22c55e'
+                              : '1px solid rgba(34, 197, 94, 0.55)',
                           borderRadius: '6px',
                           fontSize: '12px',
-                          fontWeight: 600,
+                          fontWeight: 700,
                           cursor:
                             exportProgress || qboProgress || markInvoicedMutation.isPending || uploadingInvoiceGroupId === groupId
                               ? 'not-allowed'
                               : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
                         }}
-                        title="Save this batch as invoiced and lock these service tickets until unmarked (no PDF required). Or drop an invoice PDF here to attach, mark, and download the merged batch."
+                        title="Mark this batch as invoiced and lock its service tickets. Drop an invoice PDF here to attach it at the same time (recommended — invoices for non-portal customers normally go out immediately), or click to mark without a PDF and attach later."
                       >
+                        <span aria-hidden style={{ fontSize: '13px' }}>📎</span>
                         {uploadingInvoiceGroupId === groupId
                           ? 'Attaching…'
                           : markInvoicedMutation.isPending
                             ? 'Saving…'
-                            : 'Mark as invoiced'}
+                            : 'Mark as invoiced (drop invoice PDF)'}
                       </button>
                     )}
                   </div>
@@ -5723,7 +5765,7 @@ export default function Invoices() {
                 </div>
 
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                  System default workflow: <strong>{defaultWorkflowName}</strong>. Workflow statuses managed on the <Link to="/invoice-workflows">Invoice Workflows</Link> page. Labour notes (per-batch) edited from each group card on the Pending/Invoiced tabs.
+                  System default workflow: <strong>{defaultWorkflowName}</strong>. Workflow statuses managed on the <Link to="/invoice-workflows">Invoice Workflows</Link> page. Rate descriptions (per-batch) edited from each group card on the Pending/Ready/Invoiced tabs.
                 </div>
 
                 {settingsTab === 'customers' ? (
