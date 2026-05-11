@@ -1673,16 +1673,36 @@ export default function Invoices() {
 
   const defaultWorkflow = useMemo(() => allWorkflows.find((w) => w.is_default) ?? allWorkflows[0], [allWorkflows]);
 
+  const { data: projects } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsService.getAll(),
+  });
+
+  /**
+   * Resolution order: project.invoice_workflow_id → customer.invoice_workflow_id → system default.
+   * projectNumber matches projects.project_number (case-insensitive, trimmed).
+   */
   const getWorkflowForCustomer = useCallback(
-    (customerName: string | undefined): InvoiceWorkflowRow | undefined => {
-      if (!customerName || allWorkflows.length === 0) return defaultWorkflow;
+    (customerName: string | undefined, projectNumber?: string | undefined): InvoiceWorkflowRow | undefined => {
+      if (allWorkflows.length === 0) return defaultWorkflow;
+      const pn = projectNumber?.trim().toLowerCase();
+      if (pn) {
+        const proj = projects?.find(
+          (p: { project_number?: string | null; invoice_workflow_id?: string | null }) =>
+            (p.project_number ?? '').trim().toLowerCase() === pn
+        );
+        if (proj?.invoice_workflow_id) {
+          return allWorkflows.find((w) => w.id === proj.invoice_workflow_id) ?? defaultWorkflow;
+        }
+      }
+      if (!customerName) return defaultWorkflow;
       const cust = customers?.find((c: any) => c.name === customerName);
       if (cust?.invoice_workflow_id) {
         return allWorkflows.find((w) => w.id === cust.invoice_workflow_id) ?? defaultWorkflow;
       }
       return defaultWorkflow;
     },
-    [customers, allWorkflows, defaultWorkflow]
+    [customers, projects, allWorkflows, defaultWorkflow]
   );
 
   /** A workflow that includes a 'submitted_approval' status drives the multi-step Portal Approval flow. */
@@ -1691,11 +1711,6 @@ export default function Invoices() {
       !!wf?.statuses?.some((s) => s.id === 'submitted_approval'),
     []
   );
-
-  const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsService.getAll(),
-  });
 
   const getGroupingForCustomer = useCallback(
     (customerId: string) => {
@@ -2638,7 +2653,7 @@ export default function Invoices() {
     const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
     const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
     const customerName = group.tickets[0]?.customerName;
-    const wf = getWorkflowForCustomer(customerName);
+    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
     const initialStatus = wf?.statuses?.[0];
     const initialStatusId = initialStatus?.id;
     const now = new Date().toISOString();
@@ -2697,7 +2712,7 @@ export default function Invoices() {
     const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
     const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
     const customerName = group.tickets[0]?.customerName;
-    const wf = getWorkflowForCustomer(customerName);
+    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
     const submittedStatus = wf?.statuses?.find((s) => s.id === 'submitted_approval');
     if (!submittedStatus || !wf) {
       setExportError('Customer is not on a Portal Approval workflow.');
@@ -2756,7 +2771,7 @@ export default function Invoices() {
     const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
     const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
     const customerName = group.tickets[0]?.customerName;
-    const wf = getWorkflowForCustomer(customerName);
+    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
     const initialStatus = wf?.statuses?.[0];
     const initialStatusId = initialStatus?.id;
     const now = new Date().toISOString();
@@ -2905,7 +2920,7 @@ export default function Invoices() {
     (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string | undefined => {
       const pid = resolvedPersistGroupId(group, invoicedMarkRows);
       const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
-      const wf = getWorkflowForCustomer(group.tickets[0]?.customerName);
+      const wf = getWorkflowForCustomer(group.tickets[0]?.customerName, group.key.projectNumber);
       return snap?.statusId ?? wf?.statuses?.[0]?.id;
     },
     [invoicedMarkRows, getWorkflowForCustomer]
@@ -3033,7 +3048,7 @@ export default function Invoices() {
     for (const g of finalInvoicedGroups) {
       const pid = resolvedPersistGroupId(g, invoicedMarkRows);
       const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
-      const wf = getWorkflowForCustomer(g.tickets[0]?.customerName);
+      const wf = getWorkflowForCustomer(g.tickets[0]?.customerName, g.key.projectNumber);
       const sid = snap?.statusId ?? wf?.statuses?.[0]?.id;
       if (!sid) continue;
       const st = wf?.statuses?.find((s) => s.id === sid);
@@ -3053,7 +3068,7 @@ export default function Invoices() {
       groups = groups.filter((g) => {
         const pid = resolvedPersistGroupId(g, invoicedMarkRows);
         const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
-        const wf = getWorkflowForCustomer(g.tickets[0]?.customerName);
+        const wf = getWorkflowForCustomer(g.tickets[0]?.customerName, g.key.projectNumber);
         const sid = snap?.statusId ?? wf?.statuses?.[0]?.id;
         return sid === invoiceStatusFilter;
       });
@@ -3985,7 +4000,7 @@ export default function Invoices() {
               const isAccordionOpen = isBreakdownExpanded;
               const batchMarkRow = invoicedMarkRows.find((r) => r.group_id === persistId);
               const batchSnap = batchMarkRow?.key_snapshot as FrozenGroupSnapshot | undefined;
-              const batchWorkflow = getWorkflowForCustomer(groupTickets[0]?.customerName);
+              const batchWorkflow = getWorkflowForCustomer(groupTickets[0]?.customerName, key.projectNumber);
               const batchStatusId = batchSnap?.statusId ?? batchWorkflow?.statuses?.[0]?.id;
               const batchCurrentStatus = batchWorkflow?.statuses?.find((s) => s.id === batchStatusId);
               const statusSinceDate = batchSnap?.statusChangedAt ?? batchMarkRow?.marked_at;
@@ -4240,9 +4255,9 @@ export default function Invoices() {
                                 fontWeight: 600,
                                 cursor: 'pointer',
                               }}
-                              title="Add notes to labour types on the summary PDF"
+                              title="Add a short note that appears in brackets after each labour type (ST/TT/FT/SO/FO) on the batch summary PDF cover page"
                             >
-                              Edit descriptions
+                              Edit summary PDF notes
                             </button>
                             <button
                               type="button"
@@ -4276,10 +4291,10 @@ export default function Invoices() {
                           borderLeft: '4px solid var(--primary-color)',
                         }}>
                           <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            Edit Summary Descriptions
+                            Batch Summary PDF — Labour Type Notes
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
-                            Notes appear in brackets after the labour type on the summary PDF, e.g. <em>Shop Time (ST) (Conveyor installation)</em>
+                            These notes appear on the <strong>batch summary PDF</strong> (the cover page of the exported invoice bundle), in brackets after each labour type's hours line — e.g. <em>Shop Time (ST) (Conveyor installation)</em>. Leave a field blank to omit. They do not appear on per-ticket PDFs or in QuickBooks.
                           </div>
                           {SUMMARY_LABOUR_TYPES.map(({ key: ltKey, label: ltLabel }) => (
                             <div key={ltKey} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
@@ -4756,7 +4771,7 @@ export default function Invoices() {
                 !String(key.periodKey).startsWith('pc:') &&
                 !String(key.periodKey).startsWith('prog:') &&
                 isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping);
-              const groupWorkflow = getWorkflowForCustomer(firstTicket?.customerName);
+              const groupWorkflow = getWorkflowForCustomer(firstTicket?.customerName, key.projectNumber);
               const groupIsPortalApproval = isPortalApprovalWorkflow(groupWorkflow);
               return (
               <div
@@ -4937,9 +4952,9 @@ export default function Invoices() {
                         fontWeight: 600,
                         cursor: 'pointer',
                       }}
-                      title="Add notes to labour types on the summary PDF"
+                      title="Add a short note that appears in brackets after each labour type (ST/TT/FT/SO/FO) on the batch summary PDF cover page"
                     >
-                      Edit descriptions
+                      Edit summary PDF notes
                     </button>
                     {groupIsPortalApproval ? (
                       <button
@@ -5230,7 +5245,7 @@ export default function Invoices() {
                 {submittedApprovalGroups.map((group) => {
                   const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
                   const customerName = group.tickets[0]?.customerName;
-                  const wf = getWorkflowForCustomer(customerName);
+                  const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
                   const status = wf?.statuses?.find((s) => s.id === 'submitted_approval');
                   const statusHex = status ? statusColorHex(status.color) : '#888';
                   const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
@@ -5356,7 +5371,7 @@ export default function Invoices() {
                 {approvedGroups.map((group) => {
                   const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
                   const customerName = group.tickets[0]?.customerName;
-                  const wf = getWorkflowForCustomer(customerName);
+                  const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
                   const status = wf?.statuses?.find((s) => s.id === 'approved');
                   const statusHex = status ? statusColorHex(status.color) : '#3b82f6';
                   const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');

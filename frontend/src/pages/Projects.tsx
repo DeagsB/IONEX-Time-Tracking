@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { projectsService, customersService, timeEntriesService } from '../services/supabaseServices';
+import { projectsService, customersService, timeEntriesService, invoiceWorkflowsService } from '../services/supabaseServices';
 import SearchableSelect from '../components/SearchableSelect';
 export default function Projects() {
   const { user, isAdmin } = useAuth();
@@ -39,6 +39,7 @@ export default function Projects() {
     ft_senior_rate: '',
     travel_rate: '',
     invoice_date_grouping: '',
+    invoice_workflow_id: '',
   });
 
   const [showInactive, setShowInactive] = useState(false);
@@ -54,6 +55,11 @@ export default function Projects() {
   const { data: customers } = useQuery({
     queryKey: ['customers'],
     queryFn: () => customersService.getAll(),
+  });
+
+  const { data: workflows = [] } = useQuery({
+    queryKey: ['invoiceWorkflows'],
+    queryFn: invoiceWorkflowsService.getAll,
   });
 
   // Toggle for admins to show only their hours vs all hours
@@ -211,6 +217,7 @@ export default function Projects() {
         ft_junior_rate: data.ft_junior_rate ? parseFloat(data.ft_junior_rate) : null,
         ft_senior_rate: data.ft_senior_rate ? parseFloat(data.ft_senior_rate) : null,
         travel_rate: data.travel_rate ? parseFloat(data.travel_rate) : null,
+        invoice_workflow_id: data.invoice_workflow_id || null,
         is_demo: isDemoMode,
       };
       if (!user?.id) throw new Error('User not authenticated.');
@@ -249,6 +256,7 @@ export default function Projects() {
       if (data.ft_senior_rate !== undefined) projectData.ft_senior_rate = data.ft_senior_rate ? parseFloat(data.ft_senior_rate) : null;
       if (data.travel_rate !== undefined) projectData.travel_rate = data.travel_rate ? parseFloat(data.travel_rate) : null;
       if (data.invoice_date_grouping !== undefined) projectData.invoice_date_grouping = data.invoice_date_grouping || null;
+      if (data.invoice_workflow_id !== undefined) projectData.invoice_workflow_id = data.invoice_workflow_id || null;
 
       return await projectsService.update(id, projectData);
     },
@@ -318,6 +326,7 @@ export default function Projects() {
       ft_senior_rate: '',
       travel_rate: '',
       invoice_date_grouping: '',
+      invoice_workflow_id: '',
     });
   };
 
@@ -343,6 +352,7 @@ export default function Projects() {
       ft_senior_rate: project.ft_senior_rate?.toString() || '',
       travel_rate: project.travel_rate?.toString() || '',
       invoice_date_grouping: project.invoice_date_grouping || '',
+      invoice_workflow_id: project.invoice_workflow_id || '',
     });
     setShowModal(true);
   };
@@ -671,6 +681,21 @@ export default function Projects() {
                   <option value="monthly">Monthly</option>
                   <option value="project-completion">Project Completion</option>
                   <option value="progress">Progress</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="label">Invoice Workflow (overrides customer)</label>
+                <select
+                  className="input"
+                  value={formData.invoice_workflow_id}
+                  onChange={(e) => setFormData({ ...formData, invoice_workflow_id: e.target.value })}
+                >
+                  <option value="">Use Customer Default</option>
+                  {workflows.map((wf: any) => (
+                    <option key={wf.id} value={wf.id}>
+                      {wf.name}{wf.is_default ? ' (default)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1080,6 +1105,21 @@ export default function Projects() {
                   <option value="monthly">Monthly</option>
                   <option value="project-completion">Project Completion</option>
                   <option value="progress">Progress</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="label">Invoice Workflow (overrides customer)</label>
+                <select
+                  className="input"
+                  value={formData.invoice_workflow_id}
+                  onChange={(e) => setFormData({ ...formData, invoice_workflow_id: e.target.value })}
+                >
+                  <option value="">Use Customer Default</option>
+                  {workflows.map((wf: any) => (
+                    <option key={wf.id} value={wf.id}>
+                      {wf.name}{wf.is_default ? ' (default)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
