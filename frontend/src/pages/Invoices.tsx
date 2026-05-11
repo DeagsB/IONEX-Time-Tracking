@@ -3800,14 +3800,7 @@ export default function Invoices() {
 
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '8px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '14px' }}>
-        {isCNRL
-          ? 'Approved service tickets ready for PDF export, grouped by approver and period (default bi-weekly). Only tickets with an approver code (G### or PO) are shown — add PO/AFE/CC (Cost Center), Approver, and Coding to the project in Projects to include tickets. Marked-as-invoiced state is stored in the database (admins only).'
-          : 'Approved service tickets grouped by project using the filters below (daily, weekly, bi-weekly, monthly, or one batch per project). Marked-as-invoiced is saved to the database with a snapshot of the batch so status stays consistent across devices (admins only).'}
-        {' '}
-        <strong>Only pending (not yet invoiced) batches</strong> appear in the list below. <strong>Mark as invoiced</strong> locks those service tickets until you unmark (no invoice PDF required). Use <strong>See invoiced</strong> for batches already marked—they stay locked the same way, with or without a linked PDF.
-      </p>
+      <h1 style={{ marginBottom: '16px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
@@ -3997,7 +3990,7 @@ export default function Invoices() {
           </div>
         )}
         <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
-          Filters pick which approved tickets can form pending batches (same idea as Service Tickets → Approved). Marked batches are not listed here—use See invoiced.{selectedCustomerId ? ' Use ' : ' Pick a customer to enable '}<strong>Custom range download</strong>{selectedCustomerId ? ' to merge every ticket in this range (incl. invoiced) into one PDF for ad-hoc client requests.' : ' for ad-hoc client requests outside the regular invoice cadence.'}
+          Filters pick which approved tickets feed the tabs above. Marked-as-invoiced batches live on the <strong>Invoiced</strong> tab.{selectedCustomerId ? ' Use ' : ' Pick a customer to enable '}<strong>Custom range download</strong>{selectedCustomerId ? ' to merge every ticket in this range (incl. invoiced) into one PDF for ad-hoc client requests.' : ' for ad-hoc client requests outside the regular invoice cadence.'}
         </span>
         </div>
       </div>
@@ -4153,40 +4146,23 @@ export default function Invoices() {
                 cursor: 'pointer',
               }}
             >
-              See invoiced ({finalInvoicedGroups.length})
+              Go to Invoiced tab ({finalInvoicedGroups.length})
             </button>
           </div>
         </div>
       ) : showInvoiced ? (
         <div>
-          <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setShowInvoiced(false)}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: 'var(--bg-tertiary)',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              ← Back to pending
-            </button>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Invoiced batches (locked)
-              </span>
-              <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                {finalInvoicedGroups.length} group(s) — service tickets in these batches cannot be edited until unmarked. A linked invoice PDF is optional.
-              </span>
-            </div>
+          <div style={{ marginBottom: '16px' }}>
+            <h2 style={{ margin: '0 0 6px', fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Invoiced (locked)
+            </h2>
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+              {finalInvoicedGroups.length} group(s). Service tickets in these batches cannot be edited until unmarked. A linked invoice PDF is optional.
+            </span>
           </div>
           {finalInvoicedGroups.length === 0 ? (
             <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-              No invoiced groups. Use "Back to pending" to return.
+              No invoiced batches yet.
             </div>
           ) : (
           <>
@@ -4950,8 +4926,8 @@ export default function Invoices() {
             <div style={{ marginTop: '16px' }}>
               <button
                 type="button"
-                onClick={() => setShowInvoiced(true)}
-                title="View batches already marked as invoiced (service tickets locked until unmarked; PDF optional)"
+                onClick={() => setActiveTab('invoiced')}
+                title="Switch to the Invoiced tab to view batches already marked as invoiced"
                 style={{
                   padding: '8px 16px',
                   backgroundColor: 'var(--bg-tertiary)',
@@ -4963,7 +4939,7 @@ export default function Invoices() {
                   cursor: 'pointer',
                 }}
               >
-                See invoiced — locked ({finalInvoicedGroups.length})
+                Go to Invoiced tab ({finalInvoicedGroups.length})
               </button>
             </div>
           )}
@@ -4976,8 +4952,9 @@ export default function Invoices() {
               {activeTab === 'ready' ? 'Ready for invoicing' : 'Pending'}
             </h2>
             <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '900px' }}>
-              Batches here are not marked as invoiced yet. <strong>Mark as invoiced</strong> saves the batch and locks the
-              listed service tickets until you unmark. You do not need a PDF first; you can attach one later from See invoiced.
+              {activeTab === 'ready'
+                ? <>Billing periods are closed for these batches — actionable now. Use <strong>Mark as invoiced</strong> for non-portal customers, or <strong>Download for approval &amp; mark ready to send</strong> for Portal Approval customers (per batch, or bulk per customer from the banner above).</>
+                : <>Billing periods still open — more tickets may still be added before the period closes. These move to <strong>Ready</strong> automatically once their period ends.</>}
             </p>
           </div>
           <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
