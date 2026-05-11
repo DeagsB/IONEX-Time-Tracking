@@ -1331,7 +1331,7 @@ function getApprovalBatchFilename(
     ?? tickets[0]?.customerName?.trim()
     ?? 'batch';
   const period = key.periodLabel?.trim() || getTicketDateRangeStr(tickets);
-  return `${sanitizeFilenamePart(name)}_${sanitizeFilenamePart(period)}.pdf`;
+  return `${sanitizeFilenamePart(name)} - ${sanitizeFilenamePart(period)}.pdf`;
 }
 
 /** Invoice PDF filename: Approver_ProjectNumber_DateRange.pdf (CNRL) or ProjectNumber_PeriodLabel.pdf (non-CNRL) */
@@ -2886,8 +2886,8 @@ export default function Invoices() {
         if (usedNames.has(filename)) {
           const stem = filename.replace(/\.pdf$/i, '');
           let n = 2;
-          while (usedNames.has(`${stem}_${n}.pdf`)) n++;
-          filename = `${stem}_${n}.pdf`;
+          while (usedNames.has(`${stem} (${n}).pdf`)) n++;
+          filename = `${stem} (${n}).pdf`;
         }
         usedNames.add(filename);
         zip.file(filename, merged);
@@ -2902,12 +2902,12 @@ export default function Invoices() {
       if (periodLabels.length === 1) {
         periodSuffix = periodLabels[0];
       } else if (periodLabels.length > 1) {
-        periodSuffix = `${periodLabels[0]}_to_${periodLabels[periodLabels.length - 1]}`;
+        periodSuffix = `${periodLabels[0]} to ${periodLabels[periodLabels.length - 1]}`;
       } else {
         const allTickets = groupsForCustomer.flatMap((g) => g.tickets);
         periodSuffix = getTicketDateRangeStr(allTickets);
       }
-      const zipName = `${sanitizeFilenamePart(customerName)}_for-approval_${sanitizeFilenamePart(periodSuffix)}.zip`;
+      const zipName = `${sanitizeFilenamePart(customerName)} - for approval - ${sanitizeFilenamePart(periodSuffix)}.zip`;
       saveAs(zipBlob, zipName);
     } catch (err) {
       console.error('Bulk approval zip error:', err);
