@@ -2893,8 +2893,21 @@ export default function Invoices() {
         zip.file(filename, merged);
       }
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const today = new Date().toISOString().slice(0, 10);
-      const zipName = `${sanitizeFilenamePart(customerName)}_for-approval_${today}.zip`;
+      // Period suffix: prefer the common periodLabel across all groups; if multiple distinct,
+      // use first→last range; if none, fall back to the date range of the underlying tickets.
+      const periodLabels = [...new Set(
+        groupsForCustomer.map((g) => g.key.periodLabel?.trim()).filter((s): s is string => !!s)
+      )].sort();
+      let periodSuffix: string;
+      if (periodLabels.length === 1) {
+        periodSuffix = periodLabels[0];
+      } else if (periodLabels.length > 1) {
+        periodSuffix = `${periodLabels[0]}_to_${periodLabels[periodLabels.length - 1]}`;
+      } else {
+        const allTickets = groupsForCustomer.flatMap((g) => g.tickets);
+        periodSuffix = getTicketDateRangeStr(allTickets);
+      }
+      const zipName = `${sanitizeFilenamePart(customerName)}_for-approval_${sanitizeFilenamePart(periodSuffix)}.zip`;
       saveAs(zipBlob, zipName);
     } catch (err) {
       console.error('Bulk approval zip error:', err);
