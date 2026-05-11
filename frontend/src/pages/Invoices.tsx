@@ -5760,7 +5760,7 @@ export default function Invoices() {
                   Approved ({approvedGroups.length})
                 </h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-                  Customer has approved the batch. Drop the invoice PDF here, then click <strong>Mark as invoiced</strong> to finalise.
+                  Customer has approved the batch. Drop the invoice PDF here, then click <strong>Mark as invoiced</strong> to finalize.
                 </p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

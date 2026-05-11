@@ -63,7 +63,7 @@ export default function PayPeriodCalendar({ value, onChange, onClose, title, ini
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   /** 'period' = click any day → that day's full 14-day period. 'custom' = two-click arbitrary range. */
   const [mode, setMode] = useState<'period' | 'custom'>(initialMode);
-  /** Custom-mode: first click sets pendingStart; second click finalises start/end. */
+  /** Custom-mode: first click sets pendingStart; second click finalizes start/end. */
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   const [hoverDay, setHoverDay] = useState<string | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
