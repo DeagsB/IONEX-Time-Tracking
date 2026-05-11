@@ -2118,6 +2118,7 @@ export default function Invoices() {
 
   type InvoiceTab = 'pending' | 'ready' | 'submitted' | 'approved' | 'invoiced' | 'settings';
   const [activeTab, setActiveTab] = useState<InvoiceTab>('pending');
+  const [didAutoPickInitialTab, setDidAutoPickInitialTab] = useState(false);
   const showInvoiced = activeTab === 'invoiced';
   const setShowInvoiced = (v: boolean) => setActiveTab(v ? 'invoiced' : 'pending');
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
@@ -3122,6 +3123,15 @@ export default function Invoices() {
     () => uninvoicedGroups.filter((g) => !isGroupAccumulating(g)),
     [uninvoicedGroups, isGroupAccumulating]
   );
+
+  // On first data load, open Ready tab if any ready groups exist, else stay on Pending.
+  // Skips after data loads once — user-driven tab changes are not overridden later.
+  useEffect(() => {
+    if (didAutoPickInitialTab) return;
+    if (!groupedTickets) return;
+    if (readyGroups.length > 0) setActiveTab('ready');
+    setDidAutoPickInitialTab(true);
+  }, [didAutoPickInitialTab, groupedTickets, readyGroups.length]);
 
   const filteredUninvoicedGroups = useMemo(() => {
     const base = activeTab === 'pending' ? pendingAccumulatingGroups : activeTab === 'ready' ? readyGroups : uninvoicedGroups;
