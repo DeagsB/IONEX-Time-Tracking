@@ -1300,6 +1300,39 @@ function getTicketDateRangeStr(tickets: ServiceTicket[]): string {
   return first === last ? first : `${first}_to_${last}`;
 }
 
+/** Sanitize a filename component (strip illegal characters, collapse whitespace). */
+function sanitizeFilenamePart(s: string): string {
+  return s.trim().replace(/[/\\?*:|"<>]/g, '_').replace(/\s+/g, ' ');
+}
+
+/**
+ * Batch-for-approval filename: <Approver|ProjectName|CustomerName>_<Period>.pdf.
+ * Approver is resolved as: key.approverCode → matching project.approver → null.
+ * Period is key.periodLabel when present, otherwise the date range.
+ */
+function getApprovalBatchFilename(
+  key: InvoiceGroupKeyWithPeriod,
+  tickets: ServiceTicket[],
+  projects: Array<{ project_number?: string | null; approver?: string | null }> | undefined
+): string {
+  const codeFromKey = key.approverCode?.trim();
+  let approver: string | null = codeFromKey && codeFromKey.length > 0 ? codeFromKey : null;
+  if (!approver) {
+    const pn = key.projectNumber?.trim().toLowerCase();
+    if (pn) {
+      const proj = projects?.find((p) => (p.project_number ?? '').trim().toLowerCase() === pn);
+      const projApprover = proj?.approver?.trim();
+      if (projApprover) approver = projApprover;
+    }
+  }
+  const name = approver
+    ?? key.projectName?.trim()
+    ?? tickets[0]?.customerName?.trim()
+    ?? 'batch';
+  const period = key.periodLabel?.trim() || getTicketDateRangeStr(tickets);
+  return `${sanitizeFilenamePart(name)}_${sanitizeFilenamePart(period)}.pdf`;
+}
+
 /** Invoice PDF filename: Approver_ProjectNumber_DateRange.pdf (CNRL) or ProjectNumber_PeriodLabel.pdf (non-CNRL) */
 function getInvoicePdfFilename(
   key: InvoiceGroupKeyWithPeriod,
@@ -2729,7 +2762,7 @@ export default function Invoices() {
    * status (skipping 'draft'). Mirrors handleMarkAsInvoiced — same persistence, same
    * snapshot, same history-log call — just a different starting status.
    */
-  const handleMarkAsSubmittedForApproval = (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+  const handleMarkAsSubmittedForApproval = async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
     const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
     const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
     const customerName = group.tickets[0]?.customerName;
@@ -2737,6 +2770,39 @@ export default function Invoices() {
     const submittedStatus = wf?.statuses?.find((s) => s.id === 'submitted_approval');
     if (!submittedStatus || !wf) {
       setExportError('Customer is not on a Portal Approval workflow.');
+      return;
+    }
+    // Generate + download merged batch PDF first so user has the file to send to approver.
+    // If generation fails, abort before marking as sent.
+    try {
+      const groupId = getGroupId(group);
+      const exportSnap = invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
+      const exportLabourNotes = exportSnap?.labourNotes ?? pendingLabourNotes[groupId];
+      const blobs: Blob[] = [];
+      const allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+      for (const ticket of group.tickets) {
+        const t = ticket as ServiceTicket & { recordId?: string };
+        let expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+        if (t.recordId) {
+          try { expenses = await serviceTicketExpensesService.getByTicketId(t.recordId); allExpenses.push(...expenses); }
+          catch { expenses = []; }
+        }
+        const result = await generateAndStorePdf(ticket, expenses, { uploadToStorage: false, downloadLocally: false });
+        blobs.push(result.blob);
+      }
+      try {
+        const summaryPdf = await generateBatchSummaryPdf(group.tickets, allExpenses, exportLabourNotes);
+        blobs.unshift(summaryPdf);
+      } catch (err) {
+        console.warn('Failed to generate summary PDF:', err);
+      }
+      if (blobs.length === 0) throw new Error('No PDFs generated.');
+      const merged = await mergePdfBlobs(blobs);
+      const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+      saveAs(merged, filename);
+    } catch (err) {
+      console.error('Approval batch download error:', err);
+      setExportError(err instanceof Error ? err.message : 'Could not generate approval batch PDF — not marked as sent.');
       return;
     }
     const now = new Date().toISOString();
