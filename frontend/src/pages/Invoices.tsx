@@ -2084,7 +2084,10 @@ export default function Invoices() {
     return set;
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
-  const [showInvoiced, setShowInvoiced] = useState(false);
+  type InvoiceTab = 'pending' | 'submitted' | 'approved' | 'invoiced' | 'settings';
+  const [activeTab, setActiveTab] = useState<InvoiceTab>('pending');
+  const showInvoiced = activeTab === 'invoiced';
+  const setShowInvoiced = (v: boolean) => setActiveTab(v ? 'invoiced' : 'pending');
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<string>('all');
   const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
@@ -3545,6 +3548,45 @@ export default function Invoices() {
         {' '}
         <strong>Only pending (not yet invoiced) batches</strong> appear in the list below. <strong>Mark as invoiced</strong> locks those service tickets until you unmark (no invoice PDF required). Use <strong>See invoiced</strong> for batches already marked—they stay locked the same way, with or without a linked PDF.
       </p>
+
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
+        {([
+          { id: 'pending' as const, label: 'Pending', count: uninvoicedGroups.length },
+          { id: 'submitted' as const, label: 'Submitted', count: submittedApprovalGroups.length },
+          { id: 'approved' as const, label: 'Approved', count: approvedGroups.length },
+          { id: 'invoiced' as const, label: 'Invoiced', count: finalInvoicedGroups.length },
+          { id: 'settings' as const, label: 'Settings', count: null as number | null },
+        ]).map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '10px 16px',
+                backgroundColor: 'transparent',
+                border: 'none',
+                borderBottom: isActive ? '2px solid var(--primary-color)' : '2px solid transparent',
+                color: isActive ? 'var(--primary-color)' : 'var(--text-secondary)',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                marginBottom: '-1px',
+              }}
+            >
+              {tab.label}
+              {tab.count != null && (
+                <span style={{ marginLeft: '6px', fontSize: '12px', color: isActive ? 'var(--primary-color)' : 'var(--text-tertiary)', fontWeight: 500 }}>
+                  ({tab.count})
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -3806,18 +3848,18 @@ export default function Invoices() {
         </div>
       )}
 
-      {groupedTickets.length === 0 && invoicedGroups.length === 0 ? (
+      {groupedTickets.length === 0 && invoicedGroups.length === 0 && activeTab === 'pending' ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           {selectedCustomerId
             ? 'No approved tickets for this customer in the selected date range. Approve service tickets first in the Service Tickets page.'
             : 'No approved tickets ready for export. Approve service tickets first in the Service Tickets page.'}
         </div>
-      ) : groupedTickets.length === 0 && !showInvoiced && submittedApprovalGroups.length === 0 && approvedGroups.length === 0 ? (
+      ) : groupedTickets.length === 0 && activeTab === 'pending' ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All batches are marked as invoiced.
           <div style={{ marginTop: '12px' }}>
             <button
-              onClick={() => setShowInvoiced(true)}
+              onClick={() => setActiveTab('invoiced')}
               style={{
                 padding: '8px 18px',
                 backgroundColor: 'var(--primary-color)',
@@ -4619,7 +4661,7 @@ export default function Invoices() {
           </>
           )}
         </div>
-      ) : uninvoicedGroups.length === 0 && submittedApprovalGroups.length === 0 && approvedGroups.length === 0 ? (
+      ) : uninvoicedGroups.length === 0 && activeTab === 'pending' ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
           All groups have been marked as invoiced.
           {finalInvoicedGroups.length > 0 && (
@@ -4646,6 +4688,7 @@ export default function Invoices() {
         </div>
       ) : (
         <>
+          {activeTab === 'pending' && (<>
           <div style={{ marginBottom: '14px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 6px', color: 'var(--text-primary)' }}>
               Pending
@@ -5229,10 +5272,16 @@ export default function Invoices() {
             );
             })}
           </div>
+          </>)}
 
-          {/* Portal Approval workflow: Submitted for approval section */}
-          {submittedApprovalGroups.length > 0 && (
-            <div style={{ marginTop: '32px' }}>
+          {/* Submitted for approval tab */}
+          {activeTab === 'submitted' && (
+            submittedApprovalGroups.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                No batches awaiting approval. Submit a batch from the Pending tab using <strong>Mark as sent for approval</strong>.
+              </div>
+            ) : (
+            <div>
               <div style={{ marginBottom: '12px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
                   Submitted for approval ({submittedApprovalGroups.length})
@@ -5354,11 +5403,17 @@ export default function Invoices() {
                 })}
               </div>
             </div>
+            )
           )}
 
-          {/* Portal Approval workflow: Approved section */}
-          {approvedGroups.length > 0 && (
-            <div style={{ marginTop: '32px' }}>
+          {/* Approved tab */}
+          {activeTab === 'approved' && (
+            approvedGroups.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                No approved batches yet. Drop a signed batch PDF on a Submitted card to advance it here.
+              </div>
+            ) : (
+            <div>
               <div style={{ marginBottom: '12px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
                   Approved ({approvedGroups.length})
@@ -5569,6 +5624,23 @@ export default function Invoices() {
                   );
                 })}
               </div>
+            </div>
+            )
+          )}
+
+          {/* Settings tab (Phase 2 will flesh out per-customer / per-project editors) */}
+          {activeTab === 'settings' && (
+            <div style={{ padding: '24px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Invoice Settings</h3>
+              <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Per-customer and per-project invoice configuration (workflow, grouping, labour notes) — coming in Phase 2. For now, edit these on the <Link to="/customers">Customers</Link> and <Link to="/projects">Projects</Link> pages.
+              </p>
+              <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                <li><strong>Invoice workflow</strong> — Customers page → "Invoice Workflow" dropdown. Projects page → "Invoice Workflow (overrides customer)" dropdown.</li>
+                <li><strong>Invoice grouping</strong> — Customers page → "Invoice Date Grouping". Projects page → "Invoice Grouping (overrides customer)".</li>
+                <li><strong>Workflow statuses</strong> — Settings → <Link to="/invoice-workflows">Invoice Workflows</Link> page.</li>
+                <li><strong>Labour notes on summary PDF</strong> — open a group in Pending/Invoiced tab and click <em>Edit summary PDF notes</em>.</li>
+              </ul>
             </div>
           )}
         </>
