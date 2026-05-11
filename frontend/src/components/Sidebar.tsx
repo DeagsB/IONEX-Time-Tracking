@@ -159,103 +159,62 @@ export default function Sidebar() {
         )}
 
         {isAdmin && (
-          <div style={{ marginBottom: '30px' }}>
-            <div style={{ 
-              fontSize: '11px', 
-              fontWeight: '600', 
-              textTransform: 'uppercase', 
-              letterSpacing: '1px',
-              color: 'var(--text-tertiary)',
-              marginBottom: '10px',
-              padding: '0 10px'
-            }}>
-              MANAGE
-            </div>
-            <SidebarLink to="/projects" active={isActive('/projects')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isActive('/projects') ? 'var(--logo-red)' : 'inherit' }}>
-                Projects
-                {showMissingProjectNumberBadge && (
-                  <span
-                    title={`${projectsMissingNumberCount} project(s) missing project number`}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '18px',
-                      height: '18px',
-                      fontSize: '12px',
-                      color: '#10b981',
-                      flexShrink: 0,
-                    }}
-                    aria-hidden
-                  >
-                    ●
-                  </span>
-                )}
-              </span>
-            </SidebarLink>
-            <SidebarLink to="/customers" active={isActive('/customers')}>
-              Clients
-            </SidebarLink>
-            {canAccessInvoices(user) && (
-              <SidebarLink to="/invoices" active={isActive('/invoices')}>
-                Invoices
-              </SidebarLink>
-            )}
-            <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isActive('/service-tickets') ? 'var(--logo-red)' : 'inherit' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'inherit' }}>
+          <>
+            <div style={{ marginBottom: '24px' }}>
+              <SidebarSectionLabel>Workflow</SidebarSectionLabel>
+              <SidebarLink to="/service-tickets" active={isActive('/service-tickets')}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isActive('/service-tickets') ? 'var(--logo-red)' : 'inherit' }}>
                   Service Tickets
                   {showResubmittedBadge && (
-                    <span
-                      title={`${resubmittedTicketsCount} resubmitted ticket(s) in Submitted tab`}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '18px',
-                        height: '18px',
-                        fontSize: '12px',
-                        color: '#eab308',
-                        flexShrink: 0,
-                      }}
-                      aria-hidden
-                    >
-                      ●
-                    </span>
+                    <NumericBadge
+                      count={resubmittedTicketsCount}
+                      tooltip={`${resubmittedTicketsCount} resubmitted ticket(s) in Submitted tab`}
+                      bg="#eab308"
+                    />
+                  )}
+                  {showRejectedBadge && (
+                    <NumericBadge
+                      count={rejectedTicketsCount}
+                      tooltip={`${rejectedTicketsCount} rejected ticket(s) need attention`}
+                      bg="#ef5350"
+                    />
                   )}
                 </span>
-                {showRejectedBadge && (
-                  <span
-                    title={`${rejectedTicketsCount} rejected ticket(s) need attention`}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      minWidth: '20px',
-                      height: '20px',
-                      padding: '0 6px',
-                      fontSize: '11px',
-                      fontWeight: '700',
-                      color: '#fff',
-                      backgroundColor: '#ef5350',
-                      borderRadius: '10px',
-                    }}
-                  >
-                    {rejectedTicketsCount}
-                  </span>
-                )}
-              </span>
-            </SidebarLink>
-            {canAccessExpenses(user) && (
-              <SidebarLink to="/expenses" active={isActive('/expenses')}>
-                Expenses
               </SidebarLink>
-            )}
-            <SidebarLink to="/employees" active={isActive('/employees')}>
-              Employees
-            </SidebarLink>
-          </div>
+              {canAccessExpenses(user) && (
+                <SidebarLink to="/expenses" active={isActive('/expenses')}>
+                  Expenses
+                </SidebarLink>
+              )}
+              {canAccessInvoices(user) && (
+                <SidebarLink to="/invoices" active={isActive('/invoices')}>
+                  Invoices
+                </SidebarLink>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <SidebarSectionLabel>Data</SidebarSectionLabel>
+              <SidebarLink to="/projects" active={isActive('/projects')}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: isActive('/projects') ? 'var(--logo-red)' : 'inherit' }}>
+                  Projects
+                  {showMissingProjectNumberBadge && (
+                    <NumericBadge
+                      count={projectsMissingNumberCount}
+                      tooltip={`${projectsMissingNumberCount} project(s) missing project number`}
+                      bg="#10b981"
+                    />
+                  )}
+                </span>
+              </SidebarLink>
+              <SidebarLink to="/customers" active={isActive('/customers')}>
+                Clients
+              </SidebarLink>
+              <SidebarLink to="/employees" active={isActive('/employees')}>
+                Employees
+              </SidebarLink>
+            </div>
+          </>
         )}
 
         <div style={{ marginBottom: '30px' }}>
@@ -434,6 +393,46 @@ export default function Sidebar() {
         </button>
       </div>
     </div>
+  );
+}
+
+function SidebarSectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: '11px',
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: '1px',
+      color: 'var(--text-tertiary)',
+      marginBottom: '10px',
+      padding: '0 10px',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function NumericBadge({ count, tooltip, bg }: { count: number; tooltip: string; bg: string }) {
+  return (
+    <span
+      title={tooltip}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: '20px',
+        height: '18px',
+        padding: '0 6px',
+        fontSize: '11px',
+        fontWeight: '700',
+        color: '#fff',
+        backgroundColor: bg,
+        borderRadius: '10px',
+        flexShrink: 0,
+      }}
+    >
+      {count}
+    </span>
   );
 }
 
