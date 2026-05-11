@@ -2138,6 +2138,16 @@ export default function Invoices() {
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
   const [bulkSendProgress, setBulkSendProgress] = useState<{ customer: string; current: number; total: number } | null>(null);
   const [redownloadingApprovalId, setRedownloadingApprovalId] = useState<string | null>(null);
+  const [undoApprovalConfirm, setUndoApprovalConfirm] = useState<{
+    persistId: string;
+    customerName: string;
+    projectLine: string;
+    periodLine: string;
+    ticketCount: number;
+    /** 'submitted' = currently Submitted, undo → Ready (full unmark). 'approved' = currently Approved, undo → Submitted (delete approval PDF + revert status). */
+    scope: 'submitted' | 'approved';
+    workflowId?: string;
+  } | null>(null);
   const [editingLabourNotesGroupId, setEditingLabourNotesGroupId] = useState<string | null>(null);
   const [editingLabourNotes, setEditingLabourNotes] = useState<Record<string, string>>({});
   const [editingPeriodModal, setEditingPeriodModal] = useState<{
@@ -5703,26 +5713,30 @@ export default function Invoices() {
                         <button
                           type="button"
                           disabled={unmarkInvoicedMutation.isPending}
-                          onClick={() => {
-                            if (!window.confirm(`Move this batch back to Ready? It will no longer count as submitted for approval.`)) return;
-                            handleUnmarkAsInvoiced(persistId);
-                          }}
+                          onClick={() => setUndoApprovalConfirm({
+                            persistId,
+                            customerName: customerName || 'Unknown customer',
+                            projectLine,
+                            periodLine,
+                            ticketCount,
+                            scope: 'submitted',
+                          })}
                           title="Undo submitted-for-approval. Returns the batch to the Ready tab so you can re-prepare or edit before re-sending."
                           style={{
                             padding: '6px 12px',
                             fontSize: '12px',
-                            fontWeight: 600,
+                            fontWeight: 500,
                             borderRadius: '6px',
-                            border: '1px solid rgba(239, 68, 68, 0.55)',
-                            backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                            color: '#b91c1c',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'transparent',
+                            color: 'var(--text-secondary)',
                             cursor: unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '6px',
                           }}
                         >
-                          ↺ Undo — return to Ready
+                          ↺ Undo
                         </button>
                       </div>
                     </div>
@@ -5921,32 +5935,97 @@ export default function Invoices() {
                           </button>
                         </div>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!wf) return;
-                          markFinalInvoicedMutation.mutate({
-                            groupId: persistId,
-                            customerName,
-                            projectNumber: group.key.projectNumber || undefined,
-                            workflow: wf,
-                          });
-                        }}
-                        disabled={!hasInvoice || isMarking}
-                        title={hasInvoice ? 'Move to Submitted to Portal (final state)' : 'Attach the invoice PDF first'}
-                        style={{
-                          padding: '8px 14px',
-                          backgroundColor: hasInvoice ? 'var(--primary-color)' : 'var(--bg-tertiary)',
-                          color: hasInvoice ? 'white' : 'var(--text-tertiary)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '6px',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          cursor: hasInvoice && !isMarking ? 'pointer' : 'not-allowed',
-                        }}
-                      >
-                        {isMarking ? 'Saving…' : 'Mark as invoiced'}
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!wf) return;
+                            markFinalInvoicedMutation.mutate({
+                              groupId: persistId,
+                              customerName,
+                              projectNumber: group.key.projectNumber || undefined,
+                              workflow: wf,
+                            });
+                          }}
+                          disabled={!hasInvoice || isMarking}
+                          title={hasInvoice ? 'Move to Submitted to Portal (final state)' : 'Attach the invoice PDF first'}
+                          style={{
+                            padding: '8px 14px',
+                            backgroundColor: hasInvoice ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                            color: hasInvoice ? 'white' : 'var(--text-tertiary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: hasInvoice && !isMarking ? 'pointer' : 'not-allowed',
+                          }}
+                        >
+                          {isMarking ? 'Saving…' : 'Mark as invoiced'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={redownloadingApprovalId === persistId}
+                          onClick={async () => {
+                            setExportError(null);
+                            setRedownloadingApprovalId(persistId);
+                            try {
+                              const merged = await buildMergedBatchPdfBlob(group);
+                              const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+                              saveAs(merged, filename);
+                            } catch (err) {
+                              console.error('Re-download approval batch error:', err);
+                              setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
+                            } finally {
+                              setRedownloadingApprovalId(null);
+                            }
+                          }}
+                          title="Re-generate and download the merged batch PDF (Approver - Period.pdf). Does not change status."
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            color: 'var(--text-primary)',
+                            cursor: redownloadingApprovalId === persistId ? 'wait' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <span aria-hidden>📥</span>
+                          {redownloadingApprovalId === persistId ? 'Building…' : 'Download batch again'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUndoApprovalConfirm({
+                            persistId,
+                            customerName: customerName || 'Unknown customer',
+                            projectLine,
+                            periodLine,
+                            ticketCount,
+                            scope: 'approved',
+                            workflowId: wf?.id,
+                          })}
+                          title="Undo approval. Deletes the attached signed PDF and returns the batch to the Submitted tab."
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'transparent',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          ↺ Undo
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -6157,6 +6236,92 @@ export default function Invoices() {
           onClose={() => setInvoiceTicketModalTicket(null)}
         />
       )}
+
+      {undoApprovalConfirm && (() => {
+        const isApprovedScope = undoApprovalConfirm.scope === 'approved';
+        const title = isApprovedScope ? 'Undo approval?' : 'Undo submitted for approval?';
+        const body = isApprovedScope
+          ? 'The batch returns to the Submitted tab and the attached approval PDF is deleted. You can re-upload a different signed PDF or revert further to Ready from there.'
+          : 'The batch returns to the Ready tab so you can re-prepare or edit before re-sending. The signed approval PDF (if any was attached) is removed.';
+        const ctaLabel = isApprovedScope ? '↺ Return to Submitted' : '↺ Return to Ready';
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1000, padding: '20px',
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setUndoApprovalConfirm(null); }}
+          >
+            <div style={{
+              backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
+              padding: '20px', maxWidth: '480px', width: '100%',
+              border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            }}>
+              <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700 }}>{title}</h2>
+              <p style={{ margin: '0 0 14px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                <strong>{undoApprovalConfirm.customerName}</strong>{undoApprovalConfirm.projectLine ? ` — ${undoApprovalConfirm.projectLine}` : ''}{undoApprovalConfirm.periodLine ? ` · ${undoApprovalConfirm.periodLine}` : ''}<br />
+                {undoApprovalConfirm.ticketCount} ticket{undoApprovalConfirm.ticketCount === 1 ? '' : 's'}. {body}
+              </p>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setUndoApprovalConfirm(null)}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                    borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const confirm = undoApprovalConfirm;
+                    setUndoApprovalConfirm(null);
+                    if (confirm.scope === 'submitted') {
+                      handleUnmarkAsInvoiced(confirm.persistId);
+                      return;
+                    }
+                    // Approved → Submitted: delete approval PDF + revert status to submitted_approval
+                    try {
+                      await invoicedBatchApprovalsService.deleteApproval(confirm.persistId);
+                      if (confirm.workflowId) {
+                        const wf = allWorkflows.find((w) => w.id === confirm.workflowId);
+                        const submittedStatus = wf?.statuses.find((s) => s.id === 'submitted_approval');
+                        if (submittedStatus && wf) {
+                          await updateBatchStatusMutation.mutateAsync({
+                            groupId: confirm.persistId,
+                            statusId: submittedStatus.id,
+                            prevStatusId: 'approved',
+                            statusLabel: submittedStatus.label,
+                            customerName: confirm.customerName,
+                            workflowId: wf.id,
+                          });
+                        }
+                      }
+                      await queryClient.invalidateQueries({ queryKey: ['invoicedBatchApprovals'] });
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not revert approval.');
+                    }
+                  }}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                    borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  }}
+                >
+                  {ctaLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {markInvoicedPromptGroup && (() => {
         const group = markInvoicedPromptGroup;
