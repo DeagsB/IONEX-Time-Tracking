@@ -3236,9 +3236,11 @@ export default function Invoices() {
 
   // On first data load, open Ready tab if any ready groups exist, else stay on Pending.
   // Skips after data loads once — user-driven tab changes are not overridden later.
+  // Wait for groupedTickets to actually populate (initial useMemo returns []) so we don't
+  // lock the choice before tickets finish loading.
   useEffect(() => {
     if (didAutoPickInitialTab) return;
-    if (!groupedTickets) return;
+    if (!groupedTickets || groupedTickets.length === 0) return;
     if (readyGroups.length > 0) setActiveTab('ready');
     setDidAutoPickInitialTab(true);
   }, [didAutoPickInitialTab, groupedTickets, readyGroups.length]);
