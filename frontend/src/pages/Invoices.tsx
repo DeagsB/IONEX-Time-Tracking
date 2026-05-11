@@ -3814,7 +3814,7 @@ export default function Invoices() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { setActiveTab(tab.id); setExportError(null); }}
               style={{
                 padding: '10px 16px',
                 backgroundColor: 'transparent',
@@ -4027,14 +4027,35 @@ export default function Invoices() {
         <div
           style={{
             marginBottom: '24px',
-            padding: '12px',
+            padding: '12px 14px',
             backgroundColor: 'rgba(239, 83, 80, 0.1)',
             border: '1px solid #ef5350',
             borderRadius: '8px',
             color: '#ef5350',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '12px',
           }}
         >
-          {exportError}
+          <span style={{ flex: 1 }}>{exportError}</span>
+          <button
+            type="button"
+            onClick={() => setExportError(null)}
+            aria-label="Dismiss error"
+            style={{
+              flexShrink: 0,
+              border: 'none',
+              background: 'transparent',
+              color: '#ef5350',
+              fontSize: '16px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              padding: '0 4px',
+              lineHeight: 1,
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
 
