@@ -2124,6 +2124,23 @@ export default function Invoices() {
     },
   });
 
+  const updateWorkflowAssignmentMutation = useMutation({
+    mutationFn: async ({ projectId, customerId, workflowId }: { projectId: string | null; customerId: string | null; workflowId: string | null }) => {
+      if (projectId) {
+        return projectsService.update(projectId, { invoice_workflow_id: workflowId });
+      } else if (customerId) {
+        return customersService.update(customerId, { invoice_workflow_id: workflowId });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+
+  const [settingsTab, setSettingsTab] = useState<'customers' | 'projects'>('customers');
+  const [settingsSearch, setSettingsSearch] = useState('');
+
   const markProjectCompletedMutation = useMutation({
     mutationFn: (projectId: string) => projectsService.update(projectId, { status: 'completed' }),
     onSuccess: () => {
@@ -5628,21 +5645,190 @@ export default function Invoices() {
             )
           )}
 
-          {/* Settings tab (Phase 2 will flesh out per-customer / per-project editors) */}
-          {activeTab === 'settings' && (
-            <div style={{ padding: '24px', backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-              <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Invoice Settings</h3>
-              <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                Per-customer and per-project invoice configuration (workflow, grouping, labour notes) — coming in Phase 2. For now, edit these on the <Link to="/customers">Customers</Link> and <Link to="/projects">Projects</Link> pages.
-              </p>
-              <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <li><strong>Invoice workflow</strong> — Customers page → "Invoice Workflow" dropdown. Projects page → "Invoice Workflow (overrides customer)" dropdown.</li>
-                <li><strong>Invoice grouping</strong> — Customers page → "Invoice Date Grouping". Projects page → "Invoice Grouping (overrides customer)".</li>
-                <li><strong>Workflow statuses</strong> — Settings → <Link to="/invoice-workflows">Invoice Workflows</Link> page.</li>
-                <li><strong>Labour notes on summary PDF</strong> — open a group in Pending/Invoiced tab and click <em>Edit summary PDF notes</em>.</li>
-              </ul>
-            </div>
-          )}
+          {/* Settings tab — per-customer / per-project workflow + grouping editors */}
+          {activeTab === 'settings' && (() => {
+            const groupingOptions = [
+              { value: 'daily', label: 'Daily' },
+              { value: 'weekly', label: 'Weekly' },
+              { value: 'bi-weekly', label: 'Bi-weekly' },
+              { value: 'monthly', label: 'Monthly' },
+              { value: 'project-completion', label: 'Project completion' },
+              { value: 'progress', label: 'Progress' },
+            ];
+            const workflowOptions = allWorkflows.map((w) => ({ value: w.id, label: w.name + (w.is_default ? ' (default)' : '') }));
+            const defaultWorkflowName = defaultWorkflow?.name ?? '—';
+            const q = settingsSearch.trim().toLowerCase();
+            const filteredCustomers = (customers ?? []).filter((c: any) => !q || (c.name ?? '').toLowerCase().includes(q));
+            const filteredProjects = (projects ?? []).filter((p: any) => {
+              if (!q) return true;
+              const blob = [p.name, p.project_number, p.customer?.name].filter(Boolean).join(' ').toLowerCase();
+              return blob.includes(q);
+            });
+            const customerWorkflowName = (cid: string | null | undefined) => {
+              if (!cid) return null;
+              const c = customers?.find((x: any) => x.id === cid);
+              if (!c?.invoice_workflow_id) return null;
+              return allWorkflows.find((w) => w.id === c.invoice_workflow_id)?.name ?? null;
+            };
+            const customerGrouping = (cid: string | null | undefined) => {
+              if (!cid) return null;
+              const c = customers?.find((x: any) => x.id === cid);
+              return c?.invoice_date_grouping ?? null;
+            };
+
+            return (
+              <div>
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)' }}>
+                  {(['customers', 'projects'] as const).map((sub) => {
+                    const isActive = settingsTab === sub;
+                    return (
+                      <button
+                        key={sub}
+                        type="button"
+                        onClick={() => setSettingsTab(sub)}
+                        style={{
+                          padding: '8px 14px',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          borderBottom: isActive ? '2px solid var(--primary-color)' : '2px solid transparent',
+                          color: isActive ? 'var(--primary-color)' : 'var(--text-secondary)',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          marginBottom: '-1px',
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {sub}
+                      </button>
+                    );
+                  })}
+                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '6px' }}>
+                    <input
+                      type="text"
+                      value={settingsSearch}
+                      onChange={(e) => setSettingsSearch(e.target.value)}
+                      placeholder={`Search ${settingsTab}…`}
+                      style={{
+                        padding: '6px 10px',
+                        fontSize: '13px',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        backgroundColor: 'var(--bg-primary)',
+                        color: 'var(--text-primary)',
+                        width: '220px',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                  System default workflow: <strong>{defaultWorkflowName}</strong>. Workflow statuses managed on the <Link to="/invoice-workflows">Invoice Workflows</Link> page. Labour notes (per-batch) edited from each group card on the Pending/Invoiced tabs.
+                </div>
+
+                {settingsTab === 'customers' ? (
+                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                        <tr>
+                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Customer</th>
+                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Invoice workflow</th>
+                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Invoice grouping</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredCustomers.length === 0 ? (
+                          <tr><td colSpan={3} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)' }}>No customers match.</td></tr>
+                        ) : filteredCustomers.map((c: any) => (
+                          <tr key={c.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <td style={{ padding: '8px 12px', fontWeight: 500 }}>{c.name}</td>
+                            <td style={{ padding: '8px 12px' }}>
+                              <select
+                                value={c.invoice_workflow_id ?? ''}
+                                onChange={(e) => updateWorkflowAssignmentMutation.mutate({ customerId: c.id, projectId: null, workflowId: e.target.value || null })}
+                                style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '180px' }}
+                              >
+                                <option value="">Use system default ({defaultWorkflowName})</option>
+                                {workflowOptions.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td style={{ padding: '8px 12px' }}>
+                              <select
+                                value={c.invoice_date_grouping ?? ''}
+                                onChange={(e) => updatePeriodGroupingMutation.mutate({ customerId: c.id, projectId: null, value: e.target.value })}
+                                style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '160px' }}
+                              >
+                                <option value="">App default (monthly)</option>
+                                {groupingOptions.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                        <tr>
+                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Project</th>
+                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Customer</th>
+                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Workflow override</th>
+                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Grouping override</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredProjects.length === 0 ? (
+                          <tr><td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)' }}>No projects match.</td></tr>
+                        ) : filteredProjects.map((p: any) => {
+                          const inheritedWf = customerWorkflowName(p.customer_id);
+                          const wfFallback = inheritedWf ? `Inherit from customer (${inheritedWf})` : `Inherit from customer (${defaultWorkflowName})`;
+                          const inheritedGrp = customerGrouping(p.customer_id);
+                          const grpFallback = inheritedGrp ? `Inherit from customer (${inheritedGrp})` : 'Inherit from customer (monthly)';
+                          const label = [p.project_number, p.name].filter(Boolean).join(' – ') || p.id;
+                          return (
+                            <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                              <td style={{ padding: '8px 12px', fontWeight: 500 }}>{label}</td>
+                              <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{p.customer?.name ?? '—'}</td>
+                              <td style={{ padding: '8px 12px' }}>
+                                <select
+                                  value={p.invoice_workflow_id ?? ''}
+                                  onChange={(e) => updateWorkflowAssignmentMutation.mutate({ projectId: p.id, customerId: null, workflowId: e.target.value || null })}
+                                  style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '220px' }}
+                                >
+                                  <option value="">{wfFallback}</option>
+                                  {workflowOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td style={{ padding: '8px 12px' }}>
+                                <select
+                                  value={p.invoice_date_grouping ?? ''}
+                                  onChange={(e) => updatePeriodGroupingMutation.mutate({ projectId: p.id, customerId: null, value: e.target.value })}
+                                  style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '220px' }}
+                                >
+                                  <option value="">{grpFallback}</option>
+                                  {groupingOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </>
       )}
 
