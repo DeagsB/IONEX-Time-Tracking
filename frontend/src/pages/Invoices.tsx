@@ -2101,6 +2101,7 @@ export default function Invoices() {
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
+  const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
   const [editingLabourNotesGroupId, setEditingLabourNotesGroupId] = useState<string | null>(null);
   const [editingLabourNotes, setEditingLabourNotes] = useState<Record<string, string>>({});
   const [editingPeriodModal, setEditingPeriodModal] = useState<{
@@ -5077,7 +5078,7 @@ export default function Invoices() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => handleMarkAsInvoiced(group)}
+                        onClick={() => setMarkInvoicedPromptGroup(group)}
                         onDragEnter={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -5885,6 +5886,95 @@ export default function Invoices() {
           onClose={() => setInvoiceTicketModalTicket(null)}
         />
       )}
+
+      {markInvoicedPromptGroup && (() => {
+        const group = markInvoicedPromptGroup;
+        const cust = group.tickets[0]?.customerName ?? 'Unknown customer';
+        const projLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
+        const ticketCount = group.tickets.length;
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1000, padding: '20px',
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setMarkInvoicedPromptGroup(null); }}
+          >
+            <div style={{
+              backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
+              padding: '20px', maxWidth: '480px', width: '100%',
+              border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            }}>
+              <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700 }}>Attach invoice PDF?</h2>
+              <p style={{ margin: '0 0 14px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                <strong>{cust}</strong>{projLine ? ` — ${projLine}` : ''}<br />
+                {ticketCount} ticket{ticketCount === 1 ? '' : 's'}. You can attach the invoice PDF now or skip and attach later.
+              </p>
+              <input
+                id="mark-invoiced-prompt-file"
+                type="file"
+                accept="application/pdf"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  const g = markInvoicedPromptGroup;
+                  setMarkInvoicedPromptGroup(null);
+                  if (g) await handleDropInvoiceOnMarkAsInvoiced(g, file);
+                }}
+              />
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setMarkInvoicedPromptGroup(null)}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                    borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const g = markInvoicedPromptGroup;
+                    setMarkInvoicedPromptGroup(null);
+                    if (g) handleMarkAsInvoiced(g);
+                  }}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                    borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer',
+                  }}
+                >
+                  Skip — mark only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('mark-invoiced-prompt-file') as HTMLInputElement | null;
+                    el?.click();
+                  }}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 700,
+                    borderRadius: '6px', border: '1px solid rgba(34, 197, 94, 0.55)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.12)', color: '#15803d', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  }}
+                >
+                  <span aria-hidden>📎</span>
+                  Attach invoice PDF…
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {editingPeriodModal && (
         <div
