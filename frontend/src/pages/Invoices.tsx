@@ -35,6 +35,7 @@ import {
 } from '../utils/serviceTickets';
 import { generateAndStorePdf, mergePdfBlobs, generateBatchSummaryPdf } from '../utils/pdfFromHtml';
 import { saveAs } from 'file-saver';
+import JSZip from 'jszip';
 import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
 import PayPeriodCalendar from '../components/PayPeriodCalendar';
 import SearchableSelect from '../components/SearchableSelect';
@@ -2135,6 +2136,7 @@ export default function Invoices() {
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
+  const [bulkSendProgress, setBulkSendProgress] = useState<{ customer: string; current: number; total: number } | null>(null);
   const [editingLabourNotesGroupId, setEditingLabourNotesGroupId] = useState<string | null>(null);
   const [editingLabourNotes, setEditingLabourNotes] = useState<Record<string, string>>({});
   const [editingPeriodModal, setEditingPeriodModal] = useState<{
@@ -2757,24 +2759,10 @@ export default function Invoices() {
     );
   };
 
-  /**
-   * Portal Approval workflow: from pending, jump straight to the 'submitted_approval'
-   * status (skipping 'draft'). Mirrors handleMarkAsInvoiced — same persistence, same
-   * snapshot, same history-log call — just a different starting status.
-   */
-  const handleMarkAsSubmittedForApproval = async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
-    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
-    const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
-    const customerName = group.tickets[0]?.customerName;
-    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
-    const submittedStatus = wf?.statuses?.find((s) => s.id === 'submitted_approval');
-    if (!submittedStatus || !wf) {
-      setExportError('Customer is not on a Portal Approval workflow.');
-      return;
-    }
-    // Generate + download merged batch PDF first so user has the file to send to approver.
-    // If generation fails, abort before marking as sent.
-    try {
+  /** Build the merged batch PDF (per-ticket + summary) for one group. Shared by single and bulk approval flows. */
+  const buildMergedBatchPdfBlob = useCallback(
+    async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): Promise<Blob> => {
+      const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
       const groupId = getGroupId(group);
       const exportSnap = invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
       const exportLabourNotes = exportSnap?.labourNotes ?? pendingLabourNotes[groupId];
@@ -2797,7 +2785,30 @@ export default function Invoices() {
         console.warn('Failed to generate summary PDF:', err);
       }
       if (blobs.length === 0) throw new Error('No PDFs generated.');
-      const merged = await mergePdfBlobs(blobs);
+      return mergePdfBlobs(blobs);
+    },
+    [invoicedMarkRows, pendingLabourNotes]
+  );
+
+  /**
+   * Portal Approval workflow: from pending, jump straight to the 'submitted_approval'
+   * status (skipping 'draft'). Mirrors handleMarkAsInvoiced — same persistence, same
+   * snapshot, same history-log call — just a different starting status.
+   */
+  const handleMarkAsSubmittedForApproval = async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+    const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
+    const customerName = group.tickets[0]?.customerName;
+    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
+    const submittedStatus = wf?.statuses?.find((s) => s.id === 'submitted_approval');
+    if (!submittedStatus || !wf) {
+      setExportError('Customer is not on a Portal Approval workflow.');
+      return;
+    }
+    // Generate + download merged batch PDF first so user has the file to send to approver.
+    // If generation fails, abort before marking as sent.
+    try {
+      const merged = await buildMergedBatchPdfBlob(group);
       const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
       saveAs(merged, filename);
     } catch (err) {
@@ -2848,6 +2859,91 @@ export default function Invoices() {
         },
       }
     );
+  };
+
+  /**
+   * Bulk Send-for-approval: build a zip with one merged PDF per group, download the zip,
+   * then mark every group as submitted_approval. All groups must share the same customer
+   * and that customer must be on a Portal Approval workflow.
+   * If any PDF fails to generate or zip download fails, no group is marked as sent.
+   */
+  const handleBulkSendForApproval = async (
+    customerName: string,
+    groupsForCustomer: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[]
+  ) => {
+    if (groupsForCustomer.length === 0) return;
+    setExportError(null);
+    setBulkSendProgress({ customer: customerName, current: 0, total: groupsForCustomer.length });
+    try {
+      const zip = new JSZip();
+      const usedNames = new Set<string>();
+      for (let i = 0; i < groupsForCustomer.length; i++) {
+        const group = groupsForCustomer[i];
+        setBulkSendProgress({ customer: customerName, current: i + 1, total: groupsForCustomer.length });
+        const merged = await buildMergedBatchPdfBlob(group);
+        let filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+        // Dedupe filenames inside zip if two batches share the same approver+period
+        if (usedNames.has(filename)) {
+          const stem = filename.replace(/\.pdf$/i, '');
+          let n = 2;
+          while (usedNames.has(`${stem}_${n}.pdf`)) n++;
+          filename = `${stem}_${n}.pdf`;
+        }
+        usedNames.add(filename);
+        zip.file(filename, merged);
+      }
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const today = new Date().toISOString().slice(0, 10);
+      const zipName = `${sanitizeFilenamePart(customerName)}_for-approval_${today}.zip`;
+      saveAs(zipBlob, zipName);
+    } catch (err) {
+      console.error('Bulk approval zip error:', err);
+      setExportError(err instanceof Error ? err.message : 'Could not build approval zip — no batches marked as sent.');
+      setBulkSendProgress(null);
+      return;
+    }
+    // All PDFs generated and zip downloaded — now mark each batch as submitted_approval.
+    // Each failure is logged but does not stop the rest, since the user already has the file.
+    const now = new Date().toISOString();
+    for (const group of groupsForCustomer) {
+      const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+      const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
+      const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
+      const submittedStatus = wf?.statuses?.find((s) => s.id === 'submitted_approval');
+      if (!submittedStatus || !wf) continue;
+      const snapshot = getMergedMarkSnapshot(group, isCombined || undefined, submittedStatus.id);
+      if (snapshot.statusId && !snapshot.statusChangedAt) snapshot.statusChangedAt = now;
+      if (isDemoMode) {
+        setLegacyMarkedInvoicedIds((prev) => {
+          const next = new Set(prev);
+          next.add(persistId);
+          persistMarkedInvoiceIdsToLocalStorage(next);
+          return next;
+        });
+        setFrozenInvoicedGroups((prev) => {
+          const mergedSnap = mergeMarkSnapshotForGroup(group, prev[persistId], isCombined || undefined, submittedStatus.id, pendingLabourNotes[getGroupId(group)]);
+          const next = { ...prev, [persistId]: mergedSnap };
+          try { localStorage.setItem(FROZEN_INVOICED_GROUPS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+          return next;
+        });
+        continue;
+      }
+      try {
+        await markInvoicedMutation.mutateAsync({ groupId: persistId, snapshot });
+        invoiceStatusHistoryService.logEntry({
+          group_id: persistId,
+          customer_name: customerName,
+          project_number: group.key.projectNumber || undefined,
+          workflow_id: wf.id,
+          status_id: submittedStatus.id,
+          status_label: submittedStatus.label,
+          entered_at: now,
+        }).catch(() => {});
+      } catch (err) {
+        console.error('Bulk mark-as-sent error for group', persistId, err);
+      }
+    }
+    setBulkSendProgress(null);
   };
 
   /** Drop a PDF on "Mark as invoiced": upload (prod), mark, then same merged download as the invoiced drop zone. */
@@ -3123,6 +3219,20 @@ export default function Invoices() {
     () => uninvoicedGroups.filter((g) => !isGroupAccumulating(g)),
     [uninvoicedGroups, isGroupAccumulating]
   );
+
+  /** Per-customer buckets of ready batches whose workflow is Portal Approval — eligible for the bulk Send-for-approval zip flow. */
+  const bulkApprovalCandidates = useMemo(() => {
+    const map = new Map<string, { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[]>();
+    for (const g of readyGroups) {
+      const cust = g.tickets[0]?.customerName;
+      if (!cust) continue;
+      const wf = getWorkflowForCustomer(cust, g.key.projectNumber);
+      if (!isPortalApprovalWorkflow(wf)) continue;
+      if (!map.has(cust)) map.set(cust, []);
+      map.get(cust)!.push(g);
+    }
+    return [...map.entries()].map(([customer, groups]) => ({ customer, groups })).sort((a, b) => a.customer.localeCompare(b.customer));
+  }, [readyGroups, getWorkflowForCustomer, isPortalApprovalWorkflow]);
 
   // On first data load, open Ready tab if any ready groups exist, else stay on Pending.
   // Skips after data loads once — user-driven tab changes are not overridden later.
@@ -4828,6 +4938,45 @@ export default function Invoices() {
               {(activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups).reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {(activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups).length} group(s)
             </span>
           </div>
+
+          {activeTab === 'ready' && bulkApprovalCandidates.length > 0 && (
+            <div style={{ marginBottom: '16px', padding: '12px 14px', backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '8px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#b45309', marginBottom: '8px' }}>
+                Bulk send for approval — zip per customer
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {bulkApprovalCandidates.map(({ customer, groups }) => {
+                  const isBusy = bulkSendProgress?.customer === customer;
+                  const label = isBusy
+                    ? `Building ${bulkSendProgress!.current}/${bulkSendProgress!.total}…`
+                    : `📤 Send all ${groups.length} batch${groups.length === 1 ? '' : 'es'} for ${customer} (zip)`;
+                  return (
+                    <button
+                      key={customer}
+                      type="button"
+                      disabled={!!bulkSendProgress}
+                      onClick={() => handleBulkSendForApproval(customer, groups)}
+                      title={`Generates one merged PDF per batch (Approver_Period.pdf), zips them as ${customer}_for-approval_<date>.zip, downloads, then marks each batch as sent for approval.`}
+                      style={{
+                        alignSelf: 'flex-start',
+                        padding: '8px 14px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        backgroundColor: isBusy ? 'rgba(245, 158, 11, 0.18)' : 'rgba(245, 158, 11, 0.14)',
+                        color: '#b45309',
+                        border: '1px solid rgba(245, 158, 11, 0.55)',
+                        borderRadius: '6px',
+                        cursor: bulkSendProgress ? 'not-allowed' : 'pointer',
+                        opacity: bulkSendProgress && !isBusy ? 0.6 : 1,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div style={{ marginBottom: '12px' }}>
             <input
