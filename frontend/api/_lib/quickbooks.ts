@@ -16,22 +16,40 @@
  *   QBO_CUSTOM_FIELD_REFERENCE    — optional, DefinitionId for invoice custom field
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-const QBO_CLIENT_ID = process.env.QBO_CLIENT_ID || '';
-const QBO_CLIENT_SECRET = process.env.QBO_CLIENT_SECRET || '';
-const QBO_REDIRECT_URI = process.env.QBO_REDIRECT_URI || '';
-const QBO_ENVIRONMENT = process.env.QBO_ENVIRONMENT || 'sandbox';
+/** Lazy Supabase client — only constructed on first use so importing this module does NOT
+ *  crash the serverless function when env vars are missing. The handlers return a JSON 500
+ *  with a clear message instead. */
+let _supabase: SupabaseClient | null = null;
+function getSupabase(): SupabaseClient {
+  if (_supabase) return _supabase;
+  const url = process.env.SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_KEY || '';
+  if (!url || !key) {
+    throw new Error('[QBO-ENV] SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in Vercel env vars.');
+  }
+  _supabase = createClient(url, key);
+  return _supabase;
+}
 
 const QBO_AUTH_URL = 'https://appcenter.intuit.com/connect/oauth2';
 const QBO_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
-const QBO_API_BASE = QBO_ENVIRONMENT === 'production'
-  ? 'https://quickbooks.api.intuit.com'
-  : 'https://sandbox-quickbooks.api.intuit.com';
+function qboApiBase(): string {
+  return (process.env.QBO_ENVIRONMENT || 'sandbox') === 'production'
+    ? 'https://quickbooks.api.intuit.com'
+    : 'https://sandbox-quickbooks.api.intuit.com';
+}
+
+function requireQboEnv(): { clientId: string; clientSecret: string; redirectUri: string } {
+  const clientId = process.env.QBO_CLIENT_ID || '';
+  const clientSecret = process.env.QBO_CLIENT_SECRET || '';
+  const redirectUri = process.env.QBO_REDIRECT_URI || '';
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new Error('[QBO-ENV] QBO_CLIENT_ID, QBO_CLIENT_SECRET, and QBO_REDIRECT_URI must all be set in Vercel env vars.');
+  }
+  return { clientId, clientSecret, redirectUri };
+}
 
 export interface QBOTokens {
   access_token: string;
@@ -57,9 +75,10 @@ export interface CreateInvoiceFromGroupParams {
 }
 
 export function getAuthorizationUrl(state: string): string {
+  const { clientId, redirectUri } = requireQboEnv();
   const params = new URLSearchParams({
-    client_id: QBO_CLIENT_ID,
-    redirect_uri: QBO_REDIRECT_URI,
+    client_id: clientId,
+    redirect_uri: redirectUri,
     response_type: 'code',
     scope: 'com.intuit.quickbooks.accounting',
     state,
@@ -68,7 +87,7 @@ export function getAuthorizationUrl(state: string): string {
 }
 
 async function storeTokens(tokens: QBOTokens): Promise<void> {
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('qbo_tokens')
     .upsert({
       id: 'primary',
@@ -85,7 +104,7 @@ async function storeTokens(tokens: QBOTokens): Promise<void> {
 }
 
 async function getStoredTokens(): Promise<QBOTokens | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('qbo_tokens')
     .select('*')
     .eq('id', 'primary')
@@ -100,7 +119,8 @@ async function getStoredTokens(): Promise<QBOTokens | null> {
 }
 
 export async function exchangeCodeForTokens(code: string, realmId: string): Promise<QBOTokens> {
-  const authHeader = Buffer.from(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`).toString('base64');
+  const { clientId, clientSecret, redirectUri } = requireQboEnv();
+  const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const response = await fetch(QBO_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -111,7 +131,7 @@ export async function exchangeCodeForTokens(code: string, realmId: string): Prom
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code,
-      redirect_uri: QBO_REDIRECT_URI,
+      redirect_uri: redirectUri,
     }),
   });
   if (!response.ok) {
@@ -132,7 +152,8 @@ export async function exchangeCodeForTokens(code: string, realmId: string): Prom
 async function refreshAccessToken(): Promise<QBOTokens> {
   const storedTokens = await getStoredTokens();
   if (!storedTokens) throw new Error('No stored tokens found. Please re-authorize.');
-  const authHeader = Buffer.from(`${QBO_CLIENT_ID}:${QBO_CLIENT_SECRET}`).toString('base64');
+  const { clientId, clientSecret } = requireQboEnv();
+  const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const response = await fetch(QBO_TOKEN_URL, {
     method: 'POST',
     headers: {
@@ -177,7 +198,7 @@ export async function isConnected(): Promise<boolean> {
 
 async function makeApiRequest(method: 'GET' | 'POST' | 'PUT' | 'DELETE', endpoint: string, body?: unknown): Promise<any> {
   const { accessToken, realmId } = await getValidAccessToken();
-  const url = `${QBO_API_BASE}/v3/company/${realmId}${endpoint}`;
+  const url = `${qboApiBase()}/v3/company/${realmId}${endpoint}`;
   const response = await fetch(url, {
     method,
     headers: {
@@ -306,7 +327,7 @@ export async function attachFileToInvoice(invoiceId: string, pdfBuffer: Buffer, 
   parts.push(pdfBuffer);
   parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
   const body = Buffer.concat(parts);
-  const url = `${QBO_API_BASE}/v3/company/${realmId}/upload`;
+  const url = `${qboApiBase()}/v3/company/${realmId}/upload`;
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -328,7 +349,7 @@ export async function getInvoice(invoiceId: string): Promise<any> {
 
 export async function downloadInvoicePdf(invoiceId: string): Promise<Buffer> {
   const { accessToken, realmId } = await getValidAccessToken();
-  const url = `${QBO_API_BASE}/v3/company/${realmId}/invoice/${invoiceId}/pdf`;
+  const url = `${qboApiBase()}/v3/company/${realmId}/invoice/${invoiceId}/pdf`;
   const response = await fetch(url, {
     method: 'GET',
     headers: {
@@ -345,7 +366,7 @@ export async function downloadInvoicePdf(invoiceId: string): Promise<Buffer> {
 }
 
 export async function disconnect(): Promise<void> {
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('qbo_tokens')
     .delete()
     .eq('id', 'primary');
