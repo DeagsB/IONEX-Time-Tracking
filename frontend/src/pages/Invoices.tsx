@@ -2206,6 +2206,17 @@ export default function Invoices() {
     scope: 'submitted' | 'approved';
     workflowId?: string;
   } | null>(null);
+  /** Bulk undo confirmation for an entire grouped section (multiple approver batches at once). */
+  const [undoBulkApprovalConfirm, setUndoBulkApprovalConfirm] = useState<{
+    sectionKey: string;
+    customerName: string;
+    projectLine: string;
+    periodLine: string;
+    scope: 'submitted' | 'approved';
+    batches: Array<{ persistId: string; approver: string | null; workflowId?: string }>;
+  } | null>(null);
+  /** Section key currently building a bulk download (only one at a time across all tabs). */
+  const [bulkDownloadingSectionKey, setBulkDownloadingSectionKey] = useState<string | null>(null);
   const [editingLabourNotesGroupId, setEditingLabourNotesGroupId] = useState<string | null>(null);
   const [editingLabourNotes, setEditingLabourNotes] = useState<Record<string, string>>({});
   const [editingPeriodModal, setEditingPeriodModal] = useState<{
@@ -3308,40 +3319,6 @@ export default function Invoices() {
     [invoicedGroups, getGroupStatusId]
   );
 
-  /** Group Submitted batches that share customer + project + period so the page reads cleanly
-   *  when one project has multiple approvers each getting their own batch PDF. */
-  const submittedApprovalSections = useMemo(() => {
-    type Section = {
-      key: string;
-      customerName: string;
-      projectLine: string;
-      periodLine: string;
-      groups: typeof submittedApprovalGroups;
-    };
-    const map = new Map<string, Section>();
-    const order: string[] = [];
-    for (const g of submittedApprovalGroups) {
-      const customerName = g.tickets[0]?.customerName || '';
-      const projectKey = g.key.projectId || g.key.projectNumber || g.key.projectName || '';
-      const periodKey = g.key.periodKey || g.key.periodLabel || '';
-      const sectionKey = `${customerName}|${projectKey}|${periodKey}`;
-      let section = map.get(sectionKey);
-      if (!section) {
-        section = {
-          key: sectionKey,
-          customerName,
-          projectLine: [g.key.projectNumber, g.key.projectName].filter(Boolean).join(' – '),
-          periodLine: g.key.periodLabel || '',
-          groups: [],
-        };
-        map.set(sectionKey, section);
-        order.push(sectionKey);
-      }
-      section.groups.push(g);
-    }
-    return order.map((k) => map.get(k)!);
-  }, [submittedApprovalGroups]);
-
   /** Portal Approval batches in the approved status (signed batch attached, waiting for invoice). */
   const approvedGroups = useMemo(
     () => invoicedGroups.filter((g) => getGroupStatusId(g) === 'approved'),
@@ -3352,6 +3329,86 @@ export default function Invoices() {
   const portalSubmissionGroups = useMemo(
     () => invoicedGroups.filter((g) => getGroupStatusId(g) === 'portal_submission'),
     [invoicedGroups, getGroupStatusId]
+  );
+
+  /** Group batches that share customer + project + period so each Portal-Approval tab reads cleanly
+   *  when one project has multiple approvers each getting their own batch PDF. */
+  type ApprovalSection<G> = {
+    key: string;
+    customerName: string;
+    projectLine: string;
+    periodLine: string;
+    groups: G[];
+  };
+  const buildApprovalSections = useCallback(
+    <G extends { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }>(groups: G[]): ApprovalSection<G>[] => {
+      const map = new Map<string, ApprovalSection<G>>();
+      const order: string[] = [];
+      for (const g of groups) {
+        const customerName = g.tickets[0]?.customerName || '';
+        const projectKey = g.key.projectId || g.key.projectNumber || g.key.projectName || '';
+        const periodKey = g.key.periodKey || g.key.periodLabel || '';
+        const sectionKey = `${customerName}|${projectKey}|${periodKey}`;
+        let section = map.get(sectionKey);
+        if (!section) {
+          section = {
+            key: sectionKey,
+            customerName,
+            projectLine: [g.key.projectNumber, g.key.projectName].filter(Boolean).join(' – '),
+            periodLine: g.key.periodLabel || '',
+            groups: [],
+          };
+          map.set(sectionKey, section);
+          order.push(sectionKey);
+        }
+        section.groups.push(g);
+      }
+      return order.map((k) => map.get(k)!);
+    },
+    []
+  );
+
+  const getApproverForGroupKey = useCallback(
+    (key: InvoiceGroupKeyWithPeriod): string | null => {
+      const code = key.approverCode?.trim();
+      if (code) return code;
+      const projNumLc = key.projectNumber?.toLowerCase().trim();
+      const proj = projects?.find((p) => (p.project_number || '').toLowerCase().trim() === projNumLc);
+      return proj?.approver?.trim() || null;
+    },
+    [projects]
+  );
+
+  const submittedApprovalSections = useMemo(
+    () => buildApprovalSections(submittedApprovalGroups),
+    [submittedApprovalGroups, buildApprovalSections]
+  );
+  const approvedSections = useMemo(
+    () => buildApprovalSections(approvedGroups),
+    [approvedGroups, buildApprovalSections]
+  );
+  const portalSubmissionSections = useMemo(
+    () => buildApprovalSections(portalSubmissionGroups),
+    [portalSubmissionGroups, buildApprovalSections]
+  );
+
+  /** Sections collapsed by the user, keyed by `${tab}|${sectionKey}`. Default is expanded. */
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const toggleSectionCollapsed = useCallback(
+    (tab: 'submitted' | 'approved' | 'portal', sectionKey: string) => {
+      setCollapsedSections((prev) => {
+        const k = `${tab}|${sectionKey}`;
+        const next = new Set(prev);
+        if (next.has(k)) next.delete(k); else next.add(k);
+        return next;
+      });
+    },
+    []
+  );
+  const isSectionCollapsed = useCallback(
+    (tab: 'submitted' | 'approved' | 'portal', sectionKey: string) =>
+      collapsedSections.has(`${tab}|${sectionKey}`),
+    [collapsedSections]
   );
 
   /** Final invoiced batches — everything not in the submitted/approved/portal_submission intermediate states. Used by the See invoiced tab. */
@@ -5905,6 +5962,8 @@ export default function Invoices() {
                   if (!isGrouped) {
                     return <Fragment key={section.key}>{renderBatch(section.groups[0], false)}</Fragment>;
                   }
+                  const collapsed = isSectionCollapsed('submitted', section.key);
+                  const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
                     <div
                       key={section.key}
@@ -5915,19 +5974,96 @@ export default function Invoices() {
                         border: '1px solid var(--border-color)',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{section.customerName || 'Unknown customer'}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
+                        <button
+                          type="button"
+                          onClick={() => toggleSectionCollapsed('submitted', section.key)}
+                          aria-expanded={!collapsed}
+                          title={collapsed ? 'Expand section' : 'Collapse section'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '8px',
+                            padding: '2px 6px', background: 'transparent', border: 'none',
+                            color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
+                          <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
+                        </button>
                         {section.projectLine && (
                           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
                         )}
                         {section.periodLine && (
                           <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
                         )}
-                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.groups.length} batches · submit each separately</span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.groups.length} batches · submit each separately</span>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            disabled={bulkBuilding}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setExportError(null);
+                              setBulkDownloadingSectionKey(section.key);
+                              try {
+                                for (const g of section.groups) {
+                                  const merged = await buildMergedBatchPdfBlob(g);
+                                  const filename = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                  saveAs(merged, filename);
+                                }
+                              } catch (err) {
+                                console.error('Bulk re-download error:', err);
+                                setExportError(err instanceof Error ? err.message : 'Could not generate one or more batch PDFs.');
+                              } finally {
+                                setBulkDownloadingSectionKey(null);
+                              }
+                            }}
+                            title="Re-generate and download every approver batch PDF in this group. Each batch saves as its own file."
+                            style={{
+                              padding: '6px 10px', fontSize: '12px', fontWeight: 600,
+                              borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+                              cursor: bulkBuilding ? 'wait' : 'pointer',
+                              display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            }}
+                          >
+                            <span aria-hidden>📥</span>
+                            {bulkBuilding ? 'Building…' : `Download all (${section.groups.length})`}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={unmarkInvoicedMutation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setUndoBulkApprovalConfirm({
+                                sectionKey: section.key,
+                                customerName: section.customerName || 'Unknown customer',
+                                projectLine: section.projectLine,
+                                periodLine: section.periodLine,
+                                scope: 'submitted',
+                                batches: section.groups.map((g) => ({
+                                  persistId: resolvedPersistGroupId(g, invoicedMarkRows),
+                                  approver: getApproverForGroupKey(g.key),
+                                })),
+                              });
+                            }}
+                            title="Undo every batch in this group — they all return to the Ready tab."
+                            style={{
+                              padding: '6px 10px', fontSize: '12px', fontWeight: 500,
+                              borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'transparent', color: 'var(--text-secondary)',
+                              cursor: unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
+                              display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            }}
+                          >
+                            ↺ Undo all
+                          </button>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {section.groups.map((g) => renderBatch(g, true))}
-                      </div>
+                      {!collapsed && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {section.groups.map((g) => renderBatch(g, true))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -5953,39 +6089,53 @@ export default function Invoices() {
                 </p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {approvedGroups.map((group) => {
-                  const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
-                  const customerName = group.tickets[0]?.customerName;
-                  const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
-                  const status = wf?.statuses?.find((s) => s.id === 'approved');
-                  const statusHex = status ? statusColorHex(status.color) : '#3b82f6';
-                  const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
-                  const periodLine = group.key.periodLabel || '';
-                  const ticketCount = group.tickets.length;
-                  const approval = savedApprovalMetadata?.[persistId];
-                  const invoice = savedInvoiceMetadata?.[persistId];
-                  const hasInvoice = !!invoice;
-                  const isUploadingInvoice = uploadingInvoiceGroupId === persistId;
-                  const isMarking = advanceToPortalSubmissionMutation.isPending && advanceToPortalSubmissionMutation.variables?.groupId === persistId;
-                  return (
+                {approvedSections.map((section) => {
+                  const isGrouped = section.groups.length > 1;
+                  const renderBatch = (group: typeof section.groups[number], compact: boolean) => {
+                    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+                    const customerName = group.tickets[0]?.customerName;
+                    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
+                    const status = wf?.statuses?.find((s) => s.id === 'approved');
+                    const statusHex = status ? statusColorHex(status.color) : '#3b82f6';
+                    const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
+                    const periodLine = group.key.periodLabel || '';
+                    const ticketCount = group.tickets.length;
+                    const approval = savedApprovalMetadata?.[persistId];
+                    const invoice = savedInvoiceMetadata?.[persistId];
+                    const hasInvoice = !!invoice;
+                    const isUploadingInvoice = uploadingInvoiceGroupId === persistId;
+                    const isMarking = advanceToPortalSubmissionMutation.isPending && advanceToPortalSubmissionMutation.variables?.groupId === persistId;
+                    const approverDisplay = getApproverForGroupKey(group.key);
+                    return (
                     <div
                       key={persistId}
                       style={{
-                        padding: '16px',
-                        backgroundColor: 'var(--bg-secondary)',
+                        padding: compact ? '12px 14px' : '16px',
+                        backgroundColor: compact ? 'var(--bg-primary)' : 'var(--bg-secondary)',
                         borderRadius: '8px',
                         border: '1px solid var(--border-color)',
                         boxShadow: `inset 3px 0 0 0 ${statusHex}`,
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
-                        {projectLine && (
+                        {!compact && (
+                          <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                        )}
+                        {!compact && projectLine && (
                           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
                         )}
-                        {periodLine && (
+                        {!compact && periodLine && (
                           <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
                         )}
+                        <span
+                          style={{
+                            fontSize: '12px', fontWeight: 600, padding: '2px 10px', borderRadius: '999px',
+                            backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)',
+                          }}
+                          title="Approver for this batch"
+                        >
+                          Approver: {approverDisplay || '—'}
+                        </span>
                         {status && (
                           <span
                             style={{
@@ -6216,6 +6366,119 @@ export default function Invoices() {
                         </button>
                       </div>
                     </div>
+                    );
+                  };
+
+                  if (!isGrouped) {
+                    return <Fragment key={section.key}>{renderBatch(section.groups[0], false)}</Fragment>;
+                  }
+                  const collapsed = isSectionCollapsed('approved', section.key);
+                  const bulkBuilding = bulkDownloadingSectionKey === section.key;
+                  return (
+                    <div
+                      key={section.key}
+                      style={{
+                        padding: '14px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '10px',
+                        border: '1px solid var(--border-color)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
+                        <button
+                          type="button"
+                          onClick={() => toggleSectionCollapsed('approved', section.key)}
+                          aria-expanded={!collapsed}
+                          title={collapsed ? 'Expand section' : 'Collapse section'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '8px',
+                            padding: '2px 6px', background: 'transparent', border: 'none',
+                            color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
+                          <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
+                        </button>
+                        {section.projectLine && (
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
+                        )}
+                        {section.periodLine && (
+                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
+                        )}
+                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.groups.length} batches · advance each separately</span>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            disabled={bulkBuilding}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setExportError(null);
+                              setBulkDownloadingSectionKey(section.key);
+                              try {
+                                for (const g of section.groups) {
+                                  const merged = await buildMergedBatchPdfBlob(g);
+                                  const filename = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                  saveAs(merged, filename);
+                                }
+                              } catch (err) {
+                                console.error('Bulk re-download error:', err);
+                                setExportError(err instanceof Error ? err.message : 'Could not generate one or more batch PDFs.');
+                              } finally {
+                                setBulkDownloadingSectionKey(null);
+                              }
+                            }}
+                            title="Re-generate and download every approver batch PDF in this group."
+                            style={{
+                              padding: '6px 10px', fontSize: '12px', fontWeight: 600,
+                              borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+                              cursor: bulkBuilding ? 'wait' : 'pointer',
+                              display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            }}
+                          >
+                            <span aria-hidden>📥</span>
+                            {bulkBuilding ? 'Building…' : `Download all (${section.groups.length})`}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setUndoBulkApprovalConfirm({
+                                sectionKey: section.key,
+                                customerName: section.customerName || 'Unknown customer',
+                                projectLine: section.projectLine,
+                                periodLine: section.periodLine,
+                                scope: 'approved',
+                                batches: section.groups.map((g) => {
+                                  const cName = g.tickets[0]?.customerName;
+                                  const wf = getWorkflowForCustomer(cName, g.key.projectNumber);
+                                  return {
+                                    persistId: resolvedPersistGroupId(g, invoicedMarkRows),
+                                    approver: getApproverForGroupKey(g.key),
+                                    workflowId: wf?.id,
+                                  };
+                                }),
+                              });
+                            }}
+                            title="Undo approval for every batch in this group — they all return to the Submitted tab and their signed PDFs are deleted."
+                            style={{
+                              padding: '6px 10px', fontSize: '12px', fontWeight: 500,
+                              borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'transparent', color: 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            }}
+                          >
+                            ↺ Undo all
+                          </button>
+                        </div>
+                      </div>
+                      {!collapsed && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {section.groups.map((g) => renderBatch(g, true))}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -6240,76 +6503,90 @@ export default function Invoices() {
                 </p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {portalSubmissionGroups.map((group) => {
-                  const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
-                  const customerName = group.tickets[0]?.customerName;
-                  const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
-                  const status = wf?.statuses?.find((s) => s.id === 'portal_submission');
-                  const statusHex = status ? statusColorHex(status.color) : '#14b8a6';
-                  const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
-                  const periodLine = group.key.periodLabel || '';
-                  const ticketCount = group.tickets.length;
-                  const approval = savedApprovalMetadata?.[persistId];
-                  const invoice = savedInvoiceMetadata?.[persistId];
-                  const invoiceNumber = invoice?.filename ?? '';
-                  const approvalCode = approval?.filename ?? '';
-                  const description = group.key.projectName ?? '';
+                {portalSubmissionSections.map((section) => {
+                  const isGrouped = section.groups.length > 1;
+                  const renderBatch = (group: typeof section.groups[number], compact: boolean) => {
+                    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+                    const customerName = group.tickets[0]?.customerName;
+                    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
+                    const status = wf?.statuses?.find((s) => s.id === 'portal_submission');
+                    const statusHex = status ? statusColorHex(status.color) : '#14b8a6';
+                    const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
+                    const periodLine = group.key.periodLabel || '';
+                    const ticketCount = group.tickets.length;
+                    const approval = savedApprovalMetadata?.[persistId];
+                    const invoice = savedInvoiceMetadata?.[persistId];
+                    const invoiceNumber = invoice?.filename ?? '';
+                    const approvalCode = approval?.filename ?? '';
+                    const description = group.key.projectName ?? '';
+                    const approverDisplay = getApproverForGroupKey(group.key);
 
-                  // Invoice date = period end date (data from original batch).
-                  const firstTicket = group.tickets[0];
-                  const custIdForPeriod = firstTicket?.customerId ?? '';
-                  const projIdForPeriod =
-                    (firstTicket as ServiceTicket & { recordProjectId?: string })?.recordProjectId ??
-                    firstTicket?.projectId ??
-                    '';
-                  const grouping = cnrlPeriodGrouping(getGroupingForTicket(custIdForPeriod, projIdForPeriod));
-                  const invoiceDate = group.key.periodKey
-                    ? getPeriodEndYmd(group.key.periodKey, grouping) ?? ''
-                    : '';
+                    // Invoice date = period end date (data from original batch).
+                    const firstTicket = group.tickets[0];
+                    const custIdForPeriod = firstTicket?.customerId ?? '';
+                    const projIdForPeriod =
+                      (firstTicket as ServiceTicket & { recordProjectId?: string })?.recordProjectId ??
+                      firstTicket?.projectId ??
+                      '';
+                    const grouping = cnrlPeriodGrouping(getGroupingForTicket(custIdForPeriod, projIdForPeriod));
+                    const invoiceDate = group.key.periodKey
+                      ? getPeriodEndYmd(group.key.periodKey, grouping) ?? ''
+                      : '';
 
-                  // Tickets paired — max 2 per field, joined with " - ".
-                  const sortedTicketNums = group.tickets
-                    .map((t) => t.ticketNumber)
-                    .filter((n): n is string => !!n)
-                    .sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b));
-                  const ticketPairs: string[] = [];
-                  for (let i = 0; i < sortedTicketNums.length; i += 2) {
-                    ticketPairs.push(sortedTicketNums.slice(i, i + 2).join(' - '));
-                  }
+                    // Tickets paired — max 2 per field, joined with " - ".
+                    const sortedTicketNums = group.tickets
+                      .map((t) => t.ticketNumber)
+                      .filter((n): n is string => !!n)
+                      .sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b));
+                    const ticketPairs: string[] = [];
+                    for (let i = 0; i < sortedTicketNums.length; i += 2) {
+                      ticketPairs.push(sortedTicketNums.slice(i, i + 2).join(' - '));
+                    }
 
-                  // AFE/CC distinct values across tickets (CNRL splits one batch across multiple AFEs).
-                  const afeSet = new Set<string>();
-                  for (const t of group.tickets) {
-                    const ov = (t as ServiceTicket & { headerOverrides?: { po_afe?: string; cc?: string } }).headerOverrides;
-                    const afe = (ov?.po_afe ?? '').trim();
-                    const cc = (ov?.cc ?? '').trim();
-                    if (!afe && !cc) continue;
-                    const combined = [afe, cc].filter(Boolean).join(' / ');
-                    afeSet.add(combined);
-                  }
-                  const afeList = [...afeSet];
+                    // AFE/CC distinct values across tickets (CNRL splits one batch across multiple AFEs).
+                    const afeSet = new Set<string>();
+                    for (const t of group.tickets) {
+                      const ov = (t as ServiceTicket & { headerOverrides?: { po_afe?: string; cc?: string } }).headerOverrides;
+                      const afe = (ov?.po_afe ?? '').trim();
+                      const cc = (ov?.cc ?? '').trim();
+                      if (!afe && !cc) continue;
+                      const combined = [afe, cc].filter(Boolean).join(' / ');
+                      afeSet.add(combined);
+                    }
+                    const afeList = [...afeSet];
 
-                  const isMarking = markFinalInvoicedMutation.isPending && markFinalInvoicedMutation.variables?.groupId === persistId;
+                    const isMarking = markFinalInvoicedMutation.isPending && markFinalInvoicedMutation.variables?.groupId === persistId;
 
-                  return (
+                    return (
                     <div
                       key={persistId}
                       style={{
-                        padding: '16px',
-                        backgroundColor: 'var(--bg-secondary)',
+                        padding: compact ? '12px 14px' : '16px',
+                        backgroundColor: compact ? 'var(--bg-primary)' : 'var(--bg-secondary)',
                         borderRadius: '8px',
                         border: '1px solid var(--border-color)',
                         boxShadow: `inset 3px 0 0 0 ${statusHex}`,
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
-                        {projectLine && (
+                        {!compact && (
+                          <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                        )}
+                        {!compact && projectLine && (
                           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
                         )}
-                        {periodLine && (
+                        {!compact && periodLine && (
                           <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
                         )}
+                        <span
+                          style={{
+                            fontSize: '12px', fontWeight: 600, padding: '2px 10px', borderRadius: '999px',
+                            backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)',
+                          }}
+                          title="Approver for this batch"
+                        >
+                          Approver: {approverDisplay || '—'}
+                        </span>
                         {status && (
                           <span
                             style={{
@@ -6453,6 +6730,52 @@ export default function Invoices() {
                           </button>
                         )}
                       </div>
+                    </div>
+                    );
+                  };
+
+                  if (!isGrouped) {
+                    return <Fragment key={section.key}>{renderBatch(section.groups[0], false)}</Fragment>;
+                  }
+                  const collapsed = isSectionCollapsed('portal', section.key);
+                  return (
+                    <div
+                      key={section.key}
+                      style={{
+                        padding: '14px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '10px',
+                        border: '1px solid var(--border-color)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
+                        <button
+                          type="button"
+                          onClick={() => toggleSectionCollapsed('portal', section.key)}
+                          aria-expanded={!collapsed}
+                          title={collapsed ? 'Expand section' : 'Collapse section'}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '8px',
+                            padding: '2px 6px', background: 'transparent', border: 'none',
+                            color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
+                          <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
+                        </button>
+                        {section.projectLine && (
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
+                        )}
+                        {section.periodLine && (
+                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
+                        )}
+                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.groups.length} batches · submit each separately</span>
+                      </div>
+                      {!collapsed && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {section.groups.map((g) => renderBatch(g, true))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -6734,6 +7057,102 @@ export default function Invoices() {
                     } catch (err) {
                       setExportError(err instanceof Error ? err.message : 'Could not revert approval.');
                     }
+                  }}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                    borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  }}
+                >
+                  {ctaLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {undoBulkApprovalConfirm && (() => {
+        const isApprovedScope = undoBulkApprovalConfirm.scope === 'approved';
+        const count = undoBulkApprovalConfirm.batches.length;
+        const title = isApprovedScope ? `Undo approval for ${count} batches?` : `Undo submitted-for-approval for ${count} batches?`;
+        const body = isApprovedScope
+          ? 'Every batch in this group returns to the Submitted tab and each attached approval PDF is deleted. You can re-upload signed PDFs from there.'
+          : 'Every batch in this group returns to the Ready tab so you can re-prepare or edit before re-sending. Any signed approval PDFs attached are removed.';
+        const ctaLabel = isApprovedScope ? '↺ Return all to Submitted' : '↺ Return all to Ready';
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1000, padding: '20px',
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setUndoBulkApprovalConfirm(null); }}
+          >
+            <div style={{
+              backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
+              padding: '20px', maxWidth: '520px', width: '100%',
+              border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            }}>
+              <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700 }}>{title}</h2>
+              <p style={{ margin: '0 0 10px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                <strong>{undoBulkApprovalConfirm.customerName}</strong>{undoBulkApprovalConfirm.projectLine ? ` — ${undoBulkApprovalConfirm.projectLine}` : ''}{undoBulkApprovalConfirm.periodLine ? ` · ${undoBulkApprovalConfirm.periodLine}` : ''}<br />
+                {body}
+              </p>
+              <ul style={{ margin: '0 0 14px 18px', padding: 0, fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                {undoBulkApprovalConfirm.batches.map((b) => (
+                  <li key={b.persistId}>Approver: {b.approver || '—'}</li>
+                ))}
+              </ul>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setUndoBulkApprovalConfirm(null)}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                    borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const confirm = undoBulkApprovalConfirm;
+                    setUndoBulkApprovalConfirm(null);
+                    if (confirm.scope === 'submitted') {
+                      for (const b of confirm.batches) {
+                        handleUnmarkAsInvoiced(b.persistId, { skipConfirm: true });
+                      }
+                      return;
+                    }
+                    // Approved → Submitted, per batch
+                    for (const b of confirm.batches) {
+                      try {
+                        await invoicedBatchApprovalsService.deleteApproval(b.persistId);
+                        if (b.workflowId) {
+                          const wf = allWorkflows.find((w) => w.id === b.workflowId);
+                          const submittedStatus = wf?.statuses.find((s) => s.id === 'submitted_approval');
+                          if (submittedStatus && wf) {
+                            await updateBatchStatusMutation.mutateAsync({
+                              groupId: b.persistId,
+                              statusId: submittedStatus.id,
+                              prevStatusId: 'approved',
+                              statusLabel: submittedStatus.label,
+                              customerName: confirm.customerName,
+                              workflowId: wf.id,
+                            });
+                          }
+                        }
+                      } catch (err) {
+                        setExportError(err instanceof Error ? err.message : 'Could not revert one or more approvals.');
+                      }
+                    }
+                    await queryClient.invalidateQueries({ queryKey: ['invoicedBatchApprovals'] });
                   }}
                   style={{
                     padding: '8px 14px', fontSize: '13px', fontWeight: 600,
