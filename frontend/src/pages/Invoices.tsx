@@ -3331,37 +3331,44 @@ export default function Invoices() {
     [invoicedGroups, getGroupStatusId]
   );
 
-  /** Group batches that share customer + project + period so each Portal-Approval tab reads cleanly
-   *  when one project has multiple approvers each getting their own batch PDF. */
+  /** Group batches by customer so each customer's batches sit under one heading even when they span
+   *  multiple projects or periods (matches how CNRL is batched per approver — same customer record,
+   *  multiple projects rolled up). Project + period stay on each row so individual submissions stay
+   *  visible inside the section. */
   type ApprovalSection<G> = {
     key: string;
     customerName: string;
-    projectLine: string;
-    periodLine: string;
+    projectCount: number;
+    periodCount: number;
     groups: G[];
   };
   const buildApprovalSections = useCallback(
     <G extends { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }>(groups: G[]): ApprovalSection<G>[] => {
       const map = new Map<string, ApprovalSection<G>>();
       const order: string[] = [];
+      const projectKeys = new Map<string, Set<string>>();
+      const periodKeys = new Map<string, Set<string>>();
       for (const g of groups) {
         const customerName = g.tickets[0]?.customerName || '';
-        const projectKey = g.key.projectId || g.key.projectNumber || g.key.projectName || '';
-        const periodKey = g.key.periodKey || g.key.periodLabel || '';
-        const sectionKey = `${customerName}|${projectKey}|${periodKey}`;
+        const sectionKey = customerName;
         let section = map.get(sectionKey);
         if (!section) {
-          section = {
-            key: sectionKey,
-            customerName,
-            projectLine: [g.key.projectNumber, g.key.projectName].filter(Boolean).join(' – '),
-            periodLine: g.key.periodLabel || '',
-            groups: [],
-          };
+          section = { key: sectionKey, customerName, projectCount: 0, periodCount: 0, groups: [] };
           map.set(sectionKey, section);
           order.push(sectionKey);
+          projectKeys.set(sectionKey, new Set());
+          periodKeys.set(sectionKey, new Set());
         }
         section.groups.push(g);
+        const projKey = g.key.projectId || g.key.projectNumber || g.key.projectName || '';
+        const periodKey = g.key.periodKey || g.key.periodLabel || '';
+        if (projKey) projectKeys.get(sectionKey)!.add(projKey);
+        if (periodKey) periodKeys.get(sectionKey)!.add(periodKey);
+      }
+      for (const k of order) {
+        const section = map.get(k)!;
+        section.projectCount = projectKeys.get(k)!.size;
+        section.periodCount = periodKeys.get(k)!.size;
       }
       return order.map((k) => map.get(k)!);
     },
@@ -5807,12 +5814,9 @@ export default function Invoices() {
                     <span aria-hidden style={{ display: 'inline-block', transform: sectionCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
                     <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
                   </button>
-                  {section.projectLine && (
-                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
-                  )}
-                  {section.periodLine && (
-                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
-                  )}
+                  <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                    {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                  </span>
                   {sectionIsPortalApproval ? (
                     (() => {
                       const sectionCustomer = section.customerName || sectionFirstTicket?.customerName || '';
@@ -5828,7 +5832,7 @@ export default function Invoices() {
                             e.stopPropagation();
                             handleBulkSendForApproval(sectionCustomer, section.groups);
                           }}
-                          title={`Generates one merged PDF per approver in this project + period, zips them, downloads the zip, then marks each batch as ready to send. Nothing is emailed automatically — you forward the zip yourself.`}
+                          title={`Generates one merged PDF per batch for this customer, zips them, downloads the zip, then marks each batch as ready to send. Nothing is emailed automatically — you forward the zip yourself.`}
                           style={{
                             marginLeft: 'auto',
                             padding: '6px 12px',
@@ -5930,10 +5934,10 @@ export default function Invoices() {
                           {!compact && (
                             <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
                           )}
-                          {!compact && projectLine && (
+                          {projectLine && (
                             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
                           )}
-                          {!compact && periodLine && (
+                          {periodLine && (
                             <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
                           )}
                           <span
@@ -6131,13 +6135,9 @@ export default function Invoices() {
                           <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
                           <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
                         </button>
-                        {section.projectLine && (
-                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
-                        )}
-                        {section.periodLine && (
-                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
-                        )}
-                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.groups.length} batches · submit each separately</span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                        </span>
                         <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           <button
                             type="button"
@@ -6179,8 +6179,8 @@ export default function Invoices() {
                               setUndoBulkApprovalConfirm({
                                 sectionKey: section.key,
                                 customerName: section.customerName || 'Unknown customer',
-                                projectLine: section.projectLine,
-                                periodLine: section.periodLine,
+                                projectLine: '',
+                                periodLine: '',
                                 scope: 'submitted',
                                 batches: section.groups.map((g) => ({
                                   persistId: resolvedPersistGroupId(g, invoicedMarkRows),
@@ -6263,10 +6263,10 @@ export default function Invoices() {
                         {!compact && (
                           <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
                         )}
-                        {!compact && projectLine && (
+                        {projectLine && (
                           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
                         )}
-                        {!compact && periodLine && (
+                        {periodLine && (
                           <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
                         )}
                         <span
@@ -6541,13 +6541,9 @@ export default function Invoices() {
                           <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
                           <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
                         </button>
-                        {section.projectLine && (
-                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
-                        )}
-                        {section.periodLine && (
-                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
-                        )}
-                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.groups.length} batches · advance each separately</span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                        </span>
                         <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           <button
                             type="button"
@@ -6588,8 +6584,8 @@ export default function Invoices() {
                               setUndoBulkApprovalConfirm({
                                 sectionKey: section.key,
                                 customerName: section.customerName || 'Unknown customer',
-                                projectLine: section.projectLine,
-                                periodLine: section.periodLine,
+                                projectLine: '',
+                                periodLine: '',
                                 scope: 'approved',
                                 batches: section.groups.map((g) => {
                                   const cName = g.tickets[0]?.customerName;
@@ -6714,10 +6710,10 @@ export default function Invoices() {
                         {!compact && (
                           <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
                         )}
-                        {!compact && projectLine && (
+                        {projectLine && (
                           <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
                         )}
-                        {!compact && periodLine && (
+                        {periodLine && (
                           <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
                         )}
                         <span
@@ -6905,13 +6901,9 @@ export default function Invoices() {
                           <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
                           <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
                         </button>
-                        {section.projectLine && (
-                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
-                        )}
-                        {section.periodLine && (
-                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
-                        )}
-                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.groups.length} batches · submit each separately</span>
+                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                        </span>
                       </div>
                       {!collapsed && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
