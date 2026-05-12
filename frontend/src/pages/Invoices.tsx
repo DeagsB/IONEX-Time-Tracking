@@ -5196,16 +5196,24 @@ export default function Invoices() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {bulkApprovalCandidates.map(({ customer, groups }) => {
                   const isBusy = bulkSendProgress?.customer === customer;
+                  const periodLabels = [...new Set(
+                    groups.map((g) => g.key.periodLabel?.trim()).filter((s): s is string => !!s)
+                  )].sort();
+                  const periodSummary = periodLabels.length === 0
+                    ? ''
+                    : periodLabels.length === 1
+                      ? periodLabels[0]
+                      : `${periodLabels.length} periods: ${periodLabels.join(', ')}`;
                   const label = isBusy
                     ? `Building ${bulkSendProgress!.current}/${bulkSendProgress!.total}…`
-                    : `📥 Download ${groups.length} batch${groups.length === 1 ? '' : 'es'} for ${customer} (zip) & mark ready to send`;
+                    : `📥 Download ${groups.length} batch${groups.length === 1 ? '' : 'es'} for ${customer}${periodSummary ? ` — ${periodSummary}` : ''} (zip) & mark ready to send`;
                   return (
                     <button
                       key={customer}
                       type="button"
                       disabled={!!bulkSendProgress}
                       onClick={() => handleBulkSendForApproval(customer, groups)}
-                      title={`Generates one merged PDF per batch (Approver_Period.pdf), zips them as ${customer}_for-approval_<date>.zip, downloads the zip, then marks each batch as ready to send. Nothing is sent automatically — you email/submit the zip to the approver yourself.`}
+                      title={`Generates one merged PDF per batch (Approver_Period.pdf), zips them as ${customer}_for-approval_<date>.zip, downloads the zip, then marks each batch as ready to send. Period(s) included: ${periodSummary || '(none listed)'}. Nothing is sent automatically — you email/submit the zip to the approver yourself.`}
                       style={{
                         alignSelf: 'flex-start',
                         padding: '8px 14px',
