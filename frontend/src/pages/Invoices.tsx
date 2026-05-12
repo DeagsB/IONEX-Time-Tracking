@@ -5870,9 +5870,9 @@ export default function Invoices() {
                         letterSpacing: '0.05em',
                         padding: '3px 10px',
                         borderRadius: '999px',
-                        backgroundColor: 'rgba(217, 119, 6, 0.12)',
-                        color: 'var(--warning-text, #b45309)',
-                        border: '1px solid rgba(217, 119, 6, 0.4)',
+                        backgroundColor: 'rgba(34, 197, 94, 0.12)',
+                        color: '#15803d',
+                        border: '1px solid rgba(34, 197, 94, 0.55)',
                       }}
                       title="Each invoice in this group is downloaded, invoiced, and tracked separately."
                     >
