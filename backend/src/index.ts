@@ -8,7 +8,6 @@ import projectRoutes from './routes/projects';
 import customerRoutes from './routes/customers';
 import timeEntryRoutes from './routes/timeEntries';
 import formRoutes from './routes/forms';
-import quickbooksRoutes from './routes/quickbooks';
 
 dotenv.config();
 
@@ -26,7 +25,6 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/time-entries', timeEntryRoutes);
 app.use('/api/forms', formRoutes);
-app.use('/api/quickbooks', quickbooksRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'IONEX Time Tracking API' });

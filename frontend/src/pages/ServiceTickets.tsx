@@ -21,7 +21,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
 import { supabase } from '../lib/supabaseClient';
-import { quickbooksClientService } from '../services/quickbooksService';
 import SearchableSelect from '../components/SearchableSelect';
 import {
   receiptHasMatchingTicketExpenseLine,

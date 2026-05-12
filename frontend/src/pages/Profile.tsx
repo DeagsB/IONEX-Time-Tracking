@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { usersService, employeesService, serviceTicketsService } from '../services/supabaseServices';
-import { quickbooksClientService, isQuickBooksApiLocal } from '../services/quickbooksService';
 
 // Common timezone options
 const TIMEZONE_OPTIONS = [
@@ -77,17 +76,6 @@ export default function Profile() {
   const [profileErrors, setProfileErrors] = useState<Partial<ProfileData>>({});
   const [passwordErrors, setPasswordErrors] = useState<Partial<PasswordData>>({});
 
-  const qboApiLocal = isQuickBooksApiLocal();
-  const { data: qboConnected, refetch: refetchQbo } = useQuery({
-    queryKey: ['qboStatus'],
-    queryFn: () => quickbooksClientService.checkStatus(),
-    enabled: isAdmin === true && !qboApiLocal,
-  });
-  const effectiveQboConnected = qboApiLocal ? false : (qboConnected ?? false);
-
-  const [qboConnectLoading, setQboConnectLoading] = useState(false);
-  const [qboConnectError, setQboConnectError] = useState<string | null>(null);
-
   const [clearRejectedUserId, setClearRejectedUserId] = useState('');
   const [clearRejectedMessage, setClearRejectedMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [clearRejectedLoading, setClearRejectedLoading] = useState(false);
@@ -97,19 +85,6 @@ export default function Profile() {
     queryFn: () => employeesService.getAll(false),
     enabled: isAdmin === true,
   });
-
-  // Handle QBO callback params (?qbo=success or ?qbo=error)
-  useEffect(() => {
-    const qbo = searchParams.get('qbo');
-    if (qbo === 'success') {
-      refetchQbo();
-      setSearchParams((p) => {
-        p.delete('qbo');
-        p.delete('message');
-        return p;
-      }, { replace: true });
-    }
-  }, [searchParams, refetchQbo, setSearchParams]);
 
   // Load user profile data
   useEffect(() => {
@@ -623,110 +598,6 @@ export default function Profile() {
           </div>
         </div>
       </div>
-
-      {/* QuickBooks Connection - Admin only (Deagan Bespalko) */}
-      {isAdmin && (
-        <div style={cardStyle}>
-          <h3 style={sectionTitleStyle}>
-            <span style={{ fontSize: '20px' }}>📊</span>
-            QuickBooks Online
-          </h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
-            Connect QuickBooks to create invoices from the Invoices page.
-          </p>
-          {(searchParams.get('qbo') === 'error' || qboConnectError) && (
-            <div style={{
-              padding: '12px 16px',
-              borderRadius: '8px',
-              marginBottom: '16px',
-              backgroundColor: 'rgba(255, 71, 87, 0.1)',
-              border: '1px solid #ff4757',
-              color: '#ff4757',
-            }}>
-              {qboConnectError || searchParams.get('message') || 'QuickBooks connection failed.'}
-            </div>
-          )}
-          {effectiveQboConnected ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <span style={{
-                padding: '6px 12px',
-                backgroundColor: 'rgba(78, 205, 196, 0.2)',
-                borderRadius: '6px',
-                color: '#4ecdc4',
-                fontWeight: '600',
-                fontSize: '14px',
-              }}>
-                ✓ Connected
-              </span>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (qboApiLocal) return;
-                  const ok = await quickbooksClientService.disconnect();
-                  if (ok) refetchQbo();
-                }}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: 'transparent',
-                  color: 'var(--text-secondary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <>
-              {qboApiLocal && (
-                <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
-                  QuickBooks status is not checked when using a local backend. To enable the
-                  Connect button against a local backend, set <code>VITE_QBO_ALLOW_LOCAL=true</code>
-                  in <code>frontend/.env</code> and restart the dev server. You will still need
-                  a public OAuth callback URL configured in your Intuit Developer app.
-                </p>
-              )}
-              <button
-                type="button"
-                disabled={qboConnectLoading || qboApiLocal}
-                title={qboApiLocal ? 'Connect is disabled because VITE_API_URL points at a local/private network. Set VITE_QBO_ALLOW_LOCAL=true to bypass.' : undefined}
-                onClick={async () => {
-                  if (qboApiLocal) return;
-                  setQboConnectError(null);
-                  setQboConnectLoading(true);
-                  try {
-                    const url = await quickbooksClientService.getAuthUrl();
-                    if (url) {
-                      window.location.href = url;
-                    } else {
-                      setQboConnectError('Could not get QuickBooks authorization URL. Ensure the backend is running and configured (VITE_API_URL, QBO_CLIENT_ID, etc.).');
-                    }
-                  } catch (err) {
-                    setQboConnectError(err instanceof Error ? err.message : 'Failed to connect to QuickBooks.');
-                  } finally {
-                    setQboConnectLoading(false);
-                  }
-                }}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: (qboConnectLoading || qboApiLocal) ? 'var(--bg-tertiary)' : '#0ea5e9',
-                  color: (qboConnectLoading || qboApiLocal) ? 'var(--text-tertiary)' : 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontWeight: '600',
-                  fontSize: '14px',
-                  cursor: (qboConnectLoading || qboApiLocal) ? 'not-allowed' : 'pointer',
-                  opacity: qboConnectLoading ? 0.7 : 1,
-                }}
-              >
-                {qboConnectLoading ? 'Connecting...' : 'Connect QuickBooks'}
-              </button>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Clear stuck rejected notification - Admin only */}
       {isAdmin && (
