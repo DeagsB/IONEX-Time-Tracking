@@ -5311,8 +5311,12 @@ export default function Invoices() {
                   padding: '16px',
                   backgroundColor: 'var(--bg-secondary)',
                   borderRadius: '8px',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: periodStillAccumulating ? 'inset 3px 0 0 0 rgba(217, 119, 6, 0.9)' : undefined,
+                  border: sectionMulti ? '1px solid var(--text-tertiary)' : '1px solid var(--border-color)',
+                  boxShadow: periodStillAccumulating
+                    ? 'inset 3px 0 0 0 rgba(217, 119, 6, 0.9)'
+                    : sectionMulti
+                      ? '0 1px 3px rgba(0, 0, 0, 0.08)'
+                      : undefined,
                 }}
               >
                 {batchOfLabel && (
