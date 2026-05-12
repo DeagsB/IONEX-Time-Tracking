@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, useCallback, Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth, canAccessInvoices } from '../context/AuthContext';
@@ -3133,12 +3133,14 @@ export default function Invoices() {
     }
   };
 
-  const handleUnmarkAsInvoiced = (groupId: string) => {
-    const hasInvoice = !!(invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]);
-    const msg = hasInvoice
-      ? 'This will unmark the batch as invoiced and permanently delete the attached invoice PDF. Continue?'
-      : 'This will unmark the batch as invoiced and move it back to pending. Continue?';
-    if (!window.confirm(msg)) return;
+  const handleUnmarkAsInvoiced = (groupId: string, opts?: { skipConfirm?: boolean }) => {
+    if (!opts?.skipConfirm) {
+      const hasInvoice = !!(invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]);
+      const msg = hasInvoice
+        ? 'This will unmark the batch as invoiced and permanently delete the attached invoice PDF. Continue?'
+        : 'This will unmark the batch as invoiced and move it back to pending. Continue?';
+      if (!window.confirm(msg)) return;
+    }
 
     if (isDemoMode) {
       setLegacyMarkedInvoicedIds((prev) => {
@@ -3305,6 +3307,40 @@ export default function Invoices() {
     () => invoicedGroups.filter((g) => getGroupStatusId(g) === 'submitted_approval'),
     [invoicedGroups, getGroupStatusId]
   );
+
+  /** Group Submitted batches that share customer + project + period so the page reads cleanly
+   *  when one project has multiple approvers each getting their own batch PDF. */
+  const submittedApprovalSections = useMemo(() => {
+    type Section = {
+      key: string;
+      customerName: string;
+      projectLine: string;
+      periodLine: string;
+      groups: typeof submittedApprovalGroups;
+    };
+    const map = new Map<string, Section>();
+    const order: string[] = [];
+    for (const g of submittedApprovalGroups) {
+      const customerName = g.tickets[0]?.customerName || '';
+      const projectKey = g.key.projectId || g.key.projectNumber || g.key.projectName || '';
+      const periodKey = g.key.periodKey || g.key.periodLabel || '';
+      const sectionKey = `${customerName}|${projectKey}|${periodKey}`;
+      let section = map.get(sectionKey);
+      if (!section) {
+        section = {
+          key: sectionKey,
+          customerName,
+          projectLine: [g.key.projectNumber, g.key.projectName].filter(Boolean).join(' – '),
+          periodLine: g.key.periodLabel || '',
+          groups: [],
+        };
+        map.set(sectionKey, section);
+        order.push(sectionKey);
+      }
+      section.groups.push(g);
+    }
+    return order.map((k) => map.get(k)!);
+  }, [submittedApprovalGroups]);
 
   /** Portal Approval batches in the approved status (signed batch attached, waiting for invoice). */
   const approvedGroups = useMemo(
@@ -5661,97 +5697,88 @@ export default function Invoices() {
                 </p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {submittedApprovalGroups.map((group) => {
-                  const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
-                  const customerName = group.tickets[0]?.customerName;
-                  const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
-                  const status = wf?.statuses?.find((s) => s.id === 'submitted_approval');
-                  const statusHex = status ? statusColorHex(status.color) : '#888';
-                  const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
-                  const periodLine = group.key.periodLabel || '';
-                  const ticketCount = group.tickets.length;
-                  const isUploading = uploadApprovalMutation.isPending && uploadApprovalMutation.variables?.groupId === persistId;
-                  return (
-                    <div
-                      key={persistId}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: 'var(--bg-secondary)',
-                        borderRadius: '8px',
-                        border: '1px solid var(--border-color)',
-                        boxShadow: `inset 3px 0 0 0 ${statusHex}`,
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
-                        {projectLine && (
-                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
-                        )}
-                        {periodLine && (
-                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
-                        )}
-                        {status && (
-                          <span
-                            style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              padding: '2px 10px',
-                              borderRadius: '999px',
-                              backgroundColor: `${statusHex}18`,
-                              color: statusHex,
-                              border: `1px solid ${statusHex}40`,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em',
-                            }}
-                          >
-                            {status.label}
-                          </span>
-                        )}
-                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
-                      </div>
+                {submittedApprovalSections.map((section) => {
+                  const isGrouped = section.groups.length > 1;
+                  const renderBatch = (group: typeof section.groups[number], compact: boolean) => {
+                    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+                    const customerName = group.tickets[0]?.customerName;
+                    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
+                    const status = wf?.statuses?.find((s) => s.id === 'submitted_approval');
+                    const statusHex = status ? statusColorHex(status.color) : '#888';
+                    const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
+                    const periodLine = group.key.periodLabel || '';
+                    const ticketCount = group.tickets.length;
+                    const isUploading = uploadApprovalMutation.isPending && uploadApprovalMutation.variables?.groupId === persistId;
+                    const codeFromKey = group.key.approverCode?.trim();
+                    let approverDisplay: string | null = codeFromKey && codeFromKey.length > 0 ? codeFromKey : null;
+                    if (!approverDisplay) {
+                      const projNumLc = group.key.projectNumber?.toLowerCase().trim();
+                      const proj = projects?.find((p) => (p.project_number || '').toLowerCase().trim() === projNumLc);
+                      approverDisplay = proj?.approver?.trim() || null;
+                    }
+                    return (
                       <div
-                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = statusHex; }}
-                        onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
-                        onDrop={async (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.currentTarget.style.borderColor = '';
-                          const file = e.dataTransfer?.files?.[0];
-                          if (file?.type !== 'application/pdf' || !wf) return;
-                          setExportError(null);
-                          try {
-                            await uploadApprovalMutation.mutateAsync({
-                              groupId: persistId,
-                              file,
-                              customerName,
-                              projectNumber: group.key.projectNumber || undefined,
-                              workflow: wf,
-                            });
-                          } catch (err) {
-                            setExportError(err instanceof Error ? err.message : 'Upload failed');
-                          }
-                        }}
-                        onClick={() => document.getElementById(`approval-file-${persistId}`)?.click()}
+                        key={persistId}
                         style={{
-                          border: '2px dashed var(--border-color)',
+                          padding: compact ? '12px 14px' : '16px',
+                          backgroundColor: compact ? 'var(--bg-primary)' : 'var(--bg-secondary)',
                           borderRadius: '8px',
-                          padding: '14px 16px',
-                          cursor: isUploading ? 'wait' : 'pointer',
-                          backgroundColor: 'var(--bg-tertiary)',
-                          textAlign: 'center',
-                          fontSize: '13px',
-                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)',
+                          boxShadow: `inset 3px 0 0 0 ${statusHex}`,
                         }}
                       >
-                        <input
-                          id={`approval-file-${persistId}`}
-                          type="file"
-                          accept=".pdf,application/pdf"
-                          style={{ display: 'none' }}
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = '';
-                            if (!file || !wf) return;
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                          {!compact && (
+                            <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                          )}
+                          {!compact && projectLine && (
+                            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
+                          )}
+                          {!compact && periodLine && (
+                            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
+                          )}
+                          <span
+                            style={{
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              padding: '2px 10px',
+                              borderRadius: '999px',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: 'var(--text-primary)',
+                              border: '1px solid var(--border-color)',
+                            }}
+                            title="Approver for this batch"
+                          >
+                            Approver: {approverDisplay || '—'}
+                          </span>
+                          {status && (
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: '2px 10px',
+                                borderRadius: '999px',
+                                backgroundColor: `${statusHex}18`,
+                                color: statusHex,
+                                border: `1px solid ${statusHex}40`,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.04em',
+                              }}
+                            >
+                              {status.label}
+                            </span>
+                          )}
+                          <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
+                        </div>
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = statusHex; }}
+                          onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
+                          onDrop={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.currentTarget.style.borderColor = '';
+                            const file = e.dataTransfer?.files?.[0];
+                            if (file?.type !== 'application/pdf' || !wf) return;
                             setExportError(null);
                             try {
                               await uploadApprovalMutation.mutateAsync({
@@ -5765,73 +5792,141 @@ export default function Invoices() {
                               setExportError(err instanceof Error ? err.message : 'Upload failed');
                             }
                           }}
-                        />
-                        {isUploading ? 'Uploading approval…' : 'Drop signed batch PDF here, or click to choose a file'}
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          disabled={redownloadingApprovalId === persistId}
-                          onClick={async () => {
-                            setExportError(null);
-                            setRedownloadingApprovalId(persistId);
-                            try {
-                              const merged = await buildMergedBatchPdfBlob(group);
-                              const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
-                              saveAs(merged, filename);
-                            } catch (err) {
-                              console.error('Re-download approval batch error:', err);
-                              setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
-                            } finally {
-                              setRedownloadingApprovalId(null);
-                            }
-                          }}
-                          title="Re-generate and download the merged batch PDF (Approver - Period.pdf). Does not change status."
+                          onClick={() => document.getElementById(`approval-file-${persistId}`)?.click()}
                           style={{
-                            padding: '6px 12px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-color)',
+                            border: '2px dashed var(--border-color)',
+                            borderRadius: '8px',
+                            padding: compact ? '10px 12px' : '14px 16px',
+                            cursor: isUploading ? 'wait' : 'pointer',
                             backgroundColor: 'var(--bg-tertiary)',
-                            color: 'var(--text-primary)',
-                            cursor: redownloadingApprovalId === persistId ? 'wait' : 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          <span aria-hidden>📥</span>
-                          {redownloadingApprovalId === persistId ? 'Building…' : 'Download batch again'}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={unmarkInvoicedMutation.isPending}
-                          onClick={() => setUndoApprovalConfirm({
-                            persistId,
-                            customerName: customerName || 'Unknown customer',
-                            projectLine,
-                            periodLine,
-                            ticketCount,
-                            scope: 'submitted',
-                          })}
-                          title="Undo submitted-for-approval. Returns the batch to the Ready tab so you can re-prepare or edit before re-sending."
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-color)',
-                            backgroundColor: 'transparent',
+                            textAlign: 'center',
+                            fontSize: '13px',
                             color: 'var(--text-secondary)',
-                            cursor: unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
                           }}
                         >
-                          ↺ Undo
-                        </button>
+                          <input
+                            id={`approval-file-${persistId}`}
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            style={{ display: 'none' }}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (!file || !wf) return;
+                              setExportError(null);
+                              try {
+                                await uploadApprovalMutation.mutateAsync({
+                                  groupId: persistId,
+                                  file,
+                                  customerName,
+                                  projectNumber: group.key.projectNumber || undefined,
+                                  workflow: wf,
+                                });
+                              } catch (err) {
+                                setExportError(err instanceof Error ? err.message : 'Upload failed');
+                              }
+                            }}
+                          />
+                          {isUploading
+                            ? 'Uploading approval…'
+                            : compact
+                              ? `Drop signed PDF for ${approverDisplay || 'this approver'}, or click to choose`
+                              : 'Drop signed batch PDF here, or click to choose a file'}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            disabled={redownloadingApprovalId === persistId}
+                            onClick={async () => {
+                              setExportError(null);
+                              setRedownloadingApprovalId(persistId);
+                              try {
+                                const merged = await buildMergedBatchPdfBlob(group);
+                                const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+                                saveAs(merged, filename);
+                              } catch (err) {
+                                console.error('Re-download approval batch error:', err);
+                                setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
+                              } finally {
+                                setRedownloadingApprovalId(null);
+                              }
+                            }}
+                            title="Re-generate and download the merged batch PDF (Approver - Period.pdf). Does not change status."
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: 'var(--text-primary)',
+                              cursor: redownloadingApprovalId === persistId ? 'wait' : 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <span aria-hidden>📥</span>
+                            {redownloadingApprovalId === persistId ? 'Building…' : 'Download batch again'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={unmarkInvoicedMutation.isPending}
+                            onClick={() => setUndoApprovalConfirm({
+                              persistId,
+                              customerName: customerName || 'Unknown customer',
+                              projectLine,
+                              periodLine,
+                              ticketCount,
+                              scope: 'submitted',
+                            })}
+                            title="Undo submitted-for-approval. Returns the batch to the Ready tab so you can re-prepare or edit before re-sending."
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: 500,
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: 'transparent',
+                              color: 'var(--text-secondary)',
+                              cursor: unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            ↺ Undo
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  };
+
+                  if (!isGrouped) {
+                    return <Fragment key={section.key}>{renderBatch(section.groups[0], false)}</Fragment>;
+                  }
+                  return (
+                    <div
+                      key={section.key}
+                      style={{
+                        padding: '14px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '10px',
+                        border: '1px solid var(--border-color)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{section.customerName || 'Unknown customer'}</span>
+                        {section.projectLine && (
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
+                        )}
+                        {section.periodLine && (
+                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
+                        )}
+                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.groups.length} batches · submit each separately</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {section.groups.map((g) => renderBatch(g, true))}
                       </div>
                     </div>
                   );
@@ -6615,7 +6710,7 @@ export default function Invoices() {
                     const confirm = undoApprovalConfirm;
                     setUndoApprovalConfirm(null);
                     if (confirm.scope === 'submitted') {
-                      handleUnmarkAsInvoiced(confirm.persistId);
+                      handleUnmarkAsInvoiced(confirm.persistId, { skipConfirm: true });
                       return;
                     }
                     // Approved → Submitted: delete approval PDF + revert status to submitted_approval
