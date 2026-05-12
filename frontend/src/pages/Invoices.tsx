@@ -2573,6 +2573,41 @@ export default function Invoices() {
     },
   });
 
+  const removeInvoiceMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      await invoicedBatchInvoicesService.deleteInvoice(groupId);
+    },
+    onMutate: async (groupId) => {
+      await queryClient.cancelQueries({ queryKey: ['invoicedBatchInvoices'] });
+      const previousIds = queryClient.getQueryData<string[]>(['invoicedBatchInvoices', 'allGroupIds']);
+      queryClient.setQueryData<string[]>(['invoicedBatchInvoices', 'allGroupIds'], (prev) =>
+        (prev ?? []).filter((id) => id !== groupId)
+      );
+      return { previousIds };
+    },
+    onError: (_err, _groupId, ctx) => {
+      if (ctx?.previousIds !== undefined) {
+        queryClient.setQueryData(['invoicedBatchInvoices', 'allGroupIds'], ctx.previousIds);
+      }
+    },
+    onSuccess: (_data, groupId) => {
+      setInvoiceFileForGroup(groupId, null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+    },
+  });
+
+  const handleRemoveInvoice = useCallback(
+    (groupId: string, filename: string | null | undefined) => {
+      const label = filename ? `"${filename}"` : 'the attached invoice';
+      if (!window.confirm(`Remove ${label} from this batch?\n\nThe batch stays invoiced — you can attach a different invoice PDF after.`)) return;
+      setExportError(null);
+      removeInvoiceMutation.mutate(groupId);
+    },
+    [removeInvoiceMutation, setExportError]
+  );
+
   const unmarkInvoicedMutation = useMutation({
     mutationFn: async (groupId: string) => {
       await invoicedBatchMarksService.deleteMark(groupId);
@@ -4754,10 +4789,36 @@ export default function Invoices() {
                         {uploadingInvoiceGroupId === persistId ? (
                             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Uploading…</span>
                           ) : invoiceFilesByGroupId[persistId] || savedInvoiceMetadata?.[persistId] ? (
-                            <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}
-                              title={invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
-                            >
-                              {invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}
+                                title={invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
+                              >
+                                {invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveInvoice(
+                                    persistId,
+                                    invoiceFilesByGroupId[persistId]?.name ?? savedInvoiceMetadata?.[persistId]?.filename
+                                  );
+                                }}
+                                disabled={removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId}
+                                title="Remove this invoice from the batch (file will be deleted; the batch stays invoiced)"
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  padding: '2px 8px',
+                                  borderRadius: '999px',
+                                  border: '1px solid var(--border-color)',
+                                  backgroundColor: 'var(--bg-secondary)',
+                                  color: 'var(--danger-color, #ef4444)',
+                                  cursor: removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId ? 'wait' : 'pointer',
+                                }}
+                              >
+                                {removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId ? 'Removing…' : '× Remove'}
+                              </button>
                             </span>
                           ) : (
                             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
@@ -6230,8 +6291,8 @@ export default function Invoices() {
                         </div>
                       )}
                       {hasInvoice && (
-                        <div style={{ marginBottom: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                          Invoice: <button
+                        <div style={{ marginBottom: '8px', fontSize: '12px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span>Invoice: <button
                             type="button"
                             onClick={async () => {
                               if (!invoice) return;
@@ -6254,6 +6315,25 @@ export default function Invoices() {
                             }}
                           >
                             {invoice.filename}
+                          </button></span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveInvoice(persistId, invoice?.filename)}
+                            disabled={removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId}
+                            title="Remove this invoice from the batch (file will be deleted; the batch stays in this status)"
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-secondary)',
+                              color: 'var(--danger-color, #ef4444)',
+                              cursor: removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId ? 'wait' : 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId ? 'Removing…' : '× Remove'}
                           </button>
                         </div>
                       )}
@@ -6677,6 +6757,29 @@ export default function Invoices() {
                             }}
                           >
                             <span aria-hidden>📥</span> Invoice PDF
+                          </button>
+                        )}
+                        {invoice && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveInvoice(persistId, invoice.filename)}
+                            disabled={removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId}
+                            title="Remove this invoice from the batch (file will be deleted; the batch stays in this status)"
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: 'var(--danger-color, #ef4444)',
+                              cursor: removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId ? 'wait' : 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            {removeInvoiceMutation.isPending && removeInvoiceMutation.variables === persistId ? 'Removing…' : '× Remove invoice'}
                           </button>
                         )}
                         {approval && (
