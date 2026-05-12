@@ -486,6 +486,28 @@ class QuickBooksService {
   }
 
   /**
+   * Download the QBO-rendered invoice PDF. QBO returns a binary PDF — bypass makeApiRequest
+   * (which JSON-parses) and read the response as a Buffer.
+   */
+  async downloadInvoicePdf(invoiceId: string): Promise<Buffer> {
+    const { accessToken, realmId } = await this.getValidAccessToken();
+    const url = `${QBO_API_BASE}/v3/company/${realmId}/invoice/${invoiceId}/pdf`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/pdf',
+      },
+    });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`QuickBooks API error fetching invoice PDF: ${response.status} ${errText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  /**
    * Disconnect QuickBooks (remove tokens)
    */
   async disconnect(): Promise<void> {

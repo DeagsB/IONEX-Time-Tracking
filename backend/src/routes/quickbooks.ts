@@ -223,18 +223,39 @@ router.post('/invoice/:invoiceId/attach', authenticate, authorize('ADMIN'), asyn
 router.get('/invoice/:invoiceId', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
   try {
     const { invoiceId } = req.params;
-    
+
     const invoice = await quickbooksService.getInvoice(invoiceId);
-    
-    res.json({ 
-      success: true, 
-      invoice 
+
+    res.json({
+      success: true,
+      invoice
     });
   } catch (error: any) {
     console.error('Error getting invoice:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/quickbooks/invoice/:invoiceId/pdf
+ * Stream the QBO-rendered invoice PDF back to the client as application/pdf.
+ */
+router.get('/invoice/:invoiceId/pdf', authenticate, authorize('ADMIN'), async (req: Request, res: Response) => {
+  try {
+    const { invoiceId } = req.params;
+    const pdfBuffer = await quickbooksService.downloadInvoicePdf(invoiceId);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="qbo-invoice-${invoiceId}.pdf"`);
+    res.setHeader('Content-Length', String(pdfBuffer.length));
+    res.send(pdfBuffer);
+  } catch (error: any) {
+    console.error('Error downloading invoice PDF:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 });
