@@ -207,6 +207,22 @@ class QuickBooksClientService {
   }
 
   /**
+   * Download the QBO-generated PDF of an invoice (the version QuickBooks renders, ready to send
+   * to the customer). Backend should proxy GET /v3/company/{realmId}/invoice/{id}/pdf with
+   * Accept: application/pdf and return the binary blob.
+   */
+  async downloadInvoicePdf(invoiceId: string): Promise<Blob> {
+    const headers = await this.getAuthHeaders();
+    headers.set('Accept', 'application/pdf');
+    const response = await fetch(`${API_BASE}/api/quickbooks/invoice/${invoiceId}/pdf`, { headers });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(errText || `Could not download QuickBooks invoice PDF (${response.status})`);
+    }
+    return await response.blob();
+  }
+
+  /**
    * Attach a PDF to an invoice
    */
   async attachPdfToInvoice(invoiceId: string, pdfBase64: string, fileName: string): Promise<boolean> {

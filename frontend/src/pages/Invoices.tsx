@@ -3144,6 +3144,116 @@ export default function Invoices() {
     }
   };
 
+  /** One-click QBO flow on the "Mark as invoiced" action:
+   *    1. Build PO/AFE line items from the batch.
+   *    2. Create the invoice in QBO via createInvoiceFromGroup.
+   *    3. Generate the merged batch PDF (summary + per-ticket) and attach it to the QBO invoice
+   *       as a supporting document so the customer sees the underlying detail.
+   *    4. Download the QBO-rendered invoice PDF and save it locally so the user can email it.
+   *    5. Store that QBO invoice PDF as this batch's attached invoice and run the standard
+   *       markInvoicedMutation — same end state as dropping the PDF manually. */
+  const handleMarkInvoicedViaQbo = async (
+    group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }
+  ) => {
+    if (qboApiLocal) {
+      setExportError('QuickBooks Online is not configured for local development — set VITE_API_URL to a deployed backend first.');
+      return;
+    }
+    if (!effectiveQboConnected) {
+      setExportError('Connect QuickBooks Online on the Profile page before using this action.');
+      return;
+    }
+    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+    const customerName = group.tickets[0]?.customerName;
+    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
+    const initialStatus = wf?.statuses?.[0];
+    const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
+    const now = new Date().toISOString();
+    const snapshot = getMergedMarkSnapshot(group, isCombined || undefined, initialStatus?.id);
+    if (snapshot.statusId && !snapshot.statusChangedAt) snapshot.statusChangedAt = now;
+
+    setExportError(null);
+    setQboError(null);
+    setUploadingInvoiceGroupId(persistId);
+    setQboProgress({ current: 0, total: 5, label: 'Building line items…' });
+    try {
+      const poAfeLineItems = await buildQboPoAfeLineItems(group);
+      if (poAfeLineItems.length === 0) {
+        throw new Error('No line items resolved for this batch — check PO/AFE on tickets.');
+      }
+
+      setQboProgress({ current: 1, total: 5, label: 'Generating batch PDF…' });
+      const mergedBatchPdf = await buildMergedBatchPdfForQbo(group);
+
+      setQboProgress({ current: 2, total: 5, label: 'Creating invoice in QuickBooks…' });
+      const firstTicket = group.tickets[0];
+      const { poAfe: customerPo } = getApproverPoAfeCcFromTicket(
+        firstTicket,
+        (firstTicket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } }).headerOverrides
+      );
+      const reference = group.key.periodKey ? group.key.periodLabel : group.key.approverCode;
+      const date = firstTicket.date || new Date().toISOString().split('T')[0];
+      const docNumber = (group.key.periodKey ? group.key.periodKey : group.key.approverCode)
+        ? `INV-${(group.key.periodKey ?? group.key.approverCode ?? '').replace(/[/\\?*:|"]/g, '_')}-${date.replace(/-/g, '')}`
+        : undefined;
+      const qbo = await quickbooksClientService.createInvoiceFromGroup({
+        customerName: firstTicket.customerName,
+        customerEmail: firstTicket.customerInfo?.email,
+        customerPo: customerPo || undefined,
+        reference: reference || undefined,
+        poAfeLineItems,
+        date,
+        docNumber,
+      });
+      if (!qbo?.invoiceId) throw new Error('QuickBooks did not return an invoice ID.');
+
+      setQboProgress({ current: 3, total: 5, label: 'Uploading supporting PDF to QuickBooks…' });
+      try {
+        const supportingBase64 = await blobToBase64(mergedBatchPdf);
+        const supportingFilename = `${sanitizeFilenamePart(firstTicket.customerName || 'batch')} - ${sanitizeFilenamePart(group.key.periodLabel || date)} - supporting.pdf`;
+        await quickbooksClientService.attachPdfToInvoice(qbo.invoiceId, supportingBase64, supportingFilename);
+      } catch (err) {
+        // Non-fatal: the invoice is already in QBO; just warn so user can re-attach manually.
+        console.warn('Could not attach supporting PDF to QBO invoice:', err);
+      }
+
+      setQboProgress({ current: 4, total: 5, label: 'Downloading QuickBooks invoice PDF…' });
+      const qboPdfBlob = await quickbooksClientService.downloadInvoicePdf(qbo.invoiceId);
+      const qboInvoiceFilename = `${sanitizeFilenamePart(qbo.invoiceNumber || `INV-${qbo.invoiceId}`)}.pdf`;
+      saveAs(qboPdfBlob, qboInvoiceFilename);
+
+      setQboProgress({ current: 5, total: 5, label: 'Attaching invoice and marking batch…' });
+      const qboFile = new File([qboPdfBlob], qboInvoiceFilename, { type: 'application/pdf' });
+      if (isDemoMode) {
+        setInvoiceFileForGroup(persistId, qboFile);
+        handleMarkAsInvoiced(group);
+      } else {
+        await markInvoicedMutation.mutateAsync({ groupId: persistId, snapshot });
+        if (initialStatus && wf) {
+          invoiceStatusHistoryService.logEntry({
+            group_id: persistId,
+            customer_name: customerName,
+            project_number: group.key.projectNumber || undefined,
+            workflow_id: wf.id,
+            status_id: initialStatus.id,
+            status_label: initialStatus.label,
+            entered_at: now,
+          }).catch(() => {});
+        }
+        const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, qboFile);
+        const fileForUi = new File([qboPdfBlob], storedName, { type: 'application/pdf' });
+        setInvoiceFileForGroup(persistId, fileForUi);
+        await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+      }
+      setQboCreatedIds((prev) => [...prev, qbo.invoiceNumber || qbo.invoiceId]);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'QuickBooks create-and-mark failed.');
+    } finally {
+      setUploadingInvoiceGroupId(null);
+      setQboProgress(null);
+    }
+  };
+
   const handleUnmarkAsInvoiced = (groupId: string, opts?: { skipConfirm?: boolean }) => {
     if (!opts?.skipConfirm) {
       const hasInvoice = !!(invoiceFilesByGroupId[groupId] || savedInvoiceMetadata?.[groupId]);
@@ -3847,6 +3957,127 @@ export default function Invoices() {
       setExportProgress(null);
     }
   };
+
+  /** Build QBO PO/AFE line items from a single batch group. Mirrors the bulk export logic at
+   *  handleCreateInQuickBooks so per-batch QBO flows stay numerically identical. */
+  const buildQboPoAfeLineItems = async (
+    group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }
+  ): Promise<Array<{ poAfe: string; tickets: string[]; totalAmount: number }>> => {
+    const { key, tickets: groupTickets } = group;
+    const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
+    if (key.periodKey && !isCnrlPeriodGroup) {
+      let totalAmount = 0;
+      const ticketNumbers: string[] = [];
+      for (const ticket of groupTickets) {
+        const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
+        let expenses: Array<{ quantity: number; rate: number }> = [];
+        if (recordId) {
+          try {
+            const exp = await serviceTicketExpensesService.getByTicketId(recordId);
+            expenses = exp.map((e) => ({ quantity: e.quantity, rate: e.rate }));
+          } catch {
+            // ignore
+          }
+        }
+        totalAmount += calculateTicketTotalAmount(ticket, expenses);
+        if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
+      }
+      return [{
+        poAfe: key.periodLabel || key.periodKey || '',
+        tickets: ticketNumbers,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+      }];
+    }
+    const poAfeMap = new Map<string, ServiceTicket[]>();
+    for (const ticket of groupTickets) {
+      const t = ticket as ServiceTicket & { headerOverrides?: { approver?: string; po_afe?: string; cc?: string } };
+      const { poAfe } = getApproverPoAfeCcFromTicket(t, t.headerOverrides);
+      const poAfeKey = (poAfe || '').trim() || NO_PO_AFE_LABEL;
+      const list = poAfeMap.get(poAfeKey) ?? [];
+      list.push(ticket);
+      poAfeMap.set(poAfeKey, list);
+    }
+    const lineItems: Array<{ poAfe: string; tickets: string[]; totalAmount: number }> = [];
+    const sortedPoAfeEntries = [...poAfeMap.entries()].sort(([keyA], [keyB]) => {
+      if (keyA === NO_PO_AFE_LABEL) return 1;
+      if (keyB === NO_PO_AFE_LABEL) return -1;
+      const numA = /^\d+$/.test(keyA) ? Number(keyA) : NaN;
+      const numB = /^\d+$/.test(keyB) ? Number(keyB) : NaN;
+      if (!Number.isNaN(numA) && !Number.isNaN(numB)) return numA - numB;
+      return keyA.localeCompare(keyB);
+    });
+    for (const [poAfe, poAfeTickets] of sortedPoAfeEntries) {
+      if (poAfe === NO_PO_AFE_LABEL) continue;
+      let totalAmount = 0;
+      const ticketNumbers: string[] = [];
+      for (const ticket of poAfeTickets) {
+        const recordId = (ticket as ServiceTicket & { recordId?: string }).recordId;
+        let expenses: Array<{ quantity: number; rate: number }> = [];
+        if (recordId) {
+          try {
+            const exp = await serviceTicketExpensesService.getByTicketId(recordId);
+            expenses = exp.map((e) => ({ quantity: e.quantity, rate: e.rate }));
+          } catch {
+            // ignore
+          }
+        }
+        totalAmount += calculateTicketTotalAmount(ticket, expenses);
+        if (ticket.ticketNumber) ticketNumbers.push(ticket.ticketNumber);
+      }
+      lineItems.push({
+        poAfe,
+        tickets: ticketNumbers,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+      });
+    }
+    return lineItems;
+  };
+
+  /** Build the merged batch summary + per-ticket PDF blob for a single group. Same shape used by
+   *  the QBO bulk export so the customer-facing supporting doc is identical. */
+  const buildMergedBatchPdfForQbo = async (
+    group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }
+  ): Promise<Blob> => {
+    const { tickets: groupTickets } = group;
+    const blobs: Blob[] = [];
+    const allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+    for (const ticket of groupTickets) {
+      const t = ticket as ServiceTicket & { recordId?: string; headerOverrides?: unknown };
+      const recordId = t.recordId;
+      let expenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
+      if (recordId) {
+        try {
+          expenses = await serviceTicketExpensesService.getByTicketId(recordId);
+          allExpenses.push(...expenses);
+        } catch {
+          expenses = [];
+        }
+      }
+      const pdfResult = await generateAndStorePdf(ticket, expenses, {
+        uploadToStorage: false,
+        downloadLocally: false,
+      });
+      blobs.push(pdfResult.blob);
+    }
+    try {
+      const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, pendingLabourNotes[getGroupId(group)]);
+      blobs.unshift(summaryPdf);
+    } catch (err) {
+      console.warn('Failed to generate summary PDF for QBO upload:', err);
+    }
+    return mergePdfBlobs(blobs);
+  };
+
+  const blobToBase64 = (blob: Blob): Promise<string> =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1] || '');
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
 
   const handleCreateInQuickBooks = async () => {
     if (qboApiLocal) return;
@@ -5558,6 +5789,48 @@ export default function Invoices() {
                         {markInvoicedMutation.isPending ? 'Saving…' : 'Download for approval & mark ready to send'}
                       </button>
                     ) : (
+                      <>
+                      <button
+                        type="button"
+                        onClick={() => handleMarkInvoicedViaQbo(group)}
+                        disabled={
+                          !!exportProgress ||
+                          !!qboProgress ||
+                          markInvoicedMutation.isPending ||
+                          uploadingInvoiceGroupId === groupId ||
+                          qboApiLocal ||
+                          !effectiveQboConnected
+                        }
+                        title={
+                          qboApiLocal
+                            ? 'QuickBooks Online is not configured for local development.'
+                            : !effectiveQboConnected
+                              ? 'Connect QuickBooks Online on the Profile page first.'
+                              : 'Create this invoice in QuickBooks Online, attach the batch PDF as a supporting doc on the QBO invoice, download the QBO-rendered invoice PDF for you to email, and mark the batch as invoiced with that PDF attached.'
+                        }
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: 'rgba(20, 184, 166, 0.12)',
+                          color: '#0f766e',
+                          border: '1px solid rgba(20, 184, 166, 0.6)',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor:
+                            exportProgress || qboProgress || markInvoicedMutation.isPending || uploadingInvoiceGroupId === groupId || qboApiLocal || !effectiveQboConnected
+                              ? 'not-allowed'
+                              : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          opacity: qboApiLocal || !effectiveQboConnected ? 0.6 : 1,
+                        }}
+                      >
+                        <span aria-hidden style={{ fontSize: '13px' }}>🧾</span>
+                        {qboProgress
+                          ? 'QuickBooks…'
+                          : 'Create QBO invoice & mark invoiced'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => setMarkInvoicedPromptGroup(group)}
@@ -5626,6 +5899,7 @@ export default function Invoices() {
                             ? 'Saving…'
                             : 'Mark as invoiced (drop invoice PDF)'}
                       </button>
+                      </>
                     )}
                   </div>
                 </div>
