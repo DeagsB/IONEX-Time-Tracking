@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireRole } from '../_lib/auth';
-import { isConnected } from '../_lib/quickbooks';
+import { requireRole } from '../_lib/auth.js';
+import { isConnected } from '../_lib/quickbooks.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {

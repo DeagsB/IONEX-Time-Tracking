@@ -6,13 +6,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const result: Record<string, unknown> = { success: true, imports: {} as Record<string, string> };
   try {
-    const auth = await import('./_lib/auth');
+    const auth = await import('./_lib/auth.js');
     (result.imports as Record<string, string>).auth = Object.keys(auth).join(',');
   } catch (err: any) {
     return res.status(500).json({ stage: 'import auth', error: err?.message, stack: err?.stack });
   }
   try {
-    const qbo = await import('./_lib/quickbooks');
+    const qbo = await import('./_lib/quickbooks.js');
     (result.imports as Record<string, string>).quickbooks = Object.keys(qbo).join(',');
   } catch (err: any) {
     return res.status(500).json({ stage: 'import quickbooks', error: err?.message, stack: err?.stack });

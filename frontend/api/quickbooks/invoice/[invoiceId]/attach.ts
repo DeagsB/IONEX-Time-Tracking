@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireRole } from '../../../_lib/auth';
-import { attachFileToInvoice } from '../../../_lib/quickbooks';
+import { requireRole } from '../../../_lib/auth.js';
+import { attachFileToInvoice } from '../../../_lib/quickbooks.js';
 
 export const config = {
   api: {

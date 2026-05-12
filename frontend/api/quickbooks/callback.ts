@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { exchangeCodeForTokens } from '../_lib/quickbooks';
+import { exchangeCodeForTokens } from '../_lib/quickbooks.js';
 
 /**
  * QBO OAuth callback. Intuit redirects the browser here with ?code=&realmId=&state= after the
