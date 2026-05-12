@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { Toast } from '../components/Toast';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth, canAccessInvoices } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
@@ -4549,41 +4550,13 @@ export default function Invoices() {
         </div>
       )}
 
-      {exportError && (
-        <div
-          style={{
-            marginBottom: '24px',
-            padding: '12px 14px',
-            backgroundColor: 'rgba(239, 83, 80, 0.1)',
-            border: '1px solid #ef5350',
-            borderRadius: '8px',
-            color: '#ef5350',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '12px',
-          }}
-        >
-          <span style={{ flex: 1 }}>{exportError}</span>
-          <button
-            type="button"
-            onClick={() => setExportError(null)}
-            aria-label="Dismiss error"
-            style={{
-              flexShrink: 0,
-              border: 'none',
-              background: 'transparent',
-              color: '#ef5350',
-              fontSize: '16px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              padding: '0 4px',
-              lineHeight: 1,
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      <Toast
+        message={exportError}
+        onDismiss={() => setExportError(null)}
+        variant="error"
+        position="bottom-right"
+        durationMs={7000}
+      />
 
       {qboProgress && (
         <div
@@ -4616,35 +4589,20 @@ export default function Invoices() {
         </div>
       )}
 
-      {qboError && (
-        <div
-          style={{
-            marginBottom: '24px',
-            padding: '12px',
-            backgroundColor: 'rgba(239, 83, 80, 0.1)',
-            border: '1px solid #ef5350',
-            borderRadius: '8px',
-            color: '#ef5350',
-          }}
-        >
-          {qboError}
-        </div>
-      )}
-
-      {qboCreatedIds.length > 0 && (
-        <div
-          style={{
-            marginBottom: '24px',
-            padding: '12px',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            border: '1px solid #10b981',
-            borderRadius: '8px',
-            color: '#10b981',
-          }}
-        >
-          Created {qboCreatedIds.length} invoice(s) in QuickBooks: {qboCreatedIds.join(', ')}
-        </div>
-      )}
+      <Toast
+        message={qboError}
+        onDismiss={() => setQboError(null)}
+        variant="error"
+        position="bottom-right"
+        durationMs={7000}
+      />
+      <Toast
+        message={qboCreatedIds.length > 0 ? `Created ${qboCreatedIds.length} invoice(s) in QuickBooks: ${qboCreatedIds.join(', ')}` : null}
+        onDismiss={() => setQboCreatedIds([])}
+        variant="success"
+        position="bottom-right"
+        durationMs={6000}
+      />
 
       {groupedTickets.length === 0 && invoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
