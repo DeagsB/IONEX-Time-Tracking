@@ -5702,6 +5702,7 @@ export default function Invoices() {
                     </div>
                   </div>
                 )}
+                {!groupIsPortalApproval && (
                 <div style={{
                   marginBottom: '12px',
                   padding: '12px',
@@ -5775,6 +5776,7 @@ export default function Invoices() {
                     );
                   })()}
                 </div>
+                )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {groupTickets.map((t) => {
                     const ticket = t as InvoiceTicketModalTicket;
@@ -6314,6 +6316,81 @@ export default function Invoices() {
                           </span>
                         )}
                         <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
+                      </div>
+                      {/* Invoice line items — shown here (post-approval) so the user can create the invoice */}
+                      <div style={{
+                        marginBottom: '12px',
+                        padding: '12px',
+                        backgroundColor: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        borderLeft: '4px solid var(--primary-color)',
+                      }}>
+                        {(() => {
+                          const isCombined = combinedExpenseGroupIds.has(persistId);
+                          const isSplitRatePending = splitRateGroupIds.has(persistId);
+                          const mode: BreakdownMode = isCombined ? 'combined' : isSplitRatePending ? 'split' : 'itemized';
+                          const groupTickets = group.tickets;
+                          const { lines: expLines } = computeGroupExpenseTotal(
+                            groupTickets as (ServiceTicket & { recordId?: string })[],
+                            expensesByRecordId
+                          );
+                          const hasExpenses = expLines.length > 0;
+                          const expCount = expLines.length;
+                          const getKeyFn = (t: ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string }) =>
+                            getInvoiceGroupKey(
+                              { projectId: t.recordProjectId ?? t.projectId, projectName: t.projectName, projectNumber: t.projectNumber, location: t.location, projectApproverPoAfe: t.projectApproverPoAfe, projectLocation: t.projectLocation, projectOther: t.projectOther, customerInfo: t.customerInfo, entries: t.entries },
+                              t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                            );
+                          const labourLines = isSplitRatePending
+                            ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false)
+                            : (group.key.periodKey && group.key.approverCode === group.key.periodKey)
+                            ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
+                            : buildPoAfeBreakdown(groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[], getKeyFn, expensesByRecordId, isCombined);
+                          const categoryLabel = isCombined && hasExpenses
+                            ? `labour & ${expCount === 1 ? 'expense' : 'expenses'}`
+                            : undefined;
+                          return (
+                            <>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                  Invoice Line Items
+                                </span>
+                                <BreakdownModeToggle mode={mode} onMode={(m) => {
+                                  setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(persistId); else next.delete(persistId); return next; });
+                                  setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(persistId); else next.delete(persistId); return next; });
+                                }} />
+                              </div>
+                              {labourLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours }, i) => (
+                                <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} />
+                              ))}
+                              {!isCombined && !isSplitRatePending && expLines.map((l, i) => {
+                                const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                                return (
+                                  <PoAfeBreakdownLine
+                                    key={`exp-${i}`}
+                                    ticketList={`${l.label}${suffix}`}
+                                    poAfe=""
+                                    totalAmount={l.amount}
+                                    category="expense"
+                                  />
+                                );
+                              })}
+                              {isSplitRatePending && expLines.map((l, i) => {
+                                const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                                return (
+                                  <PoAfeBreakdownLine
+                                    key={`exp-split-${i}`}
+                                    ticketList={`${l.label}${suffix}`}
+                                    poAfe=""
+                                    totalAmount={l.amount}
+                                    category="expense"
+                                  />
+                                );
+                              })}
+                            </>
+                          );
+                        })()}
                       </div>
                       {/* Attached approval pill */}
                       {approval && (
