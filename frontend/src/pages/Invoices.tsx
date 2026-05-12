@@ -3378,7 +3378,16 @@ export default function Invoices() {
   const getApproverForGroupKey = useCallback(
     (key: InvoiceGroupKeyWithPeriod): string | null => {
       const code = key.approverCode?.trim();
-      if (code) return code;
+      // Reject codes that are not real approver names:
+      //   - same as periodKey (non-CNRL reuse)
+      //   - "pc:<uuid>" project-completion sentinels
+      //   - "prog:<uuid>" progress-batch sentinels
+      //   - YYYY-MM / YYYY-MM-DD period stamps
+      const periodKey = (key.periodKey ?? '').trim();
+      const looksLikePeriodSentinel =
+        !!code && (code === periodKey || code.startsWith('pc:') || code.startsWith('prog:') || /^\d{4}-\d{2}(-\d{2})?/.test(code));
+      const isRealApproverCode = !!code && !looksLikePeriodSentinel;
+      if (isRealApproverCode) return code as string;
       const projNumLc = key.projectNumber?.toLowerCase().trim();
       const proj = projects?.find((p) => (p.project_number || '').toLowerCase().trim() === projNumLc);
       return proj?.approver?.trim() || null;
