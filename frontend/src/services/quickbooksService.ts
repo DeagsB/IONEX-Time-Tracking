@@ -5,13 +5,19 @@
 
 import { supabase } from '../lib/supabaseClient';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+/**
+ * Default to same-origin so the frontend hits its own Vercel deployment's /api/quickbooks/*
+ * serverless routes. Only override VITE_API_URL when calling out to a separate backend host
+ * (e.g. local Express server or a deployed Railway/Render API).
+ */
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
-/** True when the QuickBooks API base is localhost or local network. Invoicing page skips status
- *  checks and QBO calls in that case — set VITE_QBO_ALLOW_LOCAL=true in .env to bypass this
- *  guard during development (you still need a real OAuth callback wired in the backend). */
+/** True when the QuickBooks API base is localhost / private network — Invoicing page skips
+ *  status checks and the Connect button is disabled. Same-origin ('') means the Vercel
+ *  deployment is hosting the API too, which is the production setup we want, NOT local. */
 export function isQuickBooksApiLocal(): boolean {
   if (String(import.meta.env.VITE_QBO_ALLOW_LOCAL ?? '').toLowerCase() === 'true') return false;
+  if (!API_BASE) return false; // Same-origin Vercel deployment — API lives at /api/quickbooks/*
   try {
     const u = new URL(API_BASE);
     const host = (u.hostname || '').toLowerCase();
