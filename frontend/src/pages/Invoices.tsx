@@ -5342,8 +5342,12 @@ export default function Invoices() {
                     title="One of several separate batches in this project + period. Each is downloaded, approved, and invoiced on its own."
                   >
                     <span>{batchOfLabel}</span>
-                    <span style={{ color: 'var(--text-tertiary)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>·</span>
-                    <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>Approver: {batchApprover || '—'}</span>
+                    {batchApprover && (
+                      <>
+                        <span style={{ color: 'var(--text-tertiary)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>·</span>
+                        <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>Approver: {batchApprover}</span>
+                      </>
+                    )}
                   </div>
                 )}
                 {periodStillAccumulating && (
