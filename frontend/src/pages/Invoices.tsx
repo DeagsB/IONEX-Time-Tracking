@@ -5815,7 +5815,7 @@ export default function Invoices() {
                 style={{
                   padding: '12px',
                   backgroundColor: 'transparent',
-                  border: '2px solid var(--border-color)',
+                  border: '1px solid rgba(239, 68, 68, 0.45)',
                   borderRadius: '10px',
                 }}
               >
@@ -6137,7 +6137,7 @@ export default function Invoices() {
                         padding: '14px',
                         backgroundColor: 'var(--bg-secondary)',
                         borderRadius: '10px',
-                        border: '1px solid var(--border-color)',
+                        border: '1px solid rgba(239, 68, 68, 0.45)',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
@@ -6618,7 +6618,7 @@ export default function Invoices() {
                         padding: '14px',
                         backgroundColor: 'var(--bg-secondary)',
                         borderRadius: '10px',
-                        border: '1px solid var(--border-color)',
+                        border: '1px solid rgba(239, 68, 68, 0.45)',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
@@ -6978,7 +6978,7 @@ export default function Invoices() {
                         padding: '14px',
                         backgroundColor: 'var(--bg-secondary)',
                         borderRadius: '10px',
-                        border: '1px solid var(--border-color)',
+                        border: '1px solid rgba(239, 68, 68, 0.45)',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
