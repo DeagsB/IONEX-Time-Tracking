@@ -5813,23 +5813,60 @@ export default function Invoices() {
                   {section.periodLine && (
                     <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
                   )}
-                  <span
-                    style={{
-                      marginLeft: 'auto',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                      padding: '3px 10px',
-                      borderRadius: '999px',
-                      backgroundColor: 'rgba(217, 119, 6, 0.12)',
-                      color: 'var(--warning-text, #b45309)',
-                      border: '1px solid rgba(217, 119, 6, 0.4)',
-                    }}
-                    title={`Each ${sectionBatchNoun} in this group is downloaded, ${sectionIsPortalApproval ? 'approved' : 'invoiced'}, and tracked separately.`}
-                  >
-                    {section.groups.length} separate {sectionBatchNoun}{section.groups.length === 1 ? '' : 's'} — handled individually
-                  </span>
+                  {sectionIsPortalApproval ? (
+                    (() => {
+                      const sectionCustomer = section.customerName || sectionFirstTicket?.customerName || '';
+                      const isBusy = bulkSendProgress?.customer === sectionCustomer;
+                      const label = isBusy
+                        ? `Building ${bulkSendProgress!.current}/${bulkSendProgress!.total}…`
+                        : `📤 Download all ${section.groups.length} for approval & mark ready to send`;
+                      return (
+                        <button
+                          type="button"
+                          disabled={!!bulkSendProgress || !!exportProgress || !!qboProgress || markInvoicedMutation.isPending}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleBulkSendForApproval(sectionCustomer, section.groups);
+                          }}
+                          title={`Generates one merged PDF per approver in this project + period, zips them, downloads the zip, then marks each batch as ready to send. Nothing is emailed automatically — you forward the zip yourself.`}
+                          style={{
+                            marginLeft: 'auto',
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            backgroundColor: isBusy ? 'rgba(245, 158, 11, 0.22)' : 'rgba(245, 158, 11, 0.14)',
+                            color: '#b45309',
+                            border: '1px solid rgba(245, 158, 11, 0.55)',
+                            borderRadius: '6px',
+                            cursor: bulkSendProgress || exportProgress || qboProgress || markInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })()
+                  ) : (
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        padding: '3px 10px',
+                        borderRadius: '999px',
+                        backgroundColor: 'rgba(217, 119, 6, 0.12)',
+                        color: 'var(--warning-text, #b45309)',
+                        border: '1px solid rgba(217, 119, 6, 0.4)',
+                      }}
+                      title="Each invoice in this group is downloaded, invoiced, and tracked separately."
+                    >
+                      {section.groups.length} separate invoices — handled individually
+                    </span>
+                  )}
                 </div>
                 {!sectionCollapsed && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
