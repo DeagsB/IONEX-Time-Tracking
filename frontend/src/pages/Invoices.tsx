@@ -5073,7 +5073,10 @@ export default function Invoices() {
                             : undefined;
                           return (
                             <>
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                  Invoice Line Items
+                                </span>
                                 <BreakdownModeToggle mode={breakdownMode} onMode={(m) => {
                                   setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(persistId); else next.delete(persistId); return next; });
                                   setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(persistId); else next.delete(persistId); return next; });
@@ -5732,7 +5735,10 @@ export default function Invoices() {
                       : undefined;
                     return (
                       <>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Invoice Line Items
+                          </span>
                           <BreakdownModeToggle mode={pendingMode} onMode={(m) => {
                             setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(groupId); else next.delete(groupId); return next; });
                             setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(groupId); else next.delete(groupId); return next; });
