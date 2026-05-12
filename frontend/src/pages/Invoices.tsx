@@ -428,6 +428,64 @@ function formatTicketNumbersWithRanges(ticketNumbers: string[]): string {
 }
 
 /** Subtle click-to-copy for header values: pointer + dotted underline on hover, brief “Copied” tooltip. */
+/** Labeled box that copies its value on click. Used on the Portal Submission tab so each field is one click to clipboard. */
+function PortalCopyField({ label, value, placeholder }: { label: string; value: string; placeholder?: string }) {
+  const trimmed = value.trim();
+  const empty = !trimmed;
+  const [copied, setCopied] = useState(false);
+  const [hover, setHover] = useState(false);
+
+  const copyNow = useCallback(async () => {
+    if (empty) return;
+    try {
+      await navigator.clipboard.writeText(trimmed);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }, [empty, trimmed]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); void copyNow(); }}
+        disabled={empty}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        title={empty ? 'Nothing to copy' : copied ? 'Copied' : 'Click to copy'}
+        style={{
+          textAlign: 'left',
+          padding: '8px 12px',
+          border: `1px solid ${copied ? '#22c55e' : 'var(--border-color)'}`,
+          borderRadius: '6px',
+          backgroundColor: copied ? '#22c55e14' : hover && !empty ? 'var(--bg-primary)' : 'var(--bg-tertiary)',
+          color: empty ? 'var(--text-tertiary)' : 'var(--text-primary)',
+          fontSize: '13px',
+          fontFamily: 'inherit',
+          cursor: empty ? 'not-allowed' : 'pointer',
+          transition: 'background-color 0.15s, border-color 0.15s',
+          minHeight: '34px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+          width: '100%',
+        }}
+      >
+        <span style={{ wordBreak: 'break-word' }}>{empty ? placeholder ?? '(none)' : trimmed}</span>
+        <span aria-hidden style={{ fontSize: '11px', color: copied ? '#22c55e' : 'var(--text-tertiary)', flexShrink: 0 }}>
+          {copied ? '✓' : '⧉'}
+        </span>
+      </button>
+    </div>
+  );
+}
+
 function CopyableHeaderValue({ copyText, children }: { copyText: string; children: ReactNode }) {
   const trimmed = copyText.trim();
   const inactive = !trimmed;
@@ -2117,7 +2175,7 @@ export default function Invoices() {
     return set;
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
-  type InvoiceTab = 'pending' | 'ready' | 'submitted' | 'approved' | 'invoiced' | 'settings';
+  type InvoiceTab = 'pending' | 'ready' | 'submitted' | 'approved' | 'portal_submission' | 'invoiced' | 'settings';
   const [activeTab, setActiveTab] = useState<InvoiceTab>('pending');
   const [didAutoPickInitialTab, setDidAutoPickInitialTab] = useState(false);
   const showInvoiced = activeTab === 'invoiced';
@@ -2651,8 +2709,60 @@ export default function Invoices() {
   });
 
   /**
-   * Portal Approval final step: from approved → submitted_portal.
-   * Used by the "Mark as invoiced" button on Approved-section cards.
+   * Ensure the active workflow has a `portal_submission` status between `approved` and `submitted_portal`.
+   * Auto-inserts it once if missing — Portal Approval workflows pre-dating this feature get migrated on first use.
+   */
+  const ensurePortalSubmissionStatus = useCallback(
+    async (wf: InvoiceWorkflowRow): Promise<InvoiceWorkflowRow> => {
+      if (wf.statuses.some((s) => s.id === 'portal_submission')) return wf;
+      const newStatus: InvoiceWorkflowStatus = {
+        id: 'portal_submission',
+        label: 'Portal Submission',
+        color: 'teal',
+      };
+      const submittedPortalIdx = wf.statuses.findIndex((s) => s.id === 'submitted_portal');
+      const newStatuses = [...wf.statuses];
+      if (submittedPortalIdx >= 0) {
+        newStatuses.splice(submittedPortalIdx, 0, newStatus);
+      } else {
+        newStatuses.push(newStatus);
+      }
+      const updated = await invoiceWorkflowsService.update(wf.id, { statuses: newStatuses });
+      await queryClient.invalidateQueries({ queryKey: ['invoiceWorkflows'] });
+      return updated;
+    },
+    [queryClient]
+  );
+
+  /**
+   * Portal Approval intermediate step: from approved → portal_submission.
+   * Used by the "Move to Portal Submission" button on Approved-section cards once the invoice PDF is attached.
+   */
+  const advanceToPortalSubmissionMutation = useMutation({
+    mutationFn: async ({ groupId, customerName, projectNumber, workflow }: {
+      groupId: string;
+      customerName?: string;
+      projectNumber?: string;
+      workflow: InvoiceWorkflowRow;
+    }) => {
+      const wf = await ensurePortalSubmissionStatus(workflow);
+      const targetStatus = wf.statuses.find((s) => s.id === 'portal_submission');
+      if (!targetStatus) return;
+      await updateBatchStatusMutation.mutateAsync({
+        groupId,
+        statusId: targetStatus.id,
+        prevStatusId: 'approved',
+        statusLabel: targetStatus.label,
+        customerName,
+        projectNumber,
+        workflowId: wf.id,
+      });
+    },
+  });
+
+  /**
+   * Portal Approval final step: from portal_submission → submitted_portal.
+   * Used by the "Mark as invoiced" button on Portal Submission cards once the portal entries have been copied across.
    */
   const markFinalInvoicedMutation = useMutation({
     mutationFn: async ({ groupId, customerName, projectNumber, workflow }: {
@@ -2666,7 +2776,7 @@ export default function Invoices() {
       await updateBatchStatusMutation.mutateAsync({
         groupId,
         statusId: finalStatus.id,
-        prevStatusId: 'approved',
+        prevStatusId: 'portal_submission',
         statusLabel: finalStatus.label,
         customerName,
         projectNumber,
@@ -3202,11 +3312,17 @@ export default function Invoices() {
     [invoicedGroups, getGroupStatusId]
   );
 
-  /** Final invoiced batches — everything not in the submitted/approved intermediate states. Used by the See invoiced tab. */
+  /** Portal Approval batches in the portal_submission status (invoice attached, ready to copy/paste into portal). */
+  const portalSubmissionGroups = useMemo(
+    () => invoicedGroups.filter((g) => getGroupStatusId(g) === 'portal_submission'),
+    [invoicedGroups, getGroupStatusId]
+  );
+
+  /** Final invoiced batches — everything not in the submitted/approved/portal_submission intermediate states. Used by the See invoiced tab. */
   const finalInvoicedGroups = useMemo(
     () => invoicedGroups.filter((g) => {
       const sid = getGroupStatusId(g);
-      return sid !== 'submitted_approval' && sid !== 'approved';
+      return sid !== 'submitted_approval' && sid !== 'approved' && sid !== 'portal_submission';
     }),
     [invoicedGroups, getGroupStatusId]
   );
@@ -3809,6 +3925,7 @@ export default function Invoices() {
           { id: 'ready' as const, label: 'Ready for invoicing', count: readyGroups.length },
           { id: 'submitted' as const, label: 'Submitted', count: submittedApprovalGroups.length },
           { id: 'approved' as const, label: 'Approved', count: approvedGroups.length },
+          { id: 'portal_submission' as const, label: 'Portal Submission', count: portalSubmissionGroups.length },
           { id: 'invoiced' as const, label: 'Invoiced', count: finalInvoicedGroups.length },
           { id: 'settings' as const, label: 'Settings', count: null as number | null },
         ]).map((tab) => {
@@ -5737,7 +5854,7 @@ export default function Invoices() {
                   Approved ({approvedGroups.length})
                 </h3>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-                  Customer has approved the batch. Drop the invoice PDF here, then click <strong>Mark as invoiced</strong> to finalize.
+                  Customer has approved the batch. Drop the invoice PDF here, then click <strong>Move to Portal Submission</strong> to copy the details into the customer portal.
                 </p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -5754,7 +5871,7 @@ export default function Invoices() {
                   const invoice = savedInvoiceMetadata?.[persistId];
                   const hasInvoice = !!invoice;
                   const isUploadingInvoice = uploadingInvoiceGroupId === persistId;
-                  const isMarking = markFinalInvoicedMutation.isPending && markFinalInvoicedMutation.variables?.groupId === persistId;
+                  const isMarking = advanceToPortalSubmissionMutation.isPending && advanceToPortalSubmissionMutation.variables?.groupId === persistId;
                   return (
                     <div
                       key={persistId}
@@ -5917,7 +6034,7 @@ export default function Invoices() {
                           type="button"
                           onClick={() => {
                             if (!wf) return;
-                            markFinalInvoicedMutation.mutate({
+                            advanceToPortalSubmissionMutation.mutate({
                               groupId: persistId,
                               customerName,
                               projectNumber: group.key.projectNumber || undefined,
@@ -5925,7 +6042,7 @@ export default function Invoices() {
                             });
                           }}
                           disabled={!hasInvoice || isMarking}
-                          title={hasInvoice ? 'Move to Submitted to Portal (final state)' : 'Attach the invoice PDF first'}
+                          title={hasInvoice ? 'Move to Portal Submission — copy invoice details into the customer portal there.' : 'Attach the invoice PDF first'}
                           style={{
                             padding: '8px 14px',
                             backgroundColor: hasInvoice ? 'var(--primary-color)' : 'var(--bg-tertiary)',
@@ -5937,7 +6054,7 @@ export default function Invoices() {
                             cursor: hasInvoice && !isMarking ? 'pointer' : 'not-allowed',
                           }}
                         >
-                          {isMarking ? 'Saving…' : 'Mark as invoiced'}
+                          {isMarking ? 'Saving…' : 'Move to Portal Submission'}
                         </button>
                         <button
                           type="button"
@@ -6002,6 +6119,244 @@ export default function Invoices() {
                         >
                           ↺ Undo
                         </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            )
+          )}
+
+          {/* Portal Submission tab — copy/paste fields for entering invoice details into the customer portal */}
+          {activeTab === 'portal_submission' && (
+            portalSubmissionGroups.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                No batches awaiting portal submission. From the Approved tab, attach the invoice PDF and click <strong>Move to Portal Submission</strong>.
+              </div>
+            ) : (
+            <div>
+              <div style={{ marginBottom: '12px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                  Portal Submission ({portalSubmissionGroups.length})
+                </h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                  Click any field to copy its value into the customer portal. When the portal entry is complete, click <strong>Mark as invoiced</strong>.
+                </p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {portalSubmissionGroups.map((group) => {
+                  const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+                  const customerName = group.tickets[0]?.customerName;
+                  const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
+                  const status = wf?.statuses?.find((s) => s.id === 'portal_submission');
+                  const statusHex = status ? statusColorHex(status.color) : '#14b8a6';
+                  const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
+                  const periodLine = group.key.periodLabel || '';
+                  const ticketCount = group.tickets.length;
+                  const approval = savedApprovalMetadata?.[persistId];
+                  const invoice = savedInvoiceMetadata?.[persistId];
+                  const invoiceNumber = invoice?.filename ?? '';
+                  const approvalCode = approval?.filename ?? '';
+                  const description = group.key.projectName ?? '';
+
+                  // Invoice date = period end date (data from original batch).
+                  const firstTicket = group.tickets[0];
+                  const custIdForPeriod = firstTicket?.customerId ?? '';
+                  const projIdForPeriod =
+                    (firstTicket as ServiceTicket & { recordProjectId?: string })?.recordProjectId ??
+                    firstTicket?.projectId ??
+                    '';
+                  const grouping = cnrlPeriodGrouping(getGroupingForTicket(custIdForPeriod, projIdForPeriod));
+                  const invoiceDate = group.key.periodKey
+                    ? getPeriodEndYmd(group.key.periodKey, grouping) ?? ''
+                    : '';
+
+                  // Tickets paired — max 2 per field, joined with " - ".
+                  const sortedTicketNums = group.tickets
+                    .map((t) => t.ticketNumber)
+                    .filter((n): n is string => !!n)
+                    .sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b));
+                  const ticketPairs: string[] = [];
+                  for (let i = 0; i < sortedTicketNums.length; i += 2) {
+                    ticketPairs.push(sortedTicketNums.slice(i, i + 2).join(' - '));
+                  }
+
+                  // AFE/CC distinct values across tickets (CNRL splits one batch across multiple AFEs).
+                  const afeSet = new Set<string>();
+                  for (const t of group.tickets) {
+                    const ov = (t as ServiceTicket & { headerOverrides?: { po_afe?: string; cc?: string } }).headerOverrides;
+                    const afe = (ov?.po_afe ?? '').trim();
+                    const cc = (ov?.cc ?? '').trim();
+                    if (!afe && !cc) continue;
+                    const combined = [afe, cc].filter(Boolean).join(' / ');
+                    afeSet.add(combined);
+                  }
+                  const afeList = [...afeSet];
+
+                  const isMarking = markFinalInvoicedMutation.isPending && markFinalInvoicedMutation.variables?.groupId === persistId;
+
+                  return (
+                    <div
+                      key={persistId}
+                      style={{
+                        padding: '16px',
+                        backgroundColor: 'var(--bg-secondary)',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: `inset 3px 0 0 0 ${statusHex}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                        {projectLine && (
+                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
+                        )}
+                        {periodLine && (
+                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
+                        )}
+                        {status && (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '2px 10px',
+                              borderRadius: '999px',
+                              backgroundColor: `${statusHex}18`,
+                              color: statusHex,
+                              border: `1px solid ${statusHex}40`,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            {status.label}
+                          </span>
+                        )}
+                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+                        <PortalCopyField label="Invoice #" value={invoiceNumber} placeholder="(no invoice attached)" />
+                        <PortalCopyField label="Invoice Date" value={invoiceDate} placeholder="(no period date)" />
+                        <PortalCopyField label="Description" value={description} placeholder="(no project name)" />
+                        <PortalCopyField label="Approval Code" value={approvalCode} placeholder="(no approval attached)" />
+                      </div>
+
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                          Tickets <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--text-tertiary)' }}>(2 per field)</span>
+                        </div>
+                        {ticketPairs.length === 0 ? (
+                          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>No ticket numbers.</div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                            {ticketPairs.map((pair, idx) => (
+                              <PortalCopyField key={`${persistId}-tickets-${idx}`} label={`Tickets ${idx + 1}`} value={pair} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ marginBottom: '14px' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                          AFE / CC
+                        </div>
+                        {afeList.length === 0 ? (
+                          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>No AFE/CC on tickets.</div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '8px' }}>
+                            {afeList.map((afe, idx) => (
+                              <PortalCopyField key={`${persistId}-afe-${idx}`} label={afeList.length > 1 ? `AFE/CC ${idx + 1}` : 'AFE/CC'} value={afe} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!wf) return;
+                            markFinalInvoicedMutation.mutate({
+                              groupId: persistId,
+                              customerName,
+                              projectNumber: group.key.projectNumber || undefined,
+                              workflow: wf,
+                            });
+                          }}
+                          disabled={isMarking}
+                          title="Mark as invoiced — moves the batch to the Invoiced tab."
+                          style={{
+                            padding: '8px 14px',
+                            backgroundColor: 'var(--primary-color)',
+                            color: 'white',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: isMarking ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {isMarking ? 'Saving…' : 'Mark as invoiced'}
+                        </button>
+                        {invoice && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const blob = await invoicedBatchInvoicesService.downloadInvoice(invoice.storagePath);
+                                saveAs(blob, invoiceFilenameForDownload(invoice.filename));
+                              } catch (err) {
+                                setExportError(err instanceof Error ? err.message : 'Download failed');
+                              }
+                            }}
+                            title="Download the attached invoice PDF."
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: 'var(--text-primary)',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <span aria-hidden>📥</span> Invoice PDF
+                          </button>
+                        )}
+                        {approval && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const blob = await invoicedBatchApprovalsService.downloadApproval(approval.storagePath);
+                                saveAs(blob, invoiceFilenameForDownload(approval.filename));
+                              } catch (err) {
+                                setExportError(err instanceof Error ? err.message : 'Download failed');
+                              }
+                            }}
+                            title="Download the signed approval PDF."
+                            style={{
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: 'var(--text-primary)',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <span aria-hidden>📥</span> Approval PDF
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
