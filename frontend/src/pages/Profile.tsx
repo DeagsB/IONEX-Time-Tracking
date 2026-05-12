@@ -682,12 +682,16 @@ export default function Profile() {
             <>
               {qboApiLocal && (
                 <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
-                  QuickBooks status is not checked when using a local backend.
+                  QuickBooks status is not checked when using a local backend. To enable the
+                  Connect button against a local backend, set <code>VITE_QBO_ALLOW_LOCAL=true</code>
+                  in <code>frontend/.env</code> and restart the dev server. You will still need
+                  a public OAuth callback URL configured in your Intuit Developer app.
                 </p>
               )}
               <button
                 type="button"
                 disabled={qboConnectLoading || qboApiLocal}
+                title={qboApiLocal ? 'Connect is disabled because VITE_API_URL points at a local/private network. Set VITE_QBO_ALLOW_LOCAL=true to bypass.' : undefined}
                 onClick={async () => {
                   if (qboApiLocal) return;
                   setQboConnectError(null);

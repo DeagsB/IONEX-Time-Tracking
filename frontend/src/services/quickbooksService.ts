@@ -7,8 +7,11 @@ import { supabase } from '../lib/supabaseClient';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-/** True when the QuickBooks API base is localhost or local network. Invoicing page skips status checks and QBO calls in that case. */
+/** True when the QuickBooks API base is localhost or local network. Invoicing page skips status
+ *  checks and QBO calls in that case — set VITE_QBO_ALLOW_LOCAL=true in .env to bypass this
+ *  guard during development (you still need a real OAuth callback wired in the backend). */
 export function isQuickBooksApiLocal(): boolean {
+  if (String(import.meta.env.VITE_QBO_ALLOW_LOCAL ?? '').toLowerCase() === 'true') return false;
   try {
     const u = new URL(API_BASE);
     const host = (u.hostname || '').toLowerCase();
@@ -180,30 +183,53 @@ class QuickBooksClientService {
   }
 
   /**
-   * Create an invoice from grouped service tickets (CNRL format)
+   * Create an invoice from grouped service tickets (CNRL format). Throws a labelled error with
+   * the backend HTTP status + response body so the caller can map failures to the right backend
+   * fix (e.g. unknown customer, missing item ref, expired token).
    */
   async createInvoiceFromGroup(params: CreateInvoiceFromGroupParams): Promise<QBOInvoiceResponse | null> {
+    let response: Response;
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(`${API_BASE}/api/quickbooks/invoice/from-group`, {
+      response = await fetch(`${API_BASE}/api/quickbooks/invoice/from-group`, {
         method: 'POST',
         headers,
         body: JSON.stringify(params),
       });
-      const data = await response.json();
-
-      if (data.success) {
-        return {
-          success: true,
-          invoiceId: data.invoiceId,
-          invoiceNumber: data.invoiceNumber,
-        };
-      }
-      throw new Error(data.error || 'Failed to create invoice');
-    } catch (error) {
-      console.error('Error creating invoice from group:', error);
-      throw error;
+    } catch (networkErr) {
+      console.error('[QBO-NET] createInvoiceFromGroup network failure:', networkErr);
+      throw new Error(`[QBO-NET] Cannot reach backend at ${API_BASE}/api/quickbooks/invoice/from-group. Is the API running and VITE_API_URL pointing at it?`);
     }
+    const bodyText = await response.text().catch(() => '');
+    let data: { success?: boolean; invoiceId?: string; invoiceNumber?: string; error?: string; code?: string } = {};
+    try { data = bodyText ? JSON.parse(bodyText) : {}; } catch { /* non-JSON */ }
+
+    if (response.status === 401) {
+      throw new Error(`[QBO-AUTH-401] Backend session is unauthorized — sign in again. (${data.error || bodyText || 'no body'})`);
+    }
+    if (response.status === 403) {
+      throw new Error(`[QBO-AUTH-403] Not allowed to create QuickBooks invoices — only admins can. (${data.error || bodyText || 'no body'})`);
+    }
+    if (response.status === 400) {
+      throw new Error(`[QBO-VALIDATION-400] QuickBooks rejected the invoice payload — likely an unknown customer, missing item, or bad date. Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    if (response.status === 404) {
+      throw new Error(`[QBO-MAP-404] Backend could not find a QBO record (customer/item/realm) for this batch. Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      throw new Error(`[QBO-UPSTREAM-${response.status}] QuickBooks Online itself returned an error to the backend. Try again shortly. Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    if (!response.ok) {
+      throw new Error(`[QBO-HTTP-${response.status}] createInvoiceFromGroup failed. Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    if (!data.success || !data.invoiceId) {
+      throw new Error(`[QBO-EMPTY-200] Backend returned 200 but no invoiceId. Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    return {
+      success: true,
+      invoiceId: data.invoiceId,
+      invoiceNumber: data.invoiceNumber || '',
+    };
   }
 
   /**
@@ -212,33 +238,72 @@ class QuickBooksClientService {
    * Accept: application/pdf and return the binary blob.
    */
   async downloadInvoicePdf(invoiceId: string): Promise<Blob> {
-    const headers = await this.getAuthHeaders();
-    headers.set('Accept', 'application/pdf');
-    const response = await fetch(`${API_BASE}/api/quickbooks/invoice/${invoiceId}/pdf`, { headers });
+    let response: Response;
+    try {
+      const headers = await this.getAuthHeaders();
+      headers.set('Accept', 'application/pdf');
+      response = await fetch(`${API_BASE}/api/quickbooks/invoice/${invoiceId}/pdf`, { headers });
+    } catch (networkErr) {
+      console.error('[QBO-NET] downloadInvoicePdf network failure:', networkErr);
+      throw new Error(`[QBO-NET] Cannot reach backend at ${API_BASE}/api/quickbooks/invoice/${invoiceId}/pdf.`);
+    }
+    if (response.status === 404) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`[QBO-PDF-404] Backend has no GET /api/quickbooks/invoice/:id/pdf route (or the QBO invoice id ${invoiceId} does not exist). Server says: ${errText || 'no body'}`);
+    }
+    if (response.status === 401) {
+      throw new Error(`[QBO-PDF-401] Backend session is unauthorized — sign in again.`);
+    }
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      throw new Error(errText || `Could not download QuickBooks invoice PDF (${response.status})`);
+      throw new Error(`[QBO-PDF-HTTP-${response.status}] Could not download QuickBooks invoice PDF for ${invoiceId}. Server says: ${errText || 'no body'}`);
     }
-    return await response.blob();
+    const blob = await response.blob();
+    if (blob.size === 0) {
+      throw new Error(`[QBO-PDF-EMPTY] Backend returned a 0-byte PDF for invoice ${invoiceId}.`);
+    }
+    if (blob.type && !blob.type.includes('pdf') && !blob.type.includes('octet-stream')) {
+      console.warn(`[QBO-PDF-MIME] Unexpected content-type: ${blob.type}`);
+    }
+    return blob;
   }
 
   /**
-   * Attach a PDF to an invoice
+   * Attach a PDF to an invoice. Throws with [QBO-ATTACH-…] error codes so the caller can
+   * distinguish "QBO invoice was created but PDF attach failed" from a full create failure.
    */
   async attachPdfToInvoice(invoiceId: string, pdfBase64: string, fileName: string): Promise<boolean> {
+    let response: Response;
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(`${API_BASE}/api/quickbooks/invoice/${invoiceId}/attach`, {
+      response = await fetch(`${API_BASE}/api/quickbooks/invoice/${invoiceId}/attach`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ pdfBase64, fileName }),
       });
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('Error attaching PDF:', error);
-      return false;
+    } catch (networkErr) {
+      console.error('[QBO-NET] attachPdfToInvoice network failure:', networkErr);
+      throw new Error(`[QBO-NET] Cannot reach backend at ${API_BASE}/api/quickbooks/invoice/${invoiceId}/attach.`);
     }
+    const bodyText = await response.text().catch(() => '');
+    let data: { success?: boolean; error?: string } = {};
+    try { data = bodyText ? JSON.parse(bodyText) : {}; } catch { /* non-JSON */ }
+    if (response.status === 404) {
+      throw new Error(`[QBO-ATTACH-404] Backend has no POST /api/quickbooks/invoice/:id/attach route (or invoice ${invoiceId} does not exist). Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    if (response.status === 401) {
+      throw new Error(`[QBO-ATTACH-401] Backend session is unauthorized — sign in again.`);
+    }
+    if (response.status === 413) {
+      throw new Error(`[QBO-ATTACH-413] Supporting PDF is too large for the backend or QuickBooks. Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    if (!response.ok) {
+      throw new Error(`[QBO-ATTACH-HTTP-${response.status}] attachPdfToInvoice failed for ${invoiceId}. Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    if (!data.success) {
+      throw new Error(`[QBO-ATTACH-EMPTY-200] Backend returned 200 but success=false. Server says: ${data.error || bodyText || 'no body'}`);
+    }
+    return true;
   }
 }
 

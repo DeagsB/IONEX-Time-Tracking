@@ -3156,11 +3156,11 @@ export default function Invoices() {
     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }
   ) => {
     if (qboApiLocal) {
-      setExportError('QuickBooks Online is not configured for local development — set VITE_API_URL to a deployed backend first.');
+      setExportError('[QBO-ENV-LOCAL] QuickBooks Online is not configured for local development — set VITE_API_URL to a deployed backend first.');
       return;
     }
     if (!effectiveQboConnected) {
-      setExportError('Connect QuickBooks Online on the Profile page before using this action.');
+      setExportError('[QBO-AUTH-DISCONNECTED] Connect QuickBooks Online on the Profile page before using this action.');
       return;
     }
     const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
@@ -3176,15 +3176,41 @@ export default function Invoices() {
     setQboError(null);
     setUploadingInvoiceGroupId(persistId);
     setQboProgress({ current: 0, total: 5, label: 'Building line items…' });
+
+    // Diagnostic context that gets attached to every error so the user can map [QBO-XXX] codes
+    // back to which batch / which step failed.
+    const ctx = `customer="${customerName ?? '(none)'}", project="${group.key.projectNumber ?? '(none)'}", period="${group.key.periodLabel ?? '(none)'}", batch-id="${persistId}"`;
+
+    const fail = (code: string, detail: string, err?: unknown): never => {
+      const raw = err instanceof Error ? err.message : err ? String(err) : '';
+      const msg = `${code} ${detail} — ${ctx}${raw && !raw.includes(code) ? ` :: ${raw}` : raw ? ` :: ${raw}` : ''}`;
+      console.error('[QBO][handleMarkInvoicedViaQbo]', { code, detail, ctx, err });
+      throw new Error(msg);
+    };
+
     try {
-      const poAfeLineItems = await buildQboPoAfeLineItems(group);
+      // STEP 1 — Build PO/AFE line items
+      let poAfeLineItems: Array<{ poAfe: string; tickets: string[]; totalAmount: number }> = [];
+      try {
+        poAfeLineItems = await buildQboPoAfeLineItems(group);
+      } catch (err) {
+        fail('[QBO-010]', 'Could not build line items from the batch tickets (check ticket records and expenses).', err);
+      }
       if (poAfeLineItems.length === 0) {
-        throw new Error('No line items resolved for this batch — check PO/AFE on tickets.');
+        fail('[QBO-011]', 'No line items resolved — every ticket is missing a PO/AFE or has 0 hours/$.');
       }
 
+      // STEP 2 — Build merged batch PDF
       setQboProgress({ current: 1, total: 5, label: 'Generating batch PDF…' });
-      const mergedBatchPdf = await buildMergedBatchPdfForQbo(group);
+      let mergedBatchPdf: Blob;
+      try {
+        mergedBatchPdf = await buildMergedBatchPdfForQbo(group);
+      } catch (err) {
+        fail('[QBO-020]', 'Failed generating the merged batch PDF (summary or per-ticket PDF).', err);
+        return;
+      }
 
+      // STEP 3 — Create the QBO invoice
       setQboProgress({ current: 2, total: 5, label: 'Creating invoice in QuickBooks…' });
       const firstTicket = group.tickets[0];
       const { poAfe: customerPo } = getApproverPoAfeCcFromTicket(
@@ -3196,58 +3222,90 @@ export default function Invoices() {
       const docNumber = (group.key.periodKey ? group.key.periodKey : group.key.approverCode)
         ? `INV-${(group.key.periodKey ?? group.key.approverCode ?? '').replace(/[/\\?*:|"]/g, '_')}-${date.replace(/-/g, '')}`
         : undefined;
-      const qbo = await quickbooksClientService.createInvoiceFromGroup({
-        customerName: firstTicket.customerName,
-        customerEmail: firstTicket.customerInfo?.email,
-        customerPo: customerPo || undefined,
-        reference: reference || undefined,
-        poAfeLineItems,
-        date,
-        docNumber,
-      });
-      if (!qbo?.invoiceId) throw new Error('QuickBooks did not return an invoice ID.');
+      let qbo: { invoiceId: string; invoiceNumber: string } | null = null;
+      try {
+        qbo = await quickbooksClientService.createInvoiceFromGroup({
+          customerName: firstTicket.customerName,
+          customerEmail: firstTicket.customerInfo?.email,
+          customerPo: customerPo || undefined,
+          reference: reference || undefined,
+          poAfeLineItems,
+          date,
+          docNumber,
+        });
+      } catch (err) {
+        // createInvoiceFromGroup already throws with [QBO-…] codes; rethrow with [QBO-030] context.
+        fail('[QBO-030]', 'Backend POST /api/quickbooks/invoice/from-group failed. See preceding code for which sub-failure (customer map, item map, auth, etc.).', err);
+      }
+      if (!qbo?.invoiceId) {
+        fail('[QBO-031]', 'Backend reported success but did not return an invoice id.');
+      }
 
+      // STEP 4 — Attach supporting batch PDF (non-fatal: the invoice already exists)
       setQboProgress({ current: 3, total: 5, label: 'Uploading supporting PDF to QuickBooks…' });
+      let attachWarning: string | null = null;
       try {
         const supportingBase64 = await blobToBase64(mergedBatchPdf);
         const supportingFilename = `${sanitizeFilenamePart(firstTicket.customerName || 'batch')} - ${sanitizeFilenamePart(group.key.periodLabel || date)} - supporting.pdf`;
-        await quickbooksClientService.attachPdfToInvoice(qbo.invoiceId, supportingBase64, supportingFilename);
+        await quickbooksClientService.attachPdfToInvoice(qbo!.invoiceId, supportingBase64, supportingFilename);
       } catch (err) {
-        // Non-fatal: the invoice is already in QBO; just warn so user can re-attach manually.
-        console.warn('Could not attach supporting PDF to QBO invoice:', err);
+        attachWarning = err instanceof Error ? err.message : String(err);
+        console.warn('[QBO-040] Supporting PDF attach failed (non-fatal):', attachWarning);
       }
 
+      // STEP 5 — Download the QBO-rendered invoice PDF
       setQboProgress({ current: 4, total: 5, label: 'Downloading QuickBooks invoice PDF…' });
-      const qboPdfBlob = await quickbooksClientService.downloadInvoicePdf(qbo.invoiceId);
-      const qboInvoiceFilename = `${sanitizeFilenamePart(qbo.invoiceNumber || `INV-${qbo.invoiceId}`)}.pdf`;
+      let qboPdfBlob: Blob;
+      try {
+        qboPdfBlob = await quickbooksClientService.downloadInvoicePdf(qbo!.invoiceId);
+      } catch (err) {
+        fail('[QBO-050]', `GET /api/quickbooks/invoice/${qbo!.invoiceId}/pdf failed — the backend route may not exist yet. Invoice WAS created in QBO (id ${qbo!.invoiceId}, number ${qbo!.invoiceNumber || 'unknown'}); attach the PDF manually if needed.`, err);
+        return;
+      }
+      const qboInvoiceFilename = `${sanitizeFilenamePart(qbo!.invoiceNumber || `INV-${qbo!.invoiceId}`)}.pdf`;
       saveAs(qboPdfBlob, qboInvoiceFilename);
 
+      // STEP 6 — Save PDF to our batch + mark invoiced
       setQboProgress({ current: 5, total: 5, label: 'Attaching invoice and marking batch…' });
       const qboFile = new File([qboPdfBlob], qboInvoiceFilename, { type: 'application/pdf' });
-      if (isDemoMode) {
-        setInvoiceFileForGroup(persistId, qboFile);
-        handleMarkAsInvoiced(group);
-      } else {
-        await markInvoicedMutation.mutateAsync({ groupId: persistId, snapshot });
-        if (initialStatus && wf) {
-          invoiceStatusHistoryService.logEntry({
-            group_id: persistId,
-            customer_name: customerName,
-            project_number: group.key.projectNumber || undefined,
-            workflow_id: wf.id,
-            status_id: initialStatus.id,
-            status_label: initialStatus.label,
-            entered_at: now,
-          }).catch(() => {});
+      try {
+        if (isDemoMode) {
+          setInvoiceFileForGroup(persistId, qboFile);
+          handleMarkAsInvoiced(group);
+        } else {
+          await markInvoicedMutation.mutateAsync({ groupId: persistId, snapshot });
+          if (initialStatus && wf) {
+            invoiceStatusHistoryService.logEntry({
+              group_id: persistId,
+              customer_name: customerName,
+              project_number: group.key.projectNumber || undefined,
+              workflow_id: wf.id,
+              status_id: initialStatus.id,
+              status_label: initialStatus.label,
+              entered_at: now,
+            }).catch(() => {});
+          }
         }
-        const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, qboFile);
-        const fileForUi = new File([qboPdfBlob], storedName, { type: 'application/pdf' });
-        setInvoiceFileForGroup(persistId, fileForUi);
-        await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+      } catch (err) {
+        fail('[QBO-060]', `Invoice was created in QBO (id ${qbo!.invoiceId}, number ${qbo!.invoiceNumber || 'unknown'}) and downloaded, but markInvoicedMutation failed. Mark the batch manually.`, err);
       }
-      setQboCreatedIds((prev) => [...prev, qbo.invoiceNumber || qbo.invoiceId]);
+      try {
+        if (!isDemoMode) {
+          const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, qboFile);
+          const fileForUi = new File([qboPdfBlob], storedName, { type: 'application/pdf' });
+          setInvoiceFileForGroup(persistId, fileForUi);
+          await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+        }
+      } catch (err) {
+        fail('[QBO-061]', `Batch was marked invoiced but uploading the QBO PDF to our storage failed. PDF was downloaded locally (${qboInvoiceFilename}); re-attach via the Invoiced tab.`, err);
+      }
+      setQboCreatedIds((prev) => [...prev, qbo!.invoiceNumber || qbo!.invoiceId]);
+
+      if (attachWarning) {
+        setExportError(`[QBO-040] QBO invoice ${qbo!.invoiceNumber || qbo!.invoiceId} created and PDF saved, but the supporting batch PDF could not be attached to the QBO invoice :: ${attachWarning}`);
+      }
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'QuickBooks create-and-mark failed.');
+      setExportError(err instanceof Error ? err.message : '[QBO-999] QuickBooks create-and-mark failed (no error message).');
     } finally {
       setUploadingInvoiceGroupId(null);
       setQboProgress(null);
