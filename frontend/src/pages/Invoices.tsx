@@ -3395,7 +3395,7 @@ export default function Invoices() {
   /** Sections collapsed by the user, keyed by `${tab}|${sectionKey}`. Default is expanded. */
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const toggleSectionCollapsed = useCallback(
-    (tab: 'submitted' | 'approved' | 'portal', sectionKey: string) => {
+    (tab: 'submitted' | 'approved' | 'portal' | 'ready', sectionKey: string) => {
       setCollapsedSections((prev) => {
         const k = `${tab}|${sectionKey}`;
         const next = new Set(prev);
@@ -3406,7 +3406,7 @@ export default function Invoices() {
     []
   );
   const isSectionCollapsed = useCallback(
-    (tab: 'submitted' | 'approved' | 'portal', sectionKey: string) =>
+    (tab: 'submitted' | 'approved' | 'portal' | 'ready', sectionKey: string) =>
       collapsedSections.has(`${tab}|${sectionKey}`),
     [collapsedSections]
   );
@@ -3490,6 +3490,14 @@ export default function Invoices() {
       return custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
     });
   }, [uninvoicedGroups, pendingAccumulatingGroups, readyGroups, invoiceSearchQuery, activeTab]);
+
+  /** Ready/Pending tab sections — same project+period grouping so it's obvious when a project produces
+   *  multiple separate invoices/approvals (e.g. CNRL splits one project by approver). Each card inside
+   *  stays full-sized so the user can see they remain distinct submissions. */
+  const readyTabSections = useMemo(
+    () => buildApprovalSections(filteredUninvoicedGroups),
+    [filteredUninvoicedGroups, buildApprovalSections]
+  );
 
   const { data: savedInvoiceMetadata } = useQuery({
     queryKey: ['invoicedBatchInvoices', [...invoicedGroupIdsFromDb].sort().join(',')],
@@ -5232,9 +5240,21 @@ export default function Invoices() {
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {filteredUninvoicedGroups.map((group) => {
+            {readyTabSections.map((section) => {
+              const sectionMulti = section.groups.length > 1;
+              const sectionCollapsed = sectionMulti && isSectionCollapsed('ready', section.key);
+              const sectionFirstGroup = section.groups[0];
+              const sectionFirstTicket = sectionFirstGroup.tickets[0];
+              const sectionWorkflow = getWorkflowForCustomer(sectionFirstTicket?.customerName, sectionFirstGroup.key.projectNumber);
+              const sectionIsPortalApproval = isPortalApprovalWorkflow(sectionWorkflow);
+              const sectionBatchNoun = sectionIsPortalApproval ? 'approval' : 'invoice';
+              const cards = section.groups.map((group, batchIndex) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
+              const batchOfLabel = sectionMulti
+                ? `${sectionBatchNoun.charAt(0).toUpperCase()}${sectionBatchNoun.slice(1)} ${batchIndex + 1} of ${section.groups.length}`
+                : null;
+              const batchApprover = getApproverForGroupKey(key);
               const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
               const hasMissingPoAfe =
                 isCnrlPeriodGroup &&
@@ -5280,6 +5300,30 @@ export default function Invoices() {
                   boxShadow: periodStillAccumulating ? 'inset 3px 0 0 0 rgba(217, 119, 6, 0.9)' : undefined,
                 }}
               >
+                {batchOfLabel && (
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '10px',
+                      padding: '3px 10px',
+                      borderRadius: '999px',
+                      backgroundColor: 'var(--bg-tertiary)',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      color: 'var(--text-secondary)',
+                    }}
+                    title="One of several separate batches in this project + period. Each is downloaded, approved, and invoiced on its own."
+                  >
+                    <span>{batchOfLabel}</span>
+                    <span style={{ color: 'var(--text-tertiary)', fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>·</span>
+                    <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>Approver: {batchApprover || '—'}</span>
+                  </div>
+                )}
                 {periodStillAccumulating && (
                   <div
                     style={{
@@ -5731,6 +5775,67 @@ export default function Invoices() {
                     );
                   })}
                 </div>
+              </div>
+            );
+            });
+
+            if (!sectionMulti) {
+              return <Fragment key={section.key}>{cards[0]}</Fragment>;
+            }
+            return (
+              <div
+                key={section.key}
+                style={{
+                  padding: '12px',
+                  backgroundColor: 'transparent',
+                  border: '2px solid var(--border-color)',
+                  borderRadius: '10px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: sectionCollapsed ? 0 : '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapsed('ready', section.key)}
+                    aria-expanded={!sectionCollapsed}
+                    title={sectionCollapsed ? 'Expand section' : 'Collapse section'}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '8px',
+                      padding: '2px 6px', background: 'transparent', border: 'none',
+                      color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    <span aria-hidden style={{ display: 'inline-block', transform: sectionCollapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
+                    <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
+                  </button>
+                  {section.projectLine && (
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{section.projectLine}</span>
+                  )}
+                  {section.periodLine && (
+                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{section.periodLine}</span>
+                  )}
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      padding: '3px 10px',
+                      borderRadius: '999px',
+                      backgroundColor: 'rgba(217, 119, 6, 0.12)',
+                      color: 'var(--warning-text, #b45309)',
+                      border: '1px solid rgba(217, 119, 6, 0.4)',
+                    }}
+                    title={`Each ${sectionBatchNoun} in this group is downloaded, ${sectionIsPortalApproval ? 'approved' : 'invoiced'}, and tracked separately.`}
+                  >
+                    {section.groups.length} separate {sectionBatchNoun}{section.groups.length === 1 ? '' : 's'} — handled individually
+                  </span>
+                </div>
+                {!sectionCollapsed && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {cards}
+                  </div>
+                )}
               </div>
             );
             })}
