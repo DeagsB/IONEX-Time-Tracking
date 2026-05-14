@@ -645,7 +645,23 @@ function TicketChip({ ticket, onOpenTicket, isAdmin, onMoveClick, onResetOverrid
           transition: 'background-color 0.12s',
         }}
       >
-        <span>{ticket.ticketNumber} – {ticket.userName} ({ticket.totalHours}h)</span>
+        <span>
+          {ticket.ticketNumber}
+          {ticket.date && (
+            <span
+              style={{
+                margin: '0 6px',
+                color: 'var(--text-tertiary)',
+                fontWeight: 500,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+              title={ticket.date}
+            >
+              · {shortMonthDayLabel(ticket.date) || ticket.date}
+            </span>
+          )}
+          – {ticket.userName} ({ticket.totalHours}h)
+        </span>
         {hasExpense && (
           <span
             aria-label="Has linked expense"
