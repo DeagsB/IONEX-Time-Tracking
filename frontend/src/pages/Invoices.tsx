@@ -5401,14 +5401,12 @@ export default function Invoices() {
                   padding: '16px',
                   backgroundColor: isHoveredDropTarget ? 'rgba(34, 197, 94, 0.08)' : 'var(--bg-secondary)',
                   borderRadius: '8px',
-                  border: dragOutline ?? (sectionMulti ? '1px solid var(--text-tertiary)' : '1px solid var(--border-color)'),
+                  border: dragOutline ?? '1px solid var(--text-tertiary)',
                   opacity: isInvalidDuringDrag ? 0.55 : 1,
                   transition: 'background-color 0.12s, border-color 0.12s, opacity 0.12s',
                   boxShadow: periodStillAccumulating
                     ? 'inset 3px 0 0 0 rgba(217, 119, 6, 0.9)'
-                    : sectionMulti
-                      ? '0 1px 3px rgba(0, 0, 0, 0.08)'
-                      : undefined,
+                    : '0 1px 3px rgba(0, 0, 0, 0.08)',
                 }}
               >
                 {batchOfLabel && (
