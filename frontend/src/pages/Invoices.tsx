@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, Fragment, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Toast } from '../components/Toast';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -2229,6 +2229,19 @@ export default function Invoices() {
     sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
   } | null>(null);
   const [moveTicketBatchCustomDate, setMoveTicketBatchCustomDate] = useState<string>('');
+  /** Active hold-to-drag state for the drag-and-drop ticket move. Set when the 1s hold completes. */
+  const [dragState, setDragState] = useState<{
+    ticket: ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null };
+    sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
+    sourceGroupId: string;
+    validTargetIds: Set<string>;
+    pointerX: number;
+    pointerY: number;
+    hoveredGroupId: string | null;
+  } | null>(null);
+  const [pendingHoldTicketId, setPendingHoldTicketId] = useState<string | null>(null);
+  const holdTimerRef = useRef<number | null>(null);
+  const justFinishedDragRef = useRef(false);
   const [bulkSendProgress, setBulkSendProgress] = useState<{ customer: string; current: number; total: number } | null>(null);
   const [redownloadingApprovalId, setRedownloadingApprovalId] = useState<string | null>(null);
   const [undoApprovalConfirm, setUndoApprovalConfirm] = useState<{
@@ -3520,6 +3533,137 @@ export default function Invoices() {
 
   /** groupedTickets already excludes invoiced tickets, so all groups here are uninvoiced. */
   const uninvoicedGroups = groupedTickets;
+
+  /** Set of groupIds that a given source group's ticket may legally be moved into.
+   *  Mirrors the modal filter rules: same customer + same project, and same approverCode for CNRL. */
+  const computeMoveTargetIds = useCallback(
+    (sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): Set<string> => {
+      const sourceGroupId = getGroupId(sourceGroup);
+      const sourceKey = sourceGroup.key;
+      const sourceIsCnrl = !!sourceKey.periodKey && !!sourceKey.approverCode && sourceKey.approverCode !== sourceKey.periodKey;
+      const sample0 = sourceGroup.tickets[0] as (ServiceTicket & { recordProjectId?: string }) | undefined;
+      const customerId = sample0?.customerId ?? '';
+      const projectId = sample0?.recordProjectId ?? sample0?.projectId ?? '';
+      const result = new Set<string>();
+      for (const g of uninvoicedGroups) {
+        const gid = getGroupId(g);
+        if (gid === sourceGroupId) continue;
+        const sample = g.tickets[0] as (ServiceTicket & { recordProjectId?: string }) | undefined;
+        if (!sample) continue;
+        if ((sample.customerId ?? '') !== customerId) continue;
+        const targetProjId = sample.recordProjectId ?? sample.projectId ?? '';
+        if (targetProjId !== projectId) continue;
+        if (sourceIsCnrl) {
+          const targetIsCnrl = !!g.key.periodKey && !!g.key.approverCode && g.key.approverCode !== g.key.periodKey;
+          if (!targetIsCnrl) continue;
+          if (g.key.approverCode !== sourceKey.approverCode) continue;
+        }
+        result.add(gid);
+      }
+      return result;
+    },
+    [uninvoicedGroups]
+  );
+
+  /** Start a 1s press-and-hold timer that, once it fires, lifts the ticket into drag mode. */
+  const beginTicketHold = useCallback(
+    (
+      e: React.PointerEvent,
+      ticket: ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null },
+      sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }
+    ) => {
+      if (!isAdmin || !ticket.recordId) return;
+      if (e.button !== 0) return;
+      if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+      const startX = e.clientX;
+      const startY = e.clientY;
+      setPendingHoldTicketId(ticket.id);
+      holdTimerRef.current = window.setTimeout(() => {
+        holdTimerRef.current = null;
+        const validTargetIds = computeMoveTargetIds(sourceGroup);
+        setDragState({
+          ticket,
+          sourceGroup,
+          sourceGroupId: getGroupId(sourceGroup),
+          validTargetIds,
+          pointerX: startX,
+          pointerY: startY,
+          hoveredGroupId: null,
+        });
+        setPendingHoldTicketId(null);
+      }, 1000);
+    },
+    [isAdmin, computeMoveTargetIds]
+  );
+
+  const cancelTicketHold = useCallback(() => {
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    setPendingHoldTicketId(null);
+  }, []);
+
+  /** Apply the drop: set the override date to the target batch's anchor, then clear drag state. */
+  const finalizeDrop = useCallback(
+    (state: NonNullable<typeof dragState>) => {
+      const targetId = state.hoveredGroupId;
+      if (!targetId || targetId === state.sourceGroupId || !state.validTargetIds.has(targetId)) return;
+      const target = uninvoicedGroups.find((g) => getGroupId(g) === targetId);
+      if (!target || !state.ticket.recordId) return;
+      const t = state.ticket as ServiceTicket & { recordProjectId?: string };
+      const customerId = t.customerId ?? '';
+      const projectId = t.recordProjectId ?? t.projectId ?? '';
+      const grouping = getGroupingForTicket(customerId, projectId);
+      const targetIsCnrl = !!target.key.periodKey && !!target.key.approverCode && target.key.approverCode !== target.key.periodKey;
+      const usedGrouping = targetIsCnrl ? cnrlPeriodGrouping(grouping) : grouping;
+      const anchor = getPeriodAnchorDate(target.key.periodKey ?? '', usedGrouping);
+      if (!anchor) return;
+      void moveTicketBatchMutation.mutateAsync({
+        ticketRecordId: state.ticket.recordId,
+        overrideDate: anchor,
+      }).catch((err) => {
+        const msg = err instanceof Error ? err.message : 'Could not move ticket';
+        window.alert(msg);
+      });
+    },
+    [uninvoicedGroups, getGroupingForTicket, moveTicketBatchMutation]
+  );
+
+  /** Document-level pointer/key listeners are only attached while a drag is active. */
+  useEffect(() => {
+    if (!dragState) return;
+    const onMove = (e: PointerEvent) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const batchEl = (el as Element | null)?.closest('[data-batch-group-id]') as HTMLElement | null;
+      const hoveredGroupId = batchEl?.dataset.batchGroupId ?? null;
+      setDragState((prev) => prev ? { ...prev, pointerX: e.clientX, pointerY: e.clientY, hoveredGroupId } : null);
+    };
+    const onUp = () => {
+      setDragState((prev) => {
+        if (!prev) return null;
+        finalizeDrop(prev);
+        justFinishedDragRef.current = true;
+        window.setTimeout(() => { justFinishedDragRef.current = false; }, 200);
+        return null;
+      });
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDragState(null);
+        justFinishedDragRef.current = true;
+        window.setTimeout(() => { justFinishedDragRef.current = false; }, 200);
+      }
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [dragState, finalizeDrop]);
 
   /** A group is "accumulating" when its period is still open (more tickets expected) — these belong on Pending.
    *  Closed periods (or project-completion / progress batches) belong on Ready. */
@@ -4980,76 +5124,44 @@ export default function Invoices() {
                           const overrideDate = ticket.invoiceBatchDateOverride || null;
                           const movedFromLabel = overrideDate ? shortMonthDayLabel(t.date) : '';
                           return (
-                            <div
+                            <button
                               key={t.id}
+                              type="button"
+                              onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
                               style={{
-                                display: 'inline-flex',
-                                alignItems: 'stretch',
+                                padding: '4px 10px',
                                 backgroundColor: 'var(--bg-tertiary)',
                                 borderRadius: '6px',
-                                overflow: 'hidden',
+                                fontSize: '13px',
+                                color: 'inherit',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontFamily: 'inherit',
+                                textAlign: 'left',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
                               }}
                             >
-                              <button
-                                type="button"
-                                onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
-                                style={{
-                                  padding: '4px 10px',
-                                  backgroundColor: 'transparent',
-                                  fontSize: '13px',
-                                  color: 'inherit',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  fontFamily: 'inherit',
-                                  textAlign: 'left',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                }}
-                              >
-                                <span>{t.ticketNumber} – {t.userName} ({t.totalHours}h)</span>
-                                {overrideDate && (
-                                  <span
-                                    title={`Ticket date is ${t.date} — moved into this batch`}
-                                    style={{
-                                      fontSize: '11px',
-                                      fontWeight: 600,
-                                      padding: '1px 6px',
-                                      borderRadius: '999px',
-                                      backgroundColor: 'rgba(59, 130, 246, 0.14)',
-                                      color: '#1d4ed8',
-                                      border: '1px solid rgba(59, 130, 246, 0.45)',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    ↳ moved from {movedFromLabel}
-                                  </span>
-                                )}
-                              </button>
-                              {isAdmin && ticket.recordId && (
-                                <button
-                                  type="button"
-                                  title="Move ticket to a different invoice batch"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setMoveTicketBatchCustomDate('');
-                                    setMoveTicketBatchDialog({ ticket: ticket as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null }, sourceGroup: { key, tickets: groupTickets } });
-                                  }}
+                              <span>{t.ticketNumber} – {t.userName} ({t.totalHours}h)</span>
+                              {overrideDate && (
+                                <span
+                                  title={`Ticket date is ${t.date} — moved into this batch`}
                                   style={{
-                                    padding: '0 8px',
-                                    fontSize: '14px',
-                                    color: 'var(--text-secondary)',
-                                    border: 'none',
-                                    borderLeft: '1px solid var(--border-color)',
-                                    backgroundColor: 'transparent',
-                                    cursor: 'pointer',
-                                    fontFamily: 'inherit',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    padding: '1px 6px',
+                                    borderRadius: '999px',
+                                    backgroundColor: 'rgba(59, 130, 246, 0.14)',
+                                    color: '#1d4ed8',
+                                    border: '1px solid rgba(59, 130, 246, 0.45)',
+                                    whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  ⋮
-                                </button>
+                                  ↳ moved from {movedFromLabel}
+                                </span>
                               )}
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -5222,14 +5334,28 @@ export default function Invoices() {
                 isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping);
               const groupWorkflow = getWorkflowForCustomer(firstTicket?.customerName, key.projectNumber);
               const groupIsPortalApproval = isPortalApprovalWorkflow(groupWorkflow);
+              const isDragSource = dragState?.sourceGroupId === groupId;
+              const isValidDropTarget = !!dragState && dragState.validTargetIds.has(groupId);
+              const isHoveredDropTarget = isValidDropTarget && dragState?.hoveredGroupId === groupId;
+              const isInvalidDuringDrag = !!dragState && !isDragSource && !isValidDropTarget;
+              const dragOutline = isHoveredDropTarget
+                ? '2px solid #16a34a'
+                : isValidDropTarget
+                  ? '2px dashed rgba(34, 197, 94, 0.55)'
+                  : isDragSource
+                    ? '2px dashed rgba(59, 130, 246, 0.55)'
+                    : undefined;
               return (
               <div
                 key={groupId}
+                data-batch-group-id={groupId}
                 style={{
                   padding: '16px',
-                  backgroundColor: 'var(--bg-secondary)',
+                  backgroundColor: isHoveredDropTarget ? 'rgba(34, 197, 94, 0.08)' : 'var(--bg-secondary)',
                   borderRadius: '8px',
-                  border: sectionMulti ? '1px solid var(--text-tertiary)' : '1px solid var(--border-color)',
+                  border: dragOutline ?? (sectionMulti ? '1px solid var(--text-tertiary)' : '1px solid var(--border-color)'),
+                  opacity: isInvalidDuringDrag ? 0.55 : 1,
+                  transition: 'background-color 0.12s, border-color 0.12s, opacity 0.12s',
                   boxShadow: periodStillAccumulating
                     ? 'inset 3px 0 0 0 rgba(217, 119, 6, 0.9)'
                     : sectionMulti
@@ -5700,6 +5826,8 @@ export default function Invoices() {
                     const ticket = t as InvoiceTicketModalTicket & { invoiceBatchDateOverride?: string | null };
                     const overrideDate = ticket.invoiceBatchDateOverride || null;
                     const movedFromLabel = overrideDate ? shortMonthDayLabel(t.date) : '';
+                    const isHolding = pendingHoldTicketId === t.id;
+                    const isBeingDragged = dragState?.ticket.id === t.id;
                     return (
                       <div
                         key={t.id}
@@ -5709,23 +5837,40 @@ export default function Invoices() {
                           backgroundColor: 'var(--bg-tertiary)',
                           borderRadius: '6px',
                           overflow: 'hidden',
+                          touchAction: 'none',
+                          opacity: isBeingDragged ? 0.4 : 1,
+                          outline: isHolding ? '2px solid rgba(59, 130, 246, 0.55)' : 'none',
+                          outlineOffset: '1px',
+                          transition: 'opacity 0.12s, outline-color 0.12s',
                         }}
                       >
                         <button
                           type="button"
-                          onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
+                          title={isAdmin && ticket.recordId ? 'Click to open · Hold 1s then drag to move to another batch' : undefined}
+                          onPointerDown={(e) => beginTicketHold(e, ticket as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null }, { key, tickets: groupTickets })}
+                          onPointerUp={cancelTicketHold}
+                          onPointerLeave={cancelTicketHold}
+                          onPointerCancel={cancelTicketHold}
+                          onClick={(e) => {
+                            if (justFinishedDragRef.current) {
+                              e.preventDefault();
+                              return;
+                            }
+                            setEditTicketRecordId(ticket.recordId?.trim() || ticket.id);
+                          }}
                           style={{
                             padding: '4px 10px',
                             backgroundColor: 'transparent',
                             fontSize: '13px',
                             color: 'inherit',
                             border: 'none',
-                            cursor: 'pointer',
+                            cursor: isAdmin && ticket.recordId ? 'grab' : 'pointer',
                             fontFamily: 'inherit',
                             textAlign: 'left',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '6px',
+                            userSelect: 'none',
                           }}
                         >
                           <span>{t.ticketNumber} – {t.userName} ({t.totalHours}h)</span>
@@ -7409,6 +7554,42 @@ export default function Invoices() {
               </div>
             </div>
           </div>
+        );
+      })()}
+
+      {dragState && (() => {
+        const t = dragState.ticket as ServiceTicket & { invoiceBatchDateOverride?: string | null };
+        const overlayStyle: React.CSSProperties = {
+          position: 'fixed',
+          left: dragState.pointerX + 14,
+          top: dragState.pointerY + 14,
+          zIndex: 2000,
+          pointerEvents: 'none',
+          padding: '6px 12px',
+          backgroundColor: 'var(--bg-primary)',
+          border: '2px solid #3b82f6',
+          borderRadius: '8px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
+          fontSize: '13px',
+          fontWeight: 600,
+          color: 'var(--text-primary)',
+          whiteSpace: 'nowrap',
+        };
+        const dropOk = !!dragState.hoveredGroupId && dragState.hoveredGroupId !== dragState.sourceGroupId && dragState.validTargetIds.has(dragState.hoveredGroupId);
+        const hint = dropOk
+          ? '✓ release to drop'
+          : dragState.hoveredGroupId && !dragState.validTargetIds.has(dragState.hoveredGroupId)
+            ? '⌀ not a valid target'
+            : 'drag onto a highlighted batch';
+        return (
+          <>
+            <div style={overlayStyle}>
+              <div>{t.ticketNumber} – {t.userName} ({t.totalHours}h)</div>
+              <div style={{ marginTop: 2, fontSize: '11px', fontWeight: 500, color: dropOk ? '#15803d' : 'var(--text-tertiary)' }}>
+                {hint}
+              </div>
+            </div>
+          </>
         );
       })()}
 
