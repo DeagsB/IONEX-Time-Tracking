@@ -323,11 +323,13 @@ function EmployeeProjectsAndDailyBreakdown({
                 const paidOt = Array.from(d.byRateType.entries())
                   .filter(([rt]) => isPaidOvertimeRateType(rt))
                   .reduce((s, [, h]) => s + h, 0);
-                const dayOver = d.total > OVERTIME_DAILY_THRESHOLD;
+                // Daily OT entitlement: anything over 8h in the day.
+                const dailyOtEntitled = Math.max(0, d.total - OVERTIME_DAILY_THRESHOLD);
+                // Outstanding = entitled minus what's already booked at an OT rate today.
+                const owedHours = Math.max(0, dailyOtEntitled - paidOt);
+                const dayOver = dailyOtEntitled > 0;
                 const weekOver = weekTotal > OVERTIME_WEEKLY_THRESHOLD;
-                const flagged = dayOver || weekOver;
-                const otAlreadyPaid = paidOt > 0;
-                const rowBg = flagged && !otAlreadyPaid ? 'rgba(245,158,11,0.10)' : 'transparent';
+                const rowBg = owedHours > 0 ? 'rgba(245,158,11,0.10)' : 'transparent';
                 return (
                   <tr key={date} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: rowBg }}>
                     <td style={{ padding: '6px 8px' }}>{fmtDate(date)}</td>
@@ -338,14 +340,19 @@ function EmployeeProjectsAndDailyBreakdown({
                       {d.total.toFixed(2)}
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '11px' }}>
-                      {!flagged ? (
-                        <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                      ) : otAlreadyPaid ? (
-                        <span style={{ color: '#4caf50', fontWeight: '600' }} title={`Paid OT: ${paidOt.toFixed(2)}h`}>Paid</span>
-                      ) : (
-                        <span style={{ color: '#ff9800', fontWeight: '700' }} title={`Day ${d.total.toFixed(2)}h${weekOver ? `, Week ${weekTotal.toFixed(2)}h` : ''}`}>
-                          Owed?
+                      {owedHours > 0 ? (
+                        <span
+                          style={{ color: '#ff9800', fontWeight: '700' }}
+                          title={`Day ${d.total.toFixed(2)}h, entitled ${dailyOtEntitled.toFixed(2)}h OT, ${paidOt.toFixed(2)}h already booked at OT rate${weekOver ? ` · Week total ${weekTotal.toFixed(2)}h` : ''}`}
+                        >
+                          Owed {owedHours.toFixed(2)}h
                         </span>
+                      ) : paidOt > 0 ? (
+                        <span style={{ color: '#4caf50', fontWeight: '600' }} title={`${paidOt.toFixed(2)}h booked at OT rate`}>
+                          Paid {paidOt.toFixed(2)}h
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--text-tertiary)' }}>—</span>
                       )}
                     </td>
                   </tr>
