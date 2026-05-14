@@ -4493,9 +4493,9 @@ export default function Invoices() {
             style={{ fontSize: '14px' }}
           />
         </div>
-        <div className="ionex-filter-cell" style={{ minWidth: 230, flex: '0 0 auto' }}>
+        <div className="ionex-filter-cell" style={{ flex: '0 1 250px' }}>
           <span className="ionex-filter-cell-label">Date range</span>
-          <div style={{ position: 'relative', display: 'inline-block' }}>
+          <div style={{ position: 'relative', display: 'block' }}>
             <button
               type="button"
               onClick={() => setCalendarOpen((v) => !v)}
@@ -4515,7 +4515,6 @@ export default function Invoices() {
                 gap: '8px',
                 fontFamily: 'inherit',
                 width: '100%',
-                minWidth: '210px',
               }}
             >
               <span style={{ fontSize: '14px' }}>📅</span>

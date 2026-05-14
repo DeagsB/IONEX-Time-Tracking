@@ -498,7 +498,10 @@ textarea {
   opacity: 0.5;
 }
 
-/* Filter rail — single elevated card with internal dividers */
+/* Filter rail — single elevated card with internal dividers.
+   No overflow:hidden so the absolutely-positioned ::before eyebrow can render outside
+   the rail. Internal dividers are drawn with box-shadow on cells so we don't need to
+   clip the rail to fake a unified border. */
 .ionex-filter-rail {
   position: relative;
   display: flex;
@@ -510,7 +513,6 @@ textarea {
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
   flex-wrap: wrap;
-  overflow: hidden;
 }
 .ionex-filter-rail::before {
   content: 'Filters';
@@ -532,20 +534,17 @@ textarea {
   flex-direction: column;
   gap: 6px;
   padding: 12px 16px;
-  min-width: 200px;
-  flex: 1 1 220px;
+  min-width: 0;
+  flex: 1 1 200px;
   border-right: 1px solid var(--border-color);
-}
-.ionex-filter-cell + .ionex-filter-cell-action,
-.ionex-filter-cell-action + .ionex-filter-cell-action {
-  border-left: none;
 }
 .ionex-filter-cell-action {
   display: flex;
   align-items: stretch;
   padding: 12px 16px;
   border-right: 1px solid var(--border-color);
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .ionex-filter-cell:last-child,
 .ionex-filter-cell-action:last-child {
@@ -559,18 +558,24 @@ textarea {
   color: var(--text-tertiary);
   line-height: 1;
 }
+/* Stack vertically on narrow viewports. Cells take full width and force the inline
+   minWidth on individual cells to release. */
 @media (max-width: 720px) {
-  .ionex-filter-cell {
-    border-right: none;
-    border-bottom: 1px solid var(--border-color);
-  }
+  .ionex-filter-cell,
   .ionex-filter-cell-action {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+    width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--border-color);
   }
   .ionex-filter-cell:last-child,
   .ionex-filter-cell-action:last-child {
     border-bottom: none;
+  }
+  .ionex-filter-cell-action button {
+    width: 100%;
+    justify-content: center;
   }
 }
 .ionex-filter-help {
