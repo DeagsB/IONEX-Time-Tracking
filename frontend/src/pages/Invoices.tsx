@@ -4118,18 +4118,31 @@ export default function Invoices() {
     return [...map.values()];
   }, [finalInvoicedGroups, invoicedMarkRows, getWorkflowForCustomer]);
 
+  /** Resolve the effective status id for an invoiced batch — used both for filtering and
+   *  for sorting drafts to the top of the Invoiced tab so unsent invoices are unmissable. */
+  const getInvoicedGroupStatusId = useCallback(
+    (g: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string => {
+      const pid = resolvedPersistGroupId(g, invoicedMarkRows);
+      const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
+      const wf = getWorkflowForCustomer(g.tickets[0]?.customerName, g.key.projectNumber);
+      return snap?.statusId ?? wf?.statuses?.[0]?.id ?? 'draft';
+    },
+    [invoicedMarkRows, getWorkflowForCustomer]
+  );
+
   const sortedFilteredInvoicedGroups = useMemo(() => {
     let groups = [...finalInvoicedGroups];
-    groups.sort((a, b) => extractInvoiceNumber(getInvoiceLabel(b)) - extractInvoiceNumber(getInvoiceLabel(a)));
+    // Primary sort: draft first (needs sending), everything else after. Secondary: invoice number desc.
+    const draftPriority = (g: typeof groups[number]) => (getInvoicedGroupStatusId(g) === 'draft' ? 0 : 1);
+    groups.sort((a, b) => {
+      const pa = draftPriority(a);
+      const pb = draftPriority(b);
+      if (pa !== pb) return pa - pb;
+      return extractInvoiceNumber(getInvoiceLabel(b)) - extractInvoiceNumber(getInvoiceLabel(a));
+    });
 
     if (invoiceStatusFilter !== 'all') {
-      groups = groups.filter((g) => {
-        const pid = resolvedPersistGroupId(g, invoicedMarkRows);
-        const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
-        const wf = getWorkflowForCustomer(g.tickets[0]?.customerName, g.key.projectNumber);
-        const sid = snap?.statusId ?? wf?.statuses?.[0]?.id;
-        return sid === invoiceStatusFilter;
-      });
+      groups = groups.filter((g) => getInvoicedGroupStatusId(g) === invoiceStatusFilter);
     }
 
     if (!invoiceSearchQuery.trim()) return groups;
@@ -4142,11 +4155,17 @@ export default function Invoices() {
       const ticketNums = g.tickets.map(t => t.ticketNumber?.toLowerCase() ?? '').join(' ');
       return label.includes(q) || custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
     });
-  }, [finalInvoicedGroups, invoiceSearchQuery, invoiceStatusFilter, getInvoiceLabel, extractInvoiceNumber, invoicedMarkRows]);
+  }, [finalInvoicedGroups, invoiceSearchQuery, invoiceStatusFilter, getInvoiceLabel, extractInvoiceNumber, getInvoicedGroupStatusId]);
+
+  /** Count of unsent (draft) invoices across all customers — drives the top-of-tab banner. */
+  const draftInvoiceCount = useMemo(
+    () => finalInvoicedGroups.reduce((n, g) => n + (getInvoicedGroupStatusId(g) === 'draft' ? 1 : 0), 0),
+    [finalInvoicedGroups, getInvoicedGroupStatusId]
+  );
 
   /** Group the flat invoiced list by customer so the Invoiced tab reads as one collapsible
    *  card per customer instead of N stacked accordions. Section ordering preserves whatever
-   *  invoice-number sort sortedFilteredInvoicedGroups already applied. */
+   *  draft-first + invoice-number sort sortedFilteredInvoicedGroups already applied. */
   const invoicedSections = useMemo(
     () => buildApprovalSections(sortedFilteredInvoicedGroups),
     [sortedFilteredInvoicedGroups, buildApprovalSections]
@@ -4730,6 +4749,9 @@ export default function Invoices() {
               <h2>Invoiced</h2>
               <span className="ionex-section-heading-meta">
                 <strong>{finalInvoicedGroups.length}</strong> {finalInvoicedGroups.length === 1 ? 'batch' : 'batches'} · locked
+                {draftInvoiceCount > 0 && (
+                  <>{' '}· <strong style={{ color: '#b45309' }}>{draftInvoiceCount}</strong> not sent</>
+                )}
               </span>
             </div>
             <p>Service tickets in these batches cannot be edited until unmarked. A linked invoice PDF is optional.</p>
@@ -4742,6 +4764,21 @@ export default function Invoices() {
             </div>
           ) : (
           <>
+          {draftInvoiceCount > 0 && invoiceStatusFilter === 'all' && (
+            <div className="ionex-banner is-warning" style={{ marginBottom: '14px' }}>
+              <div className="ionex-banner-title">
+                <span aria-hidden style={{ fontSize: '13px' }}>📨</span>
+                {draftInvoiceCount} invoice{draftInvoiceCount === 1 ? '' : 's'} not sent yet · listed first below
+              </div>
+              <button
+                type="button"
+                onClick={() => setInvoiceStatusFilter('draft')}
+                className="ionex-banner-button"
+              >
+                Filter to drafts only
+              </button>
+            </div>
+          )}
           <div style={{ marginBottom: '12px' }}>
             <div className="ionex-search">
               <input
@@ -4896,13 +4933,25 @@ export default function Invoices() {
                     minute: '2-digit',
                   })
                 : '';
+              const isDraft = batchStatusId === 'draft';
+              // Single-batch (non-sectioned) accordions get the same red border as multi-batch
+              // customer sections. Draft batches add an amber inset bar on the left to flag
+              // "still needs sending" at a glance.
+              const accordionBorder = !sectionMulti
+                ? '1px solid rgba(239, 68, 68, 0.45)'
+                : '1px solid var(--border-color)';
+              const accordionShadowParts: string[] = [];
+              if (isDraft) accordionShadowParts.push('inset 4px 0 0 0 #f59e0b');
+              if (!sectionMulti) accordionShadowParts.push('0 1px 3px rgba(239, 68, 68, 0.08)');
+              const accordionShadow = accordionShadowParts.join(', ') || undefined;
               return (
                 <div
                   key={persistId}
                   style={{
                     backgroundColor: 'var(--bg-secondary)',
                     borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
+                    border: accordionBorder,
+                    boxShadow: accordionShadow,
                     overflow: 'hidden',
                   }}
                 >
@@ -4962,21 +5011,29 @@ export default function Invoices() {
                         ? <span style={{ color: 'var(--success-color, #16a34a)' }}>{invoiceLabel}</span>
                         : 'No invoice'}
                     </span>
-                    {batchCurrentStatus && (
+                    {batchCurrentStatus && (() => {
+                      // Override gray "draft" pill with an amber treatment so unsent invoices
+                      // demand attention. Other statuses (sent, submitted_portal, etc.) keep
+                      // their workflow-defined color.
+                      const pillHex = isDraft ? '#f59e0b' : statusColorHex(batchCurrentStatus.color);
+                      const pillLabel = isDraft ? `${batchCurrentStatus.label} · not sent` : batchCurrentStatus.label;
+                      return (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                         <span
                           style={{
                             fontSize: '11px',
-                            fontWeight: 600,
+                            fontWeight: isDraft ? 700 : 600,
                             padding: '2px 10px',
                             borderRadius: '999px',
-                            backgroundColor: `${statusColorHex(batchCurrentStatus.color)}18`,
-                            color: statusColorHex(batchCurrentStatus.color),
-                            border: `1px solid ${statusColorHex(batchCurrentStatus.color)}40`,
+                            backgroundColor: `${pillHex}${isDraft ? '24' : '18'}`,
+                            color: pillHex,
+                            border: `1px solid ${pillHex}${isDraft ? '70' : '40'}`,
                             whiteSpace: 'nowrap',
+                            textTransform: isDraft ? 'uppercase' : 'none',
+                            letterSpacing: isDraft ? '0.04em' : 0,
                           }}
                         >
-                          {batchCurrentStatus.label}
+                          {pillLabel}
                         </span>
                         {daysSinceStatus !== null && (
                           <span
@@ -4991,7 +5048,8 @@ export default function Invoices() {
                           </span>
                         )}
                       </span>
-                    )}
+                      );
+                    })()}
                     <span style={{ fontWeight: 700, color: 'var(--primary-color)', flexShrink: 0, fontSize: '14px' }}>
                       ${gstTotals.totalInclGst.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
