@@ -796,7 +796,7 @@ function TicketChip({ ticket, onOpenTicket, isAdmin, onMoveClick, onResetOverrid
   );
 }
 
-type BreakdownMode = 'itemized' | 'split' | 'combined';
+type BreakdownMode = 'itemized' | 'split' | 'day' | 'combined';
 
 function BreakdownModeToggle({ mode, onMode }: { mode: BreakdownMode; onMode: (m: BreakdownMode) => void }) {
   const btn = (label: string, m: BreakdownMode, leftBorder?: boolean) => (
@@ -813,6 +813,7 @@ function BreakdownModeToggle({ mode, onMode }: { mode: BreakdownMode; onMode: (m
     <div style={{ display: 'inline-flex', borderRadius: '14px', border: '1px solid var(--border-color)', overflow: 'hidden', fontSize: '11px', fontWeight: 600 }}>
       {btn('Itemized', 'itemized')}
       {btn('Split by rate', 'split', true)}
+      {btn('Split by day', 'day', true)}
       {btn('Combined', 'combined', true)}
     </div>
   );
@@ -826,6 +827,7 @@ function PoAfeBreakdownLine({
   category = 'labour',
   splitRate,
   splitHours,
+  serviceDate,
   onContextMenu,
   contextMenuHint,
 }: {
@@ -835,6 +837,8 @@ function PoAfeBreakdownLine({
   category?: string;
   splitRate?: number;
   splitHours?: number;
+  /** yyyy-mm-dd ticket date; renders dd/mm/yy copyable box left of the amount in "Split by day" mode. */
+  serviceDate?: string;
   /** When set, intercepts right-click on the line text and runs the handler instead of the browser menu. */
   onContextMenu?: (e: React.MouseEvent) => void;
   /** Appended to the line's title attribute when onContextMenu is wired (e.g. "Right-click to open TKT_1234"). */
@@ -844,10 +848,12 @@ function PoAfeBreakdownLine({
   const [hoverAmount, setHoverAmount] = useState(false);
   const [hoverSplitHours, setHoverSplitHours] = useState(false);
   const [hoverSplitRate, setHoverSplitRate] = useState(false);
+  const [hoverServiceDate, setHoverServiceDate] = useState(false);
   const [copiedLine, setCopiedLine] = useState(false);
   const [copiedAmount, setCopiedAmount] = useState(false);
   const [copiedSplitHours, setCopiedSplitHours] = useState(false);
   const [copiedSplitRate, setCopiedSplitRate] = useState(false);
+  const [copiedServiceDate, setCopiedServiceDate] = useState(false);
   const isNone = !poAfe || poAfe === '(none)' || poAfe === NO_PO_AFE_LABEL;
   const isExpenseOnly = category === 'expense';
   const isCombined = category !== 'labour' && category !== 'expense';
@@ -915,6 +921,18 @@ function PoAfeBreakdownLine({
       await navigator.clipboard.writeText(clipboardSplitRate);
       setCopiedSplitRate(true);
       setTimeout(() => setCopiedSplitRate(false), 1500);
+    } catch {
+      // ignore
+    }
+  };
+
+  const formattedServiceDate = formatServiceDateDdMmYy(serviceDate);
+  const copyServiceDate = async () => {
+    if (!formattedServiceDate) return;
+    try {
+      await navigator.clipboard.writeText(formattedServiceDate);
+      setCopiedServiceDate(true);
+      setTimeout(() => setCopiedServiceDate(false), 1500);
     } catch {
       // ignore
     }
@@ -1052,30 +1070,60 @@ function PoAfeBreakdownLine({
           </div>
         </div>
       ) : (
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={(e) => {
-            e.stopPropagation();
-            void copyAmount();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {formattedServiceDate && (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                void copyServiceDate();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  void copyServiceDate();
+                }
+              }}
+              onMouseEnter={() => setHoverServiceDate(true)}
+              onMouseLeave={() => setHoverServiceDate(false)}
+              title={copiedServiceDate ? 'Copied!' : 'Click to copy service date'}
+              style={{
+                ...amountBoxStyle,
+                color: 'var(--text-secondary)',
+                backgroundColor: copiedServiceDate ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+                boxShadow: hoverServiceDate || copiedServiceDate ? shadowHover : shadowRest,
+                transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
+              }}
+            >
+              {formattedServiceDate}
+            </div>
+          )}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
               void copyAmount();
-            }
-          }}
-          onMouseEnter={() => setHoverAmount(true)}
-          onMouseLeave={() => setHoverAmount(false)}
-          title={copiedAmount ? 'Copied!' : 'Click to copy this amount only'}
-          style={{
-            ...amountBoxStyle,
-            backgroundColor: copiedAmount ? 'var(--bg-secondary)' : 'var(--bg-primary)',
-            boxShadow: hoverAmount || copiedAmount ? shadowHover : shadowRest,
-            transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
-          }}
-        >
-          {formattedTotal}
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                void copyAmount();
+              }
+            }}
+            onMouseEnter={() => setHoverAmount(true)}
+            onMouseLeave={() => setHoverAmount(false)}
+            title={copiedAmount ? 'Copied!' : 'Click to copy this amount only'}
+            style={{
+              ...amountBoxStyle,
+              backgroundColor: copiedAmount ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+              boxShadow: hoverAmount || copiedAmount ? shadowHover : shadowRest,
+              transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
+            }}
+          >
+            {formattedTotal}
+          </div>
         </div>
       )}
     </div>
@@ -1727,14 +1775,22 @@ function mergedInvoiceBatchDownloadFilename(sourceInvoiceName: string | null | u
   return `${stem} - with service tickets.pdf`;
 }
 
-/** One row in the invoice copy/paste breakdown; splitRate/splitHours only used in "Split by rate" mode. */
+/** One row in the invoice copy/paste breakdown; splitRate/splitHours only used in "Split by rate" mode; serviceDate only used in "Split by day" mode (yyyy-mm-dd). */
 type InvoiceBreakdownLine = {
   ticketList: string;
   poAfe: string;
   totalAmount: number;
   splitRate?: number;
   splitHours?: number;
+  serviceDate?: string;
 };
+
+/** Format yyyy-mm-dd → dd/mm/yy for the service-date copy box. Returns '' for invalid input. */
+function formatServiceDateDdMmYy(ymd: string | undefined | null): string {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y.slice(2)}`;
+}
 
 /** Single line for non-CNRL period groups (no PO/AFE breakdown); poAfe empty so "PO/AFE/CC:" is not shown */
 function buildSingleLineBreakdown(
@@ -1992,6 +2048,39 @@ function buildRateTypeBreakdown(
     }
   }
   return lines;
+}
+
+/** One labour line per ticket date (yyyy-mm-dd). Sums labour amount across rate types for that day; expenses excluded — they render below as separate lines. */
+function buildDayBreakdown(
+  tickets: (ServiceTicket & { recordId?: string })[]
+): InvoiceBreakdownLine[] {
+  const byDay = new Map<string, { nums: string[]; amount: number }>();
+  for (const t of tickets) {
+    const day = toDateStr(t.date);
+    if (!day) continue;
+    const amt = calculateTicketTotalAmount(t, []);
+    const entry = byDay.get(day) ?? { nums: [], amount: 0 };
+    if (t.ticketNumber) entry.nums.push(t.ticketNumber);
+    entry.amount += amt;
+    byDay.set(day, entry);
+  }
+  return [...byDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, { nums, amount }]) => {
+      const sortedNums = [...nums].sort((a, b) => {
+        const prefixCmp = (a.split(/\d+$/)[0] || a).localeCompare(b.split(/\d+$/)[0] || b);
+        if (prefixCmp !== 0) return prefixCmp;
+        return ticketNumberSortValue(a) - ticketNumberSortValue(b);
+      });
+      const ticketList = formatTicketNumbersWithRanges(sortedNums);
+      return {
+        ticketList: ticketList ? `Labour (${ticketList})` : 'Labour',
+        poAfe: '',
+        totalAmount: Math.round(amount * 100) / 100,
+        serviceDate: day,
+      };
+    })
+    .filter((l) => l.totalAmount > 0);
 }
 
 function getRateCodeLocal(rateType?: string): 'RT' | 'TT' | 'FT' | 'OT' {
@@ -2501,6 +2590,7 @@ export default function Invoices() {
   }, []);
   const [combinedExpenseGroupIds, setCombinedExpenseGroupIds] = useState<Set<string>>(new Set());
   const [splitRateGroupIds, setSplitRateGroupIds] = useState<Set<string>>(new Set());
+  const [splitDayGroupIds, setSplitDayGroupIds] = useState<Set<string>>(new Set());
   const [pendingLabourNotes, setPendingLabourNotes] = useState<Record<string, Record<string, string>>>({});
   const [applyLabourNotesToSimilarBatches, setApplyLabourNotesToSimilarBatches] = useState(false);
   const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
@@ -4898,9 +4988,12 @@ export default function Invoices() {
               const isCnrlPeriodGroup = key.periodKey && key.approverCode && key.approverCode !== key.periodKey;
               const isCombined = combinedExpenseGroupIds.has(persistId);
               const isSplitRate = splitRateGroupIds.has(persistId);
-              const breakdownMode: BreakdownMode = isCombined ? 'combined' : isSplitRate ? 'split' : 'itemized';
+              const isSplitDay = splitDayGroupIds.has(persistId);
+              const breakdownMode: BreakdownMode = isCombined ? 'combined' : isSplitRate ? 'split' : isSplitDay ? 'day' : 'itemized';
               const breakdownLines = isSplitRate
                 ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false)
+                : isSplitDay
+                ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[])
                 : key.periodKey && !isCnrlPeriodGroup
                 ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                 : buildPoAfeBreakdown(
@@ -5683,12 +5776,13 @@ export default function Invoices() {
                                 <BreakdownModeToggle mode={breakdownMode} onMode={(m) => {
                                   setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(persistId); else next.delete(persistId); return next; });
                                   setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(persistId); else next.delete(persistId); return next; });
+                                  setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day') next.add(persistId); else next.delete(persistId); return next; });
                                 }} />
                               </div>
-                              {breakdownLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours }, i) => (
-                                <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} />
+                              {breakdownLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
+                                <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
                               ))}
-                              {!isCombined && !isSplitRate && expLines.map((l, i) => {
+                              {!isCombined && !isSplitRate && !isSplitDay && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                                 const onCtx = () => {
                                   const tNum = l.ticketNums[0];
@@ -5709,7 +5803,7 @@ export default function Invoices() {
                                   />
                                 );
                               })}
-                              {isSplitRate && expLines.map((l, i) => {
+                              {(isSplitRate || isSplitDay) && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                                 const onCtx = () => {
                                   const tNum = l.ticketNums[0];
@@ -6398,7 +6492,8 @@ export default function Invoices() {
                   {(() => {
                     const isCombined = combinedExpenseGroupIds.has(groupId);
                     const isSplitRatePending = splitRateGroupIds.has(groupId);
-                    const pendingMode: BreakdownMode = isCombined ? 'combined' : isSplitRatePending ? 'split' : 'itemized';
+                    const isSplitDayPending = splitDayGroupIds.has(groupId);
+                    const pendingMode: BreakdownMode = isCombined ? 'combined' : isSplitRatePending ? 'split' : isSplitDayPending ? 'day' : 'itemized';
                     const { lines: expLines } = computeGroupExpenseTotal(
                       groupTickets as (ServiceTicket & { recordId?: string })[],
                       expensesByRecordId
@@ -6412,6 +6507,8 @@ export default function Invoices() {
                       );
                     const labourLines = isSplitRatePending
                       ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false)
+                      : isSplitDayPending
+                      ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[])
                       : (key.periodKey && key.approverCode === key.periodKey)
                       ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                       : buildPoAfeBreakdown(groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[], getKeyFn, expensesByRecordId, isCombined);
@@ -6427,12 +6524,13 @@ export default function Invoices() {
                           <BreakdownModeToggle mode={pendingMode} onMode={(m) => {
                             setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(groupId); else next.delete(groupId); return next; });
                             setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(groupId); else next.delete(groupId); return next; });
+                            setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day') next.add(groupId); else next.delete(groupId); return next; });
                           }} />
                         </div>
-                        {labourLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours }, i) => (
-                          <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} />
+                        {labourLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
+                          <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
                         ))}
-                        {!isCombined && !isSplitRatePending && expLines.map((l, i) => {
+                        {!isCombined && !isSplitRatePending && !isSplitDayPending && expLines.map((l, i) => {
                           const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                           const onCtx = () => {
                             const tNum = l.ticketNums[0];
@@ -6453,7 +6551,7 @@ export default function Invoices() {
                             />
                           );
                         })}
-                        {isSplitRatePending && expLines.map((l, i) => {
+                        {(isSplitRatePending || isSplitDayPending) && expLines.map((l, i) => {
                           const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                           const onCtx = () => {
                             const tNum = l.ticketNums[0];
@@ -7046,7 +7144,8 @@ export default function Invoices() {
                         {(() => {
                           const isCombined = combinedExpenseGroupIds.has(persistId);
                           const isSplitRatePending = splitRateGroupIds.has(persistId);
-                          const mode: BreakdownMode = isCombined ? 'combined' : isSplitRatePending ? 'split' : 'itemized';
+                          const isSplitDayPending = splitDayGroupIds.has(persistId);
+                          const mode: BreakdownMode = isCombined ? 'combined' : isSplitRatePending ? 'split' : isSplitDayPending ? 'day' : 'itemized';
                           const groupTickets = group.tickets;
                           const { lines: expLines } = computeGroupExpenseTotal(
                             groupTickets as (ServiceTicket & { recordId?: string })[],
@@ -7061,6 +7160,8 @@ export default function Invoices() {
                             );
                           const labourLines = isSplitRatePending
                             ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false)
+                            : isSplitDayPending
+                            ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[])
                             : (group.key.periodKey && group.key.approverCode === group.key.periodKey)
                             ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                             : buildPoAfeBreakdown(groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[], getKeyFn, expensesByRecordId, isCombined);
@@ -7076,12 +7177,13 @@ export default function Invoices() {
                                 <BreakdownModeToggle mode={mode} onMode={(m) => {
                                   setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(persistId); else next.delete(persistId); return next; });
                                   setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(persistId); else next.delete(persistId); return next; });
+                                  setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day') next.add(persistId); else next.delete(persistId); return next; });
                                 }} />
                               </div>
-                              {labourLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours }, i) => (
-                                <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} />
+                              {labourLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
+                                <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
                               ))}
-                              {!isCombined && !isSplitRatePending && expLines.map((l, i) => {
+                              {!isCombined && !isSplitRatePending && !isSplitDayPending && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                                 const onCtx = () => {
                                   const tNum = l.ticketNums[0];
@@ -7102,7 +7204,7 @@ export default function Invoices() {
                                   />
                                 );
                               })}
-                              {isSplitRatePending && expLines.map((l, i) => {
+                              {(isSplitRatePending || isSplitDayPending) && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                                 const onCtx = () => {
                                   const tNum = l.ticketNums[0];
