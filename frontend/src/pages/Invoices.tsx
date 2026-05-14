@@ -2792,6 +2792,41 @@ export default function Invoices() {
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
+  /** Guide-me wizard state. `subview` toggles between the old overview cards and the new
+   *  step-by-step wizard. `activeGroupId` is the batch currently being walked through.
+   *  `stepProgress` holds per-batch flags that aren't derivable from DB state (e.g. did
+   *  the user download the merged PDF this session? has the QB invoice been created?). */
+  type WizardSubview = 'overview' | 'wizard';
+  type WizardStepProgress = { downloadedAt?: string; qbCreatedAt?: string };
+  const [helperSubview, setHelperSubview] = useState<WizardSubview>('overview');
+  const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
+  const [wizardStepProgress, setWizardStepProgress] = useState<Record<string, WizardStepProgress>>(() => {
+    try {
+      const raw = localStorage.getItem('ionex-wizard-step-progress');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+  const updateWizardProgress = useCallback((groupId: string, patch: Partial<WizardStepProgress>) => {
+    setWizardStepProgress((prev) => {
+      const next = { ...prev, [groupId]: { ...prev[groupId], ...patch } };
+      try { localStorage.setItem('ionex-wizard-step-progress', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  const clearWizardProgressFromStep = useCallback((groupId: string, fromStep: 'download' | 'create_invoice' | 'attach') => {
+    setWizardStepProgress((prev) => {
+      const cur = prev[groupId] ?? {};
+      const next: WizardStepProgress = { ...cur };
+      if (fromStep === 'download') { delete next.downloadedAt; delete next.qbCreatedAt; }
+      if (fromStep === 'create_invoice') { delete next.qbCreatedAt; }
+      // 'attach' clears the uploaded file — handled via setInvoiceFileForGroup directly
+      const merged = { ...prev, [groupId]: next };
+      try { localStorage.setItem('ionex-wizard-step-progress', JSON.stringify(merged)); } catch {}
+      return merged;
+    });
+  }, []);
   const [moveTicketBatchDialog, setMoveTicketBatchDialog] = useState<{
     ticket: ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null };
     sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
@@ -6680,8 +6715,32 @@ export default function Invoices() {
               </div>
             );
 
+            const toggleBtnStyle = (active: boolean): React.CSSProperties => ({
+              padding: '8px 14px',
+              borderRadius: '8px',
+              border: active ? '1px solid var(--accent-color, #2563eb)' : '1px solid var(--border-color)',
+              backgroundColor: active ? 'rgba(37, 99, 235, 0.10)' : 'var(--bg-primary)',
+              color: active ? 'var(--accent-color, #2563eb)' : 'var(--text-secondary)',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            });
+            const subviewToggle = (
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                <button type="button" style={toggleBtnStyle(helperSubview === 'overview')} onClick={() => setHelperSubview('overview')}>
+                  Overview
+                </button>
+                <button type="button" style={toggleBtnStyle(helperSubview === 'wizard')} onClick={() => setHelperSubview('wizard')}>
+                  Step-by-step wizard
+                </button>
+              </div>
+            );
+
             return (
               <div>
+                {subviewToggle}
+                {helperSubview === 'overview' && (<>
                 <div className="ionex-section-heading">
                   <div className="ionex-section-heading-title-row">
                     <h2>What to do next</h2>
@@ -6795,6 +6854,411 @@ export default function Invoices() {
                   ),
                   children: waitingOnApproval.map((g) => renderBatchCard(g, true, 'submitted', 'View in Submitted')),
                 })}
+                </>)}
+
+                {helperSubview === 'wizard' && (() => {
+                  // Phase 1 + 2: standard (non-portal) flow only. Portal Approval batches show a
+                  // placeholder pointing at the overview until phase 3 ships their flow.
+                  const wizardCandidates = readyStd.map((b) => b.group);
+                  const sortedCandidates = [...wizardCandidates].sort((a, b) => {
+                    const ga = cnrlPeriodGrouping(getGroupingForTicket(
+                      a.tickets[0]?.customerId ?? '',
+                      (a.tickets[0] as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? a.tickets[0]?.projectId ?? '',
+                    ));
+                    const gb = cnrlPeriodGrouping(getGroupingForTicket(
+                      b.tickets[0]?.customerId ?? '',
+                      (b.tickets[0] as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? b.tickets[0]?.projectId ?? '',
+                    ));
+                    const ea = getPeriodEndYmd(a.key.periodKey ?? '', ga) ?? '9999-12-31';
+                    const eb = getPeriodEndYmd(b.key.periodKey ?? '', gb) ?? '9999-12-31';
+                    if (ea !== eb) return ea.localeCompare(eb);
+                    const ca = a.tickets[0]?.customerName ?? '';
+                    const cb = b.tickets[0]?.customerName ?? '';
+                    return ca.localeCompare(cb);
+                  });
+                  const activeGroup = sortedCandidates.find((g) => getGroupId(g) === wizardActiveGroupId) ?? sortedCandidates[0];
+                  const portalReadyCount = readyPortal.length;
+
+                  if (!activeGroup) {
+                    return (
+                      <div className="ionex-empty">
+                        <span className="glyph" aria-hidden>🎉</span>
+                        <h3 className="title">No standard batches ready</h3>
+                        <p className="body">
+                          {portalReadyCount > 0
+                            ? `${portalReadyCount} Portal Approval batch${portalReadyCount === 1 ? ' is' : 'es are'} waiting — use the Overview tab for those until the wizard supports portal flows.`
+                            : 'Nothing to invoice right now. Come back when more service tickets are approved.'}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  type WizardStepId = 'preflight' | 'download' | 'create_invoice' | 'attach' | 'mark' | 'done';
+                  const STEP_DEFS: { id: WizardStepId; label: string; short: string }[] = [
+                    { id: 'preflight', label: 'Pre-flight checks', short: 'Verify' },
+                    { id: 'download', label: 'Download batch PDF', short: 'Download' },
+                    { id: 'create_invoice', label: 'Create invoice in QuickBooks', short: 'QuickBooks' },
+                    { id: 'attach', label: 'Attach invoice PDF', short: 'Attach' },
+                    { id: 'mark', label: 'Mark as invoiced', short: 'Mark' },
+                  ];
+
+                  const groupId = getGroupId(activeGroup);
+                  const persistId = resolvedPersistGroupId(activeGroup, invoicedMarkRows);
+                  const progress = wizardStepProgress[groupId] ?? {};
+                  const isMarked = invoicedMarkRows.some((r) => r.group_id === persistId);
+                  const invoiceFile = invoiceFilesByGroupId[persistId] ?? null;
+
+                  // --- Pre-flight blockers (hard-gate before download) ---
+                  const blockers: { id: string; message: string; deepLinkTab?: InvoiceTab }[] = [];
+                  const t0 = activeGroup.tickets[0] as ServiceTicket & { recordProjectId?: string } | undefined;
+                  const acCustId = t0?.customerId ?? '';
+                  const acProjId = t0?.recordProjectId ?? t0?.projectId ?? '';
+                  const acPeriodGrouping = cnrlPeriodGrouping(getGroupingForTicket(acCustId, acProjId));
+                  if (activeGroup.key.periodKey && isInvoicePeriodStillAccumulating(activeGroup.key.periodKey, acPeriodGrouping)) {
+                    blockers.push({ id: 'accumulating', message: 'Period is still accumulating — more tickets may still land in this batch. Wait until the period closes or edit the period grouping.' });
+                  }
+                  const pendingForBatch = getPendingTicketsForGroup(activeGroup);
+                  if (pendingForBatch.length > 0) {
+                    blockers.push({
+                      id: 'unapproved',
+                      message: `${pendingForBatch.length} unapproved ticket${pendingForBatch.length === 1 ? '' : 's'} share this customer + project + period. Invoicing now will split them off into a follow-up batch.`,
+                      deepLinkTab: undefined,
+                    });
+                  }
+                  const isCnrlPeriodGroup = !!(activeGroup.key.periodKey && activeGroup.key.approverCode && activeGroup.key.approverCode !== activeGroup.key.periodKey);
+                  const missingPoAfe = isCnrlPeriodGroup && activeGroup.tickets.some((t) => {
+                    const k = getInvoiceGroupKey(
+                      {
+                        projectId: (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? t.projectId,
+                        projectName: t.projectName,
+                        projectNumber: t.projectNumber,
+                        location: t.location,
+                        projectApproverPoAfe: (t as ServiceTicket & { projectApproverPoAfe?: string }).projectApproverPoAfe,
+                        projectLocation: (t as ServiceTicket & { projectLocation?: string }).projectLocation,
+                        projectOther: (t as ServiceTicket & { projectOther?: string }).projectOther,
+                        customerInfo: t.customerInfo,
+                        entries: t.entries,
+                      },
+                      (t as ServiceTicket & { headerOverrides?: unknown }).headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined,
+                    );
+                    return !(k.poAfe || '').trim();
+                  });
+                  if (missingPoAfe) {
+                    blockers.push({ id: 'po_afe', message: 'One or more tickets are missing a PO/AFE. Fix the headers on the Ready tab before invoicing.', deepLinkTab: 'ready' });
+                  }
+
+                  // --- Active step derivation ---
+                  let currentStep: WizardStepId;
+                  if (isMarked) currentStep = 'done';
+                  else if (invoiceFile) currentStep = 'mark';
+                  else if (progress.qbCreatedAt) currentStep = 'attach';
+                  else if (progress.downloadedAt) currentStep = 'create_invoice';
+                  else if (blockers.length > 0) currentStep = 'preflight';
+                  else currentStep = 'download';
+
+                  const stepIndex = (id: WizardStepId): number => STEP_DEFS.findIndex((s) => s.id === id);
+                  const currentIdx = stepIndex(currentStep === 'done' ? 'mark' : currentStep);
+
+                  const totalHours = activeGroup.tickets.reduce((s, t) => s + (Number(t.totalHours) || 0), 0);
+                  const customer = t0?.customerName ?? '—';
+                  const projectLabel = [activeGroup.key.projectNumber, activeGroup.key.projectName].filter(Boolean).join(' – ');
+                  const periodLabel = activeGroup.key.periodLabel ?? activeGroup.key.periodKey ?? '';
+
+                  // --- Step actions ---
+                  const onDownload = async () => {
+                    setExportError(null);
+                    try {
+                      const merged = await buildMergedBatchPdfBlob(activeGroup);
+                      const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects);
+                      saveAs(merged, filename);
+                      updateWizardProgress(groupId, { downloadedAt: new Date().toISOString() });
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
+                    }
+                  };
+                  const onQbConfirm = () => updateWizardProgress(groupId, { qbCreatedAt: new Date().toISOString() });
+                  const onAttach = async (file: File) => {
+                    if (file.type !== 'application/pdf') {
+                      setExportError('Invoice must be a PDF.');
+                      return;
+                    }
+                    setUploadingInvoiceGroupId(persistId);
+                    setExportError(null);
+                    try {
+                      if (isDemoMode) {
+                        setInvoiceFileForGroup(persistId, file);
+                      } else {
+                        const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
+                        const fileForUi = new File([file], storedName, { type: file.type });
+                        setInvoiceFileForGroup(persistId, fileForUi);
+                        await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                      }
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not upload invoice PDF.');
+                    } finally {
+                      setUploadingInvoiceGroupId(null);
+                    }
+                  };
+                  const onMark = () => handleMarkAsInvoiced(activeGroup);
+
+                  const renderStepBody = () => {
+                    if (currentStep === 'preflight') {
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, marginBottom: '12px', color: 'var(--text-secondary)' }}>
+                            Fix the issues below before this batch can be invoiced. The wizard won't let you continue while
+                            blockers exist.
+                          </p>
+                          <ul style={{ margin: '0 0 12px 0', paddingLeft: '18px' }}>
+                            {blockers.map((b) => (
+                              <li key={b.id} style={{ marginBottom: '8px', color: 'var(--text-primary)' }}>
+                                <strong style={{ color: '#b91c1c' }}>Blocker:</strong> {b.message}
+                                {b.deepLinkTab && (
+                                  <>
+                                    {' '}
+                                    <button type="button" onClick={() => setActiveTab(b.deepLinkTab!)} style={{ ...goButtonStyle, marginLeft: '6px' }}>
+                                      Open {b.deepLinkTab} →
+                                    </button>
+                                  </>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    }
+                    if (currentStep === 'download') {
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            Generate the merged batch PDF (per-ticket pages + summary). Save it locally — you'll need it when raising the invoice.
+                          </p>
+                          <button type="button" onClick={onDownload} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                            ⬇ Download batch PDF
+                          </button>
+                        </div>
+                      );
+                    }
+                    if (currentStep === 'create_invoice') {
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            Open QuickBooks and raise the invoice for this batch using the figures below.
+                          </p>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', padding: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                            <strong>Customer:</strong><span>{customer}</span>
+                            <strong>Project:</strong><span>{projectLabel || '—'}</span>
+                            <strong>Period:</strong><span>{periodLabel || '—'}</span>
+                            <strong>Tickets:</strong><span>{activeGroup.tickets.length}</span>
+                            <strong>Total hours:</strong><span>{totalHours.toFixed(2)}</span>
+                          </div>
+                          <button type="button" onClick={onQbConfirm} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                            ✓ Invoice created in QuickBooks
+                          </button>
+                        </div>
+                      );
+                    }
+                    if (currentStep === 'attach') {
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            Upload the invoice PDF you just generated from QuickBooks. It'll be stored against this batch.
+                          </p>
+                          <label
+                            style={{
+                              display: 'block',
+                              padding: '20px',
+                              border: '2px dashed var(--border-color)',
+                              borderRadius: '8px',
+                              textAlign: 'center',
+                              cursor: uploadingInvoiceGroupId === persistId ? 'wait' : 'pointer',
+                              backgroundColor: 'var(--bg-tertiary)',
+                            }}
+                          >
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              style={{ display: 'none' }}
+                              disabled={uploadingInvoiceGroupId === persistId}
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) onAttach(f);
+                                e.target.value = '';
+                              }}
+                            />
+                            {uploadingInvoiceGroupId === persistId
+                              ? 'Uploading…'
+                              : <><strong>Click to select invoice PDF</strong><div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>or drag it onto the batch in the Ready tab</div></>}
+                          </label>
+                        </div>
+                      );
+                    }
+                    if (currentStep === 'mark') {
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            Invoice attached: <strong>{invoiceFile?.name ?? 'invoice.pdf'}</strong>. Mark this batch as invoiced
+                            to lock it down and move it to the Invoiced tab.
+                          </p>
+                          <button type="button" onClick={onMark} disabled={markInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}>
+                            {markInvoicedMutation.isPending ? 'Saving…' : '✓ Mark as invoiced'}
+                          </button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div>
+                        <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                          🎉 Batch marked as invoiced. Pick the next one or jump to the Invoiced tab to review.
+                        </p>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const remaining = sortedCandidates.filter((g) => getGroupId(g) !== groupId);
+                              setWizardActiveGroupId(remaining[0] ? getGroupId(remaining[0]) : null);
+                            }}
+                            style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}
+                          >
+                            Next batch →
+                          </button>
+                          <button type="button" onClick={() => setActiveTab('invoiced')} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                            Open Invoiced tab
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  };
+
+                  // Past-step reopen handler: clears progress flags from that step onward so the
+                  // user lands back at the picked step. Marked-invoiced state isn't undone here —
+                  // use the Ready tab's Unmark for that.
+                  const onReopen = (stepId: WizardStepId) => {
+                    if (stepId === 'preflight' || isMarked) return;
+                    if (stepId === 'download') {
+                      clearWizardProgressFromStep(groupId, 'download');
+                      setInvoiceFileForGroup(persistId, null);
+                    } else if (stepId === 'create_invoice') {
+                      clearWizardProgressFromStep(groupId, 'create_invoice');
+                      setInvoiceFileForGroup(persistId, null);
+                    } else if (stepId === 'attach') {
+                      setInvoiceFileForGroup(persistId, null);
+                    }
+                  };
+
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: '20px', alignItems: 'flex-start' }}>
+                      {/* Left rail: batch picker + step list */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+                            Queue · {sortedCandidates.length} batch{sortedCandidates.length === 1 ? '' : 'es'}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto' }}>
+                            {sortedCandidates.map((g) => {
+                              const gid = getGroupId(g);
+                              const isActive = gid === getGroupId(activeGroup);
+                              const t = g.tickets[0];
+                              return (
+                                <button
+                                  key={gid}
+                                  type="button"
+                                  onClick={() => setWizardActiveGroupId(gid)}
+                                  style={{
+                                    textAlign: 'left',
+                                    padding: '8px 10px',
+                                    borderRadius: '6px',
+                                    border: isActive ? '1px solid var(--accent-color, #2563eb)' : '1px solid transparent',
+                                    backgroundColor: isActive ? 'rgba(37, 99, 235, 0.10)' : 'var(--bg-primary)',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                  }}
+                                >
+                                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {t?.customerName ?? '—'}
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {g.key.periodLabel ?? g.key.periodKey ?? ''} · {g.tickets.length} ticket{g.tickets.length === 1 ? '' : 's'}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+                            Steps
+                          </div>
+                          <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {STEP_DEFS.map((s, idx) => {
+                              const isCurrent = s.id === currentStep;
+                              const isPast = idx < currentIdx || isMarked;
+                              const isFuture = !isCurrent && !isPast;
+                              const canClick = isPast && !isMarked && s.id !== 'preflight';
+                              return (
+                                <li key={s.id}>
+                                  <button
+                                    type="button"
+                                    onClick={canClick ? () => onReopen(s.id) : undefined}
+                                    disabled={!canClick}
+                                    style={{
+                                      width: '100%',
+                                      textAlign: 'left',
+                                      padding: '8px 10px',
+                                      borderRadius: '6px',
+                                      border: '1px solid transparent',
+                                      backgroundColor: isCurrent ? 'rgba(37, 99, 235, 0.12)' : 'transparent',
+                                      color: isFuture ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                                      fontFamily: 'inherit',
+                                      fontSize: '12px',
+                                      fontWeight: isCurrent ? 700 : 500,
+                                      cursor: canClick ? 'pointer' : 'default',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                    }}
+                                    title={canClick ? 'Click to reopen this step' : undefined}
+                                  >
+                                    <span style={{ display: 'inline-flex', width: '20px', height: '20px', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', backgroundColor: isPast ? '#22c55e' : isCurrent ? 'var(--accent-color, #2563eb)' : 'var(--bg-tertiary)', color: isPast || isCurrent ? '#fff' : 'var(--text-tertiary)', fontSize: '11px', fontWeight: 700 }}>
+                                      {isPast ? '✓' : idx + 1}
+                                    </span>
+                                    {s.label}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        </div>
+                      </div>
+
+                      {/* Right panel: active step body */}
+                      <div style={{ padding: '20px', backgroundColor: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                              Step {Math.min(currentIdx + 1, STEP_DEFS.length)} of {STEP_DEFS.length}
+                            </div>
+                            <h3 style={{ margin: '4px 0 2px', fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              {currentStep === 'done' ? 'Done' : STEP_DEFS.find((s) => s.id === currentStep)?.label}
+                            </h3>
+                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              {customer}{projectLabel ? ` · ${projectLabel}` : ''}{periodLabel ? ` · ${periodLabel}` : ''}
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => setActiveTab('ready')} style={goButtonStyle}>
+                            Open in Ready tab →
+                          </button>
+                        </div>
+                        {portalReadyCount > 0 && (
+                          <div style={{ marginBottom: '12px', padding: '8px 10px', backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            Note: {portalReadyCount} Portal Approval batch{portalReadyCount === 1 ? '' : 'es'} not shown here yet — wizard supports standard customers in this phase. Use Overview for portal flows.
+                          </div>
+                        )}
+                        {renderStepBody()}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
