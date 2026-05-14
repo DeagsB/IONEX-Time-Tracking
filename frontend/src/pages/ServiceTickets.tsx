@@ -29,19 +29,11 @@ import {
 import { initialReimbursementStatusForTicketExpense } from '../utils/ticketExpensePayrollEligibility';
 import { extractReceiptAutoFill } from '../utils/receiptAutoFill';
 
-// Workflow status types and labels
-const WORKFLOW_STATUSES = {
-  draft: { label: 'Draft', color: '#6b7280', icon: '📝' },
-  approved: { label: 'Approved', color: '#3b82f6', icon: '✓' },
-  rejected: { label: 'Rejected', color: '#ef5350', icon: '✕' },
-  pdf_exported: { label: 'PDF Exported', color: '#8b5cf6', icon: '📄' },
-  qbo_created: { label: 'QBO Invoice', color: '#f59e0b', icon: '💰' },
-  sent_to_cnrl: { label: 'Sent to CNRL', color: '#ec4899', icon: '📧' },
-  cnrl_approved: { label: 'CNRL Approved', color: '#10b981', icon: '✅' },
-  submitted_to_cnrl: { label: 'Submitted', color: '#059669', icon: '🎉' },
-} as const;
-
-type WorkflowStatus = keyof typeof WORKFLOW_STATUSES;
+// Workflow status types — the legacy CNRL pipeline statuses (pdf_exported,
+// qbo_created, sent_to_cnrl, cnrl_approved, submitted_to_cnrl) were retired;
+// invoice-side tracking lives on the Invoices page now. Legacy DB rows in
+// those states still render via the fallback in callers.
+type WorkflowStatus = 'draft' | 'approved' | 'rejected' | 'submitted';
 
 /** Format a date-only string (YYYY-MM-DD) as local date to avoid timezone shifting the day */
 function formatDateOnlyLocal(dateStr: string): string {
@@ -1442,10 +1434,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       }
       await downloadPdfFromHtml(ticketWithNumber, ticketExpenses);
 
-      // Mark ticket as PDF exported in workflow
-      await serviceTicketsService.markPdfExported(existingRecord.id, null, isDemoMode);
-
-      // Invalidate and refetch queries to refresh the ticket list with the new ticket number
+      // (Legacy workflow status mark removed — invoice-side tracking lives on the Invoices page.)
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
     } catch (error) {
@@ -2739,8 +2728,9 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
     const hasTicketNumber = !!existing?.ticket_number;
     const workflowStatus = existing?.workflow_status || 'draft';
     if (hasTicketNumber) return 'approved';
-    const approvedStatuses = ['approved', 'pdf_exported', 'qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'];
-    if (existing?.approved_by_admin_id && approvedStatuses.includes(workflowStatus)) return 'approved';
+    // Any state that isn't draft/submitted/rejected counts as approved (handles legacy CNRL-pipeline rows).
+    const approvedStatuses = (s: string) => s !== 'draft' && s !== 'submitted' && s !== 'rejected';
+    if (existing?.approved_by_admin_id && approvedStatuses(workflowStatus)) return 'approved';
     if (workflowStatus === 'draft' || workflowStatus === 'rejected') return 'draft';
     return 'submitted';
   };
@@ -2906,8 +2896,9 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
           // Admins: ticket number assigned, OR admin-approved (workflow beyond draft/submitted stages) even if ID temporarily unassigned
           if (hasTicketNumber) return true;
           // Keep tickets visible on approved tab when ID is unassigned but workflow is still in an approved state
-          const approvedStatuses = ['approved', 'pdf_exported', 'qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'];
-          return !!existing?.approved_by_admin_id && approvedStatuses.includes(workflowStatus);
+          // Any state that isn't draft/submitted/rejected counts as approved (handles legacy CNRL-pipeline rows).
+    const approvedStatuses = (s: string) => s !== 'draft' && s !== 'submitted' && s !== 'rejected';
+          return !!existing?.approved_by_admin_id && approvedStatuses(workflowStatus);
         }
         return true;
       });
@@ -4934,12 +4925,6 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                 <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
                   Action
                 </th>
-                {/* Workflow column - only visible to admins in Approved tab, hidden in trash view */}
-                {isAdmin && !showDiscarded && activeTab === 'approved' && (
-                  <th style={{ padding: '16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                    Workflow
-                  </th>
-                )}
               </tr>
             </thead>
             <tbody>
@@ -5365,42 +5350,6 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                       }
                     })()}
                   </td>
-                  {/* Workflow status cell - only visible to admins in Approved tab, hidden in trash view. Only show "Approved" when ticket has an assigned ID. */}
-                  {isAdmin && !showDiscarded && activeTab === 'approved' && (
-                    <td style={{ padding: '16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                      {(() => {
-                        const existing = findMatchingTicketRecord(ticket);
-                        const hasTicketNumber = !!existing?.ticket_number;
-                        const workflowStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
-                        const statusInfo = WORKFLOW_STATUSES[workflowStatus] || WORKFLOW_STATUSES.draft;
-                        const effectiveLabel = (workflowStatus === 'approved' && !hasTicketNumber)
-                          ? 'Pending'
-                          : statusInfo.label;
-                        const effectiveColor = (workflowStatus === 'approved' && !hasTicketNumber)
-                          ? '#6b7280'
-                          : statusInfo.color;
-                        return (
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '4px 10px',
-                              borderRadius: '12px',
-                              fontSize: '11px',
-                              fontWeight: '500',
-                              backgroundColor: `${effectiveColor}20`,
-                              color: effectiveColor,
-                              whiteSpace: 'nowrap',
-                            }}
-                            title={hasTicketNumber ? `Status: ${statusInfo.label}` : 'No ticket ID assigned yet'}
-                          >
-                            {effectiveLabel === 'Pending' ? '⏳' : statusInfo.icon} {effectiveLabel}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                  )}
                 </tr>
                 );
               })}
@@ -5433,7 +5382,6 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                     ${tableFooterTotals.expenseTotal.toFixed(2)}
                   </td>
                   <td style={{ padding: '12px 16px' }} />
-                  {isAdmin && !showDiscarded && activeTab === 'approved' && <td style={{ padding: '12px 16px' }} />}
                 </tr>
               </tfoot>
             )}
@@ -7949,137 +7897,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                 </div>
               )}
 
-              {/* Workflow Status Section - only visible to admins, hidden when ticket is trashed */}
-              {isAdmin && (() => {
-                const existing = findMatchingTicketRecord(selectedTicket);
-                if ((existing as any)?.is_discarded) return null;
-                const currentStatus = (existing?.workflow_status || 'draft') as WorkflowStatus;
-                const hasTicketNumber = !!existing?.ticket_number;
-                
-                // Define the workflow steps in order
-                const workflowSteps: WorkflowStatus[] = ['approved', 'pdf_exported', 'qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'];
-                const currentStepIndex = workflowSteps.indexOf(currentStatus);
-                
-                const handleWorkflowAction = async (action: WorkflowStatus) => {
-                  if (!currentTicketRecordId) return;
-                  
-                  try {
-                    switch (action) {
-                      case 'pdf_exported':
-                        await serviceTicketsService.markPdfExported(currentTicketRecordId, null, isDemoMode);
-                        break;
-                      case 'qbo_created':
-                        // For now, just mark as QBO created (manual entry)
-                        // In future, this will trigger actual QBO invoice creation
-                        const invoiceId = prompt('Enter QuickBooks Invoice ID (or leave blank to skip):');
-                        const invoiceNumber = prompt('Enter QuickBooks Invoice Number:') || '';
-                        if (invoiceId) {
-                          await serviceTicketsService.markQboCreated(currentTicketRecordId, invoiceId, invoiceNumber, isDemoMode);
-                        } else {
-                          await serviceTicketsService.updateWorkflowStatus(currentTicketRecordId, 'qbo_created', isDemoMode);
-                        }
-                        break;
-                      case 'sent_to_cnrl':
-                        await serviceTicketsService.markSentToCnrl(currentTicketRecordId, isDemoMode);
-                        break;
-                      case 'cnrl_approved':
-                        await serviceTicketsService.markCnrlApproved(currentTicketRecordId, isDemoMode);
-                        break;
-                      case 'submitted_to_cnrl':
-                        const notes = prompt('Enter any notes for CNRL submission (optional):');
-                        await serviceTicketsService.markSubmittedToCnrl(currentTicketRecordId, notes, isDemoMode);
-                        break;
-                      default:
-                        await serviceTicketsService.updateWorkflowStatus(currentTicketRecordId, action, isDemoMode);
-                    }
-                    
-                    // Refresh data
-                    queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
-                    alert(`Workflow updated to: ${WORKFLOW_STATUSES[action].label}`);
-                  } catch (error) {
-                    console.error('Error updating workflow:', error);
-                    alert('Failed to update workflow status');
-                  }
-                };
-                
-                return hasTicketNumber ? (
-                  <div style={{
-                    marginTop: '24px',
-                    padding: '16px',
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                  }}>
-                    <h4 style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--primary-color)', marginBottom: '12px', letterSpacing: '1px' }}>
-                      Workflow Progress
-                    </h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                      {workflowSteps.map((step, idx) => {
-                        const stepInfo = WORKFLOW_STATUSES[step];
-                        const isCompleted = idx <= currentStepIndex;
-                        const isCurrent = step === currentStatus;
-                        
-                        return (
-                          <div key={step} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '6px 12px',
-                                borderRadius: '16px',
-                                fontSize: '12px',
-                                fontWeight: isCurrent ? '600' : '400',
-                                backgroundColor: isCompleted ? `${stepInfo.color}30` : 'var(--bg-tertiary)',
-                                color: isCompleted ? stepInfo.color : 'var(--text-secondary)',
-                                border: isCurrent ? `2px solid ${stepInfo.color}` : '1px solid var(--border-color)',
-                              }}
-                            >
-                              {stepInfo.icon} {stepInfo.label}
-                            </span>
-                            {idx < workflowSteps.length - 1 && (
-                              <span style={{ color: 'var(--text-secondary)' }}>→</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {currentStepIndex < workflowSteps.length - 1 && (
-                        <button
-                          className="button button-primary"
-                          onClick={() => handleWorkflowAction(workflowSteps[currentStepIndex + 1])}
-                          style={{ padding: '8px 16px', fontSize: '13px' }}
-                        >
-                          Mark as {WORKFLOW_STATUSES[workflowSteps[currentStepIndex + 1]].label}
-                        </button>
-                      )}
-                      {currentStepIndex > 0 && (
-                        <button
-                          className="button button-secondary"
-                          onClick={() => handleWorkflowAction(workflowSteps[currentStepIndex - 1])}
-                          style={{ padding: '8px 16px', fontSize: '13px' }}
-                        >
-                          Revert to {WORKFLOW_STATUSES[workflowSteps[currentStepIndex - 1]].label}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{
-                    marginTop: '24px',
-                    padding: '16px',
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)',
-                    textAlign: 'center',
-                  }}>
-                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-                      Approve this ticket to enable workflow tracking
-                    </p>
-                  </div>
-                );
-              })()}
+              {/* Post-approval workflow progress UI removed — tracking now lives on the Invoices page. */}
 
               {/* Unsaved changes confirm modal */}
               {showCloseConfirm && (

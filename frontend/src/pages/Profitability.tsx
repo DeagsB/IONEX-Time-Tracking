@@ -1280,14 +1280,14 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
 }
 
 function StatusBadge({ status }: { status: string }) {
-  // Semantic mapping using theme tokens so dark mode works.
+  // Only the active states have a coloured pill; legacy CNRL-pipeline rows
+  // (pdf_exported / qbo_created / sent_to_cnrl / cnrl_approved / submitted_to_cnrl)
+  // fall back to the neutral tertiary tone.
   const map: Record<string, string> = {
     approved: 'var(--success-color)',
-    pdf_exported: 'var(--primary-color)',
-    qbo_created: 'var(--primary-color)',
-    sent_to_cnrl: 'var(--warning-color)',
-    cnrl_approved: 'var(--success-color)',
-    submitted_to_cnrl: 'var(--text-secondary)',
+    submitted: 'var(--warning-color)',
+    rejected: 'var(--error-color)',
+    draft: 'var(--text-tertiary)',
   };
   const color = map[status] || 'var(--text-tertiary)';
   const label = (status || 'unknown').replace(/_/g, ' ');

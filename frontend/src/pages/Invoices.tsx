@@ -4241,19 +4241,6 @@ export default function Invoices() {
     [sortedFilteredInvoicedGroups, buildApprovalSections]
   );
 
-  const markTicketsAsPdfExported = async (groupTickets: ServiceTicket[]) => {
-    const recordIds = groupTickets
-      .map((t) => (t as ServiceTicket & { recordId?: string }).recordId)
-      .filter(Boolean) as string[];
-    for (const id of recordIds) {
-      try {
-        await serviceTicketsService.updateWorkflowStatus(id, 'pdf_exported', isDemoMode);
-      } catch {
-        // best-effort; don't block the download
-      }
-    }
-  };
-
   const handleExportSingleGroup = async (group: { key: InvoiceGroupKey; tickets: ServiceTicket[] }) => {
     const { key, tickets: groupTickets } = group;
     const groupId = getGroupId(group);
@@ -4296,7 +4283,6 @@ export default function Invoices() {
         const merged = await mergePdfBlobs(blobs);
         const filename = getInvoicePdfFilename(key, groupTickets);
         saveAs(merged, filename);
-        await markTicketsAsPdfExported(groupTickets);
       }
     } catch (err) {
       console.error('Export error:', err);
@@ -4364,7 +4350,6 @@ export default function Invoices() {
 
       const merged = await mergePdfBlobs(blobs);
       saveAs(merged, downloadFilename);
-      await markTicketsAsPdfExported(groupTickets);
     } catch (err) {
       console.error('Export with invoice error:', err);
       setExportError(err instanceof Error ? err.message : 'Export failed');
@@ -4377,7 +4362,6 @@ export default function Invoices() {
    * Download every ticket matching the current customer/project/date filters as a single merged PDF.
    * Independent of batch grouping (bi-weekly, monthly, etc.) — used when a client requests an ad-hoc
    * range like "all April tickets" that doesn't line up with the regular invoice cadence.
-   * Does not mark tickets as pdf_exported, since this is outside the invoice flow.
    */
   const handleDownloadCustomRange = async () => {
     const ticketsToExport = ticketsForCustomer;
@@ -4495,8 +4479,7 @@ export default function Invoices() {
           const merged = await mergePdfBlobs(blobs);
           const filename = getInvoicePdfFilename(key, groupTickets);
           saveAs(merged, filename);
-          await markTicketsAsPdfExported(groupTickets);
-        }
+          }
       }
 
       setExportProgress(null);

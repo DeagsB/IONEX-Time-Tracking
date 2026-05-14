@@ -1002,11 +1002,10 @@ export default function Expenses() {
     enabled: showTicketPickerModal,
   });
 
-  // Filter to un-invoiced tickets (draft/approved, not yet sent for invoicing)
-  const uninvoicedTickets = allTicketRecords.filter((t: any) => {
-    const status = t.workflow_status || 'draft';
-    return !['qbo_created', 'sent_to_cnrl', 'cnrl_approved', 'submitted_to_cnrl'].includes(status);
-  });
+  // Ticket picker shows all tickets — the legacy CNRL-pipeline filter was
+  // tied to retired workflow_status values. Invoice-side tracking lives on
+  // the Invoices page now.
+  const uninvoicedTickets = allTicketRecords;
 
   // Admin: own tickets first, then others. Non-admin: already filtered to own.
   const sortedUninvoiced = isAdmin && user?.id
