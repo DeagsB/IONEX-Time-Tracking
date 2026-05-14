@@ -508,6 +508,21 @@ function CopyableHeaderValue({ copyText, children }: { copyText: string; childre
     return <>{children}</>;
   }
 
+  // Hover/copied turn the value into a chip-styled clickable surface. The negative margin
+  // keeps the surrounding text layout from shifting when the padded chip appears on hover.
+  const isActive = hover || copied;
+  const bg = copied
+    ? 'color-mix(in srgb, #16a34a 18%, transparent)'
+    : hover
+      ? 'var(--bg-tertiary)'
+      : 'transparent';
+  const ringColor = copied
+    ? 'color-mix(in srgb, #16a34a 55%, transparent)'
+    : hover
+      ? 'var(--border-color)'
+      : 'transparent';
+  const fg = copied ? '#15803d' : 'inherit';
+
   return (
     <span
       role="button"
@@ -525,17 +540,24 @@ function CopyableHeaderValue({ copyText, children }: { copyText: string; childre
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      title={copied ? 'Copied' : 'Copy'}
+      title={copied ? 'Copied' : 'Click to copy'}
       style={{
         cursor: 'pointer',
-        borderRadius: '3px',
+        display: 'inline-block',
+        padding: '1px 6px',
+        margin: '-1px -6px',
+        borderRadius: '6px',
+        backgroundColor: bg,
+        boxShadow: isActive ? `inset 0 0 0 1px ${ringColor}` : undefined,
+        color: fg,
+        fontWeight: isActive ? 600 : undefined,
         outline: 'none',
-        textDecoration: hover && !copied ? 'underline dotted' : undefined,
-        textDecorationColor: 'var(--text-tertiary)',
-        textUnderlineOffset: '2px',
+        transition: 'background-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease',
+        whiteSpace: 'nowrap',
       }}
     >
       {children}
+      {copied && <span aria-hidden style={{ marginLeft: 4, fontSize: '11px' }}>✓</span>}
     </span>
   );
 }
@@ -5380,14 +5402,7 @@ export default function Invoices() {
                           PO/AFE/CC is missing for some entries.
                         </div>
                       )}
-                      <div style={{
-                        marginTop: '12px',
-                        padding: '12px',
-                        backgroundColor: 'var(--bg-tertiary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        borderLeft: '4px solid var(--primary-color)',
-                      }}>
+                      <div className="ionex-lineitems-block" style={{ marginTop: '12px' }}>
                         {(() => {
                           const { lines: expLines } = computeGroupExpenseTotal(
                             groupTickets as (ServiceTicket & { recordId?: string })[],
@@ -5400,8 +5415,8 @@ export default function Invoices() {
                             : undefined;
                           return (
                             <>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
+                                <span className="ionex-lineitems-eyebrow">
                                   Invoice Line Items
                                 </span>
                                 <BreakdownModeToggle mode={breakdownMode} onMode={(m) => {
@@ -5458,7 +5473,11 @@ export default function Invoices() {
                           );
                         })()}
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                      <div style={{ marginTop: '14px' }}>
+                        <div className="ionex-tickets-eyebrow">
+                          <strong>{groupTickets.length}</strong> ticket{groupTickets.length === 1 ? '' : 's'} in this batch
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {groupTickets.map((t) => {
                           const ticket = t as InvoiceTicketModalTicket & { invoiceBatchDateOverride?: string | null };
                           const ridForExp = ticket.recordId?.trim();
@@ -5473,6 +5492,7 @@ export default function Invoices() {
                             />
                           );
                         })}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -6057,14 +6077,7 @@ export default function Invoices() {
                   </div>
                 )}
                 {!groupIsPortalApproval && (
-                <div style={{
-                  marginBottom: '12px',
-                  padding: '12px',
-                  backgroundColor: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  borderLeft: '4px solid var(--primary-color)',
-                }}>
+                <div className="ionex-lineitems-block">
                   {(() => {
                     const isCombined = combinedExpenseGroupIds.has(groupId);
                     const isSplitRatePending = splitRateGroupIds.has(groupId);
@@ -6090,8 +6103,8 @@ export default function Invoices() {
                       : undefined;
                     return (
                       <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
+                          <span className="ionex-lineitems-eyebrow">
                             Invoice Line Items
                           </span>
                           <BreakdownModeToggle mode={pendingMode} onMode={(m) => {
@@ -6149,7 +6162,11 @@ export default function Invoices() {
                   })()}
                 </div>
                 )}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ marginTop: '4px' }}>
+                  <div className="ionex-tickets-eyebrow">
+                    <strong>{groupTickets.length}</strong> ticket{groupTickets.length === 1 ? '' : 's'} in this batch
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {groupTickets.map((t) => {
                     const ticket = t as InvoiceTicketModalTicket & { invoiceBatchDateOverride?: string | null };
                     const isHolding = pendingHoldTicketId === t.id;
@@ -6186,6 +6203,7 @@ export default function Invoices() {
                       />
                     );
                   })}
+                  </div>
                 </div>
               </div>
             );
@@ -6739,14 +6757,7 @@ export default function Invoices() {
                         <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
                       </div>
                       {/* Invoice line items — shown here (post-approval) so the user can create the invoice */}
-                      <div style={{
-                        marginBottom: '12px',
-                        padding: '12px',
-                        backgroundColor: 'var(--bg-tertiary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        borderLeft: '4px solid var(--primary-color)',
-                      }}>
+                      <div className="ionex-lineitems-block">
                         {(() => {
                           const isCombined = combinedExpenseGroupIds.has(persistId);
                           const isSplitRatePending = splitRateGroupIds.has(persistId);
@@ -6773,8 +6784,8 @@ export default function Invoices() {
                             : undefined;
                           return (
                             <>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
+                                <span className="ionex-lineitems-eyebrow">
                                   Invoice Line Items
                                 </span>
                                 <BreakdownModeToggle mode={mode} onMode={(m) => {

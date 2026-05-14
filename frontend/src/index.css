@@ -845,6 +845,59 @@ textarea {
   box-shadow: var(--shadow-sm);
 }
 
+/* Invoice line items inner block — refined section frame with red accent dot */
+.ionex-lineitems-block {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.ionex-lineitems-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+.ionex-lineitems-eyebrow::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--primary-color);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+
+/* Tickets-in-batch eyebrow above the chip row */
+.ionex-tickets-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  margin-bottom: 8px;
+}
+.ionex-tickets-eyebrow strong {
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ionex-tickets-eyebrow::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  background-color: var(--border-color);
+}
+
 /* Page title */
 .ionex-page-title {
   display: flex;
