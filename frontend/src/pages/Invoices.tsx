@@ -3591,7 +3591,7 @@ export default function Invoices() {
           hoveredGroupId: null,
         });
         setPendingHoldTicketId(null);
-      }, 1000);
+      }, 400);
     },
     [isAdmin, computeMoveTargetIds]
   );
@@ -3630,16 +3630,60 @@ export default function Invoices() {
     [uninvoicedGroups, getGroupingForTicket, moveTicketBatchMutation]
   );
 
-  /** Document-level pointer/key listeners are only attached while a drag is active. */
+  /** Document-level pointer/key listeners + edge auto-scroll. Only attached while a drag is active. */
   useEffect(() => {
     if (!dragState) return;
-    const onMove = (e: PointerEvent) => {
-      const el = document.elementFromPoint(e.clientX, e.clientY);
+    const lastPointer = { x: dragState.pointerX, y: dragState.pointerY };
+    const autoScroll = { rafId: null as number | null, vy: 0 };
+    const EDGE_ZONE = 90;       // pixels from top/bottom that triggers auto-scroll
+    const MAX_SPEED = 22;       // pixels per frame at max
+    /** Re-evaluate which batch is under the cursor — called from pointermove and from each scroll tick. */
+    const updateHoveredFromPoint = () => {
+      const el = document.elementFromPoint(lastPointer.x, lastPointer.y);
       const batchEl = (el as Element | null)?.closest('[data-batch-group-id]') as HTMLElement | null;
       const hoveredGroupId = batchEl?.dataset.batchGroupId ?? null;
-      setDragState((prev) => prev ? { ...prev, pointerX: e.clientX, pointerY: e.clientY, hoveredGroupId } : null);
+      setDragState((prev) => prev ? { ...prev, hoveredGroupId } : null);
+    };
+    const stopAutoScroll = () => {
+      autoScroll.vy = 0;
+      if (autoScroll.rafId != null) {
+        window.cancelAnimationFrame(autoScroll.rafId);
+        autoScroll.rafId = null;
+      }
+    };
+    const tick = () => {
+      const v = autoScroll.vy;
+      if (v === 0) { autoScroll.rafId = null; return; }
+      window.scrollBy(0, v);
+      // pointer's clientY hasn't changed but the page moved — recheck what's under the cursor
+      updateHoveredFromPoint();
+      autoScroll.rafId = window.requestAnimationFrame(tick);
+    };
+    const updateAutoScrollFromY = (clientY: number) => {
+      const fromTop = clientY;
+      const fromBottom = window.innerHeight - clientY;
+      let vy = 0;
+      if (fromTop < EDGE_ZONE) {
+        vy = -Math.ceil(((EDGE_ZONE - fromTop) / EDGE_ZONE) * MAX_SPEED);
+      } else if (fromBottom < EDGE_ZONE) {
+        vy = Math.ceil(((EDGE_ZONE - fromBottom) / EDGE_ZONE) * MAX_SPEED);
+      }
+      autoScroll.vy = vy;
+      if (vy !== 0 && autoScroll.rafId == null) {
+        autoScroll.rafId = window.requestAnimationFrame(tick);
+      } else if (vy === 0) {
+        stopAutoScroll();
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
+      setDragState((prev) => prev ? { ...prev, pointerX: e.clientX, pointerY: e.clientY } : null);
+      updateHoveredFromPoint();
+      updateAutoScrollFromY(e.clientY);
     };
     const onUp = () => {
+      stopAutoScroll();
       setDragState((prev) => {
         if (!prev) return null;
         finalizeDrop(prev);
@@ -3650,6 +3694,7 @@ export default function Invoices() {
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        stopAutoScroll();
         setDragState(null);
         justFinishedDragRef.current = true;
         window.setTimeout(() => { justFinishedDragRef.current = false; }, 200);
@@ -3659,6 +3704,7 @@ export default function Invoices() {
     document.addEventListener('pointerup', onUp);
     document.addEventListener('keydown', onKey);
     return () => {
+      stopAutoScroll();
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('keydown', onKey);
