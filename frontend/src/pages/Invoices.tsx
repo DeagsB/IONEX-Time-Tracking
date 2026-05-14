@@ -6549,18 +6549,13 @@ export default function Invoices() {
               const sectionWorkflow = getWorkflowForCustomer(sectionFirstTicket?.customerName, sectionFirstGroup.key.projectNumber);
               const sectionIsPortalApproval = isPortalApprovalWorkflow(sectionWorkflow);
               const sectionBatchNoun = sectionIsPortalApproval ? 'approval' : 'invoice';
-              // Section-level border accent — mirrors the per-batch logic but uses the section's
-              // first batch as the representative state (all batches in a section share a tab/state).
-              const sectionAccent = (() => {
-                const sid = getGroupStatusId(sectionFirstGroup);
-                if (sid === 'approved' || sid === 'submitted_portal' || sid === 'sent' || sid === 'invoiced') {
-                  return { border: 'rgba(34, 197, 94, 0.55)', shadow: 'rgba(34, 197, 94, 0.10)' };
-                }
-                if (sid === 'submitted_approval' || sid === NEEDS_ADJUSTMENT_STATUS_ID || sid === 'portal_submission') {
-                  return { border: 'rgba(245, 158, 11, 0.55)', shadow: 'rgba(245, 158, 11, 0.12)' };
-                }
-                return { border: 'rgba(239, 68, 68, 0.45)', shadow: 'rgba(239, 68, 68, 0.08)' };
-              })();
+              // Ready-tab section border accent — determined by the customer's workflow type:
+              //   Portal Approval workflow → yellow (must Submit for approval before invoicing)
+              //   Direct invoice (non-portal)  → green (can Mark invoiced right now)
+              // Section's first batch is representative since a customer/project section uses one workflow.
+              const sectionAccent = sectionIsPortalApproval
+                ? { border: 'rgba(245, 158, 11, 0.55)', shadow: 'rgba(245, 158, 11, 0.12)' }
+                : { border: 'rgba(34, 197, 94, 0.55)', shadow: 'rgba(34, 197, 94, 0.10)' };
               const cards = section.groups.map((group, batchIndex) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
@@ -6602,6 +6597,11 @@ export default function Invoices() {
                 isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping);
               const groupWorkflow = getWorkflowForCustomer(firstTicket?.customerName, key.projectNumber);
               const groupIsPortalApproval = isPortalApprovalWorkflow(groupWorkflow);
+              // Per-batch border accent (Ready tab) mirrors section accent: portal approval = yellow,
+              // direct invoice = green. Drag/drop hover/source colors still take priority.
+              const groupAccentBorder = groupIsPortalApproval
+                ? 'rgba(245, 158, 11, 0.55)'
+                : 'rgba(34, 197, 94, 0.55)';
               const isDragSource = dragState?.sourceGroupId === groupId;
               const isValidDropTarget = !!dragState && dragState.validTargetIds.has(groupId);
               const isHoveredDropTarget = isValidDropTarget && dragState?.hoveredGroupId === groupId;
@@ -6621,7 +6621,7 @@ export default function Invoices() {
                   padding: '16px',
                   backgroundColor: isHoveredDropTarget ? 'rgba(34, 197, 94, 0.08)' : 'var(--bg-secondary)',
                   borderRadius: '8px',
-                  border: dragOutline ?? '1px solid var(--text-tertiary)',
+                  border: dragOutline ?? `1px solid ${groupAccentBorder}`,
                   opacity: isInvalidDuringDrag ? 0.55 : 1,
                   transition: 'background-color 0.12s, border-color 0.12s, opacity 0.12s',
                   boxShadow: periodStillAccumulating
