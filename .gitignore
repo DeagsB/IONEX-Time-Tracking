@@ -30,6 +30,10 @@ roles.sql
 *.swo
 *~
 
+# Claude Code / MCP local config
+.claude/
+.mcp.json
+
 # OS
 .DS_Store
 Thumbs.db

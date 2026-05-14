@@ -47,9 +47,11 @@ interface ToastProps {
   /** Milliseconds visible before auto-dismiss. Default 6000. Pass 0 to disable auto-dismiss. */
   durationMs?: number;
   position?: ToastPosition;
+  /** Optional inline action (e.g. Undo). Clicking it calls onClick then dismisses the toast. */
+  action?: { label: string; onClick: () => void };
 }
 
-export function Toast({ message, onDismiss, variant = 'error', durationMs = 6000, position = 'bottom-right' }: ToastProps) {
+export function Toast({ message, onDismiss, variant = 'error', durationMs = 6000, position = 'bottom-right', action }: ToastProps) {
   const [phase, setPhase] = useState<'hidden' | 'in' | 'out'>('hidden');
   const [renderedMessage, setRenderedMessage] = useState<string | null>(null);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,6 +126,37 @@ export function Toast({ message, onDismiss, variant = 'error', durationMs = 6000
       }}
     >
       <span style={{ flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderedMessage}</span>
+      {action && (
+        <button
+          type="button"
+          onClick={() => {
+            if (dismissTimer.current) { clearTimeout(dismissTimer.current); dismissTimer.current = null; }
+            action.onClick();
+            setPhase('out');
+            removeTimer.current = setTimeout(() => {
+              setPhase('hidden');
+              onDismiss();
+            }, 320);
+          }}
+          style={{
+            flexShrink: 0,
+            border: `1px solid ${colors.text}`,
+            backgroundColor: 'transparent',
+            color: colors.text,
+            fontSize: '12px',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            cursor: 'pointer',
+            padding: '4px 10px',
+            borderRadius: '6px',
+            lineHeight: 1.2,
+            fontFamily: 'inherit',
+          }}
+        >
+          {action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => {
