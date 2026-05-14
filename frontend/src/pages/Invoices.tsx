@@ -963,6 +963,34 @@ function PoAfeBreakdownLine({
         fontSize: '13px',
       }}
     >
+      {formattedServiceDate && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
+            void copyServiceDate();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              void copyServiceDate();
+            }
+          }}
+          onMouseEnter={() => setHoverServiceDate(true)}
+          onMouseLeave={() => setHoverServiceDate(false)}
+          title={copiedServiceDate ? 'Copied!' : 'Click to copy service date'}
+          style={{
+            ...amountBoxStyle,
+            color: 'var(--text-secondary)',
+            backgroundColor: copiedServiceDate ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+            boxShadow: hoverServiceDate || copiedServiceDate ? shadowHover : shadowRest,
+            transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
+          }}
+        >
+          {formattedServiceDate}
+        </div>
+      )}
       <div
         role="button"
         tabIndex={0}
@@ -1070,60 +1098,30 @@ function PoAfeBreakdownLine({
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: '10px' }}>
-          {formattedServiceDate && (
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation();
-                void copyServiceDate();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  void copyServiceDate();
-                }
-              }}
-              onMouseEnter={() => setHoverServiceDate(true)}
-              onMouseLeave={() => setHoverServiceDate(false)}
-              title={copiedServiceDate ? 'Copied!' : 'Click to copy service date'}
-              style={{
-                ...amountBoxStyle,
-                color: 'var(--text-secondary)',
-                backgroundColor: copiedServiceDate ? 'var(--bg-secondary)' : 'var(--bg-primary)',
-                boxShadow: hoverServiceDate || copiedServiceDate ? shadowHover : shadowRest,
-                transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
-              }}
-            >
-              {formattedServiceDate}
-            </div>
-          )}
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
+            void copyAmount();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
               void copyAmount();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                void copyAmount();
-              }
-            }}
-            onMouseEnter={() => setHoverAmount(true)}
-            onMouseLeave={() => setHoverAmount(false)}
-            title={copiedAmount ? 'Copied!' : 'Click to copy this amount only'}
-            style={{
-              ...amountBoxStyle,
-              backgroundColor: copiedAmount ? 'var(--bg-secondary)' : 'var(--bg-primary)',
-              boxShadow: hoverAmount || copiedAmount ? shadowHover : shadowRest,
-              transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
-            }}
-          >
-            {formattedTotal}
-          </div>
+            }
+          }}
+          onMouseEnter={() => setHoverAmount(true)}
+          onMouseLeave={() => setHoverAmount(false)}
+          title={copiedAmount ? 'Copied!' : 'Click to copy this amount only'}
+          style={{
+            ...amountBoxStyle,
+            backgroundColor: copiedAmount ? 'var(--bg-secondary)' : 'var(--bg-primary)',
+            boxShadow: hoverAmount || copiedAmount ? shadowHover : shadowRest,
+            transition: 'box-shadow 0.2s ease, background-color 0.2s ease',
+          }}
+        >
+          {formattedTotal}
         </div>
       )}
     </div>
