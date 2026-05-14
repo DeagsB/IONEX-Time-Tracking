@@ -796,25 +796,61 @@ function TicketChip({ ticket, onOpenTicket, isAdmin, onMoveClick, onResetOverrid
   );
 }
 
-type BreakdownMode = 'itemized' | 'split' | 'day' | 'combined';
+type LinesMode = 'itemized' | 'rate' | 'day' | 'rate-day';
 
-function BreakdownModeToggle({ mode, onMode }: { mode: BreakdownMode; onMode: (m: BreakdownMode) => void }) {
-  const btn = (label: string, m: BreakdownMode, leftBorder?: boolean) => (
-    <button type="button" onClick={mode !== m ? () => onMode(m) : undefined} style={{
+/**
+ * Two pill groups: Lines (how labour is split) and Detail (whether expenses fold in).
+ * Lines is mutually exclusive 4-way; Detail is an independent toggle. Combined+rate is
+ * not meaningful (expenses have no rate), so expenses still render below in any rate mode.
+ */
+function BreakdownModeToggle({
+  lines,
+  combined,
+  onLines,
+  onCombined,
+}: {
+  lines: LinesMode;
+  combined: boolean;
+  onLines: (m: LinesMode) => void;
+  onCombined: (c: boolean) => void;
+}) {
+  const linesBtn = (label: string, m: LinesMode, leftBorder?: boolean) => (
+    <button type="button" onClick={lines !== m ? () => onLines(m) : undefined} style={{
       padding: '3px 10px', border: 'none',
       borderLeft: leftBorder ? '1px solid var(--border-color)' : 'none',
-      cursor: mode !== m ? 'pointer' : 'default',
-      backgroundColor: mode === m ? 'var(--primary-color)' : 'var(--bg-primary)',
-      color: mode === m ? 'white' : 'var(--text-secondary)',
+      cursor: lines !== m ? 'pointer' : 'default',
+      backgroundColor: lines === m ? 'var(--primary-color)' : 'var(--bg-primary)',
+      color: lines === m ? 'white' : 'var(--text-secondary)',
       transition: 'background-color 0.15s, color 0.15s',
     }}>{label}</button>
   );
+  const linesIsRate = lines === 'rate' || lines === 'rate-day';
+  const combinedDisabled = linesIsRate; // expenses can't fold into rate-grouped lines
   return (
-    <div style={{ display: 'inline-flex', borderRadius: '14px', border: '1px solid var(--border-color)', overflow: 'hidden', fontSize: '11px', fontWeight: 600 }}>
-      {btn('Itemized', 'itemized')}
-      {btn('Split by rate', 'split', true)}
-      {btn('Split by day', 'day', true)}
-      {btn('Combined', 'combined', true)}
+    <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', fontSize: '11px', fontWeight: 600, flexWrap: 'wrap' }}>
+      <div style={{ display: 'inline-flex', borderRadius: '14px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+        {linesBtn('Itemized', 'itemized')}
+        {linesBtn('By rate', 'rate', true)}
+        {linesBtn('By day', 'day', true)}
+        {linesBtn('By rate & day', 'rate-day', true)}
+      </div>
+      <button
+        type="button"
+        onClick={combinedDisabled ? undefined : () => onCombined(!combined)}
+        title={combinedDisabled ? 'Expenses always render separately when splitting by rate' : undefined}
+        style={{
+          padding: '3px 10px',
+          borderRadius: '14px',
+          border: '1px solid var(--border-color)',
+          cursor: combinedDisabled ? 'not-allowed' : 'pointer',
+          backgroundColor: combined && !combinedDisabled ? 'var(--primary-color)' : 'var(--bg-primary)',
+          color: combined && !combinedDisabled ? 'white' : combinedDisabled ? 'var(--text-tertiary, var(--text-secondary))' : 'var(--text-secondary)',
+          opacity: combinedDisabled ? 0.5 : 1,
+          transition: 'background-color 0.15s, color 0.15s',
+        }}
+      >
+        Combined w/ expenses
+      </button>
     </div>
   );
 }
@@ -1960,11 +1996,16 @@ function buildPoAfeBreakdown(
     .filter((line) => line.poAfe !== NO_PO_AFE_LABEL);
 }
 
-/** Splits labour into one line per rate type that has hours > 0; useful when different rate types are billed */
+/**
+ * Splits labour into one line per rate type that has hours > 0. When byDay, further splits by
+ * ticket service date so each line is a (date, rate-type, rate) tuple — useful when an invoice
+ * needs per-day-per-rate granularity. includeExpenses currently only applies when !byDay.
+ */
 function buildRateTypeBreakdown(
   tickets: (ServiceTicket & { recordId?: string })[],
   expensesByRecordId: Map<string, InvoiceExpenseLine[]>,
-  includeExpenses = false
+  includeExpenses = false,
+  byDay = false
 ): InvoiceBreakdownLine[] {
   const RATE_TYPES = [
     { key: 'ST', label: 'Shop Time (ST)', rateField: 'rt' as const },
@@ -1973,12 +2014,15 @@ function buildRateTypeBreakdown(
     { key: 'SO', label: 'Shop OT (SO)', rateField: 'shop_ot' as const },
     { key: 'FO', label: 'Field OT (FO)', rateField: 'field_ot' as const },
   ];
-  
-  // Key is `${rateType}_${rateAmount}`
+
+  // Map key is `${day}|${rateType}_${rateAmount}` when byDay; else `${rateType}_${rateAmount}`.
   const hoursMap = new Map<string, number>();
   const numsMap = new Map<string, string[]>();
-  
+  const dayMap = new Map<string, string>(); // composite key → day (byDay only)
+
   for (const t of tickets) {
+    const day = byDay ? toDateStr(t.date) : '';
+    if (byDay && !day) continue;
     const { rtHours, ttHours, ftHours, shopOtHours, fieldOtHours } =
       (() => {
         const e = t.entries;
@@ -1990,14 +2034,14 @@ function buildRateTypeBreakdown(
         return { rtHours: rt, ttHours: tt, ftHours: ft, shopOtHours: so, fieldOtHours: fo };
       })();
     const hByKey: Record<string, number> = { ST: rtHours, TT: ttHours, FT: ftHours, SO: shopOtHours, FO: fieldOtHours };
-    
+
     for (const { key, rateField } of RATE_TYPES) {
       const h = hByKey[key];
       if (h > 0) {
         const rate = t.rates[rateField] || 0;
-        const compositeKey = `${key}_${rate}`;
-        
+        const compositeKey = byDay ? `${day}|${key}_${rate}` : `${key}_${rate}`;
         hoursMap.set(compositeKey, (hoursMap.get(compositeKey) ?? 0) + h);
+        if (byDay) dayMap.set(compositeKey, day);
         if (t.ticketNumber) {
           const arr = numsMap.get(compositeKey) ?? [];
           arr.push(t.ticketNumber);
@@ -2006,36 +2050,49 @@ function buildRateTypeBreakdown(
       }
     }
   }
-  
+
   const lines: InvoiceBreakdownLine[] = [];
-  
-  for (const { key, label } of RATE_TYPES) {
-    // Find all composite keys that start with this rate type
-    const matchingKeys = Array.from(hoursMap.keys()).filter(k => k.startsWith(`${key}_`));
-    
-    // Sort by rate descending (optional, but nice for consistency)
-    matchingKeys.sort((a, b) => {
-      const rateA = Number(a.split('_')[1]);
-      const rateB = Number(b.split('_')[1]);
-      return rateB - rateA;
-    });
-    
-    for (const compositeKey of matchingKeys) {
-      const hrs = hoursMap.get(compositeKey) ?? 0;
-      if (hrs <= 0) continue;
-      
-      const rate = Number(compositeKey.split('_')[1]);
-      const amount = Math.round(hrs * rate * 100) / 100;
-      
-      if (amount > 0) {
-        const nums = numsMap.get(compositeKey) ?? [];
-        const ticketList = formatTicketNumbersWithRanges([...nums].sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b)));
-        lines.push({ ticketList: ticketList ? `${label} (${ticketList})` : label, poAfe: '', totalAmount: amount, splitRate: rate, splitHours: hrs });
+
+  /** Returns the rate-type segment of a composite key (after the optional `${day}|` prefix). */
+  const rateSegment = (k: string): string => (byDay ? (k.split('|')[1] ?? k) : k);
+
+  // When byDay, order primarily by day ascending so the invoice reads chronologically.
+  const dayOrder = byDay
+    ? [...new Set([...hoursMap.keys()].map((k) => dayMap.get(k) ?? ''))].sort((a, b) => a.localeCompare(b))
+    : [''];
+
+  for (const day of dayOrder) {
+    for (const { key, label } of RATE_TYPES) {
+      const matchingKeys = Array.from(hoursMap.keys()).filter((k) =>
+        byDay ? dayMap.get(k) === day && rateSegment(k).startsWith(`${key}_`) : k.startsWith(`${key}_`)
+      );
+      matchingKeys.sort((a, b) => {
+        const rateA = Number(rateSegment(a).split('_')[1]);
+        const rateB = Number(rateSegment(b).split('_')[1]);
+        return rateB - rateA;
+      });
+      for (const compositeKey of matchingKeys) {
+        const hrs = hoursMap.get(compositeKey) ?? 0;
+        if (hrs <= 0) continue;
+        const rate = Number(rateSegment(compositeKey).split('_')[1]);
+        const amount = Math.round(hrs * rate * 100) / 100;
+        if (amount > 0) {
+          const nums = numsMap.get(compositeKey) ?? [];
+          const ticketList = formatTicketNumbersWithRanges([...nums].sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b)));
+          lines.push({
+            ticketList: ticketList ? `${label} (${ticketList})` : label,
+            poAfe: '',
+            totalAmount: amount,
+            splitRate: rate,
+            splitHours: hrs,
+            serviceDate: byDay ? day : undefined,
+          });
+        }
       }
     }
   }
-  
-  if (includeExpenses) {
+
+  if (includeExpenses && !byDay) {
     for (const t of tickets) {
       const rid = t.recordId;
       const exps = rid ? (expensesByRecordId.get(rid) ?? []) : [];
@@ -2048,15 +2105,18 @@ function buildRateTypeBreakdown(
   return lines;
 }
 
-/** One labour line per ticket date (yyyy-mm-dd). Sums labour amount across rate types for that day; expenses excluded — they render below as separate lines. */
+/** One labour line per ticket date (yyyy-mm-dd). When includeExpenses, expense amounts on that day fold into the line total; otherwise expenses render below as separate lines. */
 function buildDayBreakdown(
-  tickets: (ServiceTicket & { recordId?: string })[]
+  tickets: (ServiceTicket & { recordId?: string })[],
+  expensesByRecordId: Map<string, InvoiceExpenseLine[]>,
+  includeExpenses = false
 ): InvoiceBreakdownLine[] {
   const byDay = new Map<string, { nums: string[]; amount: number }>();
   for (const t of tickets) {
     const day = toDateStr(t.date);
     if (!day) continue;
-    const amt = calculateTicketTotalAmount(t, []);
+    const exps = includeExpenses && t.recordId ? (expensesByRecordId.get(t.recordId) ?? []) : [];
+    const amt = calculateTicketTotalAmount(t, exps);
     const entry = byDay.get(day) ?? { nums: [], amount: 0 };
     if (t.ticketNumber) entry.nums.push(t.ticketNumber);
     entry.amount += amt;
@@ -4987,11 +5047,11 @@ export default function Invoices() {
               const isCombined = combinedExpenseGroupIds.has(persistId);
               const isSplitRate = splitRateGroupIds.has(persistId);
               const isSplitDay = splitDayGroupIds.has(persistId);
-              const breakdownMode: BreakdownMode = isCombined ? 'combined' : isSplitRate ? 'split' : isSplitDay ? 'day' : 'itemized';
+              const linesMode: LinesMode = isSplitRate && isSplitDay ? 'rate-day' : isSplitRate ? 'rate' : isSplitDay ? 'day' : 'itemized';
               const breakdownLines = isSplitRate
-                ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false)
+                ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false, isSplitDay)
                 : isSplitDay
-                ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[])
+                ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                 : key.periodKey && !isCnrlPeriodGroup
                 ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                 : buildPoAfeBreakdown(
@@ -5762,7 +5822,8 @@ export default function Invoices() {
                           );
                           const hasExpenses = expLines.length > 0;
                           const expCount = expLines.length;
-                          const categoryLabel = isCombined && hasExpenses
+                          const expensesFolded = isCombined && !isSplitRate;
+                          const categoryLabel = expensesFolded && hasExpenses
                             ? `labour & ${expCount === 1 ? 'expense' : 'expenses'}`
                             : undefined;
                           return (
@@ -5771,16 +5832,22 @@ export default function Invoices() {
                                 <span className="ionex-lineitems-eyebrow">
                                   Invoice Line Items
                                 </span>
-                                <BreakdownModeToggle mode={breakdownMode} onMode={(m) => {
-                                  setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(persistId); else next.delete(persistId); return next; });
-                                  setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(persistId); else next.delete(persistId); return next; });
-                                  setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day') next.add(persistId); else next.delete(persistId); return next; });
-                                }} />
+                                <BreakdownModeToggle
+                                  lines={linesMode}
+                                  combined={isCombined}
+                                  onLines={(m) => {
+                                    setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'rate' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
+                                    setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
+                                  }}
+                                  onCombined={(c) => {
+                                    setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (c) next.add(persistId); else next.delete(persistId); return next; });
+                                  }}
+                                />
                               </div>
                               {breakdownLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
                                 <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
                               ))}
-                              {!isCombined && !isSplitRate && !isSplitDay && expLines.map((l, i) => {
+                              {(isSplitRate || !isCombined) && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                                 const onCtx = () => {
                                   const tNum = l.ticketNums[0];
@@ -5792,27 +5859,6 @@ export default function Invoices() {
                                 return (
                                   <PoAfeBreakdownLine
                                     key={`exp-${i}`}
-                                    ticketList={`${l.label}${suffix}`}
-                                    poAfe=""
-                                    totalAmount={l.amount}
-                                    category="expense"
-                                    onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
-                                    contextMenuHint={hint}
-                                  />
-                                );
-                              })}
-                              {(isSplitRate || isSplitDay) && expLines.map((l, i) => {
-                                const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
-                                const onCtx = () => {
-                                  const tNum = l.ticketNums[0];
-                                  const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
-                                  const rid = tk?.recordId?.trim();
-                                  if (rid) setEditTicketRecordId(rid);
-                                };
-                                const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
-                                return (
-                                  <PoAfeBreakdownLine
-                                    key={`exp-split-${i}`}
                                     ticketList={`${l.label}${suffix}`}
                                     poAfe=""
                                     totalAmount={l.amount}
@@ -6491,7 +6537,7 @@ export default function Invoices() {
                     const isCombined = combinedExpenseGroupIds.has(groupId);
                     const isSplitRatePending = splitRateGroupIds.has(groupId);
                     const isSplitDayPending = splitDayGroupIds.has(groupId);
-                    const pendingMode: BreakdownMode = isCombined ? 'combined' : isSplitRatePending ? 'split' : isSplitDayPending ? 'day' : 'itemized';
+                    const linesMode: LinesMode = isSplitRatePending && isSplitDayPending ? 'rate-day' : isSplitRatePending ? 'rate' : isSplitDayPending ? 'day' : 'itemized';
                     const { lines: expLines } = computeGroupExpenseTotal(
                       groupTickets as (ServiceTicket & { recordId?: string })[],
                       expensesByRecordId
@@ -6504,13 +6550,14 @@ export default function Invoices() {
                         t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
                       );
                     const labourLines = isSplitRatePending
-                      ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false)
+                      ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false, isSplitDayPending)
                       : isSplitDayPending
-                      ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[])
+                      ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                       : (key.periodKey && key.approverCode === key.periodKey)
                       ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                       : buildPoAfeBreakdown(groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[], getKeyFn, expensesByRecordId, isCombined);
-                    const categoryLabel = isCombined && hasExpenses
+                    const expensesFolded = isCombined && !isSplitRatePending;
+                    const categoryLabel = expensesFolded && hasExpenses
                       ? `labour & ${expCount === 1 ? 'expense' : 'expenses'}`
                       : undefined;
                     return (
@@ -6519,16 +6566,22 @@ export default function Invoices() {
                           <span className="ionex-lineitems-eyebrow">
                             Invoice Line Items
                           </span>
-                          <BreakdownModeToggle mode={pendingMode} onMode={(m) => {
-                            setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(groupId); else next.delete(groupId); return next; });
-                            setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(groupId); else next.delete(groupId); return next; });
-                            setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day') next.add(groupId); else next.delete(groupId); return next; });
-                          }} />
+                          <BreakdownModeToggle
+                            lines={linesMode}
+                            combined={isCombined}
+                            onLines={(m) => {
+                              setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'rate' || m === 'rate-day') next.add(groupId); else next.delete(groupId); return next; });
+                              setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day' || m === 'rate-day') next.add(groupId); else next.delete(groupId); return next; });
+                            }}
+                            onCombined={(c) => {
+                              setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (c) next.add(groupId); else next.delete(groupId); return next; });
+                            }}
+                          />
                         </div>
                         {labourLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
                           <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
                         ))}
-                        {!isCombined && !isSplitRatePending && !isSplitDayPending && expLines.map((l, i) => {
+                        {(isSplitRatePending || !isCombined) && expLines.map((l, i) => {
                           const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                           const onCtx = () => {
                             const tNum = l.ticketNums[0];
@@ -6540,27 +6593,6 @@ export default function Invoices() {
                           return (
                             <PoAfeBreakdownLine
                               key={`exp-${i}`}
-                              ticketList={`${l.label}${suffix}`}
-                              poAfe=""
-                              totalAmount={l.amount}
-                              category="expense"
-                              onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
-                              contextMenuHint={hint}
-                            />
-                          );
-                        })}
-                        {(isSplitRatePending || isSplitDayPending) && expLines.map((l, i) => {
-                          const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
-                          const onCtx = () => {
-                            const tNum = l.ticketNums[0];
-                            const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
-                            const rid = tk?.recordId?.trim();
-                            if (rid) setEditTicketRecordId(rid);
-                          };
-                          const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
-                          return (
-                            <PoAfeBreakdownLine
-                              key={`exp-split-${i}`}
                               ticketList={`${l.label}${suffix}`}
                               poAfe=""
                               totalAmount={l.amount}
@@ -7143,7 +7175,7 @@ export default function Invoices() {
                           const isCombined = combinedExpenseGroupIds.has(persistId);
                           const isSplitRatePending = splitRateGroupIds.has(persistId);
                           const isSplitDayPending = splitDayGroupIds.has(persistId);
-                          const mode: BreakdownMode = isCombined ? 'combined' : isSplitRatePending ? 'split' : isSplitDayPending ? 'day' : 'itemized';
+                          const linesMode: LinesMode = isSplitRatePending && isSplitDayPending ? 'rate-day' : isSplitRatePending ? 'rate' : isSplitDayPending ? 'day' : 'itemized';
                           const groupTickets = group.tickets;
                           const { lines: expLines } = computeGroupExpenseTotal(
                             groupTickets as (ServiceTicket & { recordId?: string })[],
@@ -7157,13 +7189,14 @@ export default function Invoices() {
                               t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
                             );
                           const labourLines = isSplitRatePending
-                            ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false)
+                            ? buildRateTypeBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, false, isSplitDayPending)
                             : isSplitDayPending
-                            ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[])
+                            ? buildDayBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                             : (group.key.periodKey && group.key.approverCode === group.key.periodKey)
                             ? buildSingleLineBreakdown(groupTickets as (ServiceTicket & { recordId?: string })[], expensesByRecordId, isCombined)
                             : buildPoAfeBreakdown(groupTickets as (ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; recordId?: string })[], getKeyFn, expensesByRecordId, isCombined);
-                          const categoryLabel = isCombined && hasExpenses
+                          const expensesFolded = isCombined && !isSplitRatePending;
+                          const categoryLabel = expensesFolded && hasExpenses
                             ? `labour & ${expCount === 1 ? 'expense' : 'expenses'}`
                             : undefined;
                           return (
@@ -7172,16 +7205,22 @@ export default function Invoices() {
                                 <span className="ionex-lineitems-eyebrow">
                                   Invoice Line Items
                                 </span>
-                                <BreakdownModeToggle mode={mode} onMode={(m) => {
-                                  setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (m === 'combined') next.add(persistId); else next.delete(persistId); return next; });
-                                  setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'split') next.add(persistId); else next.delete(persistId); return next; });
-                                  setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day') next.add(persistId); else next.delete(persistId); return next; });
-                                }} />
+                                <BreakdownModeToggle
+                                  lines={linesMode}
+                                  combined={isCombined}
+                                  onLines={(m) => {
+                                    setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'rate' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
+                                    setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
+                                  }}
+                                  onCombined={(c) => {
+                                    setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (c) next.add(persistId); else next.delete(persistId); return next; });
+                                  }}
+                                />
                               </div>
                               {labourLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
                                 <PoAfeBreakdownLine key={i} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
                               ))}
-                              {!isCombined && !isSplitRatePending && !isSplitDayPending && expLines.map((l, i) => {
+                              {(isSplitRatePending || !isCombined) && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
                                 const onCtx = () => {
                                   const tNum = l.ticketNums[0];
@@ -7193,27 +7232,6 @@ export default function Invoices() {
                                 return (
                                   <PoAfeBreakdownLine
                                     key={`exp-${i}`}
-                                    ticketList={`${l.label}${suffix}`}
-                                    poAfe=""
-                                    totalAmount={l.amount}
-                                    category="expense"
-                                    onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
-                                    contextMenuHint={hint}
-                                  />
-                                );
-                              })}
-                              {(isSplitRatePending || isSplitDayPending) && expLines.map((l, i) => {
-                                const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
-                                const onCtx = () => {
-                                  const tNum = l.ticketNums[0];
-                                  const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
-                                  const rid = tk?.recordId?.trim();
-                                  if (rid) setEditTicketRecordId(rid);
-                                };
-                                const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
-                                return (
-                                  <PoAfeBreakdownLine
-                                    key={`exp-split-${i}`}
                                     ticketList={`${l.label}${suffix}`}
                                     poAfe=""
                                     totalAmount={l.amount}
