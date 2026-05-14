@@ -1116,6 +1116,10 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
         queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
         queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+        // When this modal is opened from the Invoices page chip flow, expense line items
+        // there read from this query — invalidate so new/removed lines show without reload.
+        queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
+        queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
       }
       setIsTicketEdited(false);
       justSavedRef.current = true;
