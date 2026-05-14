@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, Fragment, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Toast } from '../components/Toast';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -5395,7 +5395,7 @@ export default function Invoices() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {invoicedSections.map((section) => {
               const sectionMulti = section.groups.length > 1;
-              const collapsed = sectionMulti && isSectionCollapsed('invoiced', section.key);
+              const collapsed = isSectionCollapsed('invoiced', section.key);
               const batchNodes = section.groups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
@@ -6256,9 +6256,6 @@ export default function Invoices() {
               );
               });
 
-              if (!sectionMulti) {
-                return <Fragment key={section.key}>{batchNodes[0]}</Fragment>;
-              }
               return (
                 <div key={section.key} className="ionex-customer-section">
                   <div className="ionex-customer-section-header">
@@ -6388,7 +6385,7 @@ export default function Invoices() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {readyTabSections.map((section) => {
               const sectionMulti = section.groups.length > 1;
-              const sectionCollapsed = sectionMulti && isSectionCollapsed('ready', section.key);
+              const sectionCollapsed = isSectionCollapsed('ready', section.key);
               const sectionFirstGroup = section.groups[0];
               const sectionFirstTicket = sectionFirstGroup.tickets[0];
               const sectionWorkflow = getWorkflowForCustomer(sectionFirstTicket?.customerName, sectionFirstGroup.key.projectNumber);
@@ -7020,10 +7017,10 @@ export default function Invoices() {
             });
 
             // Section container wraps every customer's batch(es) — single or multiple — so
-            // every customer gets the same red-titled card. Collapse toggle still only shows
-            // when there are multiple batches; single-batch sections render the card directly.
-            const collapsible = sectionMulti;
-            const isCollapsed = collapsible && sectionCollapsed;
+            // every customer gets the same red-titled card. The collapse toggle is always
+            // available so a user can minimize even single-batch sections.
+            const collapsible = true;
+            const isCollapsed = sectionCollapsed;
             return (
               <div
                 key={section.key}
@@ -7490,9 +7487,6 @@ export default function Invoices() {
                     );
                   };
 
-                  if (!isGrouped) {
-                    return <Fragment key={section.key}>{renderBatch(section.groups[0], false)}</Fragment>;
-                  }
                   const collapsed = isSectionCollapsed('submitted', section.key);
                   const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
@@ -7518,72 +7512,74 @@ export default function Invoices() {
                         <span className="ionex-customer-section-meta">
                           {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}
                         </span>
-                        <div className="ionex-customer-section-actions">
-                          <button
-                            type="button"
-                            disabled={bulkBuilding}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setExportError(null);
-                              setBulkDownloadingSectionKey(section.key);
-                              try {
-                                for (const g of section.groups) {
-                                  const merged = await buildMergedBatchPdfBlob(g);
-                                  const filename = getApprovalBatchFilename(g.key, g.tickets, projects);
-                                  saveAs(merged, filename);
+                        {isGrouped && (
+                          <div className="ionex-customer-section-actions">
+                            <button
+                              type="button"
+                              disabled={bulkBuilding}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setExportError(null);
+                                setBulkDownloadingSectionKey(section.key);
+                                try {
+                                  for (const g of section.groups) {
+                                    const merged = await buildMergedBatchPdfBlob(g);
+                                    const filename = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                    saveAs(merged, filename);
+                                  }
+                                } catch (err) {
+                                  console.error('Bulk re-download error:', err);
+                                  setExportError(err instanceof Error ? err.message : 'Could not generate one or more batch PDFs.');
+                                } finally {
+                                  setBulkDownloadingSectionKey(null);
                                 }
-                              } catch (err) {
-                                console.error('Bulk re-download error:', err);
-                                setExportError(err instanceof Error ? err.message : 'Could not generate one or more batch PDFs.');
-                              } finally {
-                                setBulkDownloadingSectionKey(null);
-                              }
-                            }}
-                            title="Re-generate and download every approver batch PDF in this group. Each batch saves as its own file."
-                            style={{
-                              padding: '6px 10px', fontSize: '12px', fontWeight: 600,
-                              borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-                              cursor: bulkBuilding ? 'wait' : 'pointer',
-                              display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            }}
-                          >
-                            <span aria-hidden>📥</span>
-                            {bulkBuilding ? 'Building…' : `Download all (${section.groups.length})`}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={unmarkInvoicedMutation.isPending}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setUndoBulkApprovalConfirm({
-                                sectionKey: section.key,
-                                customerName: section.customerName || 'Unknown customer',
-                                projectLine: '',
-                                periodLine: '',
-                                scope: 'submitted',
-                                batches: section.groups.map((g) => ({
-                                  persistId: resolvedPersistGroupId(g, invoicedMarkRows),
-                                  approver: getApproverForGroupKey(g.key),
-                                })),
-                              });
-                            }}
-                            title="Undo every batch in this group — they all return to the Ready tab."
-                            style={{
-                              padding: '6px 10px', fontSize: '12px', fontWeight: 500,
-                              borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'transparent', color: 'var(--text-secondary)',
-                              cursor: unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
-                              display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            }}
-                          >
-                            ↺ Undo all
-                          </button>
-                        </div>
+                              }}
+                              title="Re-generate and download every approver batch PDF in this group. Each batch saves as its own file."
+                              style={{
+                                padding: '6px 10px', fontSize: '12px', fontWeight: 600,
+                                borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+                                cursor: bulkBuilding ? 'wait' : 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                              }}
+                            >
+                              <span aria-hidden>📥</span>
+                              {bulkBuilding ? 'Building…' : `Download all (${section.groups.length})`}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={unmarkInvoicedMutation.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setUndoBulkApprovalConfirm({
+                                  sectionKey: section.key,
+                                  customerName: section.customerName || 'Unknown customer',
+                                  projectLine: '',
+                                  periodLine: '',
+                                  scope: 'submitted',
+                                  batches: section.groups.map((g) => ({
+                                    persistId: resolvedPersistGroupId(g, invoicedMarkRows),
+                                    approver: getApproverForGroupKey(g.key),
+                                  })),
+                                });
+                              }}
+                              title="Undo every batch in this group — they all return to the Ready tab."
+                              style={{
+                                padding: '6px 10px', fontSize: '12px', fontWeight: 500,
+                                borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'transparent', color: 'var(--text-secondary)',
+                                cursor: unmarkInvoicedMutation.isPending ? 'not-allowed' : 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                              }}
+                            >
+                              ↺ Undo all
+                            </button>
+                          </div>
+                        )}
                       </div>
                       {!collapsed && (
                         <div className="ionex-customer-section-body">
-                          {section.groups.map((g) => renderBatch(g, true))}
+                          {section.groups.map((g) => renderBatch(g, isGrouped))}
                         </div>
                       )}
                     </div>
@@ -7999,9 +7995,6 @@ export default function Invoices() {
                     );
                   };
 
-                  if (!isGrouped) {
-                    return <Fragment key={section.key}>{renderBatch(section.groups[0], false)}</Fragment>;
-                  }
                   const collapsed = isSectionCollapsed('approved', section.key);
                   const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
@@ -8027,76 +8020,78 @@ export default function Invoices() {
                         <span className="ionex-customer-section-meta">
                           {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}
                         </span>
-                        <div className="ionex-customer-section-actions">
-                          <button
-                            type="button"
-                            disabled={bulkBuilding}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setExportError(null);
-                              setBulkDownloadingSectionKey(section.key);
-                              try {
-                                for (const g of section.groups) {
-                                  const merged = await buildMergedBatchPdfBlob(g);
-                                  const filename = getApprovalBatchFilename(g.key, g.tickets, projects);
-                                  saveAs(merged, filename);
+                        {isGrouped && (
+                          <div className="ionex-customer-section-actions">
+                            <button
+                              type="button"
+                              disabled={bulkBuilding}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setExportError(null);
+                                setBulkDownloadingSectionKey(section.key);
+                                try {
+                                  for (const g of section.groups) {
+                                    const merged = await buildMergedBatchPdfBlob(g);
+                                    const filename = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                    saveAs(merged, filename);
+                                  }
+                                } catch (err) {
+                                  console.error('Bulk re-download error:', err);
+                                  setExportError(err instanceof Error ? err.message : 'Could not generate one or more batch PDFs.');
+                                } finally {
+                                  setBulkDownloadingSectionKey(null);
                                 }
-                              } catch (err) {
-                                console.error('Bulk re-download error:', err);
-                                setExportError(err instanceof Error ? err.message : 'Could not generate one or more batch PDFs.');
-                              } finally {
-                                setBulkDownloadingSectionKey(null);
-                              }
-                            }}
-                            title="Re-generate and download every approver batch PDF in this group."
-                            style={{
-                              padding: '6px 10px', fontSize: '12px', fontWeight: 600,
-                              borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-                              cursor: bulkBuilding ? 'wait' : 'pointer',
-                              display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            }}
-                          >
-                            <span aria-hidden>📥</span>
-                            {bulkBuilding ? 'Building…' : `Download all (${section.groups.length})`}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setUndoBulkApprovalConfirm({
-                                sectionKey: section.key,
-                                customerName: section.customerName || 'Unknown customer',
-                                projectLine: '',
-                                periodLine: '',
-                                scope: 'approved',
-                                batches: section.groups.map((g) => {
-                                  const cName = g.tickets[0]?.customerName;
-                                  const wf = getWorkflowForCustomer(cName, g.key.projectNumber);
-                                  return {
-                                    persistId: resolvedPersistGroupId(g, invoicedMarkRows),
-                                    approver: getApproverForGroupKey(g.key),
-                                    workflowId: wf?.id,
-                                  };
-                                }),
-                              });
-                            }}
-                            title="Undo approval for every batch in this group — they all return to the Submitted tab and their signed PDFs are deleted."
-                            style={{
-                              padding: '6px 10px', fontSize: '12px', fontWeight: 500,
-                              borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'transparent', color: 'var(--text-secondary)',
-                              cursor: 'pointer',
-                              display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            }}
-                          >
-                            ↺ Undo all
-                          </button>
-                        </div>
+                              }}
+                              title="Re-generate and download every approver batch PDF in this group."
+                              style={{
+                                padding: '6px 10px', fontSize: '12px', fontWeight: 600,
+                                borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+                                cursor: bulkBuilding ? 'wait' : 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                              }}
+                            >
+                              <span aria-hidden>📥</span>
+                              {bulkBuilding ? 'Building…' : `Download all (${section.groups.length})`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setUndoBulkApprovalConfirm({
+                                  sectionKey: section.key,
+                                  customerName: section.customerName || 'Unknown customer',
+                                  projectLine: '',
+                                  periodLine: '',
+                                  scope: 'approved',
+                                  batches: section.groups.map((g) => {
+                                    const cName = g.tickets[0]?.customerName;
+                                    const wf = getWorkflowForCustomer(cName, g.key.projectNumber);
+                                    return {
+                                      persistId: resolvedPersistGroupId(g, invoicedMarkRows),
+                                      approver: getApproverForGroupKey(g.key),
+                                      workflowId: wf?.id,
+                                    };
+                                  }),
+                                });
+                              }}
+                              title="Undo approval for every batch in this group — they all return to the Submitted tab and their signed PDFs are deleted."
+                              style={{
+                                padding: '6px 10px', fontSize: '12px', fontWeight: 500,
+                                borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'transparent', color: 'var(--text-secondary)',
+                                cursor: 'pointer',
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                              }}
+                            >
+                              ↺ Undo all
+                            </button>
+                          </div>
+                        )}
                       </div>
                       {!collapsed && (
                         <div className="ionex-customer-section-body">
-                          {section.groups.map((g) => renderBatch(g, true))}
+                          {section.groups.map((g) => renderBatch(g, isGrouped))}
                         </div>
                       )}
                     </div>
@@ -8388,9 +8383,6 @@ export default function Invoices() {
                     );
                   };
 
-                  if (!isGrouped) {
-                    return <Fragment key={section.key}>{renderBatch(section.groups[0], false)}</Fragment>;
-                  }
                   const collapsed = isSectionCollapsed('portal', section.key);
                   return (
                     <div key={section.key} className="ionex-customer-section">
@@ -8418,7 +8410,7 @@ export default function Invoices() {
                       </div>
                       {!collapsed && (
                         <div className="ionex-customer-section-body">
-                          {section.groups.map((g) => renderBatch(g, true))}
+                          {section.groups.map((g) => renderBatch(g, isGrouped))}
                         </div>
                       )}
                     </div>
