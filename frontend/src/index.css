@@ -408,3 +408,459 @@ textarea {
   }
 }
 
+/* ============================================================
+   Invoices page — operational ledger chrome
+   Used by Invoices.tsx tab bar, filter rail, section headings,
+   empty states, and Settings tab. Variables in color-mix() let
+   the red accent track the existing --primary-color across
+   light + dark themes.
+   ============================================================ */
+
+/* Workflow tab rail */
+.ionex-tabs-rail {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin: 0 0 24px;
+  padding: 4px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+.ionex-tabs-rail::before {
+  content: 'Workflow';
+  position: absolute;
+  top: -8px;
+  left: 14px;
+  padding: 0 8px;
+  background-color: var(--bg-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.ionex-tab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--text-secondary);
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  white-space: nowrap;
+}
+.ionex-tab-chip:hover:not(.is-active):not(:disabled) {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+.ionex-tab-chip.is-active {
+  background-color: var(--bg-primary);
+  color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--primary-color) 28%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.ionex-tab-chip.is-terminal {
+  margin-left: auto;
+}
+.ionex-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  border-radius: 999px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  line-height: 1;
+}
+.ionex-tab-chip.is-active .ionex-tab-count {
+  background-color: color-mix(in srgb, var(--primary-color) 18%, transparent);
+  color: var(--primary-color);
+}
+.ionex-tab-count.is-zero {
+  opacity: 0.5;
+}
+
+/* Filter rail — single elevated card with internal dividers */
+.ionex-filter-rail {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 22px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+  overflow: hidden;
+}
+.ionex-filter-rail::before {
+  content: 'Filters';
+  position: absolute;
+  top: -8px;
+  left: 14px;
+  padding: 0 8px;
+  background-color: var(--bg-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  pointer-events: none;
+  z-index: 1;
+}
+.ionex-filter-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  min-width: 200px;
+  flex: 1 1 220px;
+  border-right: 1px solid var(--border-color);
+}
+.ionex-filter-cell + .ionex-filter-cell-action,
+.ionex-filter-cell-action + .ionex-filter-cell-action {
+  border-left: none;
+}
+.ionex-filter-cell-action {
+  display: flex;
+  align-items: stretch;
+  padding: 12px 16px;
+  border-right: 1px solid var(--border-color);
+  flex: 0 0 auto;
+}
+.ionex-filter-cell:last-child,
+.ionex-filter-cell-action:last-child {
+  border-right: none;
+}
+.ionex-filter-cell-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  line-height: 1;
+}
+@media (max-width: 720px) {
+  .ionex-filter-cell {
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .ionex-filter-cell-action {
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .ionex-filter-cell:last-child,
+  .ionex-filter-cell-action:last-child {
+    border-bottom: none;
+  }
+}
+.ionex-filter-help {
+  margin: 0 0 22px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  max-width: 900px;
+}
+.ionex-filter-help strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* Section heading with left guide rule */
+.ionex-section-heading {
+  position: relative;
+  padding-left: 14px;
+  margin-bottom: 16px;
+}
+.ionex-section-heading::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background-color: var(--primary-color);
+  border-radius: 2px;
+}
+.ionex-section-heading-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ionex-section-heading h2,
+.ionex-section-heading h3 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+.ionex-section-heading-meta {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+.ionex-section-heading-meta strong {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+.ionex-section-heading p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 900px;
+}
+
+/* Empty state */
+.ionex-empty {
+  margin: 4px 0;
+  padding: 56px 28px;
+  background-color: var(--bg-primary);
+  border: 1px dashed var(--border-color);
+  border-radius: 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.ionex-empty .glyph {
+  font-size: 56px;
+  line-height: 1;
+  margin-bottom: 8px;
+  opacity: 0.35;
+  filter: saturate(0.7);
+}
+.ionex-empty .title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+.ionex-empty .body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 480px;
+  margin: 0;
+}
+.ionex-empty .cta-row {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.ionex-empty-cta-primary {
+  padding: 9px 18px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.ionex-empty-cta-primary:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+}
+.ionex-empty-cta-secondary {
+  padding: 9px 18px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.ionex-empty-cta-secondary:hover {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color-hover);
+}
+
+/* Search input with leading glyph */
+.ionex-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  max-width: 420px;
+}
+.ionex-search::before {
+  content: '⌕';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+  line-height: 1;
+}
+.ionex-search input {
+  width: 100%;
+  padding: 9px 12px 9px 34px;
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  font-family: inherit;
+}
+.ionex-search input:focus {
+  border-color: color-mix(in srgb, var(--primary-color) 50%, transparent);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+/* Status filter chips */
+.ionex-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 18px;
+}
+
+/* Settings sub-tabs reuse the workflow rail look (compact variant) */
+.ionex-subtabs-rail {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin-bottom: 18px;
+  padding: 4px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+.ionex-subtab-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  text-transform: capitalize;
+}
+.ionex-subtab-chip:hover:not(.is-active) {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+.ionex-subtab-chip.is-active {
+  background-color: var(--bg-primary);
+  color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
+}
+
+/* Settings table — zebra rows + lighter header */
+.ionex-settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ionex-settings-table thead {
+  background-color: var(--bg-secondary);
+}
+.ionex-settings-table th {
+  text-align: left;
+  padding: 11px 14px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+.ionex-settings-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+.ionex-settings-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.ionex-settings-table tbody tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--bg-secondary) 45%, transparent);
+}
+.ionex-settings-table tbody tr:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 5%, var(--bg-tertiary));
+}
+.ionex-settings-table select {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-width: 200px;
+  font-family: inherit;
+}
+.ionex-settings-table .name-cell {
+  font-weight: 600;
+}
+.ionex-settings-card {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Page title */
+.ionex-page-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0 0 20px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.018em;
+  color: var(--text-primary);
+}
+.ionex-page-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border-color), transparent);
+  margin-left: 4px;
+}
+

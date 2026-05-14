@@ -4391,53 +4391,45 @@ export default function Invoices() {
 
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '16px', fontSize: '24px', fontWeight: 600 }}>Invoices</h1>
+      <h1 className="ionex-page-title">Invoices</h1>
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
+      {/* Workflow tab rail */}
+      <div className="ionex-tabs-rail" role="tablist" aria-label="Invoice workflow stage">
         {([
-          { id: 'pending' as const, label: 'Pending', count: pendingAccumulatingGroups.length },
-          { id: 'ready' as const, label: 'Ready for invoicing', count: readyGroups.length },
-          { id: 'submitted' as const, label: 'Submitted', count: submittedApprovalGroups.length },
-          { id: 'approved' as const, label: 'Approved', count: approvedGroups.length },
-          { id: 'portal_submission' as const, label: 'Portal Submission', count: portalSubmissionGroups.length },
-          { id: 'invoiced' as const, label: 'Invoiced', count: finalInvoicedGroups.length },
-          { id: 'settings' as const, label: 'Settings', count: null as number | null },
+          { id: 'pending' as const, label: 'Pending', count: pendingAccumulatingGroups.length, kind: 'lifecycle' as const },
+          { id: 'ready' as const, label: 'Ready', count: readyGroups.length, kind: 'lifecycle' as const },
+          { id: 'submitted' as const, label: 'Submitted', count: submittedApprovalGroups.length, kind: 'lifecycle' as const },
+          { id: 'approved' as const, label: 'Approved', count: approvedGroups.length, kind: 'lifecycle' as const },
+          { id: 'portal_submission' as const, label: 'Portal Submission', count: portalSubmissionGroups.length, kind: 'lifecycle' as const },
+          { id: 'invoiced' as const, label: 'Invoiced', count: finalInvoicedGroups.length, kind: 'lifecycle' as const },
+          { id: 'settings' as const, label: 'Settings', count: null as number | null, kind: 'terminal' as const },
         ]).map((tab) => {
           const isActive = activeTab === tab.id;
+          const classes = ['ionex-tab-chip'];
+          if (isActive) classes.push('is-active');
+          if (tab.kind === 'terminal') classes.push('is-terminal');
           return (
             <button
               key={tab.id}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               onClick={() => { setActiveTab(tab.id); setExportError(null); }}
-              style={{
-                padding: '10px 16px',
-                backgroundColor: 'transparent',
-                border: 'none',
-                borderBottom: isActive ? '2px solid var(--primary-color)' : '2px solid transparent',
-                color: isActive ? 'var(--primary-color)' : 'var(--text-secondary)',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                marginBottom: '-1px',
-              }}
+              className={classes.join(' ')}
             >
-              {tab.label}
+              <span>{tab.label}</span>
               {tab.count != null && (
-                <span style={{ marginLeft: '6px', fontSize: '12px', color: isActive ? 'var(--primary-color)' : 'var(--text-tertiary)', fontWeight: 500 }}>
-                  ({tab.count})
-                </span>
+                <span className={`ionex-tab-count${tab.count === 0 ? ' is-zero' : ''}`}>{tab.count}</span>
               )}
             </button>
           );
         })}
       </div>
 
-      <div style={{ marginBottom: '24px' }}>
-        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filters</div>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={{ flexShrink: 0, minWidth: '220px' }}>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Customer</label>
+      {/* Filter rail */}
+      <div className="ionex-filter-rail">
+        <div className="ionex-filter-cell">
+          <span className="ionex-filter-cell-label">Customer</span>
           <SearchableSelect
             value={selectedCustomerId}
             onChange={(val) => {
@@ -4450,8 +4442,8 @@ export default function Invoices() {
             style={{ fontSize: '14px' }}
           />
         </div>
-        <div style={{ flexShrink: 0, minWidth: '220px' }}>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Project</label>
+        <div className="ionex-filter-cell">
+          <span className="ionex-filter-cell-label">Project</span>
           <SearchableSelect
             value={selectedProjectId}
             onChange={(val) => setSelectedProjectId(val)}
@@ -4464,41 +4456,8 @@ export default function Invoices() {
             style={{ fontSize: '14px' }}
           />
         </div>
-        {selectedProjectId && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                if (!invoiceFilterProject || invoiceFilterProject.status === 'completed') return;
-                if (!window.confirm('Mark this project as completed in Projects? You can change status again from the Projects page.')) return;
-                markProjectCompletedMutation.mutate(selectedProjectId);
-              }}
-              disabled={
-                !selectedProjectId ||
-                markProjectCompletedMutation.isPending ||
-                invoiceFilterProject?.status === 'completed'
-              }
-              style={{
-                padding: '8px 12px',
-                backgroundColor: 'var(--bg-tertiary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor:
-                  !selectedProjectId || markProjectCompletedMutation.isPending || invoiceFilterProject?.status === 'completed'
-                    ? 'not-allowed'
-                    : 'pointer',
-                opacity: invoiceFilterProject?.status === 'completed' ? 0.6 : 1,
-              }}
-            >
-              {invoiceFilterProject?.status === 'completed' ? 'Project completed' : 'Mark project as completed'}
-            </button>
-          </div>
-        )}
-        <div>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Date Range</label>
+        <div className="ionex-filter-cell" style={{ minWidth: 230, flex: '0 0 auto' }}>
+          <span className="ionex-filter-cell-label">Date range</span>
           <div style={{ position: 'relative', display: 'inline-block' }}>
             <button
               type="button"
@@ -4511,14 +4470,15 @@ export default function Invoices() {
                 border: '1px solid var(--border-color)',
                 borderRadius: '6px',
                 color: 'var(--text-primary)',
-                fontSize: '14px',
+                fontSize: '13px',
                 fontWeight: 600,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 fontFamily: 'inherit',
-                minWidth: '230px',
+                width: '100%',
+                minWidth: '210px',
               }}
             >
               <span style={{ fontSize: '14px' }}>📅</span>
@@ -4550,9 +4510,43 @@ export default function Invoices() {
             )}
           </div>
         </div>
+        {selectedProjectId && (
+          <div className="ionex-filter-cell-action">
+            <button
+              type="button"
+              onClick={() => {
+                if (!invoiceFilterProject || invoiceFilterProject.status === 'completed') return;
+                if (!window.confirm('Mark this project as completed in Projects? You can change status again from the Projects page.')) return;
+                markProjectCompletedMutation.mutate(selectedProjectId);
+              }}
+              disabled={
+                !selectedProjectId ||
+                markProjectCompletedMutation.isPending ||
+                invoiceFilterProject?.status === 'completed'
+              }
+              style={{
+                alignSelf: 'center',
+                padding: '8px 14px',
+                backgroundColor: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                color: 'var(--text-primary)',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor:
+                  !selectedProjectId || markProjectCompletedMutation.isPending || invoiceFilterProject?.status === 'completed'
+                    ? 'not-allowed'
+                    : 'pointer',
+                opacity: invoiceFilterProject?.status === 'completed' ? 0.6 : 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {invoiceFilterProject?.status === 'completed' ? '✓ Project completed' : 'Mark project completed'}
+            </button>
+          </div>
+        )}
         {selectedCustomerId && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Custom range download</label>
+          <div className="ionex-filter-cell-action">
             <button
               type="button"
               onClick={handleDownloadCustomRange}
@@ -4563,29 +4557,36 @@ export default function Invoices() {
                   : `Merge all ${ticketsForCustomer.length} ticket(s) in this range into one PDF (ignores batch grouping; does not mark as exported).`
               }
               style={{
-                padding: '8px 12px',
+                alignSelf: 'center',
+                padding: '8px 14px',
                 backgroundColor: 'var(--bg-tertiary)',
                 border: '1px solid var(--border-color)',
-                borderRadius: '6px',
+                borderRadius: '8px',
                 color: 'var(--text-primary)',
-                fontSize: '13px',
+                fontSize: '12px',
                 fontWeight: 600,
                 cursor: downloadingCustomRange || ticketsForCustomer.length === 0 ? 'not-allowed' : 'pointer',
                 opacity: downloadingCustomRange || ticketsForCustomer.length === 0 ? 0.6 : 1,
                 whiteSpace: 'nowrap',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
               }}
             >
+              <span aria-hidden style={{ fontSize: '13px' }}>📥</span>
               {downloadingCustomRange
-                ? 'Downloading...'
-                : `Download ${ticketsForCustomer.length} ticket(s) as PDF`}
+                ? 'Downloading…'
+                : `Download ${ticketsForCustomer.length} ticket${ticketsForCustomer.length === 1 ? '' : 's'}`}
             </button>
           </div>
         )}
-        <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
-          Filters pick which approved tickets feed the tabs above. Marked-as-invoiced batches live on the <strong>Invoiced</strong> tab.{selectedCustomerId ? ' Use ' : ' Pick a customer to enable '}<strong>Custom range download</strong>{selectedCustomerId ? ' to merge every ticket in this range (incl. invoiced) into one PDF for ad-hoc client requests.' : ' for ad-hoc client requests outside the regular invoice cadence.'}
-        </span>
-        </div>
       </div>
+      <p className="ionex-filter-help">
+        Filters pick which approved tickets feed the tabs above. Marked-as-invoiced batches live on the <strong>Invoiced</strong> tab.{' '}
+        {selectedCustomerId
+          ? <>Use <strong>Download tickets</strong> above to merge every ticket in this range (incl. invoiced) into one PDF for ad-hoc client requests.</>
+          : <>Pick a customer to enable the <strong>Download tickets</strong> action for ad-hoc client requests outside the regular invoice cadence.</>}
+      </p>
 
       {exportProgress && (
         <div
@@ -4647,69 +4648,68 @@ export default function Invoices() {
       />
 
       {groupedTickets.length === 0 && invoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
-        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-          {selectedCustomerId
-            ? 'No approved tickets for this customer in the selected date range. Approve service tickets first in the Service Tickets page.'
-            : 'No approved tickets ready for export. Approve service tickets first in the Service Tickets page.'}
+        <div className="ionex-empty">
+          <span className="glyph" aria-hidden>📋</span>
+          <h3 className="title">
+            {selectedCustomerId ? 'No approved tickets for this customer' : 'No approved tickets ready'}
+          </h3>
+          <p className="body">
+            {selectedCustomerId
+              ? 'Nothing in the selected date range. Approve service tickets first on the Service Tickets page.'
+              : 'Approve service tickets first on the Service Tickets page — they’ll show up here once they’re ready to invoice.'}
+          </p>
+          <div className="cta-row">
+            <Link to="/service-tickets" className="ionex-empty-cta-secondary" style={{ textDecoration: 'none' }}>
+              Open Service Tickets
+            </Link>
+          </div>
         </div>
       ) : groupedTickets.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
-        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-          All batches are marked as invoiced.
-          <div style={{ marginTop: '12px' }}>
+        <div className="ionex-empty">
+          <span className="glyph" aria-hidden>✅</span>
+          <h3 className="title">All caught up</h3>
+          <p className="body">Every batch in the selected range has been marked as invoiced. Head to the Invoiced tab to review them.</p>
+          <div className="cta-row">
             <button
+              type="button"
               onClick={() => setActiveTab('invoiced')}
-              style={{
-                padding: '8px 18px',
-                backgroundColor: 'var(--primary-color)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
+              className="ionex-empty-cta-primary"
             >
-              Go to Invoiced tab ({finalInvoicedGroups.length})
+              Go to Invoiced ({finalInvoicedGroups.length})
             </button>
           </div>
         </div>
       ) : showInvoiced ? (
         <div>
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ margin: '0 0 6px', fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Invoiced (locked)
-            </h2>
-            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              {finalInvoicedGroups.length} group(s). Service tickets in these batches cannot be edited until unmarked. A linked invoice PDF is optional.
-            </span>
+          <div className="ionex-section-heading">
+            <div className="ionex-section-heading-title-row">
+              <h2>Invoiced</h2>
+              <span className="ionex-section-heading-meta">
+                <strong>{finalInvoicedGroups.length}</strong> {finalInvoicedGroups.length === 1 ? 'batch' : 'batches'} · locked
+              </span>
+            </div>
+            <p>Service tickets in these batches cannot be edited until unmarked. A linked invoice PDF is optional.</p>
           </div>
           {finalInvoicedGroups.length === 0 ? (
-            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-              No invoiced batches yet.
+            <div className="ionex-empty">
+              <span className="glyph" aria-hidden>📦</span>
+              <h3 className="title">No invoiced batches yet</h3>
+              <p className="body">Once a batch is marked as invoiced from the Ready tab it shows up here, locked for editing.</p>
             </div>
           ) : (
           <>
           <div style={{ marginBottom: '12px' }}>
-            <input
-              type="text"
-              value={invoiceSearchQuery}
-              onChange={(e) => setInvoiceSearchQuery(e.target.value)}
-              placeholder="Search invoices by number, customer, project, ticket…"
-              style={{
-                width: '100%',
-                maxWidth: '400px',
-                padding: '8px 12px',
-                fontSize: '14px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                backgroundColor: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
-                outline: 'none',
-              }}
-            />
+            <div className="ionex-search">
+              <input
+                type="text"
+                value={invoiceSearchQuery}
+                onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+                placeholder="Search invoices by number, customer, project, ticket…"
+              />
+            </div>
           </div>
           {activeStatusLabels.length > 0 && (
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+            <div className="ionex-status-row">
               <button
                 type="button"
                 onClick={() => setInvoiceStatusFilter('all')}
@@ -4722,6 +4722,7 @@ export default function Invoices() {
                   backgroundColor: invoiceStatusFilter === 'all' ? 'var(--primary-light)' : 'var(--bg-tertiary)',
                   color: invoiceStatusFilter === 'all' ? 'var(--primary-color)' : 'var(--text-secondary)',
                   cursor: 'pointer',
+                  fontFamily: 'inherit',
                 }}
               >
                 All
@@ -4743,9 +4744,10 @@ export default function Invoices() {
                       backgroundColor: isActive ? `${hex}18` : 'var(--bg-tertiary)',
                       color: isActive ? hex : 'var(--text-secondary)',
                       cursor: 'pointer',
+                      fontFamily: 'inherit',
                     }}
                   >
-                    {s.label} ({s.count})
+                    {s.label} <span style={{ opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>· {s.count}</span>
                   </button>
                 );
               })}
@@ -5483,26 +5485,19 @@ export default function Invoices() {
           )}
         </div>
       ) : uninvoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
-        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-          All groups have been marked as invoiced.
+        <div className="ionex-empty">
+          <span className="glyph" aria-hidden>✅</span>
+          <h3 className="title">All groups invoiced</h3>
+          <p className="body">Everything in the selected range has already been marked as invoiced.</p>
           {finalInvoicedGroups.length > 0 && (
-            <div style={{ marginTop: '16px' }}>
+            <div className="cta-row">
               <button
                 type="button"
                 onClick={() => setActiveTab('invoiced')}
                 title="Switch to the Invoiced tab to view batches already marked as invoiced"
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: 'var(--bg-tertiary)',
-                  color: 'var(--text-secondary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
+                className="ionex-empty-cta-primary"
               >
-                Go to Invoiced tab ({finalInvoicedGroups.length})
+                Go to Invoiced ({finalInvoicedGroups.length})
               </button>
             </div>
           )}
@@ -5510,21 +5505,25 @@ export default function Invoices() {
       ) : (
         <>
           {(activeTab === 'pending' || activeTab === 'ready') && (<>
-          <div style={{ marginBottom: '14px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, margin: '0 0 6px', color: 'var(--text-primary)' }}>
-              {activeTab === 'ready' ? 'Ready for invoicing' : 'Pending'}
-            </h2>
-            <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '900px' }}>
-              {activeTab === 'ready'
-                ? <>Billing periods are closed for these batches — actionable now. Use <strong>Mark as invoiced</strong> for non-portal customers, or <strong>Download for approval &amp; mark ready to send</strong> for Portal Approval customers (per batch, or bulk per customer from the banner above).</>
-                : <>Billing periods still open — more tickets may still be added before the period closes. These move to <strong>Ready</strong> automatically once their period ends.</>}
-            </p>
-          </div>
-          <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              {(activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups).reduce((sum, g) => sum + g.tickets.length, 0)} ticket(s) in {(activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups).length} group(s)
-            </span>
-          </div>
+          {(() => {
+            const groupsForTab = activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups;
+            const ticketCount = groupsForTab.reduce((sum, g) => sum + g.tickets.length, 0);
+            return (
+              <div className="ionex-section-heading">
+                <div className="ionex-section-heading-title-row">
+                  <h2>{activeTab === 'ready' ? 'Ready for invoicing' : 'Pending'}</h2>
+                  <span className="ionex-section-heading-meta">
+                    <strong>{ticketCount}</strong> {ticketCount === 1 ? 'ticket' : 'tickets'} · <strong>{groupsForTab.length}</strong> {groupsForTab.length === 1 ? 'group' : 'groups'}
+                  </span>
+                </div>
+                <p>
+                  {activeTab === 'ready'
+                    ? <>Billing periods are closed for these batches — actionable now. Use <strong>Mark invoiced</strong> for non-portal customers, or <strong>Submit for approval</strong> for Portal Approval customers (per batch, or bulk per customer from the banner below).</>
+                    : <>Billing periods still open — more tickets may still be added before the period closes. These move to <strong>Ready</strong> automatically once their period ends.</>}
+                </p>
+              </div>
+            );
+          })()}
 
           {activeTab === 'ready' && bulkApprovalCandidates.length > 0 && (
             <div style={{ marginBottom: '16px', padding: '12px 14px', backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '8px' }}>
@@ -5573,24 +5572,15 @@ export default function Invoices() {
             </div>
           )}
 
-          <div style={{ marginBottom: '12px' }}>
-            <input
-              type="text"
-              value={invoiceSearchQuery}
-              onChange={(e) => setInvoiceSearchQuery(e.target.value)}
-              placeholder="Search by customer, project, ticket number…"
-              style={{
-                width: '100%',
-                maxWidth: '400px',
-                padding: '8px 12px',
-                fontSize: '14px',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                backgroundColor: 'var(--bg-primary)',
-                color: 'var(--text-primary)',
-                outline: 'none',
-              }}
-            />
+          <div style={{ marginBottom: '14px' }}>
+            <div className="ionex-search">
+              <input
+                type="text"
+                value={invoiceSearchQuery}
+                onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+                placeholder="Search by customer, project, ticket number…"
+              />
+            </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {readyTabSections.map((section) => {
@@ -6312,18 +6302,30 @@ export default function Invoices() {
           {/* Submitted for approval tab */}
           {activeTab === 'submitted' && (
             submittedApprovalGroups.length === 0 ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-                No batches awaiting approval. From the Ready tab, click <strong>Download for approval & mark ready to send</strong> on a batch to prepare it for the approver.
+              <div className="ionex-empty">
+                <span className="glyph" aria-hidden>📤</span>
+                <h3 className="title">No batches awaiting approval</h3>
+                <p className="body">From the Ready tab, click <strong>Submit for approval</strong> on a batch to prepare it for the approver.</p>
+                <div className="cta-row">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ready')}
+                    className="ionex-empty-cta-secondary"
+                  >
+                    Go to Ready ({readyGroups.length})
+                  </button>
+                </div>
               </div>
             ) : (
             <div>
-              <div style={{ marginBottom: '12px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                  Submitted for approval ({submittedApprovalGroups.length})
-                </h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-                  Waiting for the customer to approve. When the signed batch comes back, drop the PDF on the card to advance to Approved.
-                </p>
+              <div className="ionex-section-heading">
+                <div className="ionex-section-heading-title-row">
+                  <h3>Submitted for approval</h3>
+                  <span className="ionex-section-heading-meta">
+                    <strong>{submittedApprovalGroups.length}</strong> {submittedApprovalGroups.length === 1 ? 'batch' : 'batches'}
+                  </span>
+                </div>
+                <p>Waiting for the customer to approve. When the signed batch comes back, drop the PDF on the card to advance to Approved.</p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {submittedApprovalSections.map((section) => {
@@ -6643,18 +6645,32 @@ export default function Invoices() {
           {/* Approved tab */}
           {activeTab === 'approved' && (
             approvedGroups.length === 0 ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-                No approved batches yet. Drop a signed batch PDF on a Submitted card to advance it here.
+              <div className="ionex-empty">
+                <span className="glyph" aria-hidden>✅</span>
+                <h3 className="title">No approved batches yet</h3>
+                <p className="body">Drop a signed batch PDF on a Submitted card to advance it here.</p>
+                {submittedApprovalGroups.length > 0 && (
+                  <div className="cta-row">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('submitted')}
+                      className="ionex-empty-cta-secondary"
+                    >
+                      Go to Submitted ({submittedApprovalGroups.length})
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
             <div>
-              <div style={{ marginBottom: '12px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                  Approved ({approvedGroups.length})
-                </h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-                  Customer has approved the batch. Drop the invoice PDF here, then click <strong>Move to Portal Submission</strong> to copy the details into the customer portal.
-                </p>
+              <div className="ionex-section-heading">
+                <div className="ionex-section-heading-title-row">
+                  <h3>Approved</h3>
+                  <span className="ionex-section-heading-meta">
+                    <strong>{approvedGroups.length}</strong> {approvedGroups.length === 1 ? 'batch' : 'batches'}
+                  </span>
+                </div>
+                <p>Customer has approved the batch. Drop the invoice PDF here, then click <strong>Move to Portal Submission</strong> to copy the details into the customer portal.</p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {approvedSections.map((section) => {
@@ -7165,18 +7181,32 @@ export default function Invoices() {
           {/* Portal Submission tab — copy/paste fields for entering invoice details into the customer portal */}
           {activeTab === 'portal_submission' && (
             portalSubmissionGroups.length === 0 ? (
-              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-                No batches awaiting portal submission. From the Approved tab, attach the invoice PDF and click <strong>Move to Portal Submission</strong>.
+              <div className="ionex-empty">
+                <span className="glyph" aria-hidden>🪪</span>
+                <h3 className="title">No batches awaiting portal submission</h3>
+                <p className="body">From the Approved tab, attach the invoice PDF and click <strong>Move to Portal Submission</strong>.</p>
+                {approvedGroups.length > 0 && (
+                  <div className="cta-row">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('approved')}
+                      className="ionex-empty-cta-secondary"
+                    >
+                      Go to Approved ({approvedGroups.length})
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
             <div>
-              <div style={{ marginBottom: '12px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                  Portal Submission ({portalSubmissionGroups.length})
-                </h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
-                  Click any field to copy its value into the customer portal. When the portal entry is complete, click <strong>Mark as invoiced</strong>.
-                </p>
+              <div className="ionex-section-heading">
+                <div className="ionex-section-heading-title-row">
+                  <h3>Portal Submission</h3>
+                  <span className="ionex-section-heading-meta">
+                    <strong>{portalSubmissionGroups.length}</strong> {portalSubmissionGroups.length === 1 ? 'batch' : 'batches'}
+                  </span>
+                </div>
+                <p>Click any field to copy its value into the customer portal. When the portal entry is complete, click <strong>Mark as invoiced</strong>.</p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {portalSubmissionSections.map((section) => {
@@ -7512,75 +7542,65 @@ export default function Invoices() {
 
             return (
               <div>
-                <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)' }}>
-                  {(['customers', 'projects'] as const).map((sub) => {
-                    const isActive = settingsTab === sub;
-                    return (
-                      <button
-                        key={sub}
-                        type="button"
-                        onClick={() => setSettingsTab(sub)}
-                        style={{
-                          padding: '8px 14px',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          borderBottom: isActive ? '2px solid var(--primary-color)' : '2px solid transparent',
-                          color: isActive ? 'var(--primary-color)' : 'var(--text-secondary)',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          marginBottom: '-1px',
-                          textTransform: 'capitalize',
-                        }}
-                      >
-                        {sub}
-                      </button>
-                    );
-                  })}
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '6px' }}>
+                <div className="ionex-section-heading">
+                  <div className="ionex-section-heading-title-row">
+                    <h3>Workflow & grouping settings</h3>
+                    <span className="ionex-section-heading-meta">
+                      Default workflow · <strong>{defaultWorkflowName}</strong>
+                    </span>
+                  </div>
+                  <p>
+                    Override the invoice workflow and date grouping per customer or project.
+                    Statuses are managed on the <Link to="/invoice-workflows" style={{ color: 'var(--primary-color)', fontWeight: 600 }}>Invoice Workflows</Link> page.
+                    Per-batch rate descriptions are edited from each card on Pending / Ready / Invoiced.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '14px' }}>
+                  <div className="ionex-subtabs-rail" style={{ marginBottom: 0 }}>
+                    {(['customers', 'projects'] as const).map((sub) => {
+                      const isActive = settingsTab === sub;
+                      return (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() => setSettingsTab(sub)}
+                          className={`ionex-subtab-chip${isActive ? ' is-active' : ''}`}
+                        >
+                          {sub}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="ionex-search" style={{ maxWidth: 280, marginLeft: 'auto' }}>
                     <input
                       type="text"
                       value={settingsSearch}
                       onChange={(e) => setSettingsSearch(e.target.value)}
                       placeholder={`Search ${settingsTab}…`}
-                      style={{
-                        padding: '6px 10px',
-                        fontSize: '13px',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        backgroundColor: 'var(--bg-primary)',
-                        color: 'var(--text-primary)',
-                        width: '220px',
-                      }}
                     />
                   </div>
                 </div>
 
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                  System default workflow: <strong>{defaultWorkflowName}</strong>. Workflow statuses managed on the <Link to="/invoice-workflows">Invoice Workflows</Link> page. Rate descriptions (per-batch) edited from each group card on the Pending/Ready/Invoiced tabs.
-                </div>
-
                 {settingsTab === 'customers' ? (
-                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                      <thead style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                  <div className="ionex-settings-card">
+                    <table className="ionex-settings-table">
+                      <thead>
                         <tr>
-                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Customer</th>
-                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Invoice workflow</th>
-                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Invoice grouping</th>
+                          <th>Customer</th>
+                          <th>Invoice workflow</th>
+                          <th>Invoice grouping</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredCustomers.length === 0 ? (
-                          <tr><td colSpan={3} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)' }}>No customers match.</td></tr>
+                          <tr><td colSpan={3} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No customers match.</td></tr>
                         ) : filteredCustomers.map((c: any) => (
-                          <tr key={c.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                            <td style={{ padding: '8px 12px', fontWeight: 500 }}>{c.name}</td>
-                            <td style={{ padding: '8px 12px' }}>
+                          <tr key={c.id}>
+                            <td className="name-cell">{c.name}</td>
+                            <td>
                               <select
                                 value={c.invoice_workflow_id ?? ''}
                                 onChange={(e) => updateWorkflowAssignmentMutation.mutate({ customerId: c.id, projectId: null, workflowId: e.target.value || null })}
-                                style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '180px' }}
                               >
                                 <option value="">Use system default ({defaultWorkflowName})</option>
                                 {workflowOptions.map((opt) => (
@@ -7588,11 +7608,10 @@ export default function Invoices() {
                                 ))}
                               </select>
                             </td>
-                            <td style={{ padding: '8px 12px' }}>
+                            <td>
                               <select
                                 value={c.invoice_date_grouping ?? ''}
                                 onChange={(e) => updatePeriodGroupingMutation.mutate({ customerId: c.id, projectId: null, value: e.target.value })}
-                                style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '200px' }}
                               >
                                 <option value="">App default ({effectiveCustomerGrouping(c)})</option>
                                 {groupingOptions.map((opt) => (
@@ -7606,19 +7625,19 @@ export default function Invoices() {
                     </table>
                   </div>
                 ) : (
-                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                      <thead style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                  <div className="ionex-settings-card">
+                    <table className="ionex-settings-table">
+                      <thead>
                         <tr>
-                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Project</th>
-                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Customer</th>
-                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Workflow override</th>
-                          <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>Grouping override</th>
+                          <th>Project</th>
+                          <th>Customer</th>
+                          <th>Workflow override</th>
+                          <th>Grouping override</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredProjects.length === 0 ? (
-                          <tr><td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)' }}>No projects match.</td></tr>
+                          <tr><td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No projects match.</td></tr>
                         ) : filteredProjects.map((p: any) => {
                           const inheritedWf = customerWorkflowName(p.customer_id);
                           const wfFallback = inheritedWf ? `Inherit from customer (${inheritedWf})` : `Inherit from customer (${defaultWorkflowName})`;
@@ -7630,14 +7649,13 @@ export default function Invoices() {
                             : `Inherit from customer (${inheritedGrpEffective} — app default)`;
                           const label = [p.project_number, p.name].filter(Boolean).join(' – ') || p.id;
                           return (
-                            <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                              <td style={{ padding: '8px 12px', fontWeight: 500 }}>{label}</td>
-                              <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{p.customer?.name ?? '—'}</td>
-                              <td style={{ padding: '8px 12px' }}>
+                            <tr key={p.id}>
+                              <td className="name-cell">{label}</td>
+                              <td style={{ color: 'var(--text-secondary)' }}>{p.customer?.name ?? '—'}</td>
+                              <td>
                                 <select
                                   value={p.invoice_workflow_id ?? ''}
                                   onChange={(e) => updateWorkflowAssignmentMutation.mutate({ projectId: p.id, customerId: null, workflowId: e.target.value || null })}
-                                  style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '220px' }}
                                 >
                                   <option value="">{wfFallback}</option>
                                   {workflowOptions.map((opt) => (
@@ -7645,11 +7663,10 @@ export default function Invoices() {
                                   ))}
                                 </select>
                               </td>
-                              <td style={{ padding: '8px 12px' }}>
+                              <td>
                                 <select
                                   value={p.invoice_date_grouping ?? ''}
                                   onChange={(e) => updatePeriodGroupingMutation.mutate({ projectId: p.id, customerId: null, value: e.target.value })}
-                                  style={{ padding: '4px 8px', fontSize: '13px', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', minWidth: '220px' }}
                                 >
                                   <option value="">{grpFallback}</option>
                                   {groupingOptions.map((opt) => (
