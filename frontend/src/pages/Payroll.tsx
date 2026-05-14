@@ -210,6 +210,19 @@ function EmployeeProjectsAndDailyBreakdown({
   isContractor: boolean;
   onConvertOt?: (args: { userId: string; userName: string; date: string; dayEntries: TimeEntry[]; owedHours: number }) => void;
 }) {
+  // Click-to-copy support local to this breakdown card
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copy = (text: string, key: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey((curr) => (curr === key ? null : curr));
+      }, 900);
+    } catch {
+      // ignore — user can still read value
+    }
+  };
   // Group by project
   const byProject = new Map<string, { name: string; customer: string; hours: number; byRateType: Map<string, number> }>();
   // Group by date for daily overtime check
@@ -287,16 +300,28 @@ function EmployeeProjectsAndDailyBreakdown({
               </tr>
             </thead>
             <tbody>
-              {sortedProjects.map(([key, p]) => (
-                <tr key={key}>
-                  <td>{p.name}</td>
-                  <td className="payroll-muted">{p.customer || '—'}</td>
-                  <td className="payroll-muted" style={{ fontSize: '11px' }}>
-                    {Array.from(p.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
-                  </td>
-                  <td className="is-numeric" style={{ fontWeight: 600 }}>{p.hours.toFixed(2)}</td>
-                </tr>
-              ))}
+              {sortedProjects.map(([key, p]) => {
+                const totalVal = p.hours.toFixed(2);
+                const cellKey = `proj-${key}`;
+                const isCopied = copiedKey === cellKey;
+                return (
+                  <tr key={key}>
+                    <td>{p.name}</td>
+                    <td className="payroll-muted">{p.customer || '—'}</td>
+                    <td className="payroll-muted" style={{ fontSize: '11px' }}>
+                      {Array.from(p.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
+                    </td>
+                    <td
+                      className={`is-numeric payroll-copyable${isCopied ? ' is-copied' : ''}`}
+                      style={{ fontWeight: 600 }}
+                      onClick={() => copy(totalVal, cellKey)}
+                      title={`Click to copy ${totalVal}`}
+                    >
+                      {totalVal}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -338,9 +363,21 @@ function EmployeeProjectsAndDailyBreakdown({
                     <td className="payroll-muted" style={{ fontSize: '11px' }}>
                       {Array.from(d.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
                     </td>
-                    <td className="is-numeric" style={{ fontWeight: dayOver ? 700 : 500, color: dayOver ? 'var(--warning-color)' : 'var(--text-primary)' }}>
-                      {d.total.toFixed(2)}
-                    </td>
+                    {(() => {
+                      const dayVal = d.total.toFixed(2);
+                      const cellKey = `day-${date}`;
+                      const isCopied = copiedKey === cellKey;
+                      return (
+                        <td
+                          className={`is-numeric payroll-copyable${isCopied ? ' is-copied' : ''}`}
+                          style={{ fontWeight: dayOver ? 700 : 500, color: dayOver ? 'var(--warning-color)' : 'var(--text-primary)' }}
+                          onClick={() => copy(dayVal, cellKey)}
+                          title={`Click to copy ${dayVal}`}
+                        >
+                          {dayVal}
+                        </td>
+                      );
+                    })()}
                     <td style={{ textAlign: 'center' }}>
                       {owedHours > 0 ? (
                         <button
@@ -846,6 +883,20 @@ export default function Payroll() {
 
   // State for expandable payroll breakdown rows
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+
+  // Click-to-copy feedback: which cell key was most recently copied
+  const [copiedCellKey, setCopiedCellKey] = useState<string | null>(null);
+  const copyCell = (text: string, key: string) => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedCellKey(key);
+      window.setTimeout(() => {
+        setCopiedCellKey((curr) => (curr === key ? null : curr));
+      }, 900);
+    } catch {
+      // Clipboard access denied — silently no-op; user can still read the number.
+    }
+  };
 
   // OT conversion modal: admin picks which entries on a flagged day flip rate_type → OT.
   const [otModalState, setOtModalState] = useState<{
@@ -1821,24 +1872,40 @@ export default function Payroll() {
                         </div>
                       </div>
                     </td>
-                    <td className={`is-numeric ${emp.internalHours > 0 ? 'payroll-cell-internal' : 'payroll-cell-muted'}`}>
-                      {formatCell(emp.internalHours, cellRate(emp.userId, 'internal'))}
-                    </td>
-                    <td className={`is-numeric ${emp.shopTime > 0 ? 'payroll-cell-shop' : 'payroll-cell-muted'}`}>
-                      {formatCell(emp.shopTime, cellRate(emp.userId, 'shop'))}
-                    </td>
-                    <td className={`is-numeric ${emp.shopOvertime > 0 ? 'payroll-cell-shop-ot' : 'payroll-cell-muted'}`}>
-                      {formatCell(emp.shopOvertime, cellRate(emp.userId, 'shopOt'))}
-                    </td>
-                    <td className={`is-numeric ${emp.travelTime > 0 ? 'payroll-cell-travel' : 'payroll-cell-muted'}`}>
-                      {formatCell(emp.travelTime, cellRate(emp.userId, 'travel'))}
-                    </td>
-                    <td className={`is-numeric ${emp.fieldTime > 0 ? 'payroll-cell-field' : 'payroll-cell-muted'}`}>
-                      {formatCell(emp.fieldTime, cellRate(emp.userId, 'field'))}
-                    </td>
-                    <td className={`is-numeric ${emp.fieldOvertime > 0 ? 'payroll-cell-field-ot' : 'payroll-cell-muted'}`}>
-                      {formatCell(emp.fieldOvertime, cellRate(emp.userId, 'fieldOt'))}
-                    </td>
+                    {(['internal','shop','shopOt','travel','field','fieldOt'] as const).map((kind) => {
+                      const hours =
+                        kind === 'internal' ? emp.internalHours :
+                        kind === 'shop' ? emp.shopTime :
+                        kind === 'shopOt' ? emp.shopOvertime :
+                        kind === 'travel' ? emp.travelTime :
+                        kind === 'field' ? emp.fieldTime :
+                        emp.fieldOvertime;
+                      const colorClass =
+                        hours > 0
+                          ? {
+                              internal: 'payroll-cell-internal',
+                              shop: 'payroll-cell-shop',
+                              shopOt: 'payroll-cell-shop-ot',
+                              travel: 'payroll-cell-travel',
+                              field: 'payroll-cell-field',
+                              fieldOt: 'payroll-cell-field-ot',
+                            }[kind]
+                          : 'payroll-cell-muted';
+                      const value = formatCell(hours, cellRate(emp.userId, kind));
+                      const cellKey = `${emp.userId}-${kind}`;
+                      const isCopied = copiedCellKey === cellKey;
+                      const canCopy = hours > 0;
+                      return (
+                        <td
+                          key={kind}
+                          className={`is-numeric ${colorClass}${canCopy ? ' payroll-copyable' : ''}${isCopied ? ' is-copied' : ''}`}
+                          onClick={canCopy ? () => copyCell(value, cellKey) : undefined}
+                          title={canCopy ? `Click to copy ${value}` : undefined}
+                        >
+                          {value}
+                        </td>
+                      );
+                    })}
                     <td
                       className={`is-numeric ${(reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? 'payroll-cell-reimb payroll-reimb-link' : 'payroll-cell-muted'}`}
                       onClick={() => {
@@ -1849,11 +1916,24 @@ export default function Payroll() {
                     >
                       ${(reimbursementsByUser.get(emp.userId)?.total || 0).toFixed(2)}
                     </td>
-                    <td className="is-numeric" style={{ fontWeight: 700 }}>
-                      {displayMode === 'dollars'
+                    {(() => {
+                      const totalVal = displayMode === 'dollars'
                         ? `$${(breakdown?.basePay ?? 0).toFixed(2)}`
-                        : emp.totalHours.toFixed(2)}
-                    </td>
+                        : emp.totalHours.toFixed(2);
+                      const totalKey = `${emp.userId}-total`;
+                      const isCopied = copiedCellKey === totalKey;
+                      const canCopy = emp.totalHours > 0 || (breakdown?.basePay ?? 0) > 0;
+                      return (
+                        <td
+                          className={`is-numeric${canCopy ? ' payroll-copyable' : ''}${isCopied ? ' is-copied' : ''}`}
+                          style={{ fontWeight: 700 }}
+                          onClick={canCopy ? () => copyCell(totalVal, totalKey) : undefined}
+                          title={canCopy ? `Click to copy ${totalVal}` : undefined}
+                        >
+                          {totalVal}
+                        </td>
+                      );
+                    })()}
                   </tr>
                   {isExpanded && isAdmin && (
                     <tr>
@@ -1887,16 +1967,31 @@ export default function Payroll() {
                   return (
                 <tr className="is-totals">
                   <td>Totals</td>
-                  <td className="is-numeric payroll-cell-internal">{fmt(grandTotals.internalHours, totInternal)}</td>
-                  <td className="is-numeric payroll-cell-shop">{fmt(grandTotals.shopTime, totShop)}</td>
-                  <td className="is-numeric payroll-cell-shop-ot">{fmt(grandTotals.shopOvertime, totShopOt)}</td>
-                  <td className="is-numeric payroll-cell-travel">{fmt(grandTotals.travelTime, totTravel)}</td>
-                  <td className="is-numeric payroll-cell-field">{fmt(grandTotals.fieldTime, totField)}</td>
-                  <td className="is-numeric payroll-cell-field-ot">{fmt(grandTotals.fieldOvertime, totFieldOt)}</td>
-                  <td className="is-numeric payroll-cell-reimb">${grandTotalReimbursements.toFixed(2)}</td>
-                  <td className="is-numeric">
-                    {displayMode === 'dollars' ? `$${totBasePay.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
-                  </td>
+                  {(() => {
+                    const cells: { key: string; value: string; colorClass: string }[] = [
+                      { key: 'tot-internal', value: fmt(grandTotals.internalHours, totInternal), colorClass: 'payroll-cell-internal' },
+                      { key: 'tot-shop', value: fmt(grandTotals.shopTime, totShop), colorClass: 'payroll-cell-shop' },
+                      { key: 'tot-shopOt', value: fmt(grandTotals.shopOvertime, totShopOt), colorClass: 'payroll-cell-shop-ot' },
+                      { key: 'tot-travel', value: fmt(grandTotals.travelTime, totTravel), colorClass: 'payroll-cell-travel' },
+                      { key: 'tot-field', value: fmt(grandTotals.fieldTime, totField), colorClass: 'payroll-cell-field' },
+                      { key: 'tot-fieldOt', value: fmt(grandTotals.fieldOvertime, totFieldOt), colorClass: 'payroll-cell-field-ot' },
+                      { key: 'tot-reimb', value: `$${grandTotalReimbursements.toFixed(2)}`, colorClass: 'payroll-cell-reimb' },
+                      { key: 'tot-total', value: displayMode === 'dollars' ? `$${totBasePay.toFixed(2)}` : grandTotals.totalHours.toFixed(2), colorClass: '' },
+                    ];
+                    return cells.map((c) => {
+                      const isCopied = copiedCellKey === c.key;
+                      return (
+                        <td
+                          key={c.key}
+                          className={`is-numeric ${c.colorClass} payroll-copyable${isCopied ? ' is-copied' : ''}`}
+                          onClick={() => copyCell(c.value, c.key)}
+                          title={`Click to copy ${c.value}`}
+                        >
+                          {c.value}
+                        </td>
+                      );
+                    });
+                  })()}
                 </tr>
                   );
                 })()}

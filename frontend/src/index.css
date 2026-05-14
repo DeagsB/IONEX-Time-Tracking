@@ -2345,3 +2345,28 @@ textarea {
 /* Tertiary muted text */
 .payroll-muted { color: var(--text-tertiary); }
 
+/* Click-to-copy numeric cells */
+.payroll-copyable {
+  cursor: copy;
+  position: relative;
+  transition: background-color 0.2s ease, color 0.15s ease;
+}
+.payroll-copyable:hover {
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+}
+.payroll-copyable.is-copied {
+  background: color-mix(in srgb, var(--success-color) 22%, transparent) !important;
+  color: var(--success-color) !important;
+}
+.payroll-copyable.is-copied::after {
+  content: '✓';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--success-color);
+  pointer-events: none;
+}
+
