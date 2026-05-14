@@ -7421,6 +7421,11 @@ export default function Invoices() {
         const grouping = getGroupingForTicket(customerIdForGrouping, projectIdForGrouping);
         const isDateBasedGrouping = grouping !== 'project-completion' && grouping !== 'progress';
         const sourceGroupId = getGroupId(dlg.sourceGroup);
+        // CNRL batches use a real approver name as approverCode (and reuse periodKey to disambiguate);
+        // non-CNRL batches reuse periodKey as approverCode, so two adjacent monthly batches will *always*
+        // have different approverCodes. Only enforce the approver match on CNRL.
+        const sourceKey = dlg.sourceGroup.key;
+        const sourceIsCnrl = !!sourceKey.periodKey && !!sourceKey.approverCode && sourceKey.approverCode !== sourceKey.periodKey;
         const sameProjectGroups = uninvoicedGroups.filter((g) => {
           if (getGroupId(g) === sourceGroupId) return false;
           const sample = g.tickets[0] as (ServiceTicket & { recordProjectId?: string }) | undefined;
@@ -7428,8 +7433,11 @@ export default function Invoices() {
           if ((sample.customerId ?? '') !== customerIdForGrouping) return false;
           const targetProjId = sample.recordProjectId ?? sample.projectId ?? '';
           if (targetProjId !== projectIdForGrouping) return false;
-          // Approver/PO/AFE/CC must match too — moving to a batch with a different approver code would be weird.
-          if (g.key.approverCode !== dlg.sourceGroup.key.approverCode) return false;
+          if (sourceIsCnrl) {
+            const targetIsCnrl = !!g.key.periodKey && !!g.key.approverCode && g.key.approverCode !== g.key.periodKey;
+            if (!targetIsCnrl) return false;
+            if (g.key.approverCode !== sourceKey.approverCode) return false;
+          }
           return true;
         });
         const isPending = moveTicketBatchMutation.isPending;
