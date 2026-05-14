@@ -2471,6 +2471,9 @@ export default function Invoices() {
   const [invoiceTicketModalTicket, setInvoiceTicketModalTicket] = useState<InvoiceTicketModalTicket | null>(null);
   const [editTicketRecordId, setEditTicketRecordId] = useState<string | null>(null);
   const [invoicedBreakdownExpanded, setInvoicedBreakdownExpanded] = useState<Set<string>>(new Set());
+  // ID of the invoiced accordion whose header status pill is currently open as a popover.
+  // Lets users change draft → sent → approved → etc. without expanding the accordion.
+  const [statusEditingGroupId, setStatusEditingGroupId] = useState<string | null>(null);
   const [combinedExpenseGroupIds, setCombinedExpenseGroupIds] = useState<Set<string>>(new Set());
   const [splitRateGroupIds, setSplitRateGroupIds] = useState<Set<string>>(new Set());
   const [pendingLabourNotes, setPendingLabourNotes] = useState<Record<string, Record<string, string>>>({});
@@ -2536,6 +2539,26 @@ export default function Invoices() {
     customerId: string | null;
     value: string;
   } | null>(null);
+
+  // Dismiss the inline status-edit popover on Escape or any click outside the popover element.
+  useEffect(() => {
+    if (!statusEditingGroupId) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-status-edit-popover]')) return;
+      if (target?.closest('[data-status-edit-trigger]')) return;
+      setStatusEditingGroupId(null);
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStatusEditingGroupId(null);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [statusEditingGroupId]);
 
   const updatePeriodGroupingMutation = useMutation({
     mutationFn: async ({ projectId, customerId, value }: { projectId: string | null; customerId: string | null; value: string }) => {
@@ -4944,6 +4967,7 @@ export default function Invoices() {
               if (isDraft) accordionShadowParts.push('inset 4px 0 0 0 #f59e0b');
               if (!sectionMulti) accordionShadowParts.push('0 1px 3px rgba(239, 68, 68, 0.08)');
               const accordionShadow = accordionShadowParts.join(', ') || undefined;
+              const isStatusEditingHere = statusEditingGroupId === persistId;
               return (
                 <div
                   key={persistId}
@@ -4952,7 +4976,10 @@ export default function Invoices() {
                     borderRadius: '8px',
                     border: accordionBorder,
                     boxShadow: accordionShadow,
-                    overflow: 'hidden',
+                    // Don't clip the inline status popover. The accordion still looks rounded
+                    // because the inner header/body share the same radius via their own styling.
+                    overflow: isStatusEditingHere ? 'visible' : 'hidden',
+                    position: 'relative',
                   }}
                 >
                   {/* Accordion header */}
@@ -5017,9 +5044,28 @@ export default function Invoices() {
                       // their workflow-defined color.
                       const pillHex = isDraft ? '#f59e0b' : statusColorHex(batchCurrentStatus.color);
                       const pillLabel = isDraft ? `${batchCurrentStatus.label} · not sent` : batchCurrentStatus.label;
+                      const canEdit = !!batchWorkflow && batchWorkflow.statuses.length > 1;
                       return (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                         <span
+                          data-status-edit-trigger={canEdit ? '' : undefined}
+                          role={canEdit ? 'button' : undefined}
+                          tabIndex={canEdit ? 0 : undefined}
+                          aria-haspopup={canEdit ? 'menu' : undefined}
+                          aria-expanded={canEdit ? isStatusEditingHere : undefined}
+                          title={canEdit ? 'Click to change status' : undefined}
+                          onClick={canEdit ? (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            setStatusEditingGroupId((prev) => (prev === persistId ? null : persistId));
+                          } : undefined}
+                          onKeyDown={canEdit ? (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              setStatusEditingGroupId((prev) => (prev === persistId ? null : persistId));
+                            }
+                          } : undefined}
                           style={{
                             fontSize: '11px',
                             fontWeight: isDraft ? 700 : 600,
@@ -5031,9 +5077,19 @@ export default function Invoices() {
                             whiteSpace: 'nowrap',
                             textTransform: isDraft ? 'uppercase' : 'none',
                             letterSpacing: isDraft ? '0.04em' : 0,
+                            cursor: canEdit ? 'pointer' : 'default',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            outline: 'none',
+                            boxShadow: canEdit && isStatusEditingHere ? `0 0 0 2px ${pillHex}40` : undefined,
+                            transition: 'box-shadow 0.15s ease',
                           }}
                         >
                           {pillLabel}
+                          {canEdit && (
+                            <span aria-hidden style={{ fontSize: '9px', opacity: 0.7, transform: isStatusEditingHere ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>▾</span>
+                          )}
                         </span>
                         {daysSinceStatus !== null && (
                           <span
@@ -5054,6 +5110,83 @@ export default function Invoices() {
                       ${gstTotals.totalInclGst.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </button>
+
+                  {/* Inline status-edit popover, anchored to the accordion header.
+                      Lets the user advance/regress status without expanding the row. */}
+                  {isStatusEditingHere && batchWorkflow && batchWorkflow.statuses.length > 0 && (
+                    <div
+                      data-status-edit-popover=""
+                      role="menu"
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: '12px',
+                        marginTop: '6px',
+                        zIndex: 30,
+                        backgroundColor: 'var(--bg-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.18)',
+                        padding: '8px',
+                        minWidth: '200px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                      }}
+                    >
+                      <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', padding: '2px 6px 4px' }}>
+                        Set status
+                      </div>
+                      {batchWorkflow.statuses.map((ws) => {
+                        const isActive = ws.id === batchStatusId;
+                        const hex = statusColorHex(ws.color);
+                        return (
+                          <button
+                            key={ws.id}
+                            type="button"
+                            role="menuitem"
+                            disabled={isActive || updateBatchStatusMutation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isActive) return;
+                              updateBatchStatusMutation.mutate({
+                                groupId: persistId,
+                                statusId: ws.id,
+                                prevStatusId: batchStatusId,
+                                statusLabel: ws.label,
+                                customerName: groupTickets[0]?.customerName,
+                                projectNumber: key.projectNumber || undefined,
+                                workflowId: batchWorkflow?.id,
+                              });
+                              setStatusEditingGroupId(null);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '6px 10px',
+                              borderRadius: '6px',
+                              border: 'none',
+                              backgroundColor: isActive ? `${hex}14` : 'transparent',
+                              color: 'var(--text-primary)',
+                              fontSize: '13px',
+                              fontWeight: isActive ? 600 : 500,
+                              cursor: isActive ? 'default' : 'pointer',
+                              textAlign: 'left',
+                              fontFamily: 'inherit',
+                              transition: 'background-color 0.12s ease',
+                            }}
+                            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+                            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                          >
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: hex, flexShrink: 0, boxShadow: isActive ? `0 0 0 2px ${hex}40` : 'none' }} />
+                            <span style={{ flex: 1 }}>{ws.label}</span>
+                            {isActive && <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>current</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* Expanded body */}
                   {isAccordionOpen && (
