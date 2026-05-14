@@ -2722,13 +2722,29 @@ export default function Invoices() {
   const [pendingHoldTicketId, setPendingHoldTicketId] = useState<string | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const justFinishedDragRef = useRef(false);
-  /** Toast shown after a successful ticket batch move. Undo restores the previous override. */
+  /** Toast shown after a successful ticket batch move. Undo restores either the previous
+   *  invoice_batch_date_override (for 'override'-mode drags / Move dialog) or reverses a
+   *  snapshot-reassign by moving the ticket back to its source mark row and restoring its
+   *  previous approver header override (for 'reassign'-mode drags on Submitted-tab cards). */
   const [moveSuccessToast, setMoveSuccessToast] = useState<{
     ticketNumber: string;
     ticketRecordId: string;
     targetLabel: string;
     previousOverride: string | null;
     undoLabel: string;
+    /** Set when the move was a snapshot-reassign — its presence flips the toast's Undo handler. */
+    reassign?: {
+      sourcePersistId: string;
+      targetPersistId: string;
+      /** Snapshot of the source mark row BEFORE the move, used to restore it on Undo. Captured
+       *  even when the source was non-empty so Undo always re-upserts a known-good state instead
+       *  of trying to mutate whatever the row looks like at undo time. If the source was deleted
+       *  (last ticket moved out) Undo recreates the row from this snapshot. */
+      sourceSnapshotBefore: FrozenGroupSnapshot;
+      /** The full header_overrides blob the ticket had before the reassign rewrote
+       *  approver_po_afe, so Undo can put it back byte-for-byte. */
+      previousHeaderOverrides: { approver_po_afe?: string; service_location?: string } | null;
+    };
   } | null>(null);
   const [bulkSendProgress, setBulkSendProgress] = useState<{ customer: string; current: number; total: number } | null>(null);
   const [redownloadingApprovalId, setRedownloadingApprovalId] = useState<string | null>(null);
@@ -4315,6 +4331,9 @@ export default function Invoices() {
       }
       const sourceSnap = (sourceRow.key_snapshot ?? {}) as FrozenGroupSnapshot;
       const targetSnap = (targetRow.key_snapshot ?? {}) as FrozenGroupSnapshot;
+      // Deep-clone the source snapshot before any mutation so the toast's Undo can always
+      // restore the source row to exactly what it was, even if other fields drift later.
+      const sourceSnapshotBefore: FrozenGroupSnapshot = JSON.parse(JSON.stringify(sourceSnap));
       const sourceIds = new Set((sourceSnap.ticketIds ?? []).map((s) => String(s).trim()).filter(Boolean));
       sourceIds.delete(recordId);
       const targetIds = new Set((targetSnap.ticketIds ?? []).map((s) => String(s).trim()).filter(Boolean));
@@ -4338,11 +4357,13 @@ export default function Invoices() {
         window.alert(err instanceof Error ? err.message : 'Could not move ticket between batches.');
         return;
       }
-      // Update approver header override if target approver differs from source.
+      // Update approver header override if target approver differs from source. Capture the
+      // pre-move overrides so Undo can restore them exactly.
       const sourceApprover = getApproverForGroupKey((sourceSnap.key ?? {}) as InvoiceGroupKeyWithPeriod) || '';
       const targetApprover = getApproverForGroupKey((targetSnap.key ?? {}) as InvoiceGroupKeyWithPeriod) || '';
+      const previousHeaderOverrides = (ticket.headerOverrides as { approver_po_afe?: string; service_location?: string } | null | undefined) ?? null;
       if (targetApprover && targetApprover !== sourceApprover) {
-        const existing = (ticket.headerOverrides as { approver_po_afe?: string; service_location?: string } | null | undefined) ?? {};
+        const existing = previousHeaderOverrides ?? {};
         try {
           await serviceTicketsService.updateHeaderOverrides(
             recordId,
@@ -4356,10 +4377,80 @@ export default function Invoices() {
       await queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
       await queryClient.invalidateQueries({ queryKey: ['serviceTickets'] });
       await queryClient.invalidateQueries({ queryKey: ['lockedServiceTicketIdsForMe'] });
-      // Skip the move-success Toast here — its Undo button rewinds via invoice_batch_date_override,
-      // which doesn't reverse a snapshot-reassign. A future change can add a dedicated reassign-undo.
+      const targetLabel = targetApprover || targetSnap.key?.periodLabel || 'target batch';
+      setMoveSuccessToast({
+        ticketNumber: ticket.ticketNumber || 'ticket',
+        ticketRecordId: recordId,
+        targetLabel,
+        previousOverride: null,
+        undoLabel: 'Undo',
+        reassign: {
+          sourcePersistId,
+          targetPersistId,
+          sourceSnapshotBefore,
+          previousHeaderOverrides,
+        },
+      });
     },
     [invoicedMarkRows, getApproverForGroupKey, isDemoMode, queryClient],
+  );
+
+  /** Reverse a snapshot-reassign. Removes the ticket from the target mark row, restores the
+   *  source mark row to its pre-move state (re-upserting it from scratch if it was deleted
+   *  because the move drained its last ticket), and restores the ticket's header_overrides. */
+  const runReassignUndo = useCallback(
+    async (
+      reassign: NonNullable<typeof moveSuccessToast>['reassign'],
+      ticketRecordId: string,
+    ) => {
+      if (!reassign) return;
+      const targetRowNow = queryClient
+        .getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks'])
+        ?.find((r) => r.group_id === reassign.targetPersistId);
+      // Pull the freshest target snapshot from cache; fall back to whatever's in component
+      // state if the cache is empty (offline / stale page).
+      const targetSnap = (targetRowNow?.key_snapshot
+        ?? invoicedMarkRows.find((r) => r.group_id === reassign.targetPersistId)?.key_snapshot
+        ?? {}) as FrozenGroupSnapshot;
+      const targetIds = new Set(
+        (targetSnap.ticketIds ?? []).map((s) => String(s).trim()).filter(Boolean),
+      );
+      targetIds.delete(ticketRecordId);
+      try {
+        // Restore source from the pre-move snapshot (works whether the source mark row was
+        // deleted or just shrunk).
+        await invoicedBatchMarksService.upsert(
+          reassign.sourcePersistId,
+          reassign.sourceSnapshotBefore as { key: unknown; ticketIds: string[] },
+        );
+        if (targetIds.size === 0) {
+          await invoicedBatchMarksService.deleteMark(reassign.targetPersistId);
+        } else {
+          await invoicedBatchMarksService.upsert(reassign.targetPersistId, {
+            ...targetSnap,
+            ticketIds: [...targetIds].sort(),
+          } as { key: unknown; ticketIds: string[] });
+        }
+      } catch (err) {
+        throw err instanceof Error ? err : new Error('Could not restore source/target batches.');
+      }
+      // Restore header_overrides exactly. If it was null pre-move, write empty so any
+      // approver_po_afe we wrote on the move is wiped (updateHeaderOverrides replaces the
+      // whole field, so an empty object effectively clears approver_po_afe).
+      try {
+        await serviceTicketsService.updateHeaderOverrides(
+          ticketRecordId,
+          reassign.previousHeaderOverrides ?? {},
+          isDemoMode,
+        );
+      } catch (err) {
+        console.warn('Header override restore failed:', err);
+      }
+      await queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+      await queryClient.invalidateQueries({ queryKey: ['serviceTickets'] });
+      await queryClient.invalidateQueries({ queryKey: ['lockedServiceTicketIdsForMe'] });
+    },
+    [invoicedMarkRows, isDemoMode, queryClient],
   );
 
   /** Apply the drop: set the override date to the target batch's anchor, then clear drag state. */
@@ -5159,6 +5250,13 @@ export default function Invoices() {
           label: moveSuccessToast.undoLabel,
           onClick: () => {
             const t = moveSuccessToast;
+            if (t.reassign) {
+              void runReassignUndo(t.reassign, t.ticketRecordId).catch((err) => {
+                window.alert(err instanceof Error ? err.message : 'Could not undo move');
+              });
+              setMoveSuccessToast(null);
+              return;
+            }
             void moveTicketBatchMutation.mutateAsync({
               ticketRecordId: t.ticketRecordId,
               overrideDate: t.previousOverride,
