@@ -1121,8 +1121,9 @@ export default function Profitability() {
                               </span>
                             </td>
                             <td className="align-center">
-                              {!hasTicketNumber && (t.workflow_status === 'submitted' || t.workflow_status === 'draft') ? (
+                              {!hasTicketNumber ? (
                                 <span
+                                  title="No ticket number assigned yet — admin approval still pending."
                                   style={{
                                     padding: '2px 8px',
                                     borderRadius: '999px',
