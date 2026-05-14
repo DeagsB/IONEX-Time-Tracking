@@ -4936,7 +4936,16 @@ export default function Invoices() {
                       {isAccordionOpen ? '▼' : '▶'}
                     </span>
                     {!sectionMulti && (
-                      <span style={{ fontWeight: 700, flexShrink: 0 }}>
+                      <span
+                        style={{
+                          fontSize: '16px',
+                          fontWeight: 800,
+                          color: '#dc2626',
+                          letterSpacing: '0.02em',
+                          textShadow: '0 1px 0 rgba(239, 68, 68, 0.12)',
+                          flexShrink: 0,
+                        }}
+                      >
                         {groupTickets[0]?.customerName || 'Unknown'}
                       </span>
                     )}
