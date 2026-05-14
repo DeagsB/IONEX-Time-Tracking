@@ -199,17 +199,21 @@ const OVERTIME_WEEKLY_THRESHOLD = 40;
 
 function EmployeeProjectsAndDailyBreakdown({
   employeeName,
+  userId,
   entries,
   isContractor,
+  onConvertOt,
 }: {
   employeeName: string;
+  userId: string;
   entries: TimeEntry[];
   isContractor: boolean;
+  onConvertOt?: (args: { userId: string; userName: string; date: string; dayEntries: TimeEntry[]; owedHours: number }) => void;
 }) {
   // Group by project
   const byProject = new Map<string, { name: string; customer: string; hours: number; byRateType: Map<string, number> }>();
   // Group by date for daily overtime check
-  const byDate = new Map<string, { total: number; byRateType: Map<string, number> }>();
+  const byDate = new Map<string, { total: number; byRateType: Map<string, number>; entries: TimeEntry[] }>();
   // Group by ISO week for weekly overtime check
   const byWeek = new Map<string, { total: number; days: Set<string> }>();
 
@@ -236,10 +240,11 @@ function EmployeeProjectsAndDailyBreakdown({
     const rt = e.rate_type || 'Shop Time';
     p.byRateType.set(rt, (p.byRateType.get(rt) || 0) + hrs);
 
-    if (!byDate.has(e.date)) byDate.set(e.date, { total: 0, byRateType: new Map() });
+    if (!byDate.has(e.date)) byDate.set(e.date, { total: 0, byRateType: new Map(), entries: [] });
     const d = byDate.get(e.date)!;
     d.total += hrs;
     d.byRateType.set(rt, (d.byRateType.get(rt) || 0) + hrs);
+    d.entries.push(e);
 
     const wk = isoWeekKey(e.date);
     if (!byWeek.has(wk)) byWeek.set(wk, { total: 0, days: new Set() });
@@ -341,12 +346,19 @@ function EmployeeProjectsAndDailyBreakdown({
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '11px' }}>
                       {owedHours > 0 ? (
-                        <span
-                          style={{ color: '#ff9800', fontWeight: '700' }}
-                          title={`Day ${d.total.toFixed(2)}h, entitled ${dailyOtEntitled.toFixed(2)}h OT, ${paidOt.toFixed(2)}h already booked at OT rate${weekOver ? ` · Week total ${weekTotal.toFixed(2)}h` : ''}`}
+                        <button
+                          type="button"
+                          onClick={() => onConvertOt?.({ userId, userName: employeeName, date, dayEntries: d.entries, owedHours })}
+                          disabled={!onConvertOt}
+                          style={{
+                            color: '#ff9800', fontWeight: '700', background: 'none', border: '1px solid #ff9800',
+                            borderRadius: '4px', padding: '2px 8px', cursor: onConvertOt ? 'pointer' : 'default',
+                            fontSize: '11px', fontFamily: 'inherit',
+                          }}
+                          title={`Day ${d.total.toFixed(2)}h, entitled ${dailyOtEntitled.toFixed(2)}h OT, ${paidOt.toFixed(2)}h already booked at OT rate${weekOver ? ` · Week total ${weekTotal.toFixed(2)}h` : ''} — click to allocate`}
                         >
-                          Owed {owedHours.toFixed(2)}h
-                        </span>
+                          Owed {owedHours.toFixed(2)}h ⇢
+                        </button>
                       ) : paidOt > 0 ? (
                         <span style={{ color: '#4caf50', fontWeight: '600' }} title={`${paidOt.toFixed(2)}h booked at OT rate`}>
                           Paid {paidOt.toFixed(2)}h
@@ -689,6 +701,28 @@ export default function Payroll() {
   // Placeholder for totalCost — computed after payrollBreakdownByUser
   const grandTotalsCosts = { totalCost: 0 };
 
+  // --- Paid-vs-Billed Reconciliation Data ---
+  // Service tickets dated in the pay period — used to compare hours billed/customer-revenue
+  // against hours paid to the employee for the same (user × project). Surfaces cases where
+  // OT was paid but billed flat, or where billed hours diverge from worked hours.
+  const reconciliationTicketsTable = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
+  const { data: reconciliationTickets = [] } = useQuery({
+    queryKey: ['payrollReconTickets', startDate, endDate, isDemoMode, isAdmin, user?.id],
+    queryFn: async () => {
+      let q = supabase
+        .from(reconciliationTicketsTable)
+        .select('id, ticket_number, user_id, date, total_hours, edited_hours, is_edited, total_amount, project_id, customer_id, workflow_status')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .or('is_discarded.is.null,is_discarded.eq.false');
+      if (!isAdmin && user?.id) q = q.eq('user_id', user.id);
+      const { data, error } = await q;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!isAdmin,
+  });
+
   // --- Reimbursement Data ---
   const { data: ticketExpenses = [] } = useQuery({
     queryKey: ['payrollTicketExpenses', startDate, endDate, isAdmin, user?.id],
@@ -819,6 +853,88 @@ export default function Payroll() {
 
   // State for expandable payroll breakdown rows
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+
+  // OT conversion modal: admin picks which entries on a flagged day flip rate_type → OT.
+  const [otModalState, setOtModalState] = useState<{
+    userId: string;
+    userName: string;
+    date: string;
+    dayEntries: TimeEntry[];
+    owedHours: number;
+  } | null>(null);
+
+  // Per-entry allocation chosen by admin in the modal (entryId → hours to convert to OT)
+  const [otAllocations, setOtAllocations] = useState<Record<string, number>>({});
+  // Reset allocations whenever a different modal is opened
+  useEffect(() => { setOtAllocations({}); }, [otModalState?.userId, otModalState?.date]);
+
+  const otConvertMutation = useMutation({
+    mutationFn: async (args: {
+      userId: string;
+      date: string;
+      allocations: { entry: TimeEntry; hoursToConvert: number }[];
+    }) => {
+      const emp = empRatesByUserId.get(args.userId);
+      const otRateFor = (regularRateType: string): { otRateType: string; otRate: number } => {
+        switch (regularRateType) {
+          case 'Field Time':
+            return { otRateType: 'Field Overtime', otRate: emp?.foRate || 0 };
+          case 'Shop Time':
+          case 'Travel Time':
+          default:
+            return { otRateType: 'Shop Overtime', otRate: emp?.shopOtRate || 0 };
+        }
+      };
+
+      for (const { entry, hoursToConvert } of args.allocations) {
+        if (hoursToConvert <= 0) continue;
+        const origHours = Number(entry.hours) || 0;
+        if (hoursToConvert > origHours + 0.0001) {
+          throw new Error(`Cannot convert ${hoursToConvert}h from a ${origHours}h entry`);
+        }
+        const remaining = +(origHours - hoursToConvert).toFixed(2);
+        const { otRateType, otRate } = otRateFor(entry.rate_type || 'Shop Time');
+
+        if (remaining <= 0.0001) {
+          // Entire entry flips to OT — update in place.
+          await supabase
+            .from('time_entries')
+            .update({ rate_type: otRateType, rate: otRate })
+            .eq('id', entry.id);
+        } else {
+          // Split: shrink original, insert new OT row.
+          await supabase
+            .from('time_entries')
+            .update({ hours: remaining })
+            .eq('id', entry.id);
+
+          const { data: src, error: fetchErr } = await supabase
+            .from('time_entries')
+            .select('*')
+            .eq('id', entry.id)
+            .single();
+          if (fetchErr) throw fetchErr;
+
+          const insertPayload: any = { ...src };
+          delete insertPayload.id;
+          delete insertPayload.created_at;
+          delete insertPayload.updated_at;
+          insertPayload.hours = +hoursToConvert.toFixed(2);
+          insertPayload.rate_type = otRateType;
+          insertPayload.rate = otRate;
+          const { error: insErr } = await supabase.from('time_entries').insert(insertPayload);
+          if (insErr) throw insErr;
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payrollReport'] });
+      queryClient.invalidateQueries({ queryKey: ['payrollYtdEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['allTimeEntries'] });
+      queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
+      setOtModalState(null);
+    },
+  });
 
   interface ReimbursementLine {
     category: string;
@@ -1215,6 +1331,124 @@ export default function Payroll() {
     setEndDate(end.toISOString().split('T')[0]);
   };
   
+  // --- Paid vs Billed reconciliation memo ---
+  // Builds per (user × project) row showing hours/cost paid (time_entries → payroll)
+  // versus hours/revenue billed (service_tickets → customer). Deltas highlight cases
+  // where overtime was absorbed (paid > billed) or extra was billed (paid < billed).
+  const [showReconciliation, setShowReconciliation] = useState<boolean>(false);
+
+  const reconciliationRows = useMemo(() => {
+    if (!isAdmin) return [];
+
+    // Build project lookup from any source we have
+    const projectInfo = new Map<string, { name: string; number: string; customer: string }>();
+    if (timeEntries) {
+      for (const e of timeEntries) {
+        if (!e.project_id || projectInfo.has(e.project_id)) continue;
+        projectInfo.set(e.project_id, {
+          name: e.project?.name || 'Unknown Project',
+          number: e.project?.project_number || '',
+          customer: e.project?.customer?.name || '',
+        });
+      }
+    }
+
+    type Row = {
+      userId: string;
+      userName: string;
+      projectId: string;
+      projectName: string;
+      projectNumber: string;
+      customer: string;
+      paidHours: number;
+      paidCost: number;
+      paidOtHours: number;
+      billedHours: number;
+      billedRevenue: number;
+      ticketNumbers: string[];
+    };
+    const map = new Map<string, Row>();
+    const keyOf = (uid: string, pid: string | null | undefined) => `${uid}||${pid || '_unassigned_'}`;
+
+    const displayedUserIds = new Set(displayedEmployeeHours.map((e) => e.userId));
+    const empNameById = new Map(displayedEmployeeHours.map((e) => [e.userId, e.name] as const));
+
+    // Paid side from time_entries
+    if (timeEntries) {
+      for (const entry of timeEntries) {
+        if (!displayedUserIds.has(entry.user_id)) continue;
+        const pid = entry.project_id || null;
+        const k = keyOf(entry.user_id, pid);
+        const info = pid ? projectInfo.get(pid) : null;
+        if (!map.has(k)) {
+          map.set(k, {
+            userId: entry.user_id,
+            userName: empNameById.get(entry.user_id) || 'Unknown',
+            projectId: pid || '',
+            projectName: info?.name || (pid ? 'Unknown Project' : 'Unassigned'),
+            projectNumber: info?.number || '',
+            customer: info?.customer || '',
+            paidHours: 0, paidCost: 0, paidOtHours: 0,
+            billedHours: 0, billedRevenue: 0,
+            ticketNumbers: [],
+          });
+        }
+        const row = map.get(k)!;
+        const hrs = Number(entry.hours) || 0;
+        row.paidHours += hrs;
+        const rates = empRatesByUserId.get(entry.user_id);
+        const rt = entry.rate_type || 'Shop Time';
+        const isOt = rt === 'Shop Overtime' || rt === 'Field Overtime';
+        if (isOt) row.paidOtHours += hrs;
+        let payRate = 0;
+        if (rates) {
+          switch (rt) {
+            case 'Shop Time': payRate = rates.shopRate; break;
+            case 'Shop Overtime': payRate = rates.shopOtRate; break;
+            case 'Travel Time': payRate = rates.shopRate; break;
+            case 'Field Time': payRate = rates.ftRate; break;
+            case 'Field Overtime': payRate = rates.foRate; break;
+            default: payRate = rates.shopRate;
+          }
+        }
+        row.paidCost += hrs * payRate;
+      }
+    }
+
+    // Billed side from service_tickets
+    for (const t of reconciliationTickets as any[]) {
+      if (!displayedUserIds.has(t.user_id)) continue;
+      const pid = t.project_id || null;
+      const k = keyOf(t.user_id, pid);
+      const info = pid ? projectInfo.get(pid) : null;
+      if (!map.has(k)) {
+        map.set(k, {
+          userId: t.user_id,
+          userName: empNameById.get(t.user_id) || 'Unknown',
+          projectId: pid || '',
+          projectName: info?.name || (pid ? 'Unknown Project' : 'Unassigned'),
+          projectNumber: info?.number || '',
+          customer: info?.customer || '',
+          paidHours: 0, paidCost: 0, paidOtHours: 0,
+          billedHours: 0, billedRevenue: 0,
+          ticketNumbers: [],
+        });
+      }
+      const row = map.get(k)!;
+      const billed = t.is_edited && t.edited_hours != null
+        ? (Number(t.edited_hours) || 0)
+        : (Number(t.total_hours) || 0);
+      row.billedHours += billed;
+      row.billedRevenue += Number(t.total_amount) || 0;
+      if (t.ticket_number) row.ticketNumbers.push(String(t.ticket_number));
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.userName !== b.userName) return a.userName.localeCompare(b.userName);
+      return a.projectName.localeCompare(b.projectName);
+    });
+  }, [isAdmin, timeEntries, reconciliationTickets, displayedEmployeeHours, empRatesByUserId]);
+
   // --- CSV export for QuickBooks ---
   // Builds a friendly multi-section sheet: project allocations per employee, then a payroll summary
   // (gross, deductions, net, reimbursements, total payout, allowances) ready for QuickBooks input.
@@ -1664,8 +1898,10 @@ export default function Payroll() {
                       <td colSpan={9} style={{ padding: '0 16px 16px 42px', backgroundColor: 'var(--bg-secondary)' }}>
                         <EmployeeProjectsAndDailyBreakdown
                           employeeName={emp.name}
+                          userId={emp.userId}
                           entries={emp.entries}
                           isContractor={!!breakdown?.isContractor}
+                          onConvertOt={(args) => setOtModalState(args)}
                         />
                       </td>
                     </tr>
@@ -1723,6 +1959,262 @@ export default function Payroll() {
           </div>
         </>
       )}
+
+      {/* Paid vs Billed Reconciliation Panel — admin only */}
+      {isAdmin && reconciliationRows.length > 0 && (
+        <div style={{ marginTop: '24px' }}>
+          <div
+            className="ionex-section-heading"
+            style={{ cursor: 'pointer' }}
+            onClick={() => setShowReconciliation((v) => !v)}
+            title="Compare payroll cost (time entries) to customer billing (service tickets) per user × project"
+          >
+            <div className="ionex-section-heading-title-row">
+              <h3>
+                <span style={{ display: 'inline-block', transform: showReconciliation ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', marginRight: '6px' }}>▸</span>
+                Paid vs Billed Reconciliation
+              </h3>
+              <span className="ionex-section-heading-meta">
+                {reconciliationRows.length} rows · payroll cost vs customer billing
+              </span>
+            </div>
+          </div>
+          {showReconciliation && (() => {
+            const totals = reconciliationRows.reduce(
+              (acc, r) => ({
+                paidHours: acc.paidHours + r.paidHours,
+                paidCost: acc.paidCost + r.paidCost,
+                paidOtHours: acc.paidOtHours + r.paidOtHours,
+                billedHours: acc.billedHours + r.billedHours,
+                billedRevenue: acc.billedRevenue + r.billedRevenue,
+              }),
+              { paidHours: 0, paidCost: 0, paidOtHours: 0, billedHours: 0, billedRevenue: 0 }
+            );
+            const dColor = (n: number, invert = false) => {
+              if (Math.abs(n) < 0.005) return 'var(--text-secondary)';
+              const positive = invert ? n < 0 : n > 0;
+              return positive ? '#4caf50' : '#dc3545';
+            };
+            return (
+              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
+                      <th style={{ padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Project</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#dc3545', textTransform: 'uppercase' }}>Paid Hrs</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#dc3545', textTransform: 'uppercase' }} title="Of paid hours, how many were at an OT rate">OT Hrs</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#dc3545', textTransform: 'uppercase' }}>Cost Paid</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase' }}>Billed Hrs</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase' }}>Revenue</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }} title="Billed hours minus paid hours">Δ Hrs</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }} title="Revenue minus payroll cost (gross labour margin)">Margin</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Tickets</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reconciliationRows.map((r) => {
+                      const dHours = r.billedHours - r.paidHours;
+                      const margin = r.billedRevenue - r.paidCost;
+                      const paidOnly = r.paidHours > 0 && r.billedHours === 0;
+                      const billedOnly = r.billedHours > 0 && r.paidHours === 0;
+                      return (
+                        <tr key={`${r.userId}|${r.projectId}`} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: paidOnly || billedOnly ? 'rgba(245,158,11,0.06)' : 'transparent' }}>
+                          <td style={{ padding: '10px 14px', fontSize: '13px' }}>{r.userName}</td>
+                          <td style={{ padding: '10px 14px', fontSize: '13px' }}>
+                            <div>
+                              {r.projectNumber && <span style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)', marginRight: '6px' }}>{r.projectNumber}</span>}
+                              {r.projectName}
+                            </div>
+                            {r.customer && <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{r.customer}</div>}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.paidHours > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
+                            {r.paidHours.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.paidOtHours > 0 ? '#ff9800' : 'var(--text-secondary)', fontWeight: r.paidOtHours > 0 ? '600' : '400' }}>
+                            {r.paidOtHours.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.paidCost > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
+                            ${r.paidCost.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.billedHours > 0 ? '#4caf50' : 'var(--text-secondary)' }}>
+                            {r.billedHours.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.billedRevenue > 0 ? '#4caf50' : 'var(--text-secondary)' }}>
+                            ${r.billedRevenue.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', fontWeight: '600', color: dColor(dHours) }}>
+                            {dHours > 0 ? '+' : ''}{dHours.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', fontWeight: '600', color: dColor(margin) }}>
+                            {margin >= 0 ? '+' : ''}${margin.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '10px 14px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            {r.ticketNumbers.length === 0 ? '—' : r.ticketNumbers.join(', ')}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
+                      <td colSpan={2} style={{ padding: '12px 14px', fontWeight: '700', color: 'var(--text-primary)' }}>TOTALS</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#dc3545' }}>{totals.paidHours.toFixed(2)}</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#ff9800' }}>{totals.paidOtHours.toFixed(2)}</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#dc3545' }}>${totals.paidCost.toFixed(2)}</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#4caf50' }}>{totals.billedHours.toFixed(2)}</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#4caf50' }}>${totals.billedRevenue.toFixed(2)}</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: dColor(totals.billedHours - totals.paidHours) }}>
+                        {(totals.billedHours - totals.paidHours) > 0 ? '+' : ''}{(totals.billedHours - totals.paidHours).toFixed(2)}
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: dColor(totals.billedRevenue - totals.paidCost) }}>
+                        {(totals.billedRevenue - totals.paidCost) >= 0 ? '+' : ''}${(totals.billedRevenue - totals.paidCost).toFixed(2)}
+                      </td>
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ padding: '10px 14px', fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', borderTop: '1px solid var(--border-color)' }}>
+                  Paid Hrs/Cost = sum of time_entries (drives payroll). Billed Hrs/Revenue = sum of service_tickets in the same period (drives invoicing).
+                  Mismatch is normal when employees convert OT to regular billing or vice versa. Δ Hrs &lt; 0 = OT absorbed by employer. Margin = gross labour margin.
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* OT Allocation Modal — admin picks which entries on a flagged day flip to OT rate_type */}
+      {otModalState && (() => {
+        const allocated = Object.values(otAllocations).reduce((s, v) => s + (Number(v) || 0), 0);
+        const target = otModalState.owedHours;
+        const remaining = +(target - allocated).toFixed(2);
+        const allocations: { entry: TimeEntry; hoursToConvert: number }[] = otModalState.dayEntries
+          .filter((e) => {
+            const rt = e.rate_type || 'Shop Time';
+            return rt !== 'Shop Overtime' && rt !== 'Field Overtime';
+          })
+          .map((e) => ({ entry: e, hoursToConvert: Number(otAllocations[e.id]) || 0 }))
+          .filter((a) => a.hoursToConvert > 0);
+
+        const canSave = Math.abs(remaining) < 0.01 && allocated > 0 && !otConvertMutation.isPending;
+
+        return (
+          <div
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
+            onClick={() => !otConvertMutation.isPending && setOtModalState(null)}
+          >
+            <div
+              style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px', maxWidth: '760px', width: '92%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    Allocate Overtime — {otModalState.userName}
+                  </h3>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    {new Date(otModalState.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                     · Owed <strong style={{ color: '#ff9800' }}>{target.toFixed(2)}h</strong> — pick which project(s) absorb the OT
+                  </div>
+                </div>
+                <button onClick={() => setOtModalState(null)} disabled={otConvertMutation.isPending} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: 'var(--text-secondary)', padding: 0 }}>×</button>
+              </div>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Project</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Rate Type</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Entry Hrs</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Convert to OT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {otModalState.dayEntries.map((e) => {
+                    const rt = e.rate_type || 'Shop Time';
+                    const isAlreadyOt = rt === 'Shop Overtime' || rt === 'Field Overtime';
+                    const projName = e.project?.name || (e.project_id ? 'Unknown Project' : 'Unassigned');
+                    const projNum = e.project?.project_number || '';
+                    const otVariant = rt === 'Field Time' ? 'Field Overtime' : 'Shop Overtime';
+                    return (
+                      <tr key={e.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '6px 8px' }}>
+                          {projNum && <span style={{ color: 'var(--text-tertiary)', marginRight: '6px', fontFamily: 'monospace' }}>{projNum}</span>}
+                          {projName}
+                          {e.project?.customer?.name && <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{e.project.customer.name}</div>}
+                        </td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>
+                          {rt}
+                          {!isAlreadyOt && <span style={{ marginLeft: '4px', color: 'var(--text-tertiary)', fontSize: '10px' }}>→ {otVariant}</span>}
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{Number(e.hours).toFixed(2)}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                          {isAlreadyOt ? (
+                            <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>already OT</span>
+                          ) : (
+                            <input
+                              type="number"
+                              step="0.25"
+                              min={0}
+                              max={Number(e.hours)}
+                              value={otAllocations[e.id] ?? ''}
+                              onChange={(ev) => {
+                                const raw = ev.target.value;
+                                const next = { ...otAllocations };
+                                if (raw === '') delete next[e.id];
+                                else next[e.id] = Math.min(Number(e.hours), Math.max(0, Number(raw) || 0));
+                                setOtAllocations(next);
+                              }}
+                              style={{ width: '80px', padding: '4px 6px', textAlign: 'right', fontFamily: 'monospace', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                              placeholder="0.00"
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div style={{ marginTop: '16px', padding: '12px', borderRadius: '6px', backgroundColor: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  Allocated: <strong style={{ color: 'var(--text-primary)' }}>{allocated.toFixed(2)}h</strong> of <strong style={{ color: '#ff9800' }}>{target.toFixed(2)}h</strong>
+                  {Math.abs(remaining) >= 0.01 && (
+                    <span style={{ marginLeft: '8px', color: remaining > 0 ? '#dc3545' : '#dc3545' }}>
+                      ({remaining > 0 ? `${remaining.toFixed(2)}h still to allocate` : `${(-remaining).toFixed(2)}h over`})
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => setOtModalState(null)}
+                    disabled={otConvertMutation.isPending}
+                    style={{ padding: '8px 14px', fontSize: '13px' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    onClick={() => otConvertMutation.mutate({ userId: otModalState.userId, date: otModalState.date, allocations })}
+                    disabled={!canSave}
+                    style={{ padding: '8px 14px', fontSize: '13px' }}
+                  >
+                    {otConvertMutation.isPending ? 'Saving…' : 'Convert to OT'}
+                  </button>
+                </div>
+              </div>
+
+              {otConvertMutation.isError && (
+                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '6px', backgroundColor: 'rgba(220,53,69,0.10)', color: '#dc3545', fontSize: '12px' }}>
+                  {(otConvertMutation.error as Error)?.message || 'Failed to convert overtime.'}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Reimbursement Breakdown Modal */}
       {reimbursementModalUserId && (() => {
