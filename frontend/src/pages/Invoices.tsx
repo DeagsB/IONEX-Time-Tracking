@@ -1682,8 +1682,15 @@ function markRowCoversAllTicketsInGroup(
 }
 
 /**
- * DB row for this batch: exact group_id match first, else any mark whose snapshot lists every ticket in the batch.
- * Fixes UI drift when getGroupId() changes (e.g. project id source) but invoiced_batch_marks still use the old key.
+ * DB row for this batch. Tried in priority order:
+ *  1. Exact group_id match.
+ *  2. Any mark whose snapshot covers every ticket currently in the group (heals UI drift when
+ *     getGroupId() changes but mark rows still use the old key).
+ *  3. For CNRL period batches (projectId + approverCode + periodKey): any mark whose snapshotted
+ *     KEY matches on those three fields. Catches the case where a ticket is edited to switch
+ *     approver (G917 → G940): the new group's id differs from the existing G940 mark row's id
+ *     because membership differs, but it should still merge into that existing batch rather
+ *     than spawning a parallel G940 batch under the same period.
  */
 function findMarkRowForGroup(
   group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
@@ -1692,7 +1699,31 @@ function findMarkRowForGroup(
   const gid = getGroupId(group);
   const exact = rows.find((r) => r.group_id === gid);
   if (exact) return exact;
-  return rows.find((r) => markRowCoversAllTicketsInGroup(r, group));
+  const coverage = rows.find((r) => markRowCoversAllTicketsInGroup(r, group));
+  if (coverage) return coverage;
+  const k = group.key;
+  if (k.periodKey && k.approverCode && k.approverCode !== k.periodKey) {
+    const projId = (k.projectId ?? '').trim();
+    const approver = (k.approverCode ?? '').trim();
+    const period = (k.periodKey ?? '').trim();
+    // Don't pull a ticket into a batch that's already moved past the editable phase — merging
+    // into Approved / Portal-submitted / Sent / Invoiced batches would silently mutate a frozen
+    // record. Only the open phases (no status set yet, draft, submitted, needs_adjustment) are
+    // safe absorption targets.
+    const ABSORBABLE_STATUSES = new Set(['submitted_approval', 'needs_adjustment', 'draft']);
+    return rows.find((r) => {
+      const snap = (r.key_snapshot ?? {}) as Partial<FrozenGroupSnapshot>;
+      const sk = (snap.key ?? {}) as Partial<InvoiceGroupKeyWithPeriod>;
+      const sProj = String(sk.projectId ?? '').trim();
+      const sApprover = String(sk.approverCode ?? '').trim();
+      const sPeriod = String(sk.periodKey ?? '').trim();
+      if (!(sProj === projId && sApprover === approver && sPeriod === period)) return false;
+      const sid = snap.statusId;
+      if (sid && !ABSORBABLE_STATUSES.has(sid)) return false;
+      return true;
+    });
+  }
+  return undefined;
 }
 
 function resolvedPersistGroupId(
