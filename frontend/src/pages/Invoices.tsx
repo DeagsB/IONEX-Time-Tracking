@@ -626,7 +626,7 @@ function TicketChip({ ticket, onOpenTicket, isAdmin, onMoveClick, onResetOverrid
     >
       <button
         type="button"
-        title={dragEnabled && moveEnabled ? 'Click to open · Hold then drag to move to another batch' : 'Open ticket'}
+        title={dragEnabled ? 'Click to open · Hold then drag to move to another batch' : 'Open ticket'}
         onPointerDown={dragControls?.onPointerDown}
         onPointerUp={dragControls?.onPointerUp}
         onPointerLeave={dragControls?.onPointerLeave}
@@ -647,7 +647,7 @@ function TicketChip({ ticket, onOpenTicket, isAdmin, onMoveClick, onResetOverrid
           fontWeight: 600,
           color: 'var(--text-primary)',
           border: 'none',
-          cursor: dragEnabled && moveEnabled ? 'grab' : 'pointer',
+          cursor: dragEnabled ? 'grab' : 'pointer',
           fontFamily: 'inherit',
           textAlign: 'left',
           display: 'inline-flex',
@@ -2700,7 +2700,13 @@ export default function Invoices() {
     sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
   } | null>(null);
   const [moveTicketBatchCustomDate, setMoveTicketBatchCustomDate] = useState<string>('');
-  /** Active hold-to-drag state for the drag-and-drop ticket move. Set when the 1s hold completes. */
+  /** Active hold-to-drag state for the drag-and-drop ticket move. Set when the 1s hold completes.
+   *  Two flavors via `mode`:
+   *   - 'override' (default, Ready/Pending tabs): drop sets the ticket's invoice_batch_date_override
+   *     so the ticket's batch is recomputed against the new period anchor. Tickets are unlocked.
+   *   - 'reassign' (Submitted-for-approval tab): tickets are locked in a frozen snapshot, so the drop
+   *     instead rewrites the ticketIds arrays on the source + target mark rows directly. Used to
+   *     move a ticket from one approver's batch to another while the batches are awaiting approval. */
   const [dragState, setDragState] = useState<{
     ticket: ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null };
     sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
@@ -2709,6 +2715,9 @@ export default function Invoices() {
     pointerX: number;
     pointerY: number;
     hoveredGroupId: string | null;
+    mode: 'override' | 'reassign';
+    /** Only set in 'reassign' mode — the source batch's persist id (mark row group_id). */
+    sourcePersistId?: string;
   } | null>(null);
   const [pendingHoldTicketId, setPendingHoldTicketId] = useState<string | null>(null);
   const holdTimerRef = useRef<number | null>(null);
@@ -4213,12 +4222,37 @@ export default function Invoices() {
     [uninvoicedGroups]
   );
 
-  /** Start a 1s press-and-hold timer that, once it fires, lifts the ticket into drag mode. */
+  /** Build the set of allowed drop-target persistIds for a 'reassign' drag. Targets are other
+   *  submitted-for-approval (or needs_adjustment) batches under the same customer + period, so
+   *  the user can move a ticket between approver batches that all need to ship together. */
+  const computeReassignTargetIds = useCallback(
+    (sourcePersistId: string, sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): Set<string> => {
+      const result = new Set<string>();
+      const sourceCustomer = sourceGroup.tickets[0]?.customerName ?? '';
+      const sourcePeriodKey = sourceGroup.key.periodKey ?? '';
+      for (const g of submittedApprovalGroups) {
+        const pid = resolvedPersistGroupId(g, invoicedMarkRows);
+        if (pid === sourcePersistId) continue;
+        const cust = g.tickets[0]?.customerName ?? '';
+        if (cust !== sourceCustomer) continue;
+        const pk = g.key.periodKey ?? '';
+        if (pk !== sourcePeriodKey) continue;
+        result.add(pid);
+      }
+      return result;
+    },
+    [submittedApprovalGroups, invoicedMarkRows]
+  );
+
+  /** Start a 1s press-and-hold timer that, once it fires, lifts the ticket into drag mode.
+   *  Pass `opts.mode = 'reassign'` (+ sourcePersistId) for Submitted-tab chips so the drop
+   *  rewrites mark snapshots instead of date overrides. Defaults to 'override' otherwise. */
   const beginTicketHold = useCallback(
     (
       e: React.PointerEvent,
       ticket: ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null },
-      sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }
+      sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
+      opts?: { mode?: 'override' | 'reassign'; sourcePersistId?: string }
     ) => {
       if (!isAdmin || !ticket.recordId) return;
       if (e.button !== 0) return;
@@ -4226,22 +4260,30 @@ export default function Invoices() {
       const startX = e.clientX;
       const startY = e.clientY;
       setPendingHoldTicketId(ticket.id);
+      const mode = opts?.mode ?? 'override';
       holdTimerRef.current = window.setTimeout(() => {
         holdTimerRef.current = null;
-        const validTargetIds = computeMoveTargetIds(sourceGroup);
+        const validTargetIds = mode === 'reassign' && opts?.sourcePersistId
+          ? computeReassignTargetIds(opts.sourcePersistId, sourceGroup)
+          : computeMoveTargetIds(sourceGroup);
+        const sourceGroupId = mode === 'reassign' && opts?.sourcePersistId
+          ? opts.sourcePersistId
+          : getGroupId(sourceGroup);
         setDragState({
           ticket,
           sourceGroup,
-          sourceGroupId: getGroupId(sourceGroup),
+          sourceGroupId,
           validTargetIds,
           pointerX: startX,
           pointerY: startY,
           hoveredGroupId: null,
+          mode,
+          sourcePersistId: opts?.sourcePersistId,
         });
         setPendingHoldTicketId(null);
       }, 400);
     },
-    [isAdmin, computeMoveTargetIds]
+    [isAdmin, computeMoveTargetIds, computeReassignTargetIds]
   );
 
   const cancelTicketHold = useCallback(() => {
@@ -4252,11 +4294,83 @@ export default function Invoices() {
     setPendingHoldTicketId(null);
   }, []);
 
+  /** Move a ticket between two locked submitted-for-approval batches. Mutates both mark rows'
+   *  snapshot.ticketIds in place, then if the target's approver differs from the source's,
+   *  rewrites the ticket's header_overrides.approver_po_afe so the regenerated PDF goes to the
+   *  right approver. All edits are atomic-ish: source is updated first; on failure we abort
+   *  before touching the target so no ticket is "lost from both". */
+  const runTicketReassignToBatch = useCallback(
+    async (
+      ticket: ServiceTicket & { recordId?: string; headerOverrides?: unknown },
+      sourcePersistId: string,
+      targetPersistId: string,
+    ) => {
+      const recordId = ticket.recordId?.trim();
+      if (!recordId) return;
+      const sourceRow = invoicedMarkRows.find((r) => r.group_id === sourcePersistId);
+      const targetRow = invoicedMarkRows.find((r) => r.group_id === targetPersistId);
+      if (!sourceRow || !targetRow) {
+        window.alert('Could not find source or target batch — refresh and try again.');
+        return;
+      }
+      const sourceSnap = (sourceRow.key_snapshot ?? {}) as FrozenGroupSnapshot;
+      const targetSnap = (targetRow.key_snapshot ?? {}) as FrozenGroupSnapshot;
+      const sourceIds = new Set((sourceSnap.ticketIds ?? []).map((s) => String(s).trim()).filter(Boolean));
+      sourceIds.delete(recordId);
+      const targetIds = new Set((targetSnap.ticketIds ?? []).map((s) => String(s).trim()).filter(Boolean));
+      targetIds.add(recordId);
+      try {
+        if (sourceIds.size === 0) {
+          // Last ticket moved out of the source — clean up the empty mark row so the
+          // (now-orphan) batch doesn't linger in the DB. Underlying tickets stay safe.
+          await invoicedBatchMarksService.deleteMark(sourcePersistId);
+        } else {
+          await invoicedBatchMarksService.upsert(sourcePersistId, {
+            ...sourceSnap,
+            ticketIds: [...sourceIds].sort(),
+          } as { key: unknown; ticketIds: string[] });
+        }
+        await invoicedBatchMarksService.upsert(targetPersistId, {
+          ...targetSnap,
+          ticketIds: [...targetIds].sort(),
+        } as { key: unknown; ticketIds: string[] });
+      } catch (err) {
+        window.alert(err instanceof Error ? err.message : 'Could not move ticket between batches.');
+        return;
+      }
+      // Update approver header override if target approver differs from source.
+      const sourceApprover = getApproverForGroupKey((sourceSnap.key ?? {}) as InvoiceGroupKeyWithPeriod) || '';
+      const targetApprover = getApproverForGroupKey((targetSnap.key ?? {}) as InvoiceGroupKeyWithPeriod) || '';
+      if (targetApprover && targetApprover !== sourceApprover) {
+        const existing = (ticket.headerOverrides as { approver_po_afe?: string; service_location?: string } | null | undefined) ?? {};
+        try {
+          await serviceTicketsService.updateHeaderOverrides(
+            recordId,
+            { ...existing, approver_po_afe: targetApprover },
+            isDemoMode,
+          );
+        } catch (err) {
+          console.warn('Header override approver update failed:', err);
+        }
+      }
+      await queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+      await queryClient.invalidateQueries({ queryKey: ['serviceTickets'] });
+      await queryClient.invalidateQueries({ queryKey: ['lockedServiceTicketIdsForMe'] });
+      // Skip the move-success Toast here — its Undo button rewinds via invoice_batch_date_override,
+      // which doesn't reverse a snapshot-reassign. A future change can add a dedicated reassign-undo.
+    },
+    [invoicedMarkRows, getApproverForGroupKey, isDemoMode, queryClient],
+  );
+
   /** Apply the drop: set the override date to the target batch's anchor, then clear drag state. */
   const finalizeDrop = useCallback(
     (state: NonNullable<typeof dragState>) => {
       const targetId = state.hoveredGroupId;
       if (!targetId || targetId === state.sourceGroupId || !state.validTargetIds.has(targetId)) return;
+      if (state.mode === 'reassign' && state.sourcePersistId) {
+        void runTicketReassignToBatch(state.ticket, state.sourcePersistId, targetId);
+        return;
+      }
       const target = uninvoicedGroups.find((g) => getGroupId(g) === targetId);
       if (!target || !state.ticket.recordId) return;
       const t = state.ticket as ServiceTicket & { recordProjectId?: string };
@@ -4270,7 +4384,7 @@ export default function Invoices() {
       const targetLabel = target.key.periodLabel || target.key.periodKey || 'target batch';
       void runTicketBatchMove(state.ticket, anchor, targetLabel);
     },
-    [uninvoicedGroups, getGroupingForTicket, runTicketBatchMove]
+    [uninvoicedGroups, getGroupingForTicket, runTicketBatchMove, runTicketReassignToBatch]
   );
 
   /** Document-level pointer/key listeners + edge auto-scroll. Only attached while a drag is active. */
@@ -6977,11 +7091,30 @@ export default function Invoices() {
                     }
                     const isMinSub = minimizedBatchIds.has(persistId);
                     const isStatusBusy = updateBatchStatusMutation.isPending && updateBatchStatusMutation.variables?.groupId === persistId;
+                    const isReassignDrag = dragState?.mode === 'reassign';
+                    const isDragSource = isReassignDrag && dragState?.sourcePersistId === persistId;
+                    const isValidDropTarget = isReassignDrag && !!dragState?.validTargetIds.has(persistId);
+                    const isHoveredDropTarget = isValidDropTarget && dragState?.hoveredGroupId === persistId;
+                    const isInvalidDuringDrag = isReassignDrag && !isDragSource && !isValidDropTarget;
+                    const dragOutline = isHoveredDropTarget
+                      ? '2px solid #16a34a'
+                      : isValidDropTarget
+                        ? '2px dashed rgba(34, 197, 94, 0.55)'
+                        : isDragSource
+                          ? '2px dashed rgba(59, 130, 246, 0.55)'
+                          : undefined;
                     return (
                       <div
                         key={persistId}
+                        data-batch-group-id={persistId}
                         className={`ionex-workflow-card${compact ? ' is-compact' : ''}${isMinSub ? ' is-minimized' : ''}`}
-                        style={{ ['--workflow-accent' as string]: statusHex } as React.CSSProperties}
+                        style={{
+                          ['--workflow-accent' as string]: statusHex,
+                          ...(dragOutline ? { outline: dragOutline, outlineOffset: '-2px' } : null),
+                          backgroundColor: isHoveredDropTarget ? 'rgba(34, 197, 94, 0.08)' : undefined,
+                          opacity: isInvalidDuringDrag ? 0.55 : 1,
+                          transition: 'background-color 0.12s, outline-color 0.12s, opacity 0.12s',
+                        } as React.CSSProperties}
                       >
                         <div className="ionex-workflow-card-header">
                           <button
@@ -7043,6 +7176,40 @@ export default function Invoices() {
                               </span>
                             </div>
                             <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{activeRejection.note}</div>
+                          </div>
+                        )}
+                        {!isMinSub && (
+                          <div style={{ marginTop: '10px' }}>
+                            <div className="ionex-tickets-eyebrow" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                              <strong>{group.tickets.length}</strong> ticket{group.tickets.length === 1 ? '' : 's'} in this batch — click to edit, hold then drag a chip to move it to another approver's batch in the same period
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              {group.tickets.map((t) => {
+                                const tt = t as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null; headerOverrides?: unknown };
+                                const isHolding = pendingHoldTicketId === t.id;
+                                const isBeingDragged = dragState?.ticket.id === t.id;
+                                const tRecordId = tt.recordId?.trim() || '';
+                                const hasExpense = !!tRecordId && (expensesByRecordId.get(tRecordId)?.length ?? 0) > 0;
+                                return (
+                                  <TicketChip
+                                    key={t.id}
+                                    ticket={tt as TicketChipTicket}
+                                    isAdmin={isAdmin}
+                                    hasExpense={hasExpense}
+                                    onOpenTicket={() => setEditTicketRecordId(tRecordId || tt.id)}
+                                    dragControls={{
+                                      onPointerDown: (e) => beginTicketHold(e, tt, group, { mode: 'reassign', sourcePersistId: persistId }),
+                                      onPointerUp: cancelTicketHold,
+                                      onPointerLeave: cancelTicketHold,
+                                      onPointerCancel: cancelTicketHold,
+                                      isHolding,
+                                      isBeingDragged,
+                                      suppressClickRef: justFinishedDragRef,
+                                    }}
+                                  />
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
                         <div

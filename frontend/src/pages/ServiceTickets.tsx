@@ -4859,8 +4859,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
           </div>
         )}
         
-        <div className="card" style={{ overflow: 'hidden', borderRadius: selectedTicketIds.size > 0 ? '0 0 8px 8px' : '8px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="card" style={{ overflowX: 'auto', overflowY: 'visible', borderRadius: selectedTicketIds.size > 0 ? '0 0 8px 8px' : '8px' }}>
+          <table style={{ width: '100%', minWidth: '1180px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
                 {isAdmin && (
