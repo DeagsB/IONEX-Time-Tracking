@@ -265,38 +265,36 @@ function EmployeeProjectsAndDailyBreakdown({
   const isPaidOvertimeRateType = (rt: string) => rt === 'Shop Overtime' || rt === 'Field Overtime';
 
   return (
-    <div style={{ padding: '14px 16px', borderRadius: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
-      <div style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)', marginBottom: '12px' }}>
-        Project Allocation & Daily Hours — {employeeName}
-        {isContractor && <span style={{ fontSize: '11px', marginLeft: '8px', color: '#f59e0b' }}>(Contractor)</span>}
+    <div className="payroll-breakdown">
+      <div className="payroll-breakdown-title">
+        Project allocation &amp; daily hours — {employeeName}
+        {isContractor && <span className="payroll-tag is-contractor">Contractor</span>}
       </div>
 
       {/* Projects */}
-      <div style={{ marginBottom: '16px' }}>
-        <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
-          Projects ({sortedProjects.length})
-        </div>
+      <div className="payroll-breakdown-section">
+        <div className="payroll-breakdown-eyebrow">Projects ({sortedProjects.length})</div>
         {sortedProjects.length === 0 ? (
-          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No project allocations.</div>
+          <div className="payroll-muted" style={{ fontSize: '12px', fontStyle: 'italic' }}>No project allocations.</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+          <table className="payroll-mini-table">
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Project</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Customer</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Hours by rate type</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Total</th>
+              <tr>
+                <th>Project</th>
+                <th>Customer</th>
+                <th>Hours by rate type</th>
+                <th className="is-numeric">Total</th>
               </tr>
             </thead>
             <tbody>
               {sortedProjects.map(([key, p]) => (
-                <tr key={key} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <td style={{ padding: '6px 8px' }}>{p.name}</td>
-                  <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>{p.customer || '—'}</td>
-                  <td style={{ padding: '6px 8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                <tr key={key}>
+                  <td>{p.name}</td>
+                  <td className="payroll-muted">{p.customer || '—'}</td>
+                  <td className="payroll-muted" style={{ fontSize: '11px' }}>
                     {Array.from(p.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
                   </td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>{p.hours.toFixed(2)}</td>
+                  <td className="is-numeric" style={{ fontWeight: 600 }}>{p.hours.toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -305,20 +303,20 @@ function EmployeeProjectsAndDailyBreakdown({
       </div>
 
       {/* Daily hours */}
-      <div>
-        <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
-          Daily Hours — flagged when day &gt; {OVERTIME_DAILY_THRESHOLD}h or week &gt; {OVERTIME_WEEKLY_THRESHOLD}h
+      <div className="payroll-breakdown-section">
+        <div className="payroll-breakdown-eyebrow">
+          Daily hours — flagged when day &gt; {OVERTIME_DAILY_THRESHOLD}h or week &gt; {OVERTIME_WEEKLY_THRESHOLD}h
         </div>
         {sortedDates.length === 0 ? (
-          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No daily entries.</div>
+          <div className="payroll-muted" style={{ fontSize: '12px', fontStyle: 'italic' }}>No daily entries.</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+          <table className="payroll-mini-table">
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Date</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>By rate type</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Total</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>OT?</th>
+              <tr>
+                <th>Date</th>
+                <th>By rate type</th>
+                <th className="is-numeric">Total</th>
+                <th style={{ textAlign: 'center' }}>OT?</th>
               </tr>
             </thead>
             <tbody>
@@ -334,37 +332,32 @@ function EmployeeProjectsAndDailyBreakdown({
                 const owedHours = Math.max(0, dailyOtEntitled - paidOt);
                 const dayOver = dailyOtEntitled > 0;
                 const weekOver = weekTotal > OVERTIME_WEEKLY_THRESHOLD;
-                const rowBg = owedHours > 0 ? 'rgba(245,158,11,0.10)' : 'transparent';
                 return (
-                  <tr key={date} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: rowBg }}>
-                    <td style={{ padding: '6px 8px' }}>{fmtDate(date)}</td>
-                    <td style={{ padding: '6px 8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  <tr key={date} className={owedHours > 0 ? 'is-flagged' : ''}>
+                    <td>{fmtDate(date)}</td>
+                    <td className="payroll-muted" style={{ fontSize: '11px' }}>
                       {Array.from(d.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
                     </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: dayOver ? '700' : '500', color: dayOver ? '#ff9800' : 'var(--text-primary)' }}>
+                    <td className="is-numeric" style={{ fontWeight: dayOver ? 700 : 500, color: dayOver ? 'var(--warning-color)' : 'var(--text-primary)' }}>
                       {d.total.toFixed(2)}
                     </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '11px' }}>
+                    <td style={{ textAlign: 'center' }}>
                       {owedHours > 0 ? (
                         <button
                           type="button"
+                          className="payroll-pill is-owed"
                           onClick={() => onConvertOt?.({ userId, userName: employeeName, date, dayEntries: d.entries, owedHours })}
                           disabled={!onConvertOt}
-                          style={{
-                            color: '#ff9800', fontWeight: '700', background: 'none', border: '1px solid #ff9800',
-                            borderRadius: '4px', padding: '2px 8px', cursor: onConvertOt ? 'pointer' : 'default',
-                            fontSize: '11px', fontFamily: 'inherit',
-                          }}
                           title={`Day ${d.total.toFixed(2)}h, entitled ${dailyOtEntitled.toFixed(2)}h OT, ${paidOt.toFixed(2)}h already booked at OT rate${weekOver ? ` · Week total ${weekTotal.toFixed(2)}h` : ''} — click to allocate`}
                         >
                           Owed {owedHours.toFixed(2)}h ⇢
                         </button>
                       ) : paidOt > 0 ? (
-                        <span style={{ color: '#4caf50', fontWeight: '600' }} title={`${paidOt.toFixed(2)}h booked at OT rate`}>
+                        <span className="payroll-pill is-paid" title={`${paidOt.toFixed(2)}h booked at OT rate`}>
                           Paid {paidOt.toFixed(2)}h
                         </span>
                       ) : (
-                        <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                        <span className="payroll-pill is-muted">—</span>
                       )}
                     </td>
                   </tr>
@@ -1563,8 +1556,19 @@ export default function Payroll() {
       })();
 
   return (
-    <div>
-      <h1 className="ionex-page-title">{isAdmin ? 'Payroll Report' : 'My Payroll'}</h1>
+    <div className="payroll-page">
+      <div className="payroll-hero">
+        <div>
+          <div className="payroll-hero-eyebrow">{isAdmin ? 'Pay period · administrator view' : 'Pay period · my hours'}</div>
+          <h1 className="payroll-hero-title">{isAdmin ? 'Payroll Report' : 'My Payroll'}</h1>
+        </div>
+        <div className="payroll-hero-meta">
+          <span className="payroll-payday-chip">
+            <span className="label">Payday</span>
+            {paydayLabel}
+          </span>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="ionex-filter-card">
@@ -1660,11 +1664,6 @@ export default function Payroll() {
             })()}
           </div>
           
-          {/* Payday indicator */}
-          <span className="ionex-tag" style={{ ['--tag-color' as string]: '#4caf50' } as React.CSSProperties}>
-            <span className="label">Payday:</span>
-            {paydayLabel}
-          </span>
         </div>
 
         {isAdmin && (
@@ -1701,8 +1700,7 @@ export default function Payroll() {
             <button
               type="button"
               onClick={handleExportCsv}
-              className="button button-secondary"
-              style={{ padding: '8px 14px', fontSize: '12px', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+              className="payroll-action-btn payroll-action-spacer"
               title="Download a CSV with project allocations, rates, and payroll inputs for QuickBooks"
               disabled={displayedEmployeeHours.length === 0}
             >
@@ -1732,30 +1730,32 @@ export default function Payroll() {
       ) : (
         <>
           {/* Summary Cards */}
-          <div className="ionex-summary-grid">
-            <div className="ionex-summary-card" style={{ ['--summary-accent' as string]: 'var(--primary-color)' } as React.CSSProperties}>
-              <span className="ionex-summary-card-eyebrow">
-                <span className="accent" aria-hidden />
-                {isAdmin ? 'Total Cost' : 'Total Hours'}
-              </span>
-              <span className="ionex-summary-card-value">
+          <div className="payroll-summary-grid">
+            <div className="payroll-summary-card" style={{ ['--accent' as string]: 'var(--primary-color)' } as React.CSSProperties}>
+              <div className="payroll-summary-eyebrow">{isAdmin ? 'Total cost' : 'Total hours'}</div>
+              <div className="payroll-summary-value">
                 {isAdmin ? `$${grandTotalsCosts.totalCost.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
-              </span>
+              </div>
               {isAdmin && (
-                <span className="ionex-summary-card-hint">
+                <div className="payroll-summary-hint">
                   Gross + employer CPP/EI + reimbursements
-                </span>
+                </div>
               )}
             </div>
-            <div className="ionex-summary-card" style={{ ['--summary-accent' as string]: '#00897b' } as React.CSSProperties}>
-              <span className="ionex-summary-card-eyebrow">
-                <span className="accent" aria-hidden />
-                Reimbursements
-              </span>
-              <span className="ionex-summary-card-value">
-                ${grandTotalReimbursements.toFixed(2)}
-              </span>
+            <div className="payroll-summary-card" style={{ ['--accent' as string]: '#00897b' } as React.CSSProperties}>
+              <div className="payroll-summary-eyebrow">Reimbursements</div>
+              <div className="payroll-summary-value">${grandTotalReimbursements.toFixed(2)}</div>
+              <div className="payroll-summary-hint">Receipts + ticket expenses for this period</div>
             </div>
+            {isAdmin && (
+              <div className="payroll-summary-card" style={{ ['--accent' as string]: '#0ea5e9' } as React.CSSProperties}>
+                <div className="payroll-summary-eyebrow">Employees on payroll</div>
+                <div className="payroll-summary-value">{displayedEmployeeHours.length}</div>
+                <div className="payroll-summary-hint">
+                  {excludeContractors ? 'Contractors hidden' : 'Contractors included'}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Employee Hours Table */}
@@ -1770,40 +1770,19 @@ export default function Payroll() {
               </span>
             </div>
           </div>
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            {/* overflow-x:auto on this wrapper would hide the scrollbar below the fold on tall tables.
-                Letting the table push the page wide instead surfaces the Layout's existing overflow:auto
-                horizontal scrollbar at the bottom of the viewport, which is always reachable. */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+          <div className="payroll-table-card">
+            <table className="payroll-table">
               <thead>
-                <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                    Employee
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#dc3545', textTransform: 'uppercase' }}>
-                    Internal Time
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase' }}>
-                    Shop Time
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase' }}>
-                    Shop OT
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#2196f3', textTransform: 'uppercase' }}>
-                    Travel
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#9c27b0', textTransform: 'uppercase' }}>
-                    Field
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#e91e63', textTransform: 'uppercase' }}>
-                    Field OT
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#00897b', textTransform: 'uppercase' }}>
-                    Reimburse
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
-                    Total
-                  </th>
+                <tr>
+                  <th>Employee</th>
+                  <th className="is-numeric payroll-cell-internal">Internal</th>
+                  <th className="is-numeric payroll-cell-shop">Shop</th>
+                  <th className="is-numeric payroll-cell-shop-ot">Shop OT</th>
+                  <th className="is-numeric payroll-cell-travel">Travel</th>
+                  <th className="is-numeric payroll-cell-field">Field</th>
+                  <th className="is-numeric payroll-cell-field-ot">Field OT</th>
+                  <th className="is-numeric payroll-cell-reimb">Reimburse</th>
+                  <th className="is-numeric">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -1812,73 +1791,56 @@ export default function Payroll() {
                   const breakdown = payrollBreakdownByUser.get(emp.userId);
                   return (
                   <React.Fragment key={emp.userId}>
-                  <tr style={{ borderBottom: isExpanded ? 'none' : '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '14px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <tr className={isExpanded ? 'is-expanded' : ''}>
+                    <td>
+                      <div className="payroll-employee-cell">
                         {isAdmin && (
-                          <span
+                          <button
+                            type="button"
+                            className={`payroll-row-toggle${isExpanded ? ' is-open' : ''}`}
                             onClick={() => {
                               const next = new Set(expandedUsers);
                               if (next.has(emp.userId)) next.delete(emp.userId); else next.add(emp.userId);
                               setExpandedUsers(next);
                             }}
-                            style={{
-                              cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)',
-                              transition: 'transform 0.15s, color 0.15s', display: 'inline-block',
-                              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                              userSelect: 'none', flexShrink: 0, width: '14px', textAlign: 'center',
-                            }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLSpanElement).style.color = 'var(--text-primary)'; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLSpanElement).style.color = 'var(--text-secondary)'; }}
+                            aria-expanded={isExpanded}
                             title="Toggle payroll breakdown"
-                          >&#9654;</span>
+                          >&#9654;</button>
                         )}
                         <div
-                          style={{ cursor: isAdmin ? 'pointer' : 'default' }}
+                          className="payroll-employee-link"
                           onClick={() => { if (isAdmin) navigate(`/calendar?viewUserId=${emp.userId}&from=payroll`); }}
                           title={isAdmin ? `View ${emp.name}'s calendar and time entries` : undefined}
+                          style={{ cursor: isAdmin ? 'pointer' : 'default' }}
                         >
-                          <div style={{ fontWeight: '500', color: isAdmin ? 'var(--link-color, #2563eb)' : 'var(--text-primary)' }}>
+                          <span className={`payroll-employee-name${isAdmin ? ' is-link' : ''}`}>
                             {emp.name}
-                            {breakdown?.isContractor && (
-                              <span style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 5px', borderRadius: '3px', backgroundColor: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontWeight: '600', verticalAlign: 'middle' }}>
-                                Contractor
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{emp.email}</div>
+                            {breakdown?.isContractor && <span className="payroll-tag is-contractor">Contractor</span>}
+                          </span>
+                          <span className="payroll-employee-email">{emp.email}</span>
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.internalHours > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
+                    <td className={`is-numeric ${emp.internalHours > 0 ? 'payroll-cell-internal' : 'payroll-cell-muted'}`}>
                       {formatCell(emp.internalHours, cellRate(emp.userId, 'internal'))}
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.shopTime > 0 ? '#4caf50' : 'var(--text-secondary)' }}>
+                    <td className={`is-numeric ${emp.shopTime > 0 ? 'payroll-cell-shop' : 'payroll-cell-muted'}`}>
                       {formatCell(emp.shopTime, cellRate(emp.userId, 'shop'))}
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.shopOvertime > 0 ? '#ff9800' : 'var(--text-secondary)' }}>
+                    <td className={`is-numeric ${emp.shopOvertime > 0 ? 'payroll-cell-shop-ot' : 'payroll-cell-muted'}`}>
                       {formatCell(emp.shopOvertime, cellRate(emp.userId, 'shopOt'))}
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.travelTime > 0 ? '#2196f3' : 'var(--text-secondary)' }}>
+                    <td className={`is-numeric ${emp.travelTime > 0 ? 'payroll-cell-travel' : 'payroll-cell-muted'}`}>
                       {formatCell(emp.travelTime, cellRate(emp.userId, 'travel'))}
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.fieldTime > 0 ? '#9c27b0' : 'var(--text-secondary)' }}>
+                    <td className={`is-numeric ${emp.fieldTime > 0 ? 'payroll-cell-field' : 'payroll-cell-muted'}`}>
                       {formatCell(emp.fieldTime, cellRate(emp.userId, 'field'))}
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '14px', color: emp.fieldOvertime > 0 ? '#e91e63' : 'var(--text-secondary)' }}>
+                    <td className={`is-numeric ${emp.fieldOvertime > 0 ? 'payroll-cell-field-ot' : 'payroll-cell-muted'}`}>
                       {formatCell(emp.fieldOvertime, cellRate(emp.userId, 'fieldOt'))}
                     </td>
                     <td
-                      style={{
-                        padding: '14px 16px',
-                        textAlign: 'right',
-                        fontFamily: 'monospace',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        color: (reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? '#00897b' : 'var(--text-secondary)',
-                        cursor: (reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? 'pointer' : 'default',
-                        textDecoration: (reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? 'underline' : 'none',
-                      }}
+                      className={`is-numeric ${(reimbursementsByUser.get(emp.userId)?.total || 0) > 0 ? 'payroll-cell-reimb payroll-reimb-link' : 'payroll-cell-muted'}`}
                       onClick={() => {
                         const reimb = reimbursementsByUser.get(emp.userId);
                         if (reimb && reimb.total > 0) setReimbursementModalUserId(emp.userId);
@@ -1887,7 +1849,7 @@ export default function Payroll() {
                     >
                       ${(reimbursementsByUser.get(emp.userId)?.total || 0).toFixed(2)}
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    <td className="is-numeric" style={{ fontWeight: 700 }}>
                       {displayMode === 'dollars'
                         ? `$${(breakdown?.basePay ?? 0).toFixed(2)}`
                         : emp.totalHours.toFixed(2)}
@@ -1895,7 +1857,7 @@ export default function Payroll() {
                   </tr>
                   {isExpanded && isAdmin && (
                     <tr>
-                      <td colSpan={9} style={{ padding: '0 16px 16px 42px', backgroundColor: 'var(--bg-secondary)' }}>
+                      <td colSpan={9} style={{ padding: 0, backgroundColor: 'var(--bg-secondary)' }}>
                         <EmployeeProjectsAndDailyBreakdown
                           employeeName={emp.name}
                           userId={emp.userId}
@@ -1923,32 +1885,16 @@ export default function Payroll() {
                   }
                   const fmt = (hours: number, dollars: number) => displayMode === 'dollars' ? `$${dollars.toFixed(2)}` : hours.toFixed(2);
                   return (
-                <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
-                  <td style={{ padding: '14px 16px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                    TOTALS
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#dc3545' }}>
-                    {fmt(grandTotals.internalHours, totInternal)}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#4caf50' }}>
-                    {fmt(grandTotals.shopTime, totShop)}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#ff9800' }}>
-                    {fmt(grandTotals.shopOvertime, totShopOt)}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#2196f3' }}>
-                    {fmt(grandTotals.travelTime, totTravel)}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#9c27b0' }}>
-                    {fmt(grandTotals.fieldTime, totField)}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#e91e63' }}>
-                    {fmt(grandTotals.fieldOvertime, totFieldOt)}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '15px', fontWeight: '700', color: '#00897b' }}>
-                    ${grandTotalReimbursements.toFixed(2)}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                <tr className="is-totals">
+                  <td>Totals</td>
+                  <td className="is-numeric payroll-cell-internal">{fmt(grandTotals.internalHours, totInternal)}</td>
+                  <td className="is-numeric payroll-cell-shop">{fmt(grandTotals.shopTime, totShop)}</td>
+                  <td className="is-numeric payroll-cell-shop-ot">{fmt(grandTotals.shopOvertime, totShopOt)}</td>
+                  <td className="is-numeric payroll-cell-travel">{fmt(grandTotals.travelTime, totTravel)}</td>
+                  <td className="is-numeric payroll-cell-field">{fmt(grandTotals.fieldTime, totField)}</td>
+                  <td className="is-numeric payroll-cell-field-ot">{fmt(grandTotals.fieldOvertime, totFieldOt)}</td>
+                  <td className="is-numeric payroll-cell-reimb">${grandTotalReimbursements.toFixed(2)}</td>
+                  <td className="is-numeric">
                     {displayMode === 'dollars' ? `$${totBasePay.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
                   </td>
                 </tr>
@@ -1962,22 +1908,19 @@ export default function Payroll() {
 
       {/* Paid vs Billed Reconciliation Panel — admin only */}
       {isAdmin && reconciliationRows.length > 0 && (
-        <div style={{ marginTop: '24px' }}>
+        <div>
           <div
-            className="ionex-section-heading"
-            style={{ cursor: 'pointer' }}
+            className={`payroll-section-heading${showReconciliation ? ' is-open' : ''}`}
             onClick={() => setShowReconciliation((v) => !v)}
             title="Compare payroll cost (time entries) to customer billing (service tickets) per user × project"
           >
-            <div className="ionex-section-heading-title-row">
-              <h3>
-                <span style={{ display: 'inline-block', transform: showReconciliation ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s', marginRight: '6px' }}>▸</span>
-                Paid vs Billed Reconciliation
-              </h3>
-              <span className="ionex-section-heading-meta">
-                {reconciliationRows.length} rows · payroll cost vs customer billing
-              </span>
-            </div>
+            <h3>
+              <span className="toggle">&#9654;</span>
+              Paid vs Billed reconciliation
+            </h3>
+            <span className="meta">
+              {reconciliationRows.length} rows · payroll cost vs customer billing
+            </span>
           </div>
           {showReconciliation && (() => {
             const totals = reconciliationRows.reduce(
@@ -1990,26 +1933,25 @@ export default function Payroll() {
               }),
               { paidHours: 0, paidCost: 0, paidOtHours: 0, billedHours: 0, billedRevenue: 0 }
             );
-            const dColor = (n: number, invert = false) => {
-              if (Math.abs(n) < 0.005) return 'var(--text-secondary)';
-              const positive = invert ? n < 0 : n > 0;
-              return positive ? '#4caf50' : '#dc3545';
+            const deltaClass = (n: number) => {
+              if (Math.abs(n) < 0.005) return 'payroll-delta is-zero';
+              return n > 0 ? 'payroll-delta is-pos' : 'payroll-delta is-neg';
             };
             return (
-              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
+              <div className="payroll-table-card">
+                <table className="payroll-recon-table">
                   <thead>
-                    <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                      <th style={{ padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Project</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#dc3545', textTransform: 'uppercase' }}>Paid Hrs</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#dc3545', textTransform: 'uppercase' }} title="Of paid hours, how many were at an OT rate">OT Hrs</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#dc3545', textTransform: 'uppercase' }}>Cost Paid</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase' }}>Billed Hrs</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#4caf50', textTransform: 'uppercase' }}>Revenue</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }} title="Billed hours minus paid hours">Δ Hrs</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }} title="Revenue minus payroll cost (gross labour margin)">Margin</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Tickets</th>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Project</th>
+                      <th className="is-numeric payroll-cell-internal">Paid Hrs</th>
+                      <th className="is-numeric payroll-cell-shop-ot" title="Of paid hours, how many were at an OT rate">OT Hrs</th>
+                      <th className="is-numeric payroll-cell-internal">Cost Paid</th>
+                      <th className="is-numeric payroll-cell-shop">Billed Hrs</th>
+                      <th className="is-numeric payroll-cell-shop">Revenue</th>
+                      <th className="is-numeric" title="Billed hours minus paid hours">Δ Hrs</th>
+                      <th className="is-numeric" title="Revenue minus payroll cost (gross labour margin)">Margin</th>
+                      <th>Tickets</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2019,60 +1961,44 @@ export default function Payroll() {
                       const paidOnly = r.paidHours > 0 && r.billedHours === 0;
                       const billedOnly = r.billedHours > 0 && r.paidHours === 0;
                       return (
-                        <tr key={`${r.userId}|${r.projectId}`} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: paidOnly || billedOnly ? 'rgba(245,158,11,0.06)' : 'transparent' }}>
-                          <td style={{ padding: '10px 14px', fontSize: '13px' }}>{r.userName}</td>
-                          <td style={{ padding: '10px 14px', fontSize: '13px' }}>
+                        <tr key={`${r.userId}|${r.projectId}`} className={paidOnly || billedOnly ? 'is-mismatch' : ''}>
+                          <td>{r.userName}</td>
+                          <td>
                             <div>
-                              {r.projectNumber && <span style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)', marginRight: '6px' }}>{r.projectNumber}</span>}
+                              {r.projectNumber && <span className="payroll-muted" style={{ fontFamily: 'SF Mono, Menlo, Consolas, monospace', marginRight: '6px' }}>{r.projectNumber}</span>}
                               {r.projectName}
                             </div>
-                            {r.customer && <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{r.customer}</div>}
+                            {r.customer && <div className="payroll-employee-email">{r.customer}</div>}
                           </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.paidHours > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
-                            {r.paidHours.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.paidOtHours > 0 ? '#ff9800' : 'var(--text-secondary)', fontWeight: r.paidOtHours > 0 ? '600' : '400' }}>
-                            {r.paidOtHours.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.paidCost > 0 ? '#dc3545' : 'var(--text-secondary)' }}>
-                            ${r.paidCost.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.billedHours > 0 ? '#4caf50' : 'var(--text-secondary)' }}>
-                            {r.billedHours.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: r.billedRevenue > 0 ? '#4caf50' : 'var(--text-secondary)' }}>
-                            ${r.billedRevenue.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', fontWeight: '600', color: dColor(dHours) }}>
-                            {dHours > 0 ? '+' : ''}{dHours.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', fontWeight: '600', color: dColor(margin) }}>
-                            {margin >= 0 ? '+' : ''}${margin.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '10px 14px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                            {r.ticketNumbers.length === 0 ? '—' : r.ticketNumbers.join(', ')}
-                          </td>
+                          <td className={`is-numeric ${r.paidHours > 0 ? 'payroll-cell-internal' : 'payroll-cell-muted'}`}>{r.paidHours.toFixed(2)}</td>
+                          <td className={`is-numeric ${r.paidOtHours > 0 ? 'payroll-cell-shop-ot' : 'payroll-cell-muted'}`} style={{ fontWeight: r.paidOtHours > 0 ? 600 : 400 }}>{r.paidOtHours.toFixed(2)}</td>
+                          <td className={`is-numeric ${r.paidCost > 0 ? 'payroll-cell-internal' : 'payroll-cell-muted'}`}>${r.paidCost.toFixed(2)}</td>
+                          <td className={`is-numeric ${r.billedHours > 0 ? 'payroll-cell-shop' : 'payroll-cell-muted'}`}>{r.billedHours.toFixed(2)}</td>
+                          <td className={`is-numeric ${r.billedRevenue > 0 ? 'payroll-cell-shop' : 'payroll-cell-muted'}`}>${r.billedRevenue.toFixed(2)}</td>
+                          <td className={`is-numeric ${deltaClass(dHours)}`}>{dHours > 0 ? '+' : ''}{dHours.toFixed(2)}</td>
+                          <td className={`is-numeric ${deltaClass(margin)}`}>{margin >= 0 ? '+' : ''}${margin.toFixed(2)}</td>
+                          <td className="payroll-employee-email">{r.ticketNumbers.length === 0 ? '—' : r.ticketNumbers.join(', ')}</td>
                         </tr>
                       );
                     })}
-                    <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
-                      <td colSpan={2} style={{ padding: '12px 14px', fontWeight: '700', color: 'var(--text-primary)' }}>TOTALS</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#dc3545' }}>{totals.paidHours.toFixed(2)}</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#ff9800' }}>{totals.paidOtHours.toFixed(2)}</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#dc3545' }}>${totals.paidCost.toFixed(2)}</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#4caf50' }}>{totals.billedHours.toFixed(2)}</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: '#4caf50' }}>${totals.billedRevenue.toFixed(2)}</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: dColor(totals.billedHours - totals.paidHours) }}>
+                    <tr className="is-totals">
+                      <td colSpan={2}>Totals</td>
+                      <td className="is-numeric payroll-cell-internal">{totals.paidHours.toFixed(2)}</td>
+                      <td className="is-numeric payroll-cell-shop-ot">{totals.paidOtHours.toFixed(2)}</td>
+                      <td className="is-numeric payroll-cell-internal">${totals.paidCost.toFixed(2)}</td>
+                      <td className="is-numeric payroll-cell-shop">{totals.billedHours.toFixed(2)}</td>
+                      <td className="is-numeric payroll-cell-shop">${totals.billedRevenue.toFixed(2)}</td>
+                      <td className={`is-numeric ${deltaClass(totals.billedHours - totals.paidHours)}`}>
                         {(totals.billedHours - totals.paidHours) > 0 ? '+' : ''}{(totals.billedHours - totals.paidHours).toFixed(2)}
                       </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: dColor(totals.billedRevenue - totals.paidCost) }}>
+                      <td className={`is-numeric ${deltaClass(totals.billedRevenue - totals.paidCost)}`}>
                         {(totals.billedRevenue - totals.paidCost) >= 0 ? '+' : ''}${(totals.billedRevenue - totals.paidCost).toFixed(2)}
                       </td>
                       <td />
                     </tr>
                   </tbody>
                 </table>
-                <div style={{ padding: '10px 14px', fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', borderTop: '1px solid var(--border-color)' }}>
+                <div className="payroll-recon-footnote">
                   Paid Hrs/Cost = sum of time_entries (drives payroll). Billed Hrs/Revenue = sum of service_tickets in the same period (drives invoicing).
                   Mismatch is normal when employees convert OT to regular billing or vice versa. Δ Hrs &lt; 0 = OT absorbed by employer. Margin = gross labour margin.
                 </div>
@@ -2099,33 +2025,38 @@ export default function Payroll() {
 
         return (
           <div
+            className="ionex-modal-backdrop"
             style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
             onClick={() => !otConvertMutation.isPending && setOtModalState(null)}
           >
             <div
+              className="ionex-modal-card"
               style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px', maxWidth: '760px', width: '92%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div className="payroll-modal-header">
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                    Allocate Overtime — {otModalState.userName}
-                  </h3>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  <h3 className="payroll-modal-title">Allocate overtime — {otModalState.userName}</h3>
+                  <div className="payroll-modal-subtitle">
                     {new Date(otModalState.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                     · Owed <strong style={{ color: '#ff9800' }}>{target.toFixed(2)}h</strong> — pick which project(s) absorb the OT
+                     · Owed <strong style={{ color: 'var(--warning-color)' }}>{target.toFixed(2)}h</strong> — pick which project(s) absorb the OT
                   </div>
                 </div>
-                <button onClick={() => setOtModalState(null)} disabled={otConvertMutation.isPending} style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: 'var(--text-secondary)', padding: 0 }}>×</button>
+                <button
+                  className="payroll-modal-close"
+                  onClick={() => setOtModalState(null)}
+                  disabled={otConvertMutation.isPending}
+                  aria-label="Close"
+                >×</button>
               </div>
 
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <table className="payroll-mini-table">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Project</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Rate Type</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Entry Hrs</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Convert to OT</th>
+                  <tr>
+                    <th>Project</th>
+                    <th>Rate type</th>
+                    <th className="is-numeric">Entry hrs</th>
+                    <th className="is-numeric">Convert to OT</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2136,20 +2067,20 @@ export default function Payroll() {
                     const projNum = e.project?.project_number || '';
                     const otVariant = rt === 'Field Time' ? 'Field Overtime' : 'Shop Overtime';
                     return (
-                      <tr key={e.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '6px 8px' }}>
-                          {projNum && <span style={{ color: 'var(--text-tertiary)', marginRight: '6px', fontFamily: 'monospace' }}>{projNum}</span>}
+                      <tr key={e.id}>
+                        <td>
+                          {projNum && <span className="payroll-muted" style={{ marginRight: '6px', fontFamily: 'SF Mono, Menlo, Consolas, monospace' }}>{projNum}</span>}
                           {projName}
-                          {e.project?.customer?.name && <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{e.project.customer.name}</div>}
+                          {e.project?.customer?.name && <div className="payroll-employee-email">{e.project.customer.name}</div>}
                         </td>
-                        <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>
+                        <td className="payroll-muted">
                           {rt}
-                          {!isAlreadyOt && <span style={{ marginLeft: '4px', color: 'var(--text-tertiary)', fontSize: '10px' }}>→ {otVariant}</span>}
+                          {!isAlreadyOt && <span style={{ marginLeft: '4px', fontSize: '10px' }}>→ {otVariant}</span>}
                         </td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{Number(e.hours).toFixed(2)}</td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                        <td className="is-numeric">{Number(e.hours).toFixed(2)}</td>
+                        <td className="is-numeric">
                           {isAlreadyOt ? (
-                            <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>already OT</span>
+                            <span className="payroll-muted" style={{ fontSize: '11px' }}>already OT</span>
                           ) : (
                             <input
                               type="number"
@@ -2164,7 +2095,7 @@ export default function Payroll() {
                                 else next[e.id] = Math.min(Number(e.hours), Math.max(0, Number(raw) || 0));
                                 setOtAllocations(next);
                               }}
-                              style={{ width: '80px', padding: '4px 6px', textAlign: 'right', fontFamily: 'monospace', border: '1px solid var(--border-color)', borderRadius: '4px', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                              className="payroll-input-num"
                               placeholder="0.00"
                             />
                           )}
@@ -2175,11 +2106,11 @@ export default function Payroll() {
                 </tbody>
               </table>
 
-              <div style={{ marginTop: '16px', padding: '12px', borderRadius: '6px', backgroundColor: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="payroll-modal-footer">
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  Allocated: <strong style={{ color: 'var(--text-primary)' }}>{allocated.toFixed(2)}h</strong> of <strong style={{ color: '#ff9800' }}>{target.toFixed(2)}h</strong>
+                  Allocated: <strong style={{ color: 'var(--text-primary)' }}>{allocated.toFixed(2)}h</strong> of <strong style={{ color: 'var(--warning-color)' }}>{target.toFixed(2)}h</strong>
                   {Math.abs(remaining) >= 0.01 && (
-                    <span style={{ marginLeft: '8px', color: remaining > 0 ? '#dc3545' : '#dc3545' }}>
+                    <span style={{ marginLeft: '8px', color: 'var(--primary-color)' }}>
                       ({remaining > 0 ? `${remaining.toFixed(2)}h still to allocate` : `${(-remaining).toFixed(2)}h over`})
                     </span>
                   )}
@@ -2187,19 +2118,17 @@ export default function Payroll() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
                     type="button"
-                    className="button button-secondary"
+                    className="payroll-action-btn"
                     onClick={() => setOtModalState(null)}
                     disabled={otConvertMutation.isPending}
-                    style={{ padding: '8px 14px', fontSize: '13px' }}
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    className="button button-primary"
+                    className="payroll-action-btn is-primary"
                     onClick={() => otConvertMutation.mutate({ userId: otModalState.userId, date: otModalState.date, allocations })}
                     disabled={!canSave}
-                    style={{ padding: '8px 14px', fontSize: '13px' }}
                   >
                     {otConvertMutation.isPending ? 'Saving…' : 'Convert to OT'}
                   </button>
@@ -2207,7 +2136,7 @@ export default function Payroll() {
               </div>
 
               {otConvertMutation.isError && (
-                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '6px', backgroundColor: 'rgba(220,53,69,0.10)', color: '#dc3545', fontSize: '12px' }}>
+                <div style={{ marginTop: '12px', padding: '10px', borderRadius: '6px', backgroundColor: 'rgba(220,53,69,0.10)', color: 'var(--error-color)', fontSize: '12px' }}>
                   {(otConvertMutation.error as Error)?.message || 'Failed to convert overtime.'}
                 </div>
               )}
