@@ -2340,47 +2340,46 @@ export default function Invoices() {
     return projects?.find((p: { id: string }) => p.id === selectedProjectId);
   }, [selectedProjectId, projects]);
 
-  // Fetch expenses for all tickets (uninvoiced + invoiced)
-  const [expensesByRecordId, setExpensesByRecordId] = useState<Map<string, InvoiceExpenseLine[]>>(new Map());
-  useEffect(() => {
-    const recordIds = new Set<string>();
+  // Fetch expenses for all visible tickets (uninvoiced + invoiced) via React Query so
+  // saves/updates/deletes elsewhere can invalidate this and rebuild the breakdown
+  // totals without a page reload. The query key includes the sorted record-id set so
+  // it refetches when the visible ticket population changes.
+  const sortedRecordIdsForExpenses = useMemo(() => {
+    const ids = new Set<string>();
     for (const t of ticketsForCustomer) {
       const rid = (t as ServiceTicket & { recordId?: string }).recordId;
-      if (rid) recordIds.add(rid);
+      if (rid) ids.add(rid);
     }
-    if (recordIds.size === 0) {
-      setExpensesByRecordId(new Map());
-      return;
-    }
-    let cancelled = false;
-    const fetchAll = async () => {
+    return [...ids].sort();
+  }, [ticketsForCustomer]);
+
+  const { data: expensesByRecordId = new Map<string, InvoiceExpenseLine[]>() } = useQuery({
+    queryKey: ['invoiceExpensesByRecordId', sortedRecordIdsForExpenses.join(',')],
+    queryFn: async () => {
       const map = new Map<string, InvoiceExpenseLine[]>();
       await Promise.all(
-        [...recordIds].map(async (rid) => {
+        sortedRecordIdsForExpenses.map(async (rid) => {
           try {
             const exp = await serviceTicketExpensesService.getByTicketId(rid);
-            if (!cancelled) {
-              map.set(
-                rid,
-                exp.map((e) => ({
-                  quantity: e.quantity,
-                  rate: e.rate,
-                  gst: Number((e as { gst?: number }).gst) || 0,
-                  description: e.description,
-                  expense_type: e.expense_type,
-                }))
-              );
-            }
+            map.set(
+              rid,
+              exp.map((e) => ({
+                quantity: e.quantity,
+                rate: e.rate,
+                gst: Number((e as { gst?: number }).gst) || 0,
+                description: e.description,
+                expense_type: e.expense_type,
+              }))
+            );
           } catch {
-            if (!cancelled) map.set(rid, []);
+            map.set(rid, []);
           }
         })
       );
-      if (!cancelled) setExpensesByRecordId(map);
-    };
-    fetchAll();
-    return () => { cancelled = true; };
-  }, [ticketsForCustomer]);
+      return map;
+    },
+    enabled: sortedRecordIdsForExpenses.length > 0,
+  });
 
   const [exportingGroupIdx, setExportingGroupIdx] = useState<string | null>(null);
 

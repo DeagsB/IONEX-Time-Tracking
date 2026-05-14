@@ -2501,6 +2501,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         loadExpenses(currentTicketRecordId);
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
         queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+        queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
       }
     },
   });
@@ -2512,6 +2513,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       if (currentTicketRecordId) {
         loadExpenses(currentTicketRecordId);
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+        queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
       }
     },
   });
@@ -2522,6 +2524,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       if (currentTicketRecordId) {
         loadExpenses(currentTicketRecordId);
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+        queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
       }
     },
   });
