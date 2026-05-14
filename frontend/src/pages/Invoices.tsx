@@ -3059,7 +3059,9 @@ export default function Invoices() {
       statusLabel: string; customerName?: string; projectNumber?: string; workflowId?: string;
     }) => {
       const row = invoicedMarkRows.find((r) => r.group_id === groupId);
-      if (!row) return;
+      if (!row) {
+        throw new Error(`No invoiced_batch_marks row found for group_id="${groupId}". Refresh the page and try again — the batch may have been re-grouped or the snapshot drifted.`);
+      }
       const snap = (row.key_snapshot ?? {}) as FrozenGroupSnapshot;
       const now = new Date().toISOString();
       const updated = { ...snap, statusId, statusChangedAt: now };
@@ -3171,7 +3173,9 @@ export default function Invoices() {
     }) => {
       const wf = await ensurePortalSubmissionStatus(workflow);
       const targetStatus = wf.statuses.find((s) => s.id === 'portal_submission');
-      if (!targetStatus) return;
+      if (!targetStatus) {
+        throw new Error('Could not add a Portal Submission status to this workflow.');
+      }
       await updateBatchStatusMutation.mutateAsync({
         groupId,
         statusId: targetStatus.id,
@@ -3181,6 +3185,10 @@ export default function Invoices() {
         projectNumber,
         workflowId: wf.id,
       });
+    },
+    onError: (err) => {
+      console.error('Move to Portal Submission failed:', err);
+      setExportError(err instanceof Error ? err.message : 'Could not move to Portal Submission.');
     },
   });
 
@@ -7182,7 +7190,10 @@ export default function Invoices() {
                         <button
                           type="button"
                           onClick={() => {
-                            if (!wf) return;
+                            if (!wf) {
+                              setExportError('No invoice workflow is assigned to this customer/project — open Settings → Invoice Workflows to fix.');
+                              return;
+                            }
                             advanceToPortalSubmissionMutation.mutate({
                               groupId: persistId,
                               customerName,
