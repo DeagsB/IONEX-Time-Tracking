@@ -1537,6 +1537,60 @@ function getPeriodEndYmd(periodKey: string, grouping: DateRangeGrouping): string
   return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
 }
 
+/** Approximate calendar-day length of one batching period — used for "N periods overdue" math.
+ *  Daily/weekly/bi-weekly are exact; monthly is treated as 30 since it varies. Project-completion
+ *  and progress have no fixed length so they return null and skip aging. */
+function getPeriodLengthDays(grouping: DateRangeGrouping): number | null {
+  switch (grouping) {
+    case 'daily': return 1;
+    case 'weekly': return 7;
+    case 'bi-weekly': return 14;
+    case 'monthly': return 30;
+    default: return null;
+  }
+}
+
+/** Calendar-day count between the period end and today. Negative means the period hasn't ended
+ *  yet (still accumulating); 0 means it ended today. Null for periods with no fixed end. */
+function getBatchAgeDays(periodKey: string | undefined, grouping: DateRangeGrouping): number | null {
+  if (!periodKey) return null;
+  const end = getPeriodEndYmd(periodKey, grouping);
+  if (!end) return null;
+  const today = ymdTodayLocal();
+  const endDate = new Date(`${end}T12:00:00`);
+  const todayDate = new Date(`${today}T12:00:00`);
+  return Math.round((todayDate.getTime() - endDate.getTime()) / 86400000);
+}
+
+/** How many full periods have elapsed since this batch's period ended (0 = current/just ended,
+ *  1 = one full period late, etc.). Null for batches with no fixed period length. */
+function getBatchPeriodsOverdue(periodKey: string | undefined, grouping: DateRangeGrouping): number | null {
+  const days = getBatchAgeDays(periodKey, grouping);
+  const length = getPeriodLengthDays(grouping);
+  if (days === null || length === null || days <= 0) return 0;
+  return Math.floor(days / length);
+}
+
+type BatchAgeBadge = { label: string; color: string; bg: string; border: string; daysOld: number; periodsOld: number };
+
+/** Build a colored "N periods overdue" badge for a section based on its period age. Returns null
+ *  for sections whose period is still accumulating or whose grouping has no fixed period (project
+ *  completion, progress). Color escalates: yellow at 1 period, orange at 2, red at 3+. */
+function buildBatchAgeBadge(periodKey: string | undefined, grouping: DateRangeGrouping): BatchAgeBadge | null {
+  const days = getBatchAgeDays(periodKey, grouping);
+  const periods = getBatchPeriodsOverdue(periodKey, grouping);
+  if (days === null || periods === null) return null;
+  if (periods < 1) return null;
+  const label = periods === 1 ? '1 period overdue' : `${periods} periods overdue`;
+  if (periods >= 3) {
+    return { label, color: '#b91c1c', bg: '#fee2e2', border: '#fca5a566', daysOld: days, periodsOld: periods };
+  }
+  if (periods >= 2) {
+    return { label, color: '#c2410c', bg: '#ffedd5', border: '#fdba7466', daysOld: days, periodsOld: periods };
+  }
+  return { label, color: '#a16207', bg: '#fef3c7', border: '#fcd34d66', daysOld: days, periodsOld: periods };
+}
+
 /** True while today is still on or before the period end date (more tickets may land in this batch). */
 function isInvoicePeriodStillAccumulating(periodKey: string | undefined, grouping: DateRangeGrouping): boolean {
   if (!periodKey) return false;
@@ -4174,6 +4228,29 @@ export default function Invoices() {
     []
   );
 
+  /** Return an age badge for a section if any of its batches are at least one full period overdue.
+   *  Uses the oldest (max periodsOld) batch in the section. Sections backed by accumulating or
+   *  open-ended (project-completion / progress) periods return null. */
+  const getSectionAgeBadge = useCallback(
+    <G extends { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }>(section: { groups: G[] }): BatchAgeBadge | null => {
+      let worst: BatchAgeBadge | null = null;
+      for (const g of section.groups) {
+        const first = g.tickets[0];
+        if (!first) continue;
+        const custId = first.customerId ?? '';
+        const projId = (first as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? first.projectId ?? '';
+        const grouping = getGroupingForTicket(custId, projId);
+        const targetIsCnrl = !!g.key.periodKey && !!g.key.approverCode && g.key.approverCode !== g.key.periodKey;
+        const usedGrouping = targetIsCnrl ? cnrlPeriodGrouping(grouping) : grouping;
+        const badge = buildBatchAgeBadge(g.key.periodKey, usedGrouping);
+        if (!badge) continue;
+        if (!worst || badge.periodsOld > worst.periodsOld) worst = badge;
+      }
+      return worst;
+    },
+    [getGroupingForTicket]
+  );
+
   const getApproverForGroupKey = useCallback(
     (key: InvoiceGroupKeyWithPeriod): string | null => {
       const code = key.approverCode?.trim();
@@ -5446,6 +5523,7 @@ export default function Invoices() {
             {invoicedSections.map((section) => {
               const sectionMulti = section.groups.length > 1;
               const collapsed = isSectionCollapsed('invoiced', section.key);
+              const ageBadge = getSectionAgeBadge(section);
               const batchNodes = section.groups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
@@ -6324,6 +6402,21 @@ export default function Invoices() {
                             — {section.periodLabel}
                           </span>
                         ) : null}
+                        {ageBadge && (
+                          <span
+                            title={`Period ended ${ageBadge.daysOld} day${ageBadge.daysOld === 1 ? '' : 's'} ago`}
+                            style={{
+                              marginLeft: '8px', padding: '2px 8px',
+                              borderRadius: '999px', fontSize: '11px', fontWeight: 700,
+                              color: ageBadge.color, backgroundColor: ageBadge.bg,
+                              border: `1px solid ${ageBadge.border}`,
+                              textTransform: 'uppercase', letterSpacing: '0.04em',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            ⏱ {ageBadge.label}
+                          </span>
+                        )}
                       </span>
                     </button>
                     <span className="ionex-customer-section-meta">
@@ -6436,6 +6529,7 @@ export default function Invoices() {
             {readyTabSections.map((section) => {
               const sectionMulti = section.groups.length > 1;
               const sectionCollapsed = isSectionCollapsed('ready', section.key);
+              const ageBadge = getSectionAgeBadge(section);
               const sectionFirstGroup = section.groups[0];
               const sectionFirstTicket = sectionFirstGroup.tickets[0];
               const sectionWorkflow = getWorkflowForCustomer(sectionFirstTicket?.customerName, sectionFirstGroup.key.projectNumber);
@@ -7129,6 +7223,20 @@ export default function Invoices() {
                       — {section.periodLabel}
                     </span>
                   )}
+                  {ageBadge && (
+                    <span
+                      title={`Period ended ${ageBadge.daysOld} day${ageBadge.daysOld === 1 ? '' : 's'} ago`}
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '999px', fontSize: '11px', fontWeight: 700,
+                        color: ageBadge.color, backgroundColor: ageBadge.bg,
+                        border: `1px solid ${ageBadge.border}`,
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                      }}
+                    >
+                      ⏱ {ageBadge.label}
+                    </span>
+                  )}
                   <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
                     {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}
                   </span>
@@ -7538,6 +7646,7 @@ export default function Invoices() {
                   };
 
                   const collapsed = isSectionCollapsed('submitted', section.key);
+                  const ageBadge = getSectionAgeBadge(section);
                   const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
                     <div key={section.key} className="ionex-customer-section">
@@ -7557,6 +7666,21 @@ export default function Invoices() {
                                 — {section.periodLabel}
                               </span>
                             ) : null}
+                            {ageBadge && (
+                              <span
+                                title={`Period ended ${ageBadge.daysOld} day${ageBadge.daysOld === 1 ? '' : 's'} ago`}
+                                style={{
+                                  marginLeft: '8px', padding: '2px 8px',
+                                  borderRadius: '999px', fontSize: '11px', fontWeight: 700,
+                                  color: ageBadge.color, backgroundColor: ageBadge.bg,
+                                  border: `1px solid ${ageBadge.border}`,
+                                  textTransform: 'uppercase', letterSpacing: '0.04em',
+                                  verticalAlign: 'middle',
+                                }}
+                              >
+                                ⏱ {ageBadge.label}
+                              </span>
+                            )}
                           </span>
                         </button>
                         <span className="ionex-customer-section-meta">
@@ -8046,6 +8170,7 @@ export default function Invoices() {
                   };
 
                   const collapsed = isSectionCollapsed('approved', section.key);
+                  const ageBadge = getSectionAgeBadge(section);
                   const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
                     <div key={section.key} className="ionex-customer-section">
@@ -8065,6 +8190,21 @@ export default function Invoices() {
                                 — {section.periodLabel}
                               </span>
                             ) : null}
+                            {ageBadge && (
+                              <span
+                                title={`Period ended ${ageBadge.daysOld} day${ageBadge.daysOld === 1 ? '' : 's'} ago`}
+                                style={{
+                                  marginLeft: '8px', padding: '2px 8px',
+                                  borderRadius: '999px', fontSize: '11px', fontWeight: 700,
+                                  color: ageBadge.color, backgroundColor: ageBadge.bg,
+                                  border: `1px solid ${ageBadge.border}`,
+                                  textTransform: 'uppercase', letterSpacing: '0.04em',
+                                  verticalAlign: 'middle',
+                                }}
+                              >
+                                ⏱ {ageBadge.label}
+                              </span>
+                            )}
                           </span>
                         </button>
                         <span className="ionex-customer-section-meta">
@@ -8434,6 +8574,7 @@ export default function Invoices() {
                   };
 
                   const collapsed = isSectionCollapsed('portal', section.key);
+                  const ageBadge = getSectionAgeBadge(section);
                   return (
                     <div key={section.key} className="ionex-customer-section">
                       <div className="ionex-customer-section-header">
@@ -8452,6 +8593,21 @@ export default function Invoices() {
                                 — {section.periodLabel}
                               </span>
                             ) : null}
+                            {ageBadge && (
+                              <span
+                                title={`Period ended ${ageBadge.daysOld} day${ageBadge.daysOld === 1 ? '' : 's'} ago`}
+                                style={{
+                                  marginLeft: '8px', padding: '2px 8px',
+                                  borderRadius: '999px', fontSize: '11px', fontWeight: 700,
+                                  color: ageBadge.color, backgroundColor: ageBadge.bg,
+                                  border: `1px solid ${ageBadge.border}`,
+                                  textTransform: 'uppercase', letterSpacing: '0.04em',
+                                  verticalAlign: 'middle',
+                                }}
+                              >
+                                ⏱ {ageBadge.label}
+                              </span>
+                            )}
                           </span>
                         </button>
                         <span className="ionex-customer-section-meta" style={{ marginLeft: 'auto' }}>
