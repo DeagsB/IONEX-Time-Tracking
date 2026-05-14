@@ -4207,23 +4207,42 @@ export default function Invoices() {
     [portalSubmissionGroups, buildApprovalSections]
   );
 
-  /** Sections collapsed by the user, keyed by `${tab}|${sectionKey}`. Default is expanded. */
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  /** Sections the user has explicitly expanded, keyed by `${tab}|${sectionKey}`. Lifecycle tabs
+   *  (pending, ready, submitted, approved, invoiced) default to collapsed so the page opens with
+   *  a compact overview; the portal tab keeps the old expanded-by-default behavior because it's
+   *  a copy/paste workflow that needs the per-batch fields visible immediately. */
+  const TABS_DEFAULT_COLLAPSED: ReadonlySet<'submitted' | 'approved' | 'portal' | 'ready' | 'invoiced' | 'pending'> =
+    new Set(['pending', 'ready', 'submitted', 'approved', 'invoiced']);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const toggleSectionCollapsed = useCallback(
-    (tab: 'submitted' | 'approved' | 'portal' | 'ready' | 'invoiced', sectionKey: string) => {
-      setCollapsedSections((prev) => {
-        const k = `${tab}|${sectionKey}`;
-        const next = new Set(prev);
-        if (next.has(k)) next.delete(k); else next.add(k);
-        return next;
-      });
+    (tab: 'submitted' | 'approved' | 'portal' | 'ready' | 'invoiced' | 'pending', sectionKey: string) => {
+      const k = `${tab}|${sectionKey}`;
+      if (TABS_DEFAULT_COLLAPSED.has(tab)) {
+        setExpandedSections((prev) => {
+          const next = new Set(prev);
+          if (next.has(k)) next.delete(k); else next.add(k);
+          return next;
+        });
+      } else {
+        setExpandedSections((prev) => {
+          const next = new Set(prev);
+          // For tabs that default-expanded, treat presence in the set as "explicitly collapsed".
+          if (next.has(k)) next.delete(k); else next.add(k);
+          return next;
+        });
+      }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
   const isSectionCollapsed = useCallback(
-    (tab: 'submitted' | 'approved' | 'portal' | 'ready' | 'invoiced', sectionKey: string) =>
-      collapsedSections.has(`${tab}|${sectionKey}`),
-    [collapsedSections]
+    (tab: 'submitted' | 'approved' | 'portal' | 'ready' | 'invoiced' | 'pending', sectionKey: string) => {
+      const k = `${tab}|${sectionKey}`;
+      if (TABS_DEFAULT_COLLAPSED.has(tab)) return !expandedSections.has(k);
+      return expandedSections.has(k);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [expandedSections]
   );
 
   /** Final invoiced batches — everything not in the submitted/approved/portal_submission intermediate states. Used by the See invoiced tab. */
