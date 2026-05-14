@@ -1459,6 +1459,31 @@ textarea {
 .ionex-report-table tbody tr.is-muted:hover {
   background-color: color-mix(in srgb, var(--text-tertiary) 12%, transparent);
 }
+/* Row-end "click for details" arrow — appears on hover so the affordance
+   is obvious without being noisy. Apply .ionex-report-table.has-row-action
+   on the table to enable. */
+.ionex-report-table.has-row-action tbody tr td:last-child {
+  position: relative;
+}
+.ionex-report-table.has-row-action tbody tr td:last-child::after {
+  content: '›';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.18s ease, color 0.15s ease;
+  pointer-events: none;
+}
+.ionex-report-table.has-row-action tbody tr:hover td:last-child::after,
+.ionex-report-table.has-row-action tbody tr.is-active td:last-child::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+  color: var(--primary-color);
+}
 .ionex-report-table .row-primary {
   font-weight: 600;
   font-size: 13px;
@@ -1470,13 +1495,56 @@ textarea {
   margin-top: 2px;
 }
 
-/* Sort arrow glyph (renders only when class is-sorted is on the TH) */
+/* Initials avatar used at the start of a row to anchor a name visually.
+   Sized to match a 13px name + sub-line cluster. Color via --avatar-color. */
+.ionex-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  background-color: color-mix(in srgb, var(--avatar-color, var(--primary-color)) 14%, transparent);
+  color: var(--avatar-color, var(--primary-color));
+  border: 1px solid color-mix(in srgb, var(--avatar-color, var(--primary-color)) 28%, transparent);
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* Sort arrow glyph (renders only when class is-sorted is on the TH).
+   Sits as a small pill next to the column label so it's recognisable
+   without crowding the text. */
 .ionex-sort-arrow {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  border-radius: 3px;
   font-size: 9px;
-  margin-left: 4px;
+  line-height: 1;
+  background-color: color-mix(in srgb, var(--primary-color) 14%, transparent);
+  color: var(--primary-color);
   vertical-align: middle;
-  opacity: 0.7;
+}
+/* Subtle indicator on sortable but not-yet-sorted columns — invites a click. */
+.ionex-report-table th.is-sortable:not(.is-sorted)::after {
+  content: '↕';
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0;
+  color: var(--text-tertiary);
+  transition: opacity 0.15s ease;
+}
+.ionex-report-table th.is-sortable:not(.is-sorted):hover::after {
+  opacity: 1;
 }
 
 /* Margin/profit pill — three semantic tiers. */
@@ -1853,12 +1921,16 @@ textarea {
 .ionex-compact-table tbody tr.is-warn td {
   background-color: color-mix(in srgb, var(--error-color) 5%, transparent);
 }
+.ionex-compact-table tbody tr:not(.is-subtle):not(.is-warn):hover td {
+  background-color: color-mix(in srgb, var(--primary-color) 3%, transparent);
+}
 .ionex-compact-table tfoot td {
-  padding: 10px;
-  border-top: 1px solid var(--border-color);
+  padding: 11px 10px;
+  border-top: 2px solid color-mix(in srgb, var(--primary-color) 30%, var(--border-color));
   border-bottom: none;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 13px;
+  background-color: color-mix(in srgb, var(--primary-color) 4%, transparent);
 }
 
 /* Disclosure (collapsible) header — replaces the ad-hoc chevron buttons. */

@@ -599,7 +599,7 @@ export default function Profitability() {
 
       {/* Project List */}
       <div className="ionex-report-table-card">
-        <table className="ionex-report-table">
+        <table className="ionex-report-table has-row-action">
           <thead>
             <tr>
               <th className={`is-sortable${sortBy === 'project_number' ? ' is-sorted' : ''}`} onClick={() => handleSort('project_number')}>
@@ -622,8 +622,16 @@ export default function Profitability() {
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-                  No projects found
+                <td colSpan={7} style={{ padding: '56px 32px' }}>
+                  <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '32px', lineHeight: 1, opacity: 0.35 }}>◧</span>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)' }}>No projects match the filters</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                      {searchTerm
+                        ? `Nothing matches "${searchTerm}". Clear the search or toggle "Include inactive".`
+                        : 'Toggle "Include inactive" to see closed projects.'}
+                    </div>
+                  </div>
                 </td>
               </tr>
             )}

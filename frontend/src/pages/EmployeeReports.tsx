@@ -23,6 +23,34 @@ import { ReportMethodologyCollapsible } from '../components/ReportMethodologyCol
 
 const formatHoursDecimal = (hours: number): string => hours.toFixed(2);
 
+/** First letter of first + last word in the name, uppercase. */
+const initialsFor = (name: string): string => {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '–';
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+};
+
+/** Stable color from a userId via FNV-ish hash → small curated palette
+ *  using theme tokens so dark mode adapts. */
+const AVATAR_PALETTE = [
+  'var(--primary-color)',
+  'var(--success-color)',
+  'var(--warning-color)',
+  'var(--text-secondary)',
+  '#0ea5e9',
+  '#8b5cf6',
+  '#14b8a6',
+];
+const avatarColorFor = (id: string): string => {
+  let h = 2166136261;
+  for (let i = 0; i < (id || '').length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return AVATAR_PALETTE[Math.abs(h) % AVATAR_PALETTE.length]!;
+};
+
 /** Laptop + misc: expandable line-item lists under the expense breakdown */
 const EXPENSE_BREAKDOWN_DRILLDOWN_CATEGORIES = new Set<string>(
   EMPLOYEE_REPORT_EXPENSE_CATEGORY_ORDER.slice(3) as unknown as string[]
@@ -365,7 +393,7 @@ export default function EmployeeReports() {
       {/* Employee Table */}
       {!isLoading && (
         <div className="ionex-report-table-card">
-          <table className="ionex-report-table">
+          <table className="ionex-report-table has-row-action">
             <thead>
               <tr>
                 <th className={`is-sortable${sortField === 'employeeName' ? ' is-sorted' : ''}`} onClick={() => handleSort('employeeName')}>Employee{sortField === 'employeeName' && <span className="ionex-sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>}</th>
@@ -381,8 +409,12 @@ export default function EmployeeReports() {
             <tbody>
               {sortedMetrics.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-                    No employee data for this period
+                  <td colSpan={8} style={{ padding: '56px 32px' }}>
+                    <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '32px', lineHeight: 1, opacity: 0.35 }}>⌶</span>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)' }}>No employee data for this period</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Try a wider period or remove the department/employee filters.</div>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -396,8 +428,21 @@ export default function EmployeeReports() {
                       className={expandedEmployee === m.userId ? 'is-active' : ''}
                     >
                       <td>
-                        <div className="row-primary">{m.employeeName}</div>
-                        {m.position && <div className="row-secondary">{m.position}</div>}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span
+                            className="ionex-avatar"
+                            aria-hidden
+                            style={{
+                              ['--avatar-color' as string]: avatarColorFor(m.userId),
+                            } as React.CSSProperties}
+                          >
+                            {initialsFor(m.employeeName)}
+                          </span>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="row-primary">{m.employeeName}</div>
+                            {m.position && <div className="row-secondary">{m.position}</div>}
+                          </div>
+                        </div>
                       </td>
                       <td className="align-center" style={{ minWidth: '180px' }}>
                         <BillableBar
