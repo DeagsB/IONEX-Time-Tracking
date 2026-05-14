@@ -5626,15 +5626,29 @@ export default function Invoices() {
                   })
                 : '';
               const isDraft = batchStatusId === 'draft';
-              // Single-batch (non-sectioned) accordions get the same red border as multi-batch
-              // customer sections. Draft batches add an amber inset bar on the left to flag
-              // "still needs sending" at a glance.
+              // Coordinate the accordion border colour with workflow state:
+              //   approved / submitted_portal / sent / invoiced  → green (can be invoiced / done)
+              //   submitted_approval / needs_adjustment / portal_submission → yellow (needs approval or action)
+              //   draft / pending / unknown → red (still pre-submission)
+              // Multi-batch customer sections (sectionMulti) keep their neutral inner border so
+              // the OUTER section card carries the state cue; single-batch accordions colour their
+              // own border since there's no outer wrapper.
+              const accordionAccent = (() => {
+                const sid = batchStatusId;
+                if (sid === 'approved' || sid === 'submitted_portal' || sid === 'sent' || sid === 'invoiced') {
+                  return { border: 'rgba(34, 197, 94, 0.55)', shadow: 'rgba(34, 197, 94, 0.10)' };
+                }
+                if (sid === 'submitted_approval' || sid === NEEDS_ADJUSTMENT_STATUS_ID || sid === 'portal_submission') {
+                  return { border: 'rgba(245, 158, 11, 0.55)', shadow: 'rgba(245, 158, 11, 0.12)' };
+                }
+                return { border: 'rgba(239, 68, 68, 0.45)', shadow: 'rgba(239, 68, 68, 0.08)' };
+              })();
               const accordionBorder = !sectionMulti
-                ? '1px solid rgba(239, 68, 68, 0.45)'
+                ? `1px solid ${accordionAccent.border}`
                 : '1px solid var(--border-color)';
               const accordionShadowParts: string[] = [];
               if (isDraft) accordionShadowParts.push('inset 4px 0 0 0 #f59e0b');
-              if (!sectionMulti) accordionShadowParts.push('0 1px 3px rgba(239, 68, 68, 0.08)');
+              if (!sectionMulti) accordionShadowParts.push(`0 1px 3px ${accordionAccent.shadow}`);
               const accordionShadow = accordionShadowParts.join(', ') || undefined;
               const isStatusEditingHere = statusEditingGroupId === persistId;
               return (
@@ -6385,7 +6399,7 @@ export default function Invoices() {
               });
 
               return (
-                <div key={section.key} className="ionex-customer-section">
+                <div key={section.key} className="ionex-customer-section is-state-approved">
                   <div className="ionex-customer-section-header">
                     <button
                       type="button"
@@ -6535,6 +6549,18 @@ export default function Invoices() {
               const sectionWorkflow = getWorkflowForCustomer(sectionFirstTicket?.customerName, sectionFirstGroup.key.projectNumber);
               const sectionIsPortalApproval = isPortalApprovalWorkflow(sectionWorkflow);
               const sectionBatchNoun = sectionIsPortalApproval ? 'approval' : 'invoice';
+              // Section-level border accent — mirrors the per-batch logic but uses the section's
+              // first batch as the representative state (all batches in a section share a tab/state).
+              const sectionAccent = (() => {
+                const sid = getGroupStatusId(sectionFirstGroup);
+                if (sid === 'approved' || sid === 'submitted_portal' || sid === 'sent' || sid === 'invoiced') {
+                  return { border: 'rgba(34, 197, 94, 0.55)', shadow: 'rgba(34, 197, 94, 0.10)' };
+                }
+                if (sid === 'submitted_approval' || sid === NEEDS_ADJUSTMENT_STATUS_ID || sid === 'portal_submission') {
+                  return { border: 'rgba(245, 158, 11, 0.55)', shadow: 'rgba(245, 158, 11, 0.12)' };
+                }
+                return { border: 'rgba(239, 68, 68, 0.45)', shadow: 'rgba(239, 68, 68, 0.08)' };
+              })();
               const cards = section.groups.map((group, batchIndex) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
@@ -7171,9 +7197,9 @@ export default function Invoices() {
                 style={{
                   padding: '14px',
                   backgroundColor: 'transparent',
-                  border: '1px solid rgba(239, 68, 68, 0.45)',
+                  border: `1px solid ${sectionAccent.border}`,
                   borderRadius: '10px',
-                  boxShadow: '0 1px 3px rgba(239, 68, 68, 0.08)',
+                  boxShadow: `0 1px 3px ${sectionAccent.shadow}`,
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: isCollapsed ? 0 : '14px' }}>
@@ -7649,7 +7675,7 @@ export default function Invoices() {
                   const ageBadge = getSectionAgeBadge(section);
                   const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
-                    <div key={section.key} className="ionex-customer-section">
+                    <div key={section.key} className="ionex-customer-section is-state-needs-approval">
                       <div className="ionex-customer-section-header">
                         <button
                           type="button"
@@ -8173,7 +8199,7 @@ export default function Invoices() {
                   const ageBadge = getSectionAgeBadge(section);
                   const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
-                    <div key={section.key} className="ionex-customer-section">
+                    <div key={section.key} className="ionex-customer-section is-state-approved">
                       <div className="ionex-customer-section-header">
                         <button
                           type="button"
@@ -8576,7 +8602,7 @@ export default function Invoices() {
                   const collapsed = isSectionCollapsed('portal', section.key);
                   const ageBadge = getSectionAgeBadge(section);
                   return (
-                    <div key={section.key} className="ionex-customer-section">
+                    <div key={section.key} className="ionex-customer-section is-state-needs-approval">
                       <div className="ionex-customer-section-header">
                         <button
                           type="button"

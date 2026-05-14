@@ -1135,6 +1135,26 @@ textarea {
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(239, 68, 68, 0.08);
 }
+/* State-aware variants: yellow when the section's batches are waiting on approval/action,
+   green when they're approved or already invoiced (i.e. ready to invoice or done). */
+.ionex-customer-section.is-state-approved {
+  border-color: rgba(34, 197, 94, 0.55);
+  box-shadow: 0 1px 3px rgba(34, 197, 94, 0.10);
+}
+.ionex-customer-section.is-state-approved .ionex-customer-section-chevron,
+.ionex-customer-section.is-state-approved .ionex-customer-section-name {
+  color: #16a34a;
+  text-shadow: 0 1px 0 rgba(34, 197, 94, 0.12);
+}
+.ionex-customer-section.is-state-needs-approval {
+  border-color: rgba(245, 158, 11, 0.55);
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.12);
+}
+.ionex-customer-section.is-state-needs-approval .ionex-customer-section-chevron,
+.ionex-customer-section.is-state-needs-approval .ionex-customer-section-name {
+  color: #b45309;
+  text-shadow: 0 1px 0 rgba(245, 158, 11, 0.12);
+}
 .ionex-customer-section-header {
   display: flex;
   align-items: center;
