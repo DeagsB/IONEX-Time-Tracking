@@ -1280,17 +1280,22 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
 }
 
 function StatusBadge({ status }: { status: string }) {
-  // Only the active states have a coloured pill; legacy CNRL-pipeline rows
-  // (pdf_exported / qbo_created / sent_to_cnrl / cnrl_approved / submitted_to_cnrl)
-  // fall back to the neutral tertiary tone.
-  const map: Record<string, string> = {
-    approved: 'var(--success-color)',
-    submitted: 'var(--warning-color)',
-    rejected: 'var(--error-color)',
-    draft: 'var(--text-tertiary)',
+  // Normalise to the four lifecycle states. Legacy CNRL-pipeline rows
+  // (pdf_exported / qbo_created / sent_to_cnrl / cnrl_approved /
+  //  submitted_to_cnrl) collapse to "Approved" since they were all
+  // post-approval steps.
+  const raw = (status || '').toLowerCase();
+  const normalised: 'draft' | 'submitted' | 'approved' | 'rejected' =
+    raw === 'draft' || raw === 'submitted' || raw === 'rejected'
+      ? raw
+      : 'approved';
+  const palette: Record<string, { color: string; label: string }> = {
+    draft:     { color: 'var(--text-tertiary)',  label: 'Draft' },
+    submitted: { color: 'var(--warning-color)',  label: 'Submitted' },
+    approved:  { color: 'var(--success-color)',  label: 'Approved' },
+    rejected:  { color: 'var(--error-color)',    label: 'Rejected' },
   };
-  const color = map[status] || 'var(--text-tertiary)';
-  const label = (status || 'unknown').replace(/_/g, ' ');
+  const { color, label } = palette[normalised];
   return (
     <span
       className="ionex-status-pill"
