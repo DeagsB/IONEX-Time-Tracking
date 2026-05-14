@@ -2741,7 +2741,7 @@ export default function Invoices() {
     return set;
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
-  type InvoiceTab = 'pending' | 'ready' | 'submitted' | 'approved' | 'portal_submission' | 'invoiced' | 'settings';
+  type InvoiceTab = 'helper' | 'pending' | 'ready' | 'submitted' | 'approved' | 'portal_submission' | 'invoiced' | 'settings';
   const [activeTab, setActiveTab] = useState<InvoiceTab>('pending');
   const [didAutoPickInitialTab, setDidAutoPickInitialTab] = useState(false);
   const showInvoiced = activeTab === 'invoiced';
@@ -5138,6 +5138,7 @@ export default function Invoices() {
       {/* Workflow tab rail */}
       <div className="ionex-tabs-rail" role="tablist" aria-label="Invoice workflow stage">
         {([
+          { id: 'helper' as const, label: 'Guide me', count: null as number | null, kind: 'terminal' as const },
           { id: 'pending' as const, label: 'Pending', count: pendingAccumulatingGroups.length, kind: 'lifecycle' as const },
           { id: 'ready' as const, label: 'Ready', count: readyGroups.length, kind: 'lifecycle' as const },
           { id: 'submitted' as const, label: 'Submitted', count: submittedApprovalGroups.length, kind: 'lifecycle' as const },
@@ -6470,6 +6471,260 @@ export default function Invoices() {
         </div>
       ) : (
         <>
+          {activeTab === 'helper' && (() => {
+            // Build categorised lists of batches needing the admin's attention.
+            // Service-tech-owned states (submitted_approval) are shown as info-only with no admin
+            // action — so the new employee doesn't get nudged to do work that isn't hers.
+            type HelperBatch = {
+              group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
+              isPortal: boolean;
+            };
+            const buildHelperBatches = (groups: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[]): HelperBatch[] =>
+              groups.map((g) => {
+                const wf = getWorkflowForCustomer(g.tickets[0]?.customerName, g.key.projectNumber);
+                return { group: g, isPortal: isPortalApprovalWorkflow(wf) };
+              });
+
+            const readyStd = buildHelperBatches(readyGroups).filter((b) => !b.isPortal);
+            const readyPortal = buildHelperBatches(readyGroups).filter((b) => b.isPortal);
+            const needsAdjustment = submittedApprovalGroups.filter((g) => getGroupStatusId(g) === NEEDS_ADJUSTMENT_STATUS_ID);
+            const waitingOnApproval = submittedApprovalGroups.filter((g) => getGroupStatusId(g) === 'submitted_approval');
+            const approvedAwaiting = approvedGroups;
+            const portalAwaiting = portalSubmissionGroups;
+
+            const actionableCount =
+              readyStd.length + readyPortal.length + needsAdjustment.length +
+              approvedAwaiting.length + portalAwaiting.length;
+
+            const describeBatch = (g: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+              const t0 = g.tickets[0];
+              const customer = t0?.customerName || '—';
+              const projectNum = g.key.projectNumber || '';
+              const projectName = g.key.projectName || '';
+              const project = [projectNum, projectName].filter(Boolean).join(' – ');
+              const period = g.key.periodLabel || '';
+              return { customer, project, period, ticketCount: g.tickets.length };
+            };
+
+            const cardStyle: React.CSSProperties = {
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              padding: '14px 16px',
+              backgroundColor: 'var(--bg-primary)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            };
+            const sectionStyle: React.CSSProperties = {
+              marginBottom: '24px',
+              padding: '16px',
+              borderRadius: '12px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-secondary)',
+            };
+            const goButtonStyle: React.CSSProperties = {
+              padding: '6px 12px',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-tertiary)',
+              color: 'var(--text-primary)',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+            };
+            const badgeStyle = (bg: string, fg: string): React.CSSProperties => ({
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px 8px',
+              borderRadius: '999px',
+              fontSize: '11px',
+              fontWeight: 700,
+              backgroundColor: bg,
+              color: fg,
+              letterSpacing: '0.02em',
+              textTransform: 'uppercase',
+            });
+
+            const renderBatchCard = (
+              g: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
+              isPortal: boolean,
+              goToTab: InvoiceTab,
+              goLabel: string,
+            ) => {
+              const d = describeBatch(g);
+              const groupId = getGroupId(g);
+              return (
+                <div key={groupId} style={cardStyle}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {d.customer}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        {d.project || <em style={{ color: 'var(--text-tertiary)' }}>no project</em>}
+                        {d.period && <> · {d.period}</>}
+                        {' · '}{d.ticketCount} ticket{d.ticketCount === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={badgeStyle(isPortal ? '#ede9fe' : '#dbeafe', isPortal ? '#6d28d9' : '#1d4ed8')}>
+                        {isPortal ? 'Portal Approval' : 'Standard'}
+                      </span>
+                      <button type="button" onClick={() => setActiveTab(goToTab)} style={goButtonStyle}>
+                        {goLabel} →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            };
+
+            const renderSection = (opts: {
+              icon: string;
+              title: string;
+              steps: React.ReactNode;
+              kind: 'do' | 'wait';
+              children: React.ReactNode;
+            }) => (
+              <div style={{ ...sectionStyle, borderLeftWidth: '4px', borderLeftStyle: 'solid', borderLeftColor: opts.kind === 'do' ? '#0ea5e9' : '#94a3b8' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '18px' }} aria-hidden>{opts.icon}</span>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>{opts.title}</h3>
+                  <span style={badgeStyle(opts.kind === 'do' ? '#fef3c7' : '#e5e7eb', opts.kind === 'do' ? '#92400e' : '#374151')}>
+                    {opts.kind === 'do' ? 'Your turn' : 'Waiting'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: 1.5 }}>
+                  {opts.steps}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {opts.children}
+                </div>
+              </div>
+            );
+
+            return (
+              <div>
+                <div className="ionex-section-heading">
+                  <div className="ionex-section-heading-title-row">
+                    <h2>What to do next</h2>
+                    <span className="ionex-section-heading-meta">
+                      <strong>{actionableCount}</strong> {actionableCount === 1 ? 'batch needs' : 'batches need'} your attention
+                    </span>
+                  </div>
+                  <p>
+                    Click a batch's <strong>Go to …</strong> button to jump to the tab where you'll do the work.
+                    Each batch shows whether it's on the <strong>Standard</strong> flow (one step: mark invoiced) or the
+                    <strong> Portal Approval</strong> flow (multi-step: approval → invoice → portal).
+                  </p>
+                </div>
+
+                {actionableCount === 0 && waitingOnApproval.length === 0 && (
+                  <div className="ionex-empty">
+                    <span className="glyph" aria-hidden>✅</span>
+                    <h3 className="title">All caught up</h3>
+                    <p className="body">Nothing is waiting on you right now. Come back when more service tickets are approved.</p>
+                  </div>
+                )}
+
+                {readyStd.length > 0 && renderSection({
+                  icon: '🧾',
+                  title: `Mark as invoiced — ${readyStd.length}`,
+                  kind: 'do',
+                  steps: (
+                    <>
+                      <strong>Standard customers.</strong> For each batch below:
+                      <ol style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
+                        <li>Download the merged batch PDF from the <em>Ready</em> tab and raise the invoice in QuickBooks.</li>
+                        <li>Click <strong>Mark as invoiced</strong> on the batch (or drop the invoice PDF onto it).</li>
+                      </ol>
+                    </>
+                  ),
+                  children: readyStd.map((b) => renderBatchCard(b.group, false, 'ready', 'Go to Ready')),
+                })}
+
+                {readyPortal.length > 0 && renderSection({
+                  icon: '📨',
+                  title: `Send for approval — ${readyPortal.length}`,
+                  kind: 'do',
+                  steps: (
+                    <>
+                      <strong>Portal Approval customers.</strong> For each batch below:
+                      <ol style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
+                        <li>On the <em>Ready</em> tab, click <strong>Submit for approval</strong>. This downloads the approval-batch PDF.</li>
+                        <li>Send that PDF to the customer's approver. The batch then sits in <em>Submitted</em> until they sign it.</li>
+                        <li>The service techs handle following up on signatures — you'll see it again here when it's <em>Approved</em>.</li>
+                      </ol>
+                    </>
+                  ),
+                  children: readyPortal.map((b) => renderBatchCard(b.group, true, 'ready', 'Go to Ready')),
+                })}
+
+                {needsAdjustment.length > 0 && renderSection({
+                  icon: '⚠️',
+                  title: `Needs adjustment — ${needsAdjustment.length}`,
+                  kind: 'do',
+                  steps: (
+                    <>
+                      The approver rejected these batches. On the <em>Submitted</em> tab, open each one to read the
+                      rejection note, fix the tickets it points to, then click <strong>Resubmit</strong>.
+                    </>
+                  ),
+                  children: needsAdjustment.map((g) => renderBatchCard(g, true, 'submitted', 'Go to Submitted')),
+                })}
+
+                {approvedAwaiting.length > 0 && renderSection({
+                  icon: '💰',
+                  title: `Create invoice — ${approvedAwaiting.length}`,
+                  kind: 'do',
+                  steps: (
+                    <>
+                      <strong>Approved batches — your turn.</strong> The service techs got the signed approval back. Now:
+                      <ol style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
+                        <li>Open the batch on the <em>Approved</em> tab. The signed batch PDF is already attached.</li>
+                        <li>Create the invoice in QuickBooks for this batch's amount.</li>
+                        <li>Drag the invoice PDF onto the batch card, then click <strong>Move to Portal Submission</strong>.</li>
+                      </ol>
+                    </>
+                  ),
+                  children: approvedAwaiting.map((g) => renderBatchCard(g, true, 'approved', 'Go to Approved')),
+                })}
+
+                {portalAwaiting.length > 0 && renderSection({
+                  icon: '🌐',
+                  title: `Submit to customer portal — ${portalAwaiting.length}`,
+                  kind: 'do',
+                  steps: (
+                    <>
+                      On the <em>Portal Submission</em> tab, open the customer's invoicing portal (link is on the batch).
+                      Copy the invoice details across (invoice number, dates, line items, totals).
+                      When everything is uploaded in their portal, click <strong>Mark as invoiced</strong>. Done.
+                    </>
+                  ),
+                  children: portalAwaiting.map((g) => renderBatchCard(g, true, 'portal_submission', 'Go to Portal Submission')),
+                })}
+
+                {waitingOnApproval.length > 0 && renderSection({
+                  icon: '⏳',
+                  title: `Awaiting customer approval — ${waitingOnApproval.length}`,
+                  kind: 'wait',
+                  steps: (
+                    <>
+                      <strong>Nothing for you to do — service techs are handling this step.</strong>
+                      These batches have been sent to the customer for approval. When the techs receive the signed PDF back,
+                      they (or you) drop it onto the batch in the <em>Submitted</em> tab and it moves to <em>Approved</em>,
+                      at which point it'll show up under <strong>Create invoice</strong> above.
+                    </>
+                  ),
+                  children: waitingOnApproval.map((g) => renderBatchCard(g, true, 'submitted', 'View in Submitted')),
+                })}
+              </div>
+            );
+          })()}
+
           {(activeTab === 'pending' || activeTab === 'ready') && (<>
           {(() => {
             const groupsForTab = activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups;
