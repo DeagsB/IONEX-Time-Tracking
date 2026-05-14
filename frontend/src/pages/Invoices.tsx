@@ -4765,7 +4765,7 @@ export default function Invoices() {
                               })()}
                             </span>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px', flexShrink: 0 }}>
                             <button
                               onClick={() => handleExportSingleGroup(group)}
                               disabled={!!exportProgress  || exportingGroupIdx !== null}
@@ -4778,6 +4778,7 @@ export default function Invoices() {
                                 fontSize: '12px',
                                 fontWeight: 600,
                                 cursor: exportProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
+                                whiteSpace: 'normal',
                               }}
                               title="Download this group's merged PDF"
                             >
@@ -4804,6 +4805,7 @@ export default function Invoices() {
                                 fontSize: '12px',
                                 fontWeight: 600,
                                 cursor: 'pointer',
+                                whiteSpace: 'normal',
                               }}
                               title="Short description for each rate type (ST/TT/FT/SO/FO) — used to justify or explain rates on the batch summary PDF cover page (e.g. 'overtime > 8 hrs')"
                             >
@@ -5565,7 +5567,7 @@ export default function Invoices() {
                       </>
                     )}
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px', flexShrink: 0 }}>
                     <button
                       onClick={() => handleExportSingleGroup(group)}
                       disabled={!!exportProgress  || exportingGroupIdx !== null}
@@ -5578,6 +5580,7 @@ export default function Invoices() {
                         fontSize: '12px',
                         fontWeight: 600,
                         cursor: exportProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'normal',
                       }}
                       title="Download this group's merged PDF"
                     >
@@ -5604,6 +5607,7 @@ export default function Invoices() {
                         fontSize: '12px',
                         fontWeight: 600,
                         cursor: 'pointer',
+                        whiteSpace: 'normal',
                       }}
                       title="Short description for each rate type (ST/TT/FT/SO/FO) — used to justify or explain rates on the batch summary PDF cover page (e.g. 'overtime > 8 hrs')"
                     >
@@ -5880,19 +5884,21 @@ export default function Invoices() {
                         style={{
                           display: 'inline-flex',
                           alignItems: 'stretch',
-                          backgroundColor: 'var(--bg-tertiary)',
-                          borderRadius: '6px',
+                          backgroundColor: 'var(--bg-primary)',
+                          borderRadius: '8px',
                           overflow: 'hidden',
+                          border: '1px solid var(--border-color)',
+                          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.06)',
                           touchAction: 'none',
                           opacity: isBeingDragged ? 0.4 : 1,
                           outline: isHolding ? '2px solid rgba(59, 130, 246, 0.55)' : 'none',
                           outlineOffset: '1px',
-                          transition: 'opacity 0.12s, outline-color 0.12s',
+                          transition: 'opacity 0.12s, outline-color 0.12s, box-shadow 0.12s, transform 0.12s',
                         }}
                       >
                         <button
                           type="button"
-                          title={isAdmin && ticket.recordId ? 'Click to open · Hold 1s then drag to move to another batch' : undefined}
+                          title={isAdmin && ticket.recordId ? 'Click to open · Hold then drag to move to another batch' : 'Open ticket'}
                           onPointerDown={(e) => beginTicketHold(e, ticket as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null }, { key, tickets: groupTickets })}
                           onPointerUp={cancelTicketHold}
                           onPointerLeave={cancelTicketHold}
@@ -5904,19 +5910,23 @@ export default function Invoices() {
                             }
                             setEditTicketRecordId(ticket.recordId?.trim() || ticket.id);
                           }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--bg-tertiary)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}
                           style={{
-                            padding: '4px 10px',
+                            padding: '6px 12px',
                             backgroundColor: 'transparent',
                             fontSize: '13px',
-                            color: 'inherit',
+                            fontWeight: 600,
+                            color: 'var(--text-primary)',
                             border: 'none',
                             cursor: isAdmin && ticket.recordId ? 'grab' : 'pointer',
                             fontFamily: 'inherit',
                             textAlign: 'left',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '6px',
+                            gap: '8px',
                             userSelect: 'none',
+                            transition: 'background-color 0.12s',
                           }}
                         >
                           <span>{t.ticketNumber} – {t.userName} ({t.totalHours}h)</span>
@@ -5941,21 +5951,35 @@ export default function Invoices() {
                         {isAdmin && ticket.recordId && (
                           <button
                             type="button"
+                            aria-label="Move ticket to a different invoice batch"
                             title="Move ticket to a different invoice batch"
                             onClick={(e) => {
                               e.stopPropagation();
                               setMoveTicketBatchCustomDate('');
                               setMoveTicketBatchDialog({ ticket: ticket as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null }, sourceGroup: { key, tickets: groupTickets } });
                             }}
+                            onMouseEnter={(e) => {
+                              const el = e.currentTarget as HTMLButtonElement;
+                              el.style.backgroundColor = 'rgba(59, 130, 246, 0.14)';
+                              el.style.color = '#1d4ed8';
+                            }}
+                            onMouseLeave={(e) => {
+                              const el = e.currentTarget as HTMLButtonElement;
+                              el.style.backgroundColor = 'var(--bg-tertiary)';
+                              el.style.color = 'var(--text-secondary)';
+                            }}
                             style={{
-                              padding: '0 8px',
-                              fontSize: '14px',
+                              padding: '0 10px',
+                              fontSize: '16px',
+                              fontWeight: 700,
+                              lineHeight: 1,
                               color: 'var(--text-secondary)',
                               border: 'none',
                               borderLeft: '1px solid var(--border-color)',
-                              backgroundColor: 'transparent',
+                              backgroundColor: 'var(--bg-tertiary)',
                               cursor: 'pointer',
                               fontFamily: 'inherit',
+                              transition: 'background-color 0.12s, color 0.12s',
                             }}
                           >
                             ⋮

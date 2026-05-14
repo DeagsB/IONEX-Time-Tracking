@@ -1231,7 +1231,7 @@ export default function Payroll() {
           </div>
 
           {/* Employee Hours Table */}
-          <div className="card" style={{ overflow: 'hidden' }}>
+          <div className="card">
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>
                 {isAdmin ? 'Employee Hours by Rate Type' : 'Hours by Rate Type'}
@@ -1240,7 +1240,9 @@ export default function Payroll() {
                 {startDate} to {endDate}{isAdmin ? ` • ${displayedEmployeeHours.length} employee${displayedEmployeeHours.length !== 1 ? 's' : ''}${excludeContractors ? ' (contractors hidden)' : ''}` : ''}
               </p>
             </div>
-            <div style={{ overflowX: 'auto' }}>
+            {/* overflow-x:auto on this wrapper would hide the scrollbar below the fold on tall tables.
+                Letting the table push the page wide instead surfaces the Layout's existing overflow:auto
+                horizontal scrollbar at the bottom of the viewport, which is always reachable. */}
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
@@ -1511,7 +1513,6 @@ export default function Payroll() {
                 })()}
               </tbody>
             </table>
-            </div>
           </div>
         </>
       )}
