@@ -3221,6 +3221,18 @@ export type InvoicedBatchMarkRow = {
 };
 
 /** Persisted "marked as invoiced" groups (same group_id as PDF batch uploads). */
+/**
+ * Cross-workflow status aliases. When a customer's workflow changes, any batch whose
+ * statusId no longer exists in the new workflow is remapped to the first alias that does
+ * exist; if none match, statusId is cleared. Statuses with the same id across workflows
+ * (e.g. 'draft') need no entry — they survive a swap as-is. Add an entry here whenever
+ * two workflows define statuses that mean the same business state.
+ */
+export const CROSS_WORKFLOW_STATUS_ALIASES: Record<string, string[]> = {
+  submitted_portal: ['sent'],
+  sent: ['submitted_portal'],
+};
+
 export const invoicedBatchMarksService = {
   async getAll(): Promise<InvoicedBatchMarkRow[]> {
     const { data, error } = await supabase
@@ -3229,6 +3241,65 @@ export const invoicedBatchMarksService = {
       .order('marked_at', { ascending: false });
     if (error) throw error;
     return (data || []) as InvoicedBatchMarkRow[];
+  },
+
+  /**
+   * Remap statusIds on a customer's invoiced batches to fit a newly assigned workflow.
+   * Walks every batch mark belonging to a project under `customerId`. For each mark
+   * whose statusId is not in the new workflow's statuses, looks up an alias in
+   * CROSS_WORKFLOW_STATUS_ALIASES and rewrites the snapshot; if no alias exists in
+   * the new workflow, the statusId is cleared so the UI falls back to default. Returns
+   * counts so callers can surface a toast.
+   */
+  async remapStatusesForCustomer(
+    customerId: string,
+    newWorkflowId: string
+  ): Promise<{ remapped: number; cleared: number }> {
+    const { data: wf, error: wfErr } = await supabase
+      .from('invoice_workflows')
+      .select('statuses')
+      .eq('id', newWorkflowId)
+      .single();
+    if (wfErr) throw wfErr;
+    const newStatusIds = new Set<string>(
+      ((wf?.statuses ?? []) as Array<{ id: string }>).map((s) => s.id)
+    );
+
+    const { data: projs, error: pErr } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('customer_id', customerId);
+    if (pErr) throw pErr;
+    const projectIds = new Set((projs ?? []).map((p) => (p as { id: string }).id));
+    if (projectIds.size === 0) return { remapped: 0, cleared: 0 };
+
+    const { data: marks, error: mErr } = await supabase
+      .from('invoiced_batch_marks')
+      .select('group_id, key_snapshot');
+    if (mErr) throw mErr;
+
+    let remapped = 0;
+    let cleared = 0;
+    for (const row of marks ?? []) {
+      const groupId = String((row as { group_id: string }).group_id ?? '');
+      const projectPrefix = groupId.split('|')[0];
+      if (!projectIds.has(projectPrefix)) continue;
+      const snap = ((row as { key_snapshot: Record<string, unknown> }).key_snapshot ?? {}) as Record<string, unknown>;
+      const cur = typeof snap.statusId === 'string' ? snap.statusId : null;
+      if (!cur) continue;
+      if (newStatusIds.has(cur)) continue;
+      const aliases = CROSS_WORKFLOW_STATUS_ALIASES[cur] ?? [];
+      const mapped = aliases.find((a) => newStatusIds.has(a)) ?? null;
+      const nextSnap = { ...snap, statusId: mapped };
+      const { error: uErr } = await supabase
+        .from('invoiced_batch_marks')
+        .update({ key_snapshot: nextSnap, updated_at: new Date().toISOString() })
+        .eq('group_id', groupId);
+      if (uErr) throw uErr;
+      if (mapped) remapped++;
+      else cleared++;
+    }
+    return { remapped, cleared };
   },
 
   async upsert(groupId: string, keySnapshot: { key: unknown; ticketIds: string[] }): Promise<void> {

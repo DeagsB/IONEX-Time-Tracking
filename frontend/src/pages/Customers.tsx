@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
-import { customersService, invoiceWorkflowsService } from '../services/supabaseServices';
+import { customersService, invoiceWorkflowsService, invoicedBatchMarksService } from '../services/supabaseServices';
 
 export default function Customers() {
   const { user, isAdmin } = useAuth();
@@ -239,7 +239,24 @@ export default function Customers() {
       invoice_workflow_id: formData.invoice_workflow_id || null,
     };
     if (editingCustomer) {
-      updateMutation.mutate({ id: editingCustomer.id, data: payload });
+      const prevWorkflowId: string | null = editingCustomer.invoice_workflow_id ?? null;
+      const newWorkflowId: string | null = payload.invoice_workflow_id;
+      const workflowChanged = newWorkflowId !== prevWorkflowId;
+      updateMutation.mutate(
+        { id: editingCustomer.id, data: payload },
+        {
+          onSuccess: async () => {
+            if (workflowChanged && newWorkflowId) {
+              try {
+                await invoicedBatchMarksService.remapStatusesForCustomer(editingCustomer.id, newWorkflowId);
+                queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
+              } catch (err) {
+                console.warn('Status remap after workflow swap failed:', err);
+              }
+            }
+          },
+        }
+      );
     } else {
       createMutation.mutate(payload);
     }
