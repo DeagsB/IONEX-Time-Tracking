@@ -33,6 +33,7 @@ interface TimeEntry {
   project?: {
     id: string;
     name?: string;
+    project_number?: string;
     customer?: {
       id: string;
       name?: string;
@@ -392,6 +393,7 @@ export default function Payroll() {
           project:projects!time_entries_project_id_fkey(
             id,
             name,
+            project_number,
             customer:customers!projects_customer_id_fkey(id, name)
           )
         `)
@@ -1233,88 +1235,52 @@ export default function Payroll() {
 
     // Section 1: project allocations (one row per employee × project × rate type)
     pushRow(['Project Allocations']);
-    pushRow(['Employee', 'Email', 'Employment Type', 'Department', 'Project', 'Customer', 'Rate Type', 'Hours', 'Rate ($/hr)', 'Amount']);
+    pushRow(['Employee', 'Email', 'Employment Type', 'Department', 'Project #', 'Project', 'Customer', 'Rate Type', 'Hours']);
 
     for (const emp of displayedEmployeeHours) {
       const employee = empByUserId.get(emp.userId);
       const empType = employee?.employment_type || 'Employee';
       const dept = employee?.department || '';
-      const shopRate = Number(employee?.shop_pay_rate) || 0;
-      const shopOtRate = Number(employee?.shop_ot_pay_rate) || shopRate * 1.5;
-      const fieldRate = Number(employee?.field_pay_rate) || shopRate;
-      const fieldOtRate = Number(employee?.field_ot_pay_rate) || fieldRate * 1.5;
-      const isPanelShop = employee?.department === 'Panel Shop';
-      const ftRate = isPanelShop ? (fieldRate || shopRate) : fieldRate;
-      const foRate = isPanelShop ? (fieldOtRate || shopOtRate) : fieldOtRate;
-      const rateFor = (rt: string, billable: boolean): number => {
-        if (!billable) return shopRate;
-        switch (rt) {
-          case 'Shop Time': return shopRate;
-          case 'Shop Overtime': return shopOtRate;
-          case 'Travel Time': return shopRate;
-          case 'Field Time': return ftRate;
-          case 'Field Overtime': return foRate;
-          default: return shopRate;
-        }
-      };
 
       // Aggregate (project, rate type, billable) → hours
-      const agg = new Map<string, { projName: string; custName: string; rateType: string; billable: boolean; hours: number }>();
+      const agg = new Map<string, { projNumber: string; projName: string; custName: string; rateType: string; billable: boolean; hours: number }>();
       for (const entry of emp.entries) {
+        const projNumber = entry.project?.project_number || '';
         const projName = entry.project?.name || (entry.project_id ? 'Unknown Project' : 'Unassigned');
         const custName = entry.project?.customer?.name || '';
         const rt = entry.rate_type || 'Shop Time';
         const billable = !!entry.billable;
-        const key = `${projName}||${custName}||${rt}||${billable ? 'B' : 'I'}`;
-        if (!agg.has(key)) agg.set(key, { projName, custName, rateType: rt, billable, hours: 0 });
+        const key = `${projNumber}||${projName}||${custName}||${rt}||${billable ? 'B' : 'I'}`;
+        if (!agg.has(key)) agg.set(key, { projNumber, projName, custName, rateType: rt, billable, hours: 0 });
         agg.get(key)!.hours += Number(entry.hours) || 0;
       }
 
       if (agg.size === 0) {
         // employee with no entries — emit a zero row so they still show up
-        pushRow([emp.name, emp.email, empType, dept, '', '', '', 0, 0, 0]);
+        pushRow([emp.name, emp.email, empType, dept, '', '', '', '', 0]);
         continue;
       }
 
       for (const a of agg.values()) {
-        const rate = rateFor(a.rateType, a.billable);
         const rtLabel = a.billable ? a.rateType : `Internal (${a.rateType})`;
-        pushRow([emp.name, emp.email, empType, dept, a.projName, a.custName, rtLabel, a.hours, rate, a.hours * rate]);
+        pushRow([emp.name, emp.email, empType, dept, a.projNumber, a.projName, a.custName, rtLabel, a.hours]);
       }
     }
 
     blank();
 
-    // Section 2: payroll summary per employee (QuickBooks-style input columns)
+    // Section 2: payroll summary per employee (hours only — dollars handled in QuickBooks)
     pushRow(['Payroll Summary (per employee)']);
     pushRow([
       'Employee', 'Email', 'Employment Type',
       'Internal Hrs', 'Shop Hrs', 'Shop OT Hrs', 'Travel Hrs', 'Field Hrs', 'Field OT Hrs', 'Total Hrs',
-      'Base Pay',
-      'Sick %', 'Sick Pay',
-      'Stat %', 'Stat Holiday Pay',
-      'Vacation %', 'Vacation Pay',
-      'Cell Phone Allowance', 'Health Allowance',
-      'GST (contractor)',
-      'Gross Pay', 'EI', 'CPP', 'Income Tax (est.)', 'Net Pay',
-      'Reimbursements', 'Total Payout',
     ]);
 
     for (const emp of displayedEmployeeHours) {
       const employee = empByUserId.get(emp.userId);
-      const b = payrollBreakdownByUser.get(emp.userId);
-      if (!b) continue;
       pushRow([
         emp.name, emp.email, employee?.employment_type || 'Employee',
         emp.internalHours, emp.shopTime, emp.shopOvertime, emp.travelTime, emp.fieldTime, emp.fieldOvertime, emp.totalHours,
-        b.basePay,
-        b.sickPct, b.sickPay,
-        b.statPct, b.statHolidayPay,
-        b.vacationPct, b.vacationPay,
-        b.cellPhoneAllowance, b.healthAllowance,
-        b.gst,
-        b.grossPay, b.ei, b.cpp, b.incomeTax, b.netPay,
-        b.reimbursements, b.totalPayout,
       ]);
     }
 
