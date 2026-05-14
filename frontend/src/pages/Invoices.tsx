@@ -4171,7 +4171,10 @@ export default function Invoices() {
       const pid = resolvedPersistGroupId(g, invoicedMarkRows);
       const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
       const wf = getWorkflowForCustomer(g.tickets[0]?.customerName, g.key.projectNumber);
-      const sid = snap?.statusId ?? wf?.statuses?.[0]?.id;
+      // Batches on the Invoiced tab are by definition terminal — if a legacy row has
+      // no statusId, fall back to the workflow's last status (e.g. submitted_portal
+      // for Portal Approval, sent for Standard) instead of the first ('draft').
+      const sid = snap?.statusId ?? wf?.statuses?.[wf.statuses.length - 1]?.id;
       if (!sid) continue;
       const st = wf?.statuses?.find((s) => s.id === sid);
       if (!st) continue;
@@ -4183,13 +4186,16 @@ export default function Invoices() {
   }, [finalInvoicedGroups, invoicedMarkRows, getWorkflowForCustomer]);
 
   /** Resolve the effective status id for an invoiced batch — used both for filtering and
-   *  for sorting drafts to the top of the Invoiced tab so unsent invoices are unmissable. */
+   *  for sorting drafts to the top of the Invoiced tab so unsent invoices are unmissable.
+   *  Legacy rows without a stored statusId default to the workflow's terminal status
+   *  (last entry), because reaching the Invoiced tab implies the batch is complete. */
   const getInvoicedGroupStatusId = useCallback(
     (g: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string => {
       const pid = resolvedPersistGroupId(g, invoicedMarkRows);
       const snap = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
       const wf = getWorkflowForCustomer(g.tickets[0]?.customerName, g.key.projectNumber);
-      return snap?.statusId ?? wf?.statuses?.[0]?.id ?? 'draft';
+      const terminal = wf?.statuses?.[wf.statuses.length - 1]?.id;
+      return snap?.statusId ?? terminal ?? 'draft';
     },
     [invoicedMarkRows, getWorkflowForCustomer]
   );
@@ -4974,7 +4980,10 @@ export default function Invoices() {
               const batchMarkRow = invoicedMarkRows.find((r) => r.group_id === persistId);
               const batchSnap = batchMarkRow?.key_snapshot as FrozenGroupSnapshot | undefined;
               const batchWorkflow = getWorkflowForCustomer(groupTickets[0]?.customerName, key.projectNumber);
-              const batchStatusId = batchSnap?.statusId ?? batchWorkflow?.statuses?.[0]?.id;
+              // Invoiced-tab fallback uses the workflow's terminal status (not the first), so
+              // legacy rows missing statusId render as e.g. "Submitted to Portal" / "Sent"
+              // rather than "Draft". Explicit drafts (snap.statusId === 'draft') are preserved.
+              const batchStatusId = batchSnap?.statusId ?? batchWorkflow?.statuses?.[batchWorkflow.statuses.length - 1]?.id;
               const batchCurrentStatus = batchWorkflow?.statuses?.find((s) => s.id === batchStatusId);
               const statusSinceDate = batchSnap?.statusChangedAt ?? batchMarkRow?.marked_at;
               // Calendar-day diff (local time), so something set 23h ago is "yesterday", not "today".
