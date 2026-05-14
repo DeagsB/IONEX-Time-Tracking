@@ -545,18 +545,23 @@ export async function generateBatchSummaryPdf(
   const firstTicket = groupTickets[0];
   if (!firstTicket) throw new Error('No tickets in batch');
 
-  // Group labour by type and rate
-  const labourMap = new Map<string, { label: string; hours: number; amount: number; rate: number; typeKey: string }>();
+  // Group labour by type and rate. ticketNumbers tracks which service tickets contributed
+  // hours to this rate, so the summary PDF can show "ST1234, ST5678" right under the label
+  // (and before any rate-specific note).
+  const labourMap = new Map<string, { label: string; hours: number; amount: number; rate: number; typeKey: string; ticketNumbers: Set<string> }>();
 
-  const addLabour = (type: string, label: string, hours: number, rate: number) => {
+  const addLabour = (type: string, label: string, hours: number, rate: number, ticketNumber: string) => {
     if (hours > 0) {
       const key = `${type}_${rate}`;
       const existing = labourMap.get(key);
       if (existing) {
         existing.hours += hours;
         existing.amount += hours * rate;
+        if (ticketNumber) existing.ticketNumbers.add(ticketNumber);
       } else {
-        labourMap.set(key, { label, hours, amount: hours * rate, rate, typeKey: type });
+        const ticketNumbers = new Set<string>();
+        if (ticketNumber) ticketNumbers.add(ticketNumber);
+        labourMap.set(key, { label, hours, amount: hours * rate, rate, typeKey: type, ticketNumbers });
       }
     }
   };
@@ -567,12 +572,13 @@ export async function generateBatchSummaryPdf(
 
   for (const ticket of groupTickets) {
     const { rtHours: tRt, ttHours: tTt, ftHours: tFt, shopOtHours: tSo, fieldOtHours: tFo } = computeServiceTicketPdfHoursAndLines(ticket);
-    
-    addLabour('ST', 'Shop Time (ST)', tRt, ticket.rates.rt);
-    addLabour('TT', 'Travel Time (TT)', tTt, ticket.rates.tt);
-    addLabour('FT', 'Field Time (FT)', tFt, ticket.rates.ft);
-    addLabour('SO', 'Shop OT (SO)', tSo, ticket.rates.shop_ot);
-    addLabour('FO', 'Field OT (FO)', tFo, ticket.rates.field_ot);
+    const tNum = (ticket.ticketNumber || '').toString().trim();
+
+    addLabour('ST', 'Shop Time (ST)', tRt, ticket.rates.rt, tNum);
+    addLabour('TT', 'Travel Time (TT)', tTt, ticket.rates.tt, tNum);
+    addLabour('FT', 'Field Time (FT)', tFt, ticket.rates.ft, tNum);
+    addLabour('SO', 'Shop OT (SO)', tSo, ticket.rates.shop_ot, tNum);
+    addLabour('FO', 'Field OT (FO)', tFo, ticket.rates.field_ot, tNum);
 
     const name = ticket.entries[0]?.user?.first_name && ticket.entries[0]?.user?.last_name
       ? `${ticket.entries[0].user.first_name} ${ticket.entries[0].user.last_name}`
@@ -617,7 +623,16 @@ export async function generateBatchSummaryPdf(
   const groupedExpenses = Array.from(expenseMap.values());
   const expensesTotal = groupedExpenses.reduce((sum, e) => sum + (e.quantity * e.rate), 0);
 
-  const labourLines = Array.from(labourMap.values());
+  const sortTicketNumbersArr = (arr: string[]): string[] => arr.slice().sort((a, b) => {
+    const an = parseInt(a.replace(/\D+/g, ''), 10);
+    const bn = parseInt(b.replace(/\D+/g, ''), 10);
+    if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
+    return a.localeCompare(b);
+  });
+  const labourLines = Array.from(labourMap.values()).map((l) => ({
+    ...l,
+    ticketNumbersList: sortTicketNumbersArr(Array.from(l.ticketNumbers)),
+  }));
   const totalLabourHours = labourLines.reduce((sum, l) => sum + l.hours, 0);
   const totalLabourAmount = labourLines.reduce((sum, l) => sum + l.amount, 0);
   const grandTotal = totalLabourAmount + expensesTotal;
@@ -679,7 +694,7 @@ function buildBatchSummaryPdfHtml(
   employeeName: string,
   employeeEmail: string,
   ticketDate: string,
-  labourLines: Array<{ label: string; hours: number; amount: number; rate: number; typeKey: string }>,
+  labourLines: Array<{ label: string; hours: number; amount: number; rate: number; typeKey: string; ticketNumbersList: string[] }>,
   totalLabourHours: number,
   totalLabourAmount: number,
   expensesTotal: number,
@@ -824,14 +839,26 @@ function buildBatchSummaryPdfHtml(
             </tr>
           </thead>
           <tbody>
-            ${labourLines.map(line => `
+            ${labourLines.map(line => {
+              const ticketsLine = line.ticketNumbersList.length > 0
+                ? `<div style="font-size: 7.5pt; color: #555; margin-top: 1px;">Tickets: ${line.ticketNumbersList.join(', ')}</div>`
+                : '';
+              const noteLine = labourNotes?.[line.typeKey]
+                ? `<div style="font-size: 7.5pt; color: #555; font-style: italic; margin-top: 1px;">${labourNotes[line.typeKey]}</div>`
+                : '';
+              return `
             <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${line.label}${labourNotes?.[line.typeKey] ? ` (${labourNotes[line.typeKey]})` : ''}</td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">${line.hours.toFixed(2)}</td>
-              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${line.rate.toFixed(2)}</td>
-              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; height: 20px; vertical-align: middle; box-sizing: border-box;">$${line.amount.toFixed(2)}</td>
+              <td style="padding: 2px 4px; font-size: 8pt; vertical-align: top; box-sizing: border-box;">
+                <div>${line.label}</div>
+                ${ticketsLine}
+                ${noteLine}
+              </td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">${line.hours.toFixed(2)}</td>
+              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">$${line.rate.toFixed(2)}</td>
+              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">$${line.amount.toFixed(2)}</td>
             </tr>
-            `).join('')}
+            `;
+            }).join('')}
             ${Array.from({ length: Math.max(0, 5 - labourLines.length) }).map(() => `
             <tr style="border-bottom: 1px solid #eee;">
               <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
