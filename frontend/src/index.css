@@ -383,3 +383,28 @@ textarea {
   border: 1px solid var(--input-border);
 }
 
+/* In-app modal entrance animations. Apply the .ionex-modal-backdrop class to the fixed
+   overlay and .ionex-modal-card to the inner dialog card so every modal opens with the
+   same gentle scale + fade (~150ms). */
+@keyframes ionex-modal-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes ionex-modal-card-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.ionex-modal-backdrop {
+  animation: ionex-modal-backdrop-in 0.16s ease-out;
+}
+.ionex-modal-card {
+  animation: ionex-modal-card-in 0.16s ease-out;
+  transform-origin: center center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ionex-modal-backdrop,
+  .ionex-modal-card {
+    animation: none;
+  }
+}
+

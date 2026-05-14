@@ -4724,11 +4724,11 @@ export default function Expenses() {
         const total = expTotal + markup;
 
         return (
-          <div style={{
+          <div className="ionex-modal-backdrop" style={{
             position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }} onMouseDown={(e) => { if (e.target === e.currentTarget) { setMarkupModalTicket(null); setApplyExpenseId(null); } }}>
-            <div onMouseDown={(e) => e.stopPropagation()} style={{
+            <div className="ionex-modal-card" onMouseDown={(e) => e.stopPropagation()} style={{
               backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px',
               maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
             }}>
@@ -4881,6 +4881,7 @@ export default function Expenses() {
           <div
             role="dialog"
             aria-modal="true"
+            className="ionex-modal-backdrop"
             style={{
               position: 'fixed', inset: 0, zIndex: 10005,
               backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
@@ -4889,6 +4890,7 @@ export default function Expenses() {
             onMouseDown={(e) => { if (e.target === e.currentTarget) closeModal(); }}
           >
             <div
+              className="ionex-modal-card"
               onMouseDown={(e) => e.stopPropagation()}
               style={{
                 backgroundColor: 'var(--bg-primary)', borderRadius: '12px',
@@ -5083,11 +5085,11 @@ export default function Expenses() {
 
       {/* Edit Expense Modal */}
       {editingExpense && (
-        <div style={{
+        <div className="ionex-modal-backdrop" style={{
           position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }} onClick={() => { setEditingExpense(null); setEditReceiptPreviewUrl(null); }}>
-          <div onClick={(e) => e.stopPropagation()} style={{
+          <div className="ionex-modal-card" onClick={(e) => e.stopPropagation()} style={{
             backgroundColor: 'var(--bg-primary)', borderRadius: '12px', overflow: 'hidden',
             maxWidth: editingExpense.receipt_url ? '800px' : '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
             display: 'flex', flexDirection: editingExpense.receipt_url ? 'row' : 'column', minHeight: editingExpense.receipt_url ? '450px' : undefined,

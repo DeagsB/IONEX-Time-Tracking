@@ -1100,6 +1100,7 @@ function InvoiceTicketDetailModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="invoice-ticket-modal-title"
+      className="ionex-modal-backdrop"
       style={{
         position: 'fixed',
         inset: 0,
@@ -1115,6 +1116,7 @@ function InvoiceTicketDetailModal({
       }}
     >
       <div
+        className="ionex-modal-card"
         onMouseDown={(e) => e.stopPropagation()}
         style={{
           backgroundColor: 'var(--bg-primary)',
@@ -5761,211 +5763,224 @@ export default function Invoices() {
                     </button>
                   </div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
-                    {firstTicket?.customerName && (
-                      <span>
-                        <strong>Customer:</strong>{' '}
-                        <CopyableHeaderValue copyText={firstTicket.customerName}>
-                          {firstTicket.customerName}
+                {(() => {
+                  const periodHeading = key.periodLabel || key.periodKey || key.approver || 'Batch';
+                  const customerName = firstTicket?.customerName;
+                  const approverDisplay = key.periodKey
+                    ? (key.approverCode && key.approverCode !== key.periodKey ? key.approverCode : null)
+                    : (key.approver || null);
+                  const sectionHasCustomerTitle = true; // section header above shows it in red
+                  return (
+                    <>
+                      {/* Row 1: period heading + action buttons */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px', gap: '12px', flexWrap: 'wrap' }}>
+                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, minWidth: 0 }}>
+                          <CopyableHeaderValue copyText={periodHeading}>
+                            {periodHeading}
+                          </CopyableHeaderValue>
+                        </h3>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '6px', flexShrink: 0 }}>
+                          <button
+                            onClick={() => handleExportSingleGroup(group)}
+                            disabled={!!exportProgress  || exportingGroupIdx !== null}
+                            style={{
+                              padding: '6px 12px',
+                              backgroundColor: 'var(--primary-color)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: exportProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
+                              whiteSpace: 'normal',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                            title="Download this group's merged PDF"
+                          >
+                            <span aria-hidden style={{ fontSize: '13px' }}>📥</span>
+                            {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (editingLabourNotesGroupId === groupId) {
+                                setEditingLabourNotesGroupId(null);
+                                setApplyLabourNotesToSimilarBatches(false);
+                              } else {
+                                setEditingLabourNotes(pendingLabourNotes[groupId] ?? {});
+                                setApplyLabourNotesToSimilarBatches(false);
+                                setEditingLabourNotesGroupId(groupId);
+                              }
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              backgroundColor: editingLabourNotesGroupId === groupId ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                              color: editingLabourNotesGroupId === groupId ? 'white' : 'var(--text-secondary)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              whiteSpace: 'normal',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                            title="Short description for each rate type (ST/TT/FT/SO/FO) — used to justify or explain rates on the batch summary PDF cover page (e.g. 'overtime > 8 hrs')"
+                          >
+                            <span aria-hidden style={{ fontSize: '13px' }}>📝</span>
+                            Rate notes
+                          </button>
+                          {groupIsPortalApproval ? (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkAsSubmittedForApproval(group)}
+                              disabled={!!exportProgress  || markInvoicedMutation.isPending}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                                color: '#b45309',
+                                border: '1px solid rgba(245, 158, 11, 0.55)',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor:
+                                  exportProgress || markInvoicedMutation.isPending
+                                    ? 'not-allowed'
+                                    : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                whiteSpace: 'normal',
+                              }}
+                              title="Portal Approval flow: downloads the batch PDF for you to email/submit to the approver, then marks the batch as ready-to-send so it moves to the Submitted tab. Nothing is sent automatically. When the signed PDF comes back, drop it on the card under Submitted to advance to Approved."
+                            >
+                              <span aria-hidden style={{ fontSize: '13px' }}>📤</span>
+                              {markInvoicedMutation.isPending ? 'Saving…' : 'Submit for approval'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setMarkInvoicedPromptGroup(group)}
+                              onDragEnter={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (e.dataTransfer.types?.includes('Files')) setMarkInvoicedDropOverGroupId(groupId);
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (e.dataTransfer.types?.includes('Files')) {
+                                  e.dataTransfer.dropEffect = 'copy';
+                                  setMarkInvoicedDropOverGroupId(groupId);
+                                }
+                              }}
+                              onDragLeave={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                  setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
+                                }
+                              }}
+                              onDrop={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
+                                const file = e.dataTransfer?.files?.[0];
+                                if (!file) return;
+                                await handleDropInvoiceOnMarkAsInvoiced(group, file);
+                              }}
+                              disabled={
+                                !!exportProgress ||
+                                markInvoicedMutation.isPending ||
+                                uploadingInvoiceGroupId === groupId
+                              }
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor:
+                                  markInvoicedDropOverGroupId === groupId
+                                    ? 'rgba(34, 197, 94, 0.18)'
+                                    : 'rgba(34, 197, 94, 0.12)',
+                                color: '#15803d',
+                                border:
+                                  markInvoicedDropOverGroupId === groupId
+                                    ? '2px dashed #22c55e'
+                                    : '1px solid rgba(34, 197, 94, 0.55)',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor:
+                                  exportProgress || markInvoicedMutation.isPending || uploadingInvoiceGroupId === groupId
+                                    ? 'not-allowed'
+                                    : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                whiteSpace: 'normal',
+                              }}
+                              title="Mark this batch as invoiced and lock its service tickets. Drop an invoice PDF here to attach it at the same time (recommended — invoices for non-portal customers normally go out immediately), or click to mark without a PDF and attach later."
+                            >
+                              <span aria-hidden style={{ fontSize: '13px' }}>📎</span>
+                              {uploadingInvoiceGroupId === groupId
+                                ? 'Attaching…'
+                                : markInvoicedMutation.isPending
+                                  ? 'Saving…'
+                                  : 'Mark invoiced'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {/* Row 2: small meta line — project, approver, coding (customer is in the red section title above) */}
+                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', columnGap: '8px', rowGap: '4px', alignItems: 'center', marginBottom: '12px' }}>
+                        {!sectionHasCustomerTitle && customerName && (
+                          <>
+                            <CopyableHeaderValue copyText={customerName}>{customerName}</CopyableHeaderValue>
+                            <span aria-hidden>·</span>
+                          </>
+                        )}
+                        <CopyableHeaderValue copyText={key.projectNumber?.trim() || ''}>
+                          {key.projectNumber?.trim() || '(no project #)'}
                         </CopyableHeaderValue>
-                      </span>
-                    )}
-                    <span>
-                      <strong>IONEX project #:</strong>{' '}
-                      <CopyableHeaderValue copyText={key.projectNumber?.trim() || ''}>
-                        {key.projectNumber?.trim() || '(none)'}
-                      </CopyableHeaderValue>
-                    </span>
-                    <span>
-                      <strong>Project name:</strong>{' '}
-                      <CopyableHeaderValue copyText={key.projectName?.trim() || ''}>
-                        {key.projectName?.trim() || '(none)'}
-                      </CopyableHeaderValue>
-                    </span>
-                    {key.periodKey ? (
-                      <>
-                        {key.approverCode && key.approverCode !== key.periodKey ? (
-                          <span>
-                            <strong>Approver:</strong>{' '}
-                            <CopyableHeaderValue copyText={key.approverCode || key.approver || ''}>
-                              {key.approverCode || key.approver || '(none)'}
-                            </CopyableHeaderValue>
-                          </span>
-                        ) : null}
-                        {key.cc ? (
-                          <span>
-                            <strong>Coding:</strong> <CopyableHeaderValue copyText={key.cc}>{key.cc}</CopyableHeaderValue>
-                          </span>
-                        ) : null}
-                        <span>
-                          <strong>Period:</strong>{' '}
-                          <CopyableHeaderValue copyText={key.periodLabel || key.periodKey || ''}>
-                            {key.periodLabel || key.periodKey}
-                          </CopyableHeaderValue>
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span>
-                          <strong>Approver:</strong>{' '}
-                          <CopyableHeaderValue copyText={key.approver || ''}>{key.approver || '(none)'}</CopyableHeaderValue>
-                        </span>
-                        <span><strong>PO/AFE/CC (Cost Center):</strong> {key.poAfe || '(none)'}</span>
-                        <span><strong>Location:</strong> {key.location || '(none)'}</span>
-                        <span>
-                          <strong>Coding:</strong>{' '}
-                          <CopyableHeaderValue copyText={key.cc && key.cc !== '(none)' ? key.cc : ''}>
-                            {key.cc || '(none)'}
-                          </CopyableHeaderValue>
-                        </span>
-                        <span><strong>Other:</strong> {key.other || '(none)'}</span>
-                      </>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px', flexShrink: 0 }}>
-                    <button
-                      onClick={() => handleExportSingleGroup(group)}
-                      disabled={!!exportProgress  || exportingGroupIdx !== null}
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor: 'var(--primary-color)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: exportProgress || exportingGroupIdx !== null ? 'not-allowed' : 'pointer',
-                        whiteSpace: 'normal',
-                      }}
-                      title="Download this group's merged PDF"
-                    >
-                      {isExportingGroup(groupId) ? 'Generating…' : 'Download'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (editingLabourNotesGroupId === groupId) {
-                          setEditingLabourNotesGroupId(null);
-                          setApplyLabourNotesToSimilarBatches(false);
-                        } else {
-                          setEditingLabourNotes(pendingLabourNotes[groupId] ?? {});
-                          setApplyLabourNotesToSimilarBatches(false);
-                          setEditingLabourNotesGroupId(groupId);
-                        }
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor: editingLabourNotesGroupId === groupId ? 'var(--primary-color)' : 'var(--bg-tertiary)',
-                        color: editingLabourNotesGroupId === groupId ? 'white' : 'var(--text-secondary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'normal',
-                      }}
-                      title="Short description for each rate type (ST/TT/FT/SO/FO) — used to justify or explain rates on the batch summary PDF cover page (e.g. 'overtime > 8 hrs')"
-                    >
-                      Edit rate descriptions
-                    </button>
-                    {groupIsPortalApproval ? (
-                      <button
-                        type="button"
-                        onClick={() => handleMarkAsSubmittedForApproval(group)}
-                        disabled={!!exportProgress  || markInvoicedMutation.isPending}
-                        style={{
-                          padding: '6px 12px',
-                          backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                          color: '#b45309',
-                          border: '1px solid rgba(245, 158, 11, 0.55)',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          cursor:
-                            exportProgress || markInvoicedMutation.isPending
-                              ? 'not-allowed'
-                              : 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                        title="Portal Approval flow: downloads the batch PDF for you to email/submit to the approver, then marks the batch as ready-to-send so it moves to the Submitted tab. Nothing is sent automatically. When the signed PDF comes back, drop it on the card under Submitted to advance to Approved."
-                      >
-                        <span aria-hidden style={{ fontSize: '13px' }}>📤</span>
-                        {markInvoicedMutation.isPending ? 'Saving…' : 'Download for approval & mark ready to send'}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setMarkInvoicedPromptGroup(group)}
-                        onDragEnter={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (e.dataTransfer.types?.includes('Files')) setMarkInvoicedDropOverGroupId(groupId);
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (e.dataTransfer.types?.includes('Files')) {
-                            e.dataTransfer.dropEffect = 'copy';
-                            setMarkInvoicedDropOverGroupId(groupId);
-                          }
-                        }}
-                        onDragLeave={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                            setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
-                          }
-                        }}
-                        onDrop={async (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setMarkInvoicedDropOverGroupId((id) => (id === groupId ? null : id));
-                          const file = e.dataTransfer?.files?.[0];
-                          if (!file) return;
-                          await handleDropInvoiceOnMarkAsInvoiced(group, file);
-                        }}
-                        disabled={
-                          !!exportProgress ||
-                          markInvoicedMutation.isPending ||
-                          uploadingInvoiceGroupId === groupId
-                        }
-                        style={{
-                          padding: '6px 12px',
-                          backgroundColor:
-                            markInvoicedDropOverGroupId === groupId
-                              ? 'rgba(34, 197, 94, 0.18)'
-                              : 'rgba(34, 197, 94, 0.12)',
-                          color: '#15803d',
-                          border:
-                            markInvoicedDropOverGroupId === groupId
-                              ? '2px dashed #22c55e'
-                              : '1px solid rgba(34, 197, 94, 0.55)',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          cursor:
-                            exportProgress || markInvoicedMutation.isPending || uploadingInvoiceGroupId === groupId
-                              ? 'not-allowed'
-                              : 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                        title="Mark this batch as invoiced and lock its service tickets. Drop an invoice PDF here to attach it at the same time (recommended — invoices for non-portal customers normally go out immediately), or click to mark without a PDF and attach later."
-                      >
-                        <span aria-hidden style={{ fontSize: '13px' }}>📎</span>
-                        {uploadingInvoiceGroupId === groupId
-                          ? 'Attaching…'
-                          : markInvoicedMutation.isPending
-                            ? 'Saving…'
-                            : 'Mark as invoiced (drop invoice PDF)'}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                        <span aria-hidden>·</span>
+                        <CopyableHeaderValue copyText={key.projectName?.trim() || ''}>
+                          {key.projectName?.trim() || '(no project name)'}
+                        </CopyableHeaderValue>
+                        {approverDisplay && (
+                          <>
+                            <span aria-hidden>·</span>
+                            <span>Approver{' '}
+                              <CopyableHeaderValue copyText={approverDisplay}>{approverDisplay}</CopyableHeaderValue>
+                            </span>
+                          </>
+                        )}
+                        {key.cc && (
+                          <>
+                            <span aria-hidden>·</span>
+                            <span>Coding{' '}
+                              <CopyableHeaderValue copyText={key.cc}>{key.cc}</CopyableHeaderValue>
+                            </span>
+                          </>
+                        )}
+                        {!key.periodKey && key.poAfe && (
+                          <>
+                            <span aria-hidden>·</span>
+                            <span>PO/AFE/CC{' '}
+                              <CopyableHeaderValue copyText={key.poAfe}>{key.poAfe}</CopyableHeaderValue>
+                            </span>
+                          </>
+                        )}
+                        {!key.periodKey && key.location && (
+                          <>
+                            <span aria-hidden>·</span>
+                            <span>Loc {key.location}</span>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
                 {/* Labour notes editor */}
                 {editingLabourNotesGroupId === groupId && (
                   <div style={{
@@ -7678,6 +7693,7 @@ export default function Invoices() {
           <div
             role="dialog"
             aria-modal="true"
+            className="ionex-modal-backdrop"
             style={{
               position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -7685,7 +7701,7 @@ export default function Invoices() {
             }}
             onClick={(e) => { if (e.target === e.currentTarget) setUndoApprovalConfirm(null); }}
           >
-            <div style={{
+            <div className="ionex-modal-card" style={{
               backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
               padding: '20px', maxWidth: '480px', width: '100%',
               border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
@@ -7765,6 +7781,7 @@ export default function Invoices() {
           <div
             role="dialog"
             aria-modal="true"
+            className="ionex-modal-backdrop"
             style={{
               position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -7772,7 +7789,7 @@ export default function Invoices() {
             }}
             onClick={(e) => { if (e.target === e.currentTarget) setUndoBulkApprovalConfirm(null); }}
           >
-            <div style={{
+            <div className="ionex-modal-card" style={{
               backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
               padding: '20px', maxWidth: '520px', width: '100%',
               border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
@@ -7925,6 +7942,7 @@ export default function Invoices() {
           <div
             role="dialog"
             aria-modal="true"
+            className="ionex-modal-backdrop"
             style={{
               position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -7932,7 +7950,7 @@ export default function Invoices() {
             }}
             onClick={(e) => { if (e.target === e.currentTarget) close(); }}
           >
-            <div style={{
+            <div className="ionex-modal-card" style={{
               backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
               padding: '20px', maxWidth: '520px', width: '100%',
               border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
@@ -8065,6 +8083,7 @@ export default function Invoices() {
           <div
             role="dialog"
             aria-modal="true"
+            className="ionex-modal-backdrop"
             style={{
               position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -8072,7 +8091,7 @@ export default function Invoices() {
             }}
             onClick={(e) => { if (e.target === e.currentTarget) setMarkInvoicedPromptGroup(null); }}
           >
-            <div style={{
+            <div className="ionex-modal-card" style={{
               backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
               padding: '20px', maxWidth: '480px', width: '100%',
               border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
@@ -8149,6 +8168,7 @@ export default function Invoices() {
         <div
           role="dialog"
           aria-modal="true"
+          className="ionex-modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
@@ -8164,6 +8184,7 @@ export default function Invoices() {
           }}
         >
           <div
+            className="ionex-modal-card"
             onMouseDown={(e) => e.stopPropagation()}
             style={{
               backgroundColor: 'var(--bg-primary)',

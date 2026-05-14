@@ -4142,8 +4142,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
   return (
     <div>
       {modalOnlyMode && !selectedTicket && !editableTicket && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '32px 48px', fontSize: '15px', color: 'var(--text-secondary)' }}>
+        <div className="ionex-modal-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="ionex-modal-card" style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '32px 48px', fontSize: '15px', color: 'var(--text-secondary)' }}>
             Loading ticket…
           </div>
         </div>
@@ -7354,7 +7354,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
 
               {/* Receipt Split-View Modal */}
               {showReceiptModal && (receiptPreviewUrl || pendingReimbursementExpense) && (
-                <div style={{
+                <div className="ionex-modal-backdrop" style={{
                   position: 'fixed', inset: 0, zIndex: 10002, backgroundColor: 'rgba(0,0,0,0.6)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }} onClick={() => {
@@ -7367,7 +7367,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                   setReceiptAutofillNote(null);
                   setReceiptAutofillBusy(false);
                 }}>
-                  <div onClick={(e) => e.stopPropagation()} style={{
+                  <div className="ionex-modal-card" onClick={(e) => e.stopPropagation()} style={{
                     backgroundColor: 'var(--bg-primary)', borderRadius: '10px', width: '90%', maxWidth: '800px',
                     maxHeight: '85vh', display: 'flex', flexDirection: 'row', overflow: 'hidden',
                     boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
@@ -9496,11 +9496,11 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
 
       {/* Edit Receipt Modal */}
       {editingReceipt && (
-        <div style={{
+        <div className="ionex-modal-backdrop" style={{
           position: 'fixed', inset: 0, zIndex: 10010, backgroundColor: 'rgba(0,0,0,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }} onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingReceipt(null); }}>
-          <div onMouseDown={(e) => e.stopPropagation()} style={{
+          <div className="ionex-modal-card" onMouseDown={(e) => e.stopPropagation()} style={{
             backgroundColor: 'var(--bg-primary)', borderRadius: '12px',
             width: editingReceipt.receipt_url ? '90%' : undefined,
             maxWidth: editingReceipt.receipt_url ? '800px' : '420px',
