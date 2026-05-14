@@ -1031,6 +1031,44 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+/* Per-card minimize toggle. Sits in the workflow card header next to the title.
+   Mirrors the inline toggle used on Ready/Pending batch cards. */
+.ionex-batch-min-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.ionex-batch-min-toggle:hover {
+  background-color: var(--bg-primary);
+}
+.ionex-batch-min-toggle > span {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+.ionex-workflow-card.is-minimized .ionex-batch-min-toggle > span {
+  transform: rotate(-90deg);
+}
+
+/* When minimized, hide everything below the header — the card collapses to a single
+   summary row. Also strip the header's bottom margin so the card hugs its content. */
+.ionex-workflow-card.is-minimized > *:not(.ionex-workflow-card-header) {
+  display: none;
+}
+.ionex-workflow-card.is-minimized .ionex-workflow-card-header {
+  margin-bottom: 0;
+}
+
 /* Pills shared by workflow cards */
 .ionex-status-pill {
   display: inline-flex;

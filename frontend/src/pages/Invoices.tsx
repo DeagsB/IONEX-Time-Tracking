@@ -2474,6 +2474,19 @@ export default function Invoices() {
   // ID of the invoiced accordion whose header status pill is currently open as a popover.
   // Lets users change draft → sent → approved → etc. without expanding the accordion.
   const [statusEditingGroupId, setStatusEditingGroupId] = useState<string | null>(null);
+  // Batches (by groupId / persistId) that the user has minimized — the body collapses to a single
+  // header row with action buttons, useful when a tab has many batches and you want to hide the
+  // line items / ticket chips for all but the one you're working on. Applies across Ready/Pending,
+  // Submitted, Approved, and Portal Submission tabs.
+  const [minimizedBatchIds, setMinimizedBatchIds] = useState<Set<string>>(new Set());
+  const toggleBatchMinimized = useCallback((id: string) => {
+    setMinimizedBatchIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const [combinedExpenseGroupIds, setCombinedExpenseGroupIds] = useState<Set<string>>(new Set());
   const [splitRateGroupIds, setSplitRateGroupIds] = useState<Set<string>>(new Set());
   const [pendingLabourNotes, setPendingLabourNotes] = useState<Record<string, Record<string, string>>>({});
@@ -6041,14 +6054,48 @@ export default function Invoices() {
                     ? (key.approverCode && key.approverCode !== key.periodKey ? key.approverCode : null)
                     : (key.approver || null);
                   const sectionHasCustomerTitle = true; // section header above shows it in red
+                  const isBatchMinimized = minimizedBatchIds.has(groupId);
+                  const minimizedHours = isBatchMinimized
+                    ? groupTickets.reduce((sum, t) => sum + (Number(t.totalHours) || 0), 0)
+                    : 0;
                   return (
                     <>
                       {/* Row 1: period heading + action buttons */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px', gap: '12px', flexWrap: 'wrap' }}>
-                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, minWidth: 0 }}>
+                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => toggleBatchMinimized(groupId)}
+                            aria-expanded={!isBatchMinimized}
+                            aria-label={isBatchMinimized ? 'Expand batch' : 'Minimize batch'}
+                            title={isBatchMinimized ? 'Expand batch' : 'Minimize batch'}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: '22px',
+                              height: '22px',
+                              padding: 0,
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: 'var(--text-secondary)',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              transition: 'transform 0.15s ease, background-color 0.15s ease',
+                            }}
+                          >
+                            <span aria-hidden style={{ display: 'inline-block', transform: isBatchMinimized ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s ease' }}>▾</span>
+                          </button>
                           <CopyableHeaderValue copyText={periodHeading}>
                             {periodHeading}
                           </CopyableHeaderValue>
+                          {isBatchMinimized && (
+                            <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-tertiary)' }}>
+                              · {groupTickets.length} ticket{groupTickets.length === 1 ? '' : 's'} · {minimizedHours.toFixed(1)} h
+                            </span>
+                          )}
                         </h3>
                         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '6px', flexShrink: 0 }}>
                           <button
@@ -6204,7 +6251,7 @@ export default function Invoices() {
                         </div>
                       </div>
                       {/* Row 2: small meta line — project, approver, coding (customer is in the red section title above) */}
-                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: 'flex', flexWrap: 'wrap', columnGap: '8px', rowGap: '4px', alignItems: 'center', marginBottom: '12px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', display: isBatchMinimized ? 'none' : 'flex', flexWrap: 'wrap', columnGap: '8px', rowGap: '4px', alignItems: 'center', marginBottom: '12px' }}>
                         {!sectionHasCustomerTitle && customerName && (
                           <>
                             <CopyableHeaderValue copyText={customerName}>{customerName}</CopyableHeaderValue>
@@ -6253,7 +6300,7 @@ export default function Invoices() {
                   );
                 })()}
                 {/* Labour notes editor */}
-                {editingLabourNotesGroupId === groupId && (
+                {!minimizedBatchIds.has(groupId) && editingLabourNotesGroupId === groupId && (
                   <div style={{
                     marginBottom: '12px',
                     padding: '12px',
@@ -6338,7 +6385,7 @@ export default function Invoices() {
                     </div>
                   </div>
                 )}
-                {!groupIsPortalApproval && (
+                {!groupIsPortalApproval && !minimizedBatchIds.has(groupId) && (
                 <div className="ionex-lineitems-block">
                   {(() => {
                     const isCombined = combinedExpenseGroupIds.has(groupId);
@@ -6424,6 +6471,7 @@ export default function Invoices() {
                   })()}
                 </div>
                 )}
+                {!minimizedBatchIds.has(groupId) && (
                 <div style={{ marginTop: '4px' }}>
                   <div className="ionex-tickets-eyebrow">
                     <strong>{groupTickets.length}</strong> ticket{groupTickets.length === 1 ? '' : 's'} in this batch
@@ -6467,6 +6515,7 @@ export default function Invoices() {
                   })}
                   </div>
                 </div>
+                )}
               </div>
             );
             });
@@ -6626,13 +6675,24 @@ export default function Invoices() {
                       const proj = projects?.find((p) => (p.project_number || '').toLowerCase().trim() === projNumLc);
                       approverDisplay = proj?.approver?.trim() || null;
                     }
+                    const isMinSub = minimizedBatchIds.has(persistId);
                     return (
                       <div
                         key={persistId}
-                        className={`ionex-workflow-card${compact ? ' is-compact' : ''}`}
+                        className={`ionex-workflow-card${compact ? ' is-compact' : ''}${isMinSub ? ' is-minimized' : ''}`}
                         style={{ ['--workflow-accent' as string]: statusHex } as React.CSSProperties}
                       >
                         <div className="ionex-workflow-card-header">
+                          <button
+                            type="button"
+                            className="ionex-batch-min-toggle"
+                            onClick={() => toggleBatchMinimized(persistId)}
+                            aria-expanded={!isMinSub}
+                            aria-label={isMinSub ? 'Expand batch' : 'Minimize batch'}
+                            title={isMinSub ? 'Expand batch' : 'Minimize batch'}
+                          >
+                            <span aria-hidden>▾</span>
+                          </button>
                           {!compact && (
                             <span className="ionex-workflow-card-title">{customerName || 'Unknown customer'}</span>
                           )}
@@ -6928,13 +6988,24 @@ export default function Invoices() {
                     const isUploadingInvoice = uploadingInvoiceGroupId === persistId;
                     const isMarking = advanceToPortalSubmissionMutation.isPending && advanceToPortalSubmissionMutation.variables?.groupId === persistId;
                     const approverDisplay = getApproverForGroupKey(group.key);
+                    const isMinAppr = minimizedBatchIds.has(persistId);
                     return (
                     <div
                       key={persistId}
-                      className={`ionex-workflow-card${compact ? ' is-compact' : ''}`}
+                      className={`ionex-workflow-card${compact ? ' is-compact' : ''}${isMinAppr ? ' is-minimized' : ''}`}
                       style={{ ['--workflow-accent' as string]: statusHex } as React.CSSProperties}
                     >
                       <div className="ionex-workflow-card-header">
+                        <button
+                          type="button"
+                          className="ionex-batch-min-toggle"
+                          onClick={() => toggleBatchMinimized(persistId)}
+                          aria-expanded={!isMinAppr}
+                          aria-label={isMinAppr ? 'Expand batch' : 'Minimize batch'}
+                          title={isMinAppr ? 'Expand batch' : 'Minimize batch'}
+                        >
+                          <span aria-hidden>▾</span>
+                        </button>
                         {!compact && (
                           <span className="ionex-workflow-card-title">{customerName || 'Unknown customer'}</span>
                         )}
@@ -7469,14 +7540,25 @@ export default function Invoices() {
                     const afeList = [...afeSet];
 
                     const isMarking = markFinalInvoicedMutation.isPending && markFinalInvoicedMutation.variables?.groupId === persistId;
+                    const isMinPort = minimizedBatchIds.has(persistId);
 
                     return (
                     <div
                       key={persistId}
-                      className={`ionex-workflow-card${compact ? ' is-compact' : ''}`}
+                      className={`ionex-workflow-card${compact ? ' is-compact' : ''}${isMinPort ? ' is-minimized' : ''}`}
                       style={{ ['--workflow-accent' as string]: statusHex } as React.CSSProperties}
                     >
                       <div className="ionex-workflow-card-header">
+                        <button
+                          type="button"
+                          className="ionex-batch-min-toggle"
+                          onClick={() => toggleBatchMinimized(persistId)}
+                          aria-expanded={!isMinPort}
+                          aria-label={isMinPort ? 'Expand batch' : 'Minimize batch'}
+                          title={isMinPort ? 'Expand batch' : 'Minimize batch'}
+                        >
+                          <span aria-hidden>▾</span>
+                        </button>
                         {!compact && (
                           <span className="ionex-workflow-card-title">{customerName || 'Unknown customer'}</span>
                         )}
