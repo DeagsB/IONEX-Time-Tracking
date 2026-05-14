@@ -77,6 +77,7 @@ type ApprovedRecord = {
   edited_entry_overrides?: Record<string, PdfExportEntryOverride> | null;
   total_hours?: number | string | null;
   header_overrides?: { approver_po_afe?: string; service_location?: string } | null;
+  invoice_batch_date_override?: string | null;
 };
 
 const PDF_EXPORT_RATE_ORDER = [
@@ -1200,6 +1201,45 @@ function periodAccumulationHintLabel(periodLabel: string | undefined): string {
   return periodLabel.trim();
 }
 
+/**
+ * Given a periodKey + grouping, return a yyyy-mm-dd that lands inside that period.
+ * Used by the "Move to batch" feature: setting service_tickets.invoice_batch_date_override
+ * to this date causes getPeriodKey() to bucket the ticket into the chosen target batch.
+ * Returns null for project-completion / progress (those aren't date-based).
+ */
+function getPeriodAnchorDate(periodKey: string, grouping: DateRangeGrouping): string | null {
+  if (!periodKey?.trim() || grouping === 'project-completion' || grouping === 'progress') return null;
+  if (periodKey.startsWith('pc:') || periodKey.startsWith('prog:')) return null;
+  if (grouping === 'daily') {
+    return /^\d{4}-\d{2}-\d{2}$/.test(periodKey) ? periodKey : null;
+  }
+  if (grouping === 'monthly') {
+    const [y, m] = periodKey.split('-');
+    if (!y || !m) return null;
+    return `${y}-${m}-15`;
+  }
+  if (grouping === 'weekly') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(periodKey)) return null;
+    const d = new Date(`${periodKey}T12:00:00`);
+    d.setDate(d.getDate() + 3); // Thursday — safely inside the week regardless of month boundary
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  // bi-weekly: anchor 7 days before the period end (mid-period Monday)
+  const end = getPeriodEndYmd(periodKey, grouping);
+  if (!end) return null;
+  const d = new Date(`${end}T12:00:00`);
+  d.setDate(d.getDate() - 6);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Short month label like "Mar 30" used in the "moved from <month>" badge. */
+function shortMonthDayLabel(dateStr: string | undefined | null): string {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return '';
+  const d = new Date(`${dateStr}T12:00:00`);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[d.getMonth()]} ${d.getDate()}`;
+}
+
 type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodLabel?: string };
 
 /** Same rule as pending banner on uninvoiced cards: calendar period not ended yet. */
@@ -1849,7 +1889,7 @@ export default function Invoices() {
     const approved = (approvedRecords || []) as ApprovedRecord[];
     if (approved.length === 0) return [];
 
-    const ticketList: (ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string })[] = [];
+    const ticketList: (ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string; invoiceBatchDateOverride?: string | null })[] = [];
 
     const getRecordGroupingKey = (r: ApprovedRecord) => {
       const ov = (r.header_overrides as Record<string, string> | null) ?? {};
@@ -1922,7 +1962,7 @@ export default function Invoices() {
         };
         const isUninvoiced = !allInvoicedTicketIds.has(rec.id);
         const ticketWithOverrides = applyHeaderOverridesToTicket(rawTicket, rec.header_overrides ?? undefined, isUninvoiced);
-        ticketList.push({ ...ticketWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawTicket.recordProjectId });
+        ticketList.push({ ...ticketWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawTicket.recordProjectId, invoiceBatchDateOverride: rec.invoice_batch_date_override ?? null });
       } else {
         // Standalone ticket (no matching billable entries)
         const editedHours = (rec.edited_hours as Record<string, number | number[]>) || {};
@@ -2029,7 +2069,7 @@ export default function Invoices() {
         };
         const isUninvoiced = !allInvoicedTicketIds.has(rec.id);
         const standaloneWithOverrides = applyHeaderOverridesToTicket(rawStandalone, rec.header_overrides ?? undefined, isUninvoiced);
-        ticketList.push({ ...standaloneWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawStandalone.recordProjectId });
+        ticketList.push({ ...standaloneWithOverrides, recordId: rec.id, headerOverrides: rec.header_overrides, recordProjectId: rawStandalone.recordProjectId, invoiceBatchDateOverride: rec.invoice_batch_date_override ?? null });
       }
     }
 
@@ -2184,6 +2224,11 @@ export default function Invoices() {
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
+  const [moveTicketBatchDialog, setMoveTicketBatchDialog] = useState<{
+    ticket: ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null };
+    sourceGroup: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
+  } | null>(null);
+  const [moveTicketBatchCustomDate, setMoveTicketBatchCustomDate] = useState<string>('');
   const [bulkSendProgress, setBulkSendProgress] = useState<{ customer: string; current: number; total: number } | null>(null);
   const [redownloadingApprovalId, setRedownloadingApprovalId] = useState<string | null>(null);
   const [undoApprovalConfirm, setUndoApprovalConfirm] = useState<{
@@ -2301,7 +2346,7 @@ export default function Invoices() {
       const groups = new Map<string, ServiceTicket[]>();
       const singleCustomer = !!selectedCustomerId;
       for (const ticket of ticketsToGroupCnrl) {
-        const t = ticket as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string };
+        const t = ticket as ServiceTicket & { headerOverrides?: unknown; recordProjectId?: string; invoiceBatchDateOverride?: string | null };
         const keyObj = getInvoiceGroupKey(
           {
             projectId: t.recordProjectId ?? t.projectId,
@@ -2327,7 +2372,8 @@ export default function Invoices() {
         const projectIdForGrouping = keyObj.projectId ?? (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? t.projectId ?? '';
         const groupingRaw = getGroupingForTicket(customerIdForGrouping, projectIdForGrouping);
         const grouping = cnrlPeriodGrouping(groupingRaw);
-        const periodKey = getPeriodKey(t.date ?? '', grouping, projectIdForGrouping);
+        const dateForGrouping = t.invoiceBatchDateOverride || t.date || '';
+        const periodKey = getPeriodKey(dateForGrouping, grouping, projectIdForGrouping);
         const groupKey = `${keyObj.projectId ?? ''}|${keyObj.approverCode}|${periodKey}`;
         const list = groups.get(groupKey) ?? [];
         list.push(ticket);
@@ -2402,11 +2448,12 @@ export default function Invoices() {
       const groupMap = new Map<string, ServiceTicket[]>();
       const singleCustomer = !!selectedCustomerId;
       for (const ticket of ticketsToGroupByPeriod) {
-        const t = ticket as ServiceTicket & { recordProjectId?: string };
+        const t = ticket as ServiceTicket & { recordProjectId?: string; invoiceBatchDateOverride?: string | null };
         const projectId = t.recordProjectId ?? t.projectId ?? '';
         const customerIdForGrouping = singleCustomer ? selectedCustomerId! : (t.customerId ?? '');
         const grouping = getGroupingForTicket(customerIdForGrouping, projectId);
-        const periodKey = getPeriodKey(t.date ?? '', grouping, projectId);
+        const dateForGrouping = t.invoiceBatchDateOverride || t.date || '';
+        const periodKey = getPeriodKey(dateForGrouping, grouping, projectId);
         const groupKey = singleCustomer ? `${projectId}|${periodKey}` : `${t.customerId ?? ''}|${projectId}|${periodKey}`;
         const list = groupMap.get(groupKey) ?? [];
         list.push(ticket);
@@ -2531,6 +2578,16 @@ export default function Invoices() {
     frozenInvoicedGroups,
     queryClient,
   ]);
+
+  /** Set or clear the per-ticket invoice batch date override (admin-only Move to batch). */
+  const moveTicketBatchMutation = useMutation({
+    mutationFn: async ({ ticketRecordId, overrideDate }: { ticketRecordId: string; overrideDate: string | null }) => {
+      await serviceTicketsService.updateInvoiceBatchDateOverride(ticketRecordId, overrideDate, isDemoMode);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ticketsReadyForExport'] });
+    },
+  });
 
   const setInvoiceFileForGroup = useCallback((groupId: string, file: File | null) => {
     setInvoiceFilesByGroupId((prev) => {
@@ -4919,26 +4976,80 @@ export default function Invoices() {
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
                         {groupTickets.map((t) => {
-                          const ticket = t as InvoiceTicketModalTicket;
+                          const ticket = t as InvoiceTicketModalTicket & { invoiceBatchDateOverride?: string | null };
+                          const overrideDate = ticket.invoiceBatchDateOverride || null;
+                          const movedFromLabel = overrideDate ? shortMonthDayLabel(t.date) : '';
                           return (
-                            <button
+                            <div
                               key={t.id}
-                              type="button"
-                              onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
                               style={{
-                                padding: '4px 10px',
+                                display: 'inline-flex',
+                                alignItems: 'stretch',
                                 backgroundColor: 'var(--bg-tertiary)',
                                 borderRadius: '6px',
-                                fontSize: '13px',
-                                color: 'inherit',
-                                border: 'none',
-                                cursor: 'pointer',
-                                fontFamily: 'inherit',
-                                textAlign: 'left',
+                                overflow: 'hidden',
                               }}
                             >
-                              {t.ticketNumber} – {t.userName} ({t.totalHours}h)
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
+                                style={{
+                                  padding: '4px 10px',
+                                  backgroundColor: 'transparent',
+                                  fontSize: '13px',
+                                  color: 'inherit',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  fontFamily: 'inherit',
+                                  textAlign: 'left',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                }}
+                              >
+                                <span>{t.ticketNumber} – {t.userName} ({t.totalHours}h)</span>
+                                {overrideDate && (
+                                  <span
+                                    title={`Ticket date is ${t.date} — moved into this batch`}
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      padding: '1px 6px',
+                                      borderRadius: '999px',
+                                      backgroundColor: 'rgba(59, 130, 246, 0.14)',
+                                      color: '#1d4ed8',
+                                      border: '1px solid rgba(59, 130, 246, 0.45)',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                  >
+                                    ↳ moved from {movedFromLabel}
+                                  </span>
+                                )}
+                              </button>
+                              {isAdmin && ticket.recordId && (
+                                <button
+                                  type="button"
+                                  title="Move ticket to a different invoice batch"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMoveTicketBatchCustomDate('');
+                                    setMoveTicketBatchDialog({ ticket: ticket as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null }, sourceGroup: { key, tickets: groupTickets } });
+                                  }}
+                                  style={{
+                                    padding: '0 8px',
+                                    fontSize: '14px',
+                                    color: 'var(--text-secondary)',
+                                    border: 'none',
+                                    borderLeft: '1px solid var(--border-color)',
+                                    backgroundColor: 'transparent',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                  }}
+                                >
+                                  ⋮
+                                </button>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
@@ -5586,26 +5697,80 @@ export default function Invoices() {
                 )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {groupTickets.map((t) => {
-                    const ticket = t as InvoiceTicketModalTicket;
+                    const ticket = t as InvoiceTicketModalTicket & { invoiceBatchDateOverride?: string | null };
+                    const overrideDate = ticket.invoiceBatchDateOverride || null;
+                    const movedFromLabel = overrideDate ? shortMonthDayLabel(t.date) : '';
                     return (
-                      <button
+                      <div
                         key={t.id}
-                        type="button"
-                        onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
                         style={{
-                          padding: '4px 10px',
+                          display: 'inline-flex',
+                          alignItems: 'stretch',
                           backgroundColor: 'var(--bg-tertiary)',
                           borderRadius: '6px',
-                          fontSize: '13px',
-                          color: 'inherit',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                          textAlign: 'left',
+                          overflow: 'hidden',
                         }}
                       >
-                        {t.ticketNumber} – {t.userName} ({t.totalHours}h)
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
+                          style={{
+                            padding: '4px 10px',
+                            backgroundColor: 'transparent',
+                            fontSize: '13px',
+                            color: 'inherit',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            textAlign: 'left',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <span>{t.ticketNumber} – {t.userName} ({t.totalHours}h)</span>
+                          {overrideDate && (
+                            <span
+                              title={`Ticket date is ${t.date} — moved into this batch`}
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                padding: '1px 6px',
+                                borderRadius: '999px',
+                                backgroundColor: 'rgba(59, 130, 246, 0.14)',
+                                color: '#1d4ed8',
+                                border: '1px solid rgba(59, 130, 246, 0.45)',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              ↳ moved from {movedFromLabel}
+                            </span>
+                          )}
+                        </button>
+                        {isAdmin && ticket.recordId && (
+                          <button
+                            type="button"
+                            title="Move ticket to a different invoice batch"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMoveTicketBatchCustomDate('');
+                              setMoveTicketBatchDialog({ ticket: ticket as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null }, sourceGroup: { key, tickets: groupTickets } });
+                            }}
+                            style={{
+                              padding: '0 8px',
+                              fontSize: '14px',
+                              color: 'var(--text-secondary)',
+                              border: 'none',
+                              borderLeft: '1px solid var(--border-color)',
+                              backgroundColor: 'transparent',
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            ⋮
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -7240,6 +7405,174 @@ export default function Invoices() {
                   }}
                 >
                   {ctaLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {moveTicketBatchDialog && (() => {
+        const dlg = moveTicketBatchDialog;
+        const t = dlg.ticket;
+        const recordId = t.recordId?.trim();
+        const customerIdForGrouping = (t as ServiceTicket).customerId ?? '';
+        const projectIdForGrouping = (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? (t as ServiceTicket).projectId ?? '';
+        const grouping = getGroupingForTicket(customerIdForGrouping, projectIdForGrouping);
+        const isDateBasedGrouping = grouping !== 'project-completion' && grouping !== 'progress';
+        const sourceGroupId = getGroupId(dlg.sourceGroup);
+        const sameProjectGroups = uninvoicedGroups.filter((g) => {
+          if (getGroupId(g) === sourceGroupId) return false;
+          const sample = g.tickets[0] as (ServiceTicket & { recordProjectId?: string }) | undefined;
+          if (!sample) return false;
+          if ((sample.customerId ?? '') !== customerIdForGrouping) return false;
+          const targetProjId = sample.recordProjectId ?? sample.projectId ?? '';
+          if (targetProjId !== projectIdForGrouping) return false;
+          // Approver/PO/AFE/CC must match too — moving to a batch with a different approver code would be weird.
+          if (g.key.approverCode !== dlg.sourceGroup.key.approverCode) return false;
+          return true;
+        });
+        const isPending = moveTicketBatchMutation.isPending;
+        const close = () => { setMoveTicketBatchDialog(null); setMoveTicketBatchCustomDate(''); };
+        const doMove = async (overrideDate: string | null) => {
+          if (!recordId) return;
+          try {
+            await moveTicketBatchMutation.mutateAsync({ ticketRecordId: recordId, overrideDate });
+            close();
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Could not move ticket';
+            window.alert(msg);
+          }
+        };
+        const hasOverride = !!t.invoiceBatchDateOverride;
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1000, padding: '20px',
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) close(); }}
+          >
+            <div style={{
+              backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
+              padding: '20px', maxWidth: '520px', width: '100%',
+              border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+              maxHeight: '85vh', overflowY: 'auto',
+            }}>
+              <h2 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: 700 }}>
+                Move ticket to a different invoice batch
+              </h2>
+              <p style={{ margin: '0 0 14px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                <strong>{t.ticketNumber}</strong> — {(t as ServiceTicket).userName} · {(t as ServiceTicket).totalHours}h<br />
+                Ticket date <strong>{t.date}</strong> stays unchanged. Only this batch assignment changes.
+              </p>
+              {!isDateBasedGrouping && (
+                <div style={{ padding: '10px 12px', marginBottom: '12px', borderRadius: '6px', backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.45)', color: '#92400e', fontSize: '12px' }}>
+                  This project uses <strong>{grouping}</strong> grouping (not date-based), so moving by date doesn't apply here.
+                </div>
+              )}
+              {isDateBasedGrouping && (
+                <>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                    Existing batches for this project
+                  </div>
+                  {sameProjectGroups.length === 0 ? (
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
+                      No other uninvoiced batches for this project. Use a custom date below to put the ticket into a new batch period.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                      {sameProjectGroups.map((g) => {
+                        const periodKey = g.key.periodKey || '';
+                        const anchor = getPeriodAnchorDate(periodKey, grouping);
+                        const label = g.key.periodLabel || g.key.periodKey || 'Batch';
+                        const ticketCount = g.tickets.length;
+                        return (
+                          <button
+                            key={getGroupId(g)}
+                            type="button"
+                            disabled={isPending || !anchor}
+                            onClick={() => { if (anchor) void doMove(anchor); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                              padding: '10px 12px', textAlign: 'left',
+                              backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+                              border: '1px solid var(--border-color)', borderRadius: '6px',
+                              cursor: isPending || !anchor ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit', fontSize: '13px',
+                            }}
+                          >
+                            <span style={{ fontWeight: 600 }}>{label}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                              {ticketCount} ticket{ticketCount === 1 ? '' : 's'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                    Custom batch date
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                    <input
+                      type="date"
+                      value={moveTicketBatchCustomDate}
+                      onChange={(e) => setMoveTicketBatchCustomDate(e.target.value)}
+                      style={{
+                        flex: 1, padding: '8px 10px', borderRadius: '6px',
+                        border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)',
+                        color: 'var(--text-primary)', fontSize: '13px',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!moveTicketBatchCustomDate || isPending}
+                      onClick={() => void doMove(moveTicketBatchCustomDate || null)}
+                      style={{
+                        padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                        borderRadius: '6px', border: '1px solid var(--border-color)',
+                        backgroundColor: !moveTicketBatchCustomDate || isPending ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                        color: 'var(--text-primary)',
+                        cursor: !moveTicketBatchCustomDate || isPending ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      Use this date
+                    </button>
+                  </div>
+                </>
+              )}
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginTop: '8px' }}>
+                {hasOverride ? (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => void doMove(null)}
+                    style={{
+                      padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                      borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'transparent', color: 'var(--text-secondary)',
+                      cursor: isPending ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Reset to ticket date ({t.date})
+                  </button>
+                ) : <span />}
+                <button
+                  type="button"
+                  onClick={close}
+                  disabled={isPending}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                    borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)',
+                    cursor: isPending ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Cancel
                 </button>
               </div>
             </div>

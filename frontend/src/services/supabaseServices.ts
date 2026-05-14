@@ -1137,6 +1137,24 @@ export const serviceTicketsService = {
   },
 
   /**
+   * Move a ticket into a different invoice batch by setting (or clearing) invoice_batch_date_override.
+   * The ticket's actual `date` is never modified — this only affects which batch card the ticket
+   * appears under on the Invoices page. Pass `null` to reset back to the ticket date.
+   */
+  async updateInvoiceBatchDateOverride(
+    ticketId: string,
+    overrideDate: string | null,
+    isDemo: boolean = false
+  ): Promise<void> {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    const { error } = await supabase
+      .from(tableName)
+      .update({ invoice_batch_date_override: overrideDate })
+      .eq('id', ticketId);
+    if (error) throw error;
+  },
+
+  /**
    * Update ticket number for an existing service ticket record
    * @param ticketId - The ID of the ticket record to update
    * @param ticketNumber - The new ticket number (or null to unassign)
@@ -1825,7 +1843,7 @@ export const serviceTicketsService = {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     let query = supabase
       .from(tableName)
-      .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, header_overrides')
+      .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, header_overrides, invoice_batch_date_override')
       .not('workflow_status', 'in', '("draft","rejected")')
       .eq('is_discarded', false)
       .not('ticket_number', 'is', null)
