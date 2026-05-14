@@ -5940,25 +5940,25 @@ export default function Invoices() {
                         {approverDisplay && (
                           <>
                             <span aria-hidden>·</span>
-                            <span>Approver{' '}
-                              <CopyableHeaderValue copyText={approverDisplay}>{approverDisplay}</CopyableHeaderValue>
-                            </span>
+                            <CopyableHeaderValue copyText={approverDisplay}>
+                              <span style={{ color: 'var(--text-tertiary)' }}>Approver</span>{' '}{approverDisplay}
+                            </CopyableHeaderValue>
                           </>
                         )}
                         {key.cc && (
                           <>
                             <span aria-hidden>·</span>
-                            <span>Coding{' '}
-                              <CopyableHeaderValue copyText={key.cc}>{key.cc}</CopyableHeaderValue>
-                            </span>
+                            <CopyableHeaderValue copyText={key.cc}>
+                              <span style={{ color: 'var(--text-tertiary)' }}>Coding</span>{' '}{key.cc}
+                            </CopyableHeaderValue>
                           </>
                         )}
                         {!key.periodKey && key.poAfe && (
                           <>
                             <span aria-hidden>·</span>
-                            <span>PO/AFE/CC{' '}
-                              <CopyableHeaderValue copyText={key.poAfe}>{key.poAfe}</CopyableHeaderValue>
-                            </span>
+                            <CopyableHeaderValue copyText={key.poAfe}>
+                              <span style={{ color: 'var(--text-tertiary)' }}>PO/AFE/CC</span>{' '}{key.poAfe}
+                            </CopyableHeaderValue>
                           </>
                         )}
                         {!key.periodKey && key.location && (

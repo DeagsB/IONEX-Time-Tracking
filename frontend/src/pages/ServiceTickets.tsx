@@ -3762,9 +3762,26 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
 
     const initialRows = entriesToServiceRows(ticket.entries);
     originalTimeEntryRowsRef.current = initialRows.map(r => ({ ...r }));
-    setServiceRows(initialRows);
-    initialServiceRowsRef.current = initialRows.map(r => ({ ...r }));
-    setEditedEntryOverrides({});
+    // Apply any saved per-entry overrides synchronously from the existing record (already in
+    // memory via the existingTickets query). Eliminates the flash of pre-edit hours that used
+    // to appear between this synchronous setServiceRows and the async DB fetch below.
+    const syncRecordOverrides = ((existingRecord as { edited_entry_overrides?: Record<string, EntryOverride> | null } | null)?.edited_entry_overrides) ?? null;
+    const ticketEntryIdSetSync = new Set(ticket.entries.map((e) => e.id));
+    const syncRelevantOverrides: Record<string, EntryOverride> = {};
+    if (syncRecordOverrides) {
+      for (const [id, ov] of Object.entries(syncRecordOverrides)) {
+        if (ticketEntryIdSetSync.has(id) || id.startsWith('new-') || id.startsWith('legacy-')) {
+          syncRelevantOverrides[id] = ov;
+        }
+      }
+    }
+    const hasSyncOverrides = Object.keys(syncRelevantOverrides).length > 0;
+    const initialRowsToShow = hasSyncOverrides
+      ? buildRowsWithOverrides(ticket.entries, syncRelevantOverrides)
+      : initialRows;
+    setServiceRows(initialRowsToShow);
+    initialServiceRowsRef.current = initialRowsToShow.map(r => ({ ...r }));
+    setEditedEntryOverrides(hasSyncOverrides ? syncRelevantOverrides : {});
 
     try {
       const hadNoRecord = !findMatchingTicketRecord(ticket);
