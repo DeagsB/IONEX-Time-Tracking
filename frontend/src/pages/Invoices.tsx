@@ -562,8 +562,10 @@ interface TicketChipProps {
   onMoveClick?: () => void;
   onResetOverride?: () => void;
   dragControls?: TicketChipDragControls;
+  /** Render a small $ indicator inside the chip when this ticket has linked expenses. */
+  hasExpense?: boolean;
 }
-function TicketChip({ ticket, onOpenTicket, isAdmin, onMoveClick, onResetOverride, dragControls }: TicketChipProps) {
+function TicketChip({ ticket, onOpenTicket, isAdmin, onMoveClick, onResetOverride, dragControls, hasExpense }: TicketChipProps) {
   const overrideDate = ticket.invoiceBatchDateOverride || null;
   const movedFromLabel = overrideDate ? shortMonthDayLabel(ticket.date) : '';
   const isHolding = !!dragControls?.isHolding;
@@ -622,6 +624,29 @@ function TicketChip({ ticket, onOpenTicket, isAdmin, onMoveClick, onResetOverrid
         }}
       >
         <span>{ticket.ticketNumber} – {ticket.userName} ({ticket.totalHours}h)</span>
+        {hasExpense && (
+          <span
+            aria-label="Has linked expense"
+            title="This ticket has a linked expense — see Invoice Line Items"
+            style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              padding: '0 6px',
+              minWidth: 16,
+              height: 16,
+              borderRadius: '999px',
+              backgroundColor: 'rgba(230, 126, 34, 0.18)',
+              color: '#c2410c',
+              border: '1px solid rgba(230, 126, 34, 0.45)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1,
+            }}
+          >
+            $
+          </span>
+        )}
       </button>
       {overrideDate && (
         resetEnabled ? (
@@ -751,6 +776,8 @@ function PoAfeBreakdownLine({
   category = 'labour',
   splitRate,
   splitHours,
+  onContextMenu,
+  contextMenuHint,
 }: {
   ticketList: string;
   poAfe: string;
@@ -758,6 +785,10 @@ function PoAfeBreakdownLine({
   category?: string;
   splitRate?: number;
   splitHours?: number;
+  /** When set, intercepts right-click on the line text and runs the handler instead of the browser menu. */
+  onContextMenu?: (e: React.MouseEvent) => void;
+  /** Appended to the line's title attribute when onContextMenu is wired (e.g. "Right-click to open TKT_1234"). */
+  contextMenuHint?: string;
 }) {
   const [hoverLine, setHoverLine] = useState(false);
   const [hoverAmount, setHoverAmount] = useState(false);
@@ -877,9 +908,14 @@ function PoAfeBreakdownLine({
             void copyLine();
           }
         }}
+        onContextMenu={onContextMenu ? (e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e); } : undefined}
         onMouseEnter={() => setHoverLine(true)}
         onMouseLeave={() => setHoverLine(false)}
-        title={copiedLine ? 'Copied!' : 'Click to copy line (not the dollar amount)'}
+        title={
+          copiedLine
+            ? 'Copied!'
+            : `Click to copy line (not the dollar amount)${contextMenuHint ? ` · ${contextMenuHint}` : ''}`
+        }
         style={{
           flex: 1,
           minWidth: 0,
@@ -5375,6 +5411,13 @@ export default function Invoices() {
                               ))}
                               {!isCombined && !isSplitRate && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                                const onCtx = () => {
+                                  const tNum = l.ticketNums[0];
+                                  const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
+                                  const rid = tk?.recordId?.trim();
+                                  if (rid) setEditTicketRecordId(rid);
+                                };
+                                const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
                                 return (
                                   <PoAfeBreakdownLine
                                     key={`exp-${i}`}
@@ -5382,11 +5425,20 @@ export default function Invoices() {
                                     poAfe=""
                                     totalAmount={l.amount}
                                     category="expense"
+                                    onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
+                                    contextMenuHint={hint}
                                   />
                                 );
                               })}
                               {isSplitRate && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                                const onCtx = () => {
+                                  const tNum = l.ticketNums[0];
+                                  const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
+                                  const rid = tk?.recordId?.trim();
+                                  if (rid) setEditTicketRecordId(rid);
+                                };
+                                const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
                                 return (
                                   <PoAfeBreakdownLine
                                     key={`exp-split-${i}`}
@@ -5394,6 +5446,8 @@ export default function Invoices() {
                                     poAfe=""
                                     totalAmount={l.amount}
                                     category="expense"
+                                    onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
+                                    contextMenuHint={hint}
                                   />
                                 );
                               })}
@@ -5404,11 +5458,14 @@ export default function Invoices() {
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
                         {groupTickets.map((t) => {
                           const ticket = t as InvoiceTicketModalTicket & { invoiceBatchDateOverride?: string | null };
+                          const ridForExp = ticket.recordId?.trim();
+                          const hasExpense = !!ridForExp && (expensesByRecordId.get(ridForExp)?.length ?? 0) > 0;
                           return (
                             <TicketChip
                               key={t.id}
                               ticket={ticket as TicketChipTicket}
                               isAdmin={isAdmin}
+                              hasExpense={hasExpense}
                               onOpenTicket={() => setEditTicketRecordId(ticket.recordId?.trim() || ticket.id)}
                             />
                           );
@@ -6043,6 +6100,13 @@ export default function Invoices() {
                         ))}
                         {!isCombined && !isSplitRatePending && expLines.map((l, i) => {
                           const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                          const onCtx = () => {
+                            const tNum = l.ticketNums[0];
+                            const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
+                            const rid = tk?.recordId?.trim();
+                            if (rid) setEditTicketRecordId(rid);
+                          };
+                          const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
                           return (
                             <PoAfeBreakdownLine
                               key={`exp-${i}`}
@@ -6050,11 +6114,20 @@ export default function Invoices() {
                               poAfe=""
                               totalAmount={l.amount}
                               category="expense"
+                              onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
+                              contextMenuHint={hint}
                             />
                           );
                         })}
                         {isSplitRatePending && expLines.map((l, i) => {
                           const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                          const onCtx = () => {
+                            const tNum = l.ticketNums[0];
+                            const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
+                            const rid = tk?.recordId?.trim();
+                            if (rid) setEditTicketRecordId(rid);
+                          };
+                          const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
                           return (
                             <PoAfeBreakdownLine
                               key={`exp-split-${i}`}
@@ -6062,6 +6135,8 @@ export default function Invoices() {
                               poAfe=""
                               totalAmount={l.amount}
                               category="expense"
+                              onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
+                              contextMenuHint={hint}
                             />
                           );
                         })}
@@ -6076,11 +6151,13 @@ export default function Invoices() {
                     const isHolding = pendingHoldTicketId === t.id;
                     const isBeingDragged = dragState?.ticket.id === t.id;
                     const ticketRecordId = ticket.recordId?.trim() || '';
+                    const hasExpense = !!ticketRecordId && (expensesByRecordId.get(ticketRecordId)?.length ?? 0) > 0;
                     return (
                       <TicketChip
                         key={t.id}
                         ticket={ticket as TicketChipTicket}
                         isAdmin={isAdmin}
+                        hasExpense={hasExpense}
                         onOpenTicket={() => setEditTicketRecordId(ticketRecordId || ticket.id)}
                         onMoveClick={() => {
                           setMoveTicketBatchCustomDate('');
@@ -6680,6 +6757,13 @@ export default function Invoices() {
                               ))}
                               {!isCombined && !isSplitRatePending && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                                const onCtx = () => {
+                                  const tNum = l.ticketNums[0];
+                                  const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
+                                  const rid = tk?.recordId?.trim();
+                                  if (rid) setEditTicketRecordId(rid);
+                                };
+                                const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
                                 return (
                                   <PoAfeBreakdownLine
                                     key={`exp-${i}`}
@@ -6687,11 +6771,20 @@ export default function Invoices() {
                                     poAfe=""
                                     totalAmount={l.amount}
                                     category="expense"
+                                    onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
+                                    contextMenuHint={hint}
                                   />
                                 );
                               })}
                               {isSplitRatePending && expLines.map((l, i) => {
                                 const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                                const onCtx = () => {
+                                  const tNum = l.ticketNums[0];
+                                  const tk = groupTickets.find((t) => (t as ServiceTicket).ticketNumber === tNum) as (ServiceTicket & { recordId?: string }) | undefined;
+                                  const rid = tk?.recordId?.trim();
+                                  if (rid) setEditTicketRecordId(rid);
+                                };
+                                const hint = l.ticketNums.length > 0 ? `Right-click to open ${l.ticketNums[0]}${l.ticketNums.length > 1 ? ` (first of ${l.ticketNums.length})` : ''}` : undefined;
                                 return (
                                   <PoAfeBreakdownLine
                                     key={`exp-split-${i}`}
@@ -6699,6 +6792,8 @@ export default function Invoices() {
                                     poAfe=""
                                     totalAmount={l.amount}
                                     category="expense"
+                                    onContextMenu={l.ticketNums.length > 0 ? onCtx : undefined}
+                                    contextMenuHint={hint}
                                   />
                                 );
                               })}
