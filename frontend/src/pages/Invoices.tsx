@@ -3801,7 +3801,7 @@ export default function Invoices() {
   /** Sections collapsed by the user, keyed by `${tab}|${sectionKey}`. Default is expanded. */
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const toggleSectionCollapsed = useCallback(
-    (tab: 'submitted' | 'approved' | 'portal' | 'ready', sectionKey: string) => {
+    (tab: 'submitted' | 'approved' | 'portal' | 'ready' | 'invoiced', sectionKey: string) => {
       setCollapsedSections((prev) => {
         const k = `${tab}|${sectionKey}`;
         const next = new Set(prev);
@@ -3812,7 +3812,7 @@ export default function Invoices() {
     []
   );
   const isSectionCollapsed = useCallback(
-    (tab: 'submitted' | 'approved' | 'portal' | 'ready', sectionKey: string) =>
+    (tab: 'submitted' | 'approved' | 'portal' | 'ready' | 'invoiced', sectionKey: string) =>
       collapsedSections.has(`${tab}|${sectionKey}`),
     [collapsedSections]
   );
@@ -4143,6 +4143,14 @@ export default function Invoices() {
       return label.includes(q) || custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
     });
   }, [finalInvoicedGroups, invoiceSearchQuery, invoiceStatusFilter, getInvoiceLabel, extractInvoiceNumber, invoicedMarkRows]);
+
+  /** Group the flat invoiced list by customer so the Invoiced tab reads as one collapsible
+   *  card per customer instead of N stacked accordions. Section ordering preserves whatever
+   *  invoice-number sort sortedFilteredInvoicedGroups already applied. */
+  const invoicedSections = useMemo(
+    () => buildApprovalSections(sortedFilteredInvoicedGroups),
+    [sortedFilteredInvoicedGroups, buildApprovalSections]
+  );
 
   const markTicketsAsPdfExported = async (groupTickets: ServiceTicket[]) => {
     const recordIds = groupTickets
@@ -4789,8 +4797,11 @@ export default function Invoices() {
               })}
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {sortedFilteredInvoicedGroups.map((group) => {
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {invoicedSections.map((section) => {
+              const sectionMulti = section.groups.length > 1;
+              const collapsed = sectionMulti && isSectionCollapsed('invoiced', section.key);
+              const batchNodes = section.groups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
               const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
@@ -4924,9 +4935,11 @@ export default function Invoices() {
                     <span style={{ fontSize: '11px', flexShrink: 0, color: 'var(--text-tertiary)' }}>
                       {isAccordionOpen ? '▼' : '▶'}
                     </span>
-                    <span style={{ fontWeight: 700, flexShrink: 0 }}>
-                      {groupTickets[0]?.customerName || 'Unknown'}
-                    </span>
+                    {!sectionMulti && (
+                      <span style={{ fontWeight: 700, flexShrink: 0 }}>
+                        {groupTickets[0]?.customerName || 'Unknown'}
+                      </span>
+                    )}
                     <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>
                       #{ionexProjectNum || '—'}
                     </span>
@@ -4991,7 +5004,7 @@ export default function Invoices() {
                             gap: '6px',
                           }}
                         >
-                          {groupTickets[0]?.customerName && (
+                          {groupTickets[0]?.customerName && !sectionMulti && (
                             <div>
                               <strong>Customer:</strong>{' '}
                               <CopyableHeaderValue copyText={groupTickets[0].customerName}>
@@ -5509,6 +5522,37 @@ export default function Invoices() {
                         })}
                         </div>
                       </div>
+                    </div>
+                  )}
+                </div>
+              );
+              });
+
+              if (!sectionMulti) {
+                return <Fragment key={section.key}>{batchNodes[0]}</Fragment>;
+              }
+              return (
+                <div key={section.key} className="ionex-customer-section">
+                  <div className="ionex-customer-section-header">
+                    <button
+                      type="button"
+                      onClick={() => toggleSectionCollapsed('invoiced', section.key)}
+                      aria-expanded={!collapsed}
+                      title={collapsed ? 'Expand customer' : 'Collapse customer'}
+                      className="ionex-customer-section-toggle"
+                    >
+                      <span aria-hidden className={`ionex-customer-section-chevron${collapsed ? ' is-collapsed' : ''}`}>▾</span>
+                      <span className="ionex-customer-section-name">{section.customerName || 'Unknown customer'}</span>
+                    </button>
+                    <span className="ionex-customer-section-meta">
+                      {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'}
+                      {section.projectCount > 1 ? ` · ${section.projectCount} projects` : ''}
+                      {section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                    </span>
+                  </div>
+                  {!collapsed && (
+                    <div className="ionex-customer-section-body">
+                      {batchNodes}
                     </div>
                   )}
                 </div>
