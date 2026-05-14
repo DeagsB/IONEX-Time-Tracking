@@ -903,6 +903,249 @@ textarea {
   background-color: var(--border-color);
 }
 
+/* Banner — for the Prepare approval batches box and similar callout banners. */
+.ionex-banner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.ionex-banner.is-warning {
+  background-color: color-mix(in srgb, #f59e0b 7%, var(--bg-primary));
+  border-color: color-mix(in srgb, #f59e0b 45%, var(--border-color));
+}
+.ionex-banner.is-warning::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background-color: #f59e0b;
+}
+.ionex-banner-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  margin: 0;
+}
+.ionex-banner.is-warning .ionex-banner-title {
+  color: #b45309;
+}
+.ionex-banner-button {
+  align-self: flex-start;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+  white-space: normal;
+  text-align: left;
+}
+.ionex-banner.is-warning .ionex-banner-button {
+  background-color: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.55);
+}
+.ionex-banner.is-warning .ionex-banner-button:hover:not(:disabled) {
+  background-color: rgba(245, 158, 11, 0.24);
+  transform: translateY(-1px);
+}
+.ionex-banner-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Workflow batch card — for Submitted / Approved / Portal Submission renderBatch. */
+.ionex-workflow-card {
+  position: relative;
+  padding: 14px 16px 14px 18px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--text-tertiary);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+.ionex-workflow-card.is-compact {
+  padding: 12px 14px 12px 16px;
+  background-color: var(--bg-primary);
+}
+.ionex-workflow-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: var(--workflow-accent, var(--text-tertiary));
+}
+.ionex-workflow-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ionex-workflow-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+.ionex-workflow-card.is-compact .ionex-workflow-card-title {
+  font-size: 14px;
+}
+.ionex-workflow-card-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.ionex-workflow-card-meta-period {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.ionex-workflow-card-count {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pills shared by workflow cards */
+.ionex-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.ionex-info-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+.ionex-info-pill > .label {
+  color: var(--text-tertiary);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 9px;
+}
+
+/* Drop-PDF zone inside a workflow card */
+.ionex-droppdf {
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 18px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background-color: color-mix(in srgb, var(--workflow-accent, var(--text-tertiary)) 6%, var(--bg-tertiary));
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  cursor: pointer;
+}
+.ionex-workflow-card.is-compact .ionex-droppdf {
+  padding: 12px 14px;
+  font-size: 12.5px;
+}
+.ionex-droppdf:hover {
+  border-color: var(--workflow-accent, var(--text-tertiary));
+  background-color: color-mix(in srgb, var(--workflow-accent, var(--text-tertiary)) 12%, var(--bg-tertiary));
+}
+.ionex-droppdf.is-uploading {
+  cursor: wait;
+}
+
+/* Customer section wrapper for Submitted / Approved / Portal — matches the
+   Ready section's red-bordered group container, with the bold red customer title. */
+.ionex-customer-section {
+  position: relative;
+  padding: 14px;
+  background-color: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.08);
+}
+.ionex-customer-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ionex-customer-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.ionex-customer-section-chevron {
+  display: inline-block;
+  transition: transform 0.15s;
+  font-size: 12px;
+  color: #dc2626;
+}
+.ionex-customer-section-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+.ionex-customer-section-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: #dc2626;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 0 rgba(239, 68, 68, 0.12);
+}
+.ionex-customer-section-meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.ionex-customer-section-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ionex-customer-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 /* Page title */
 .ionex-page-title {
   display: flex;

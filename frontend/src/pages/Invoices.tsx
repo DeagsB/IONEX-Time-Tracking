@@ -5560,8 +5560,9 @@ export default function Invoices() {
           })()}
 
           {activeTab === 'ready' && bulkApprovalCandidates.length > 0 && (
-            <div style={{ marginBottom: '16px', padding: '12px 14px', backgroundColor: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#b45309', marginBottom: '8px' }}>
+            <div className="ionex-banner is-warning">
+              <div className="ionex-banner-title">
+                <span aria-hidden style={{ fontSize: '13px' }}>📦</span>
                 Prepare approval batches — download zip per customer
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -5577,7 +5578,7 @@ export default function Invoices() {
                       : `${periodLabels.length} periods: ${periodLabels.join(', ')}`;
                   const label = isBusy
                     ? `Building ${bulkSendProgress!.current}/${bulkSendProgress!.total}…`
-                    : `📥 Download ${groups.length} batch${groups.length === 1 ? '' : 'es'} for ${customer}${periodSummary ? ` — ${periodSummary}` : ''} (zip) & mark ready to send`;
+                    : `Download ${groups.length} batch${groups.length === 1 ? '' : 'es'} for ${customer}${periodSummary ? ` — ${periodSummary}` : ''} (zip) & mark ready to send`;
                   return (
                     <button
                       key={customer}
@@ -5585,19 +5586,9 @@ export default function Invoices() {
                       disabled={!!bulkSendProgress}
                       onClick={() => handleBulkSendForApproval(customer, groups)}
                       title={`Generates one merged PDF per batch (Approver_Period.pdf), zips them as ${customer}_for-approval_<date>.zip, downloads the zip, then marks each batch as ready to send. Period(s) included: ${periodSummary || '(none listed)'}. Nothing is sent automatically — you email/submit the zip to the approver yourself.`}
-                      style={{
-                        alignSelf: 'flex-start',
-                        padding: '8px 14px',
-                        fontSize: '13px',
-                        fontWeight: 700,
-                        backgroundColor: isBusy ? 'rgba(245, 158, 11, 0.18)' : 'rgba(245, 158, 11, 0.14)',
-                        color: '#b45309',
-                        border: '1px solid rgba(245, 158, 11, 0.55)',
-                        borderRadius: '6px',
-                        cursor: bulkSendProgress ? 'not-allowed' : 'pointer',
-                        opacity: bulkSendProgress && !isBusy ? 0.6 : 1,
-                      }}
+                      className="ionex-banner-button"
                     >
+                      <span aria-hidden style={{ fontSize: '13px' }}>📥</span>
                       {label}
                     </button>
                   );
@@ -6382,56 +6373,36 @@ export default function Invoices() {
                     return (
                       <div
                         key={persistId}
-                        style={{
-                          padding: compact ? '12px 14px' : '16px',
-                          backgroundColor: compact ? 'var(--bg-primary)' : 'var(--bg-secondary)',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border-color)',
-                          boxShadow: `inset 3px 0 0 0 ${statusHex}`,
-                        }}
+                        className={`ionex-workflow-card${compact ? ' is-compact' : ''}`}
+                        style={{ ['--workflow-accent' as string]: statusHex } as React.CSSProperties}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                        <div className="ionex-workflow-card-header">
                           {!compact && (
-                            <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                            <span className="ionex-workflow-card-title">{customerName || 'Unknown customer'}</span>
                           )}
                           {projectLine && (
-                            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
+                            <span className="ionex-workflow-card-meta">{projectLine}</span>
                           )}
                           {periodLine && (
-                            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
+                            <span className="ionex-workflow-card-meta-period">{periodLine}</span>
                           )}
-                          <span
-                            style={{
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              padding: '2px 10px',
-                              borderRadius: '999px',
-                              backgroundColor: 'var(--bg-tertiary)',
-                              color: 'var(--text-primary)',
-                              border: '1px solid var(--border-color)',
-                            }}
-                            title="Approver for this batch"
-                          >
-                            Approver: {approverDisplay || '—'}
+                          <span className="ionex-info-pill" title="Approver for this batch">
+                            <span className="label">Approver</span>
+                            {approverDisplay || '—'}
                           </span>
                           {status && (
                             <span
+                              className="ionex-status-pill"
                               style={{
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                padding: '2px 10px',
-                                borderRadius: '999px',
                                 backgroundColor: `${statusHex}18`,
                                 color: statusHex,
                                 border: `1px solid ${statusHex}40`,
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.04em',
                               }}
                             >
                               {status.label}
                             </span>
                           )}
-                          <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
+                          <span className="ionex-workflow-card-count">{ticketCount} ticket{ticketCount === 1 ? '' : 's'}</span>
                         </div>
                         <div
                           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = statusHex; }}
@@ -6456,16 +6427,7 @@ export default function Invoices() {
                             }
                           }}
                           onClick={() => document.getElementById(`approval-file-${persistId}`)?.click()}
-                          style={{
-                            border: '2px dashed var(--border-color)',
-                            borderRadius: '8px',
-                            padding: compact ? '10px 12px' : '14px 16px',
-                            cursor: isUploading ? 'wait' : 'pointer',
-                            backgroundColor: 'var(--bg-tertiary)',
-                            textAlign: 'center',
-                            fontSize: '13px',
-                            color: 'var(--text-secondary)',
-                          }}
+                          className={`ionex-droppdf${isUploading ? ' is-uploading' : ''}`}
                         >
                           <input
                             id={`approval-file-${persistId}`}
@@ -6571,34 +6533,22 @@ export default function Invoices() {
                   const collapsed = isSectionCollapsed('submitted', section.key);
                   const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
-                    <div
-                      key={section.key}
-                      style={{
-                        padding: '14px',
-                        backgroundColor: 'var(--bg-secondary)',
-                        borderRadius: '10px',
-                        border: '1px solid rgba(239, 68, 68, 0.45)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
+                    <div key={section.key} className="ionex-customer-section">
+                      <div className="ionex-customer-section-header">
                         <button
                           type="button"
                           onClick={() => toggleSectionCollapsed('submitted', section.key)}
                           aria-expanded={!collapsed}
                           title={collapsed ? 'Expand section' : 'Collapse section'}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '8px',
-                            padding: '2px 6px', background: 'transparent', border: 'none',
-                            color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
-                          }}
+                          className="ionex-customer-section-toggle"
                         >
-                          <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
-                          <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
+                          <span aria-hidden className={`ionex-customer-section-chevron${collapsed ? ' is-collapsed' : ''}`}>▾</span>
+                          <span className="ionex-customer-section-name">{section.customerName || 'Unknown customer'}</span>
                         </button>
-                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                        <span className="ionex-customer-section-meta">
                           {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
                         </span>
-                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <div className="ionex-customer-section-actions">
                           <button
                             type="button"
                             disabled={bulkBuilding}
@@ -6662,7 +6612,7 @@ export default function Invoices() {
                         </div>
                       </div>
                       {!collapsed && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="ionex-customer-section-body">
                           {section.groups.map((g) => renderBatch(g, true))}
                         </div>
                       )}
@@ -6725,51 +6675,36 @@ export default function Invoices() {
                     return (
                     <div
                       key={persistId}
-                      style={{
-                        padding: compact ? '12px 14px' : '16px',
-                        backgroundColor: compact ? 'var(--bg-primary)' : 'var(--bg-secondary)',
-                        borderRadius: '8px',
-                        border: '1px solid var(--border-color)',
-                        boxShadow: `inset 3px 0 0 0 ${statusHex}`,
-                      }}
+                      className={`ionex-workflow-card${compact ? ' is-compact' : ''}`}
+                      style={{ ['--workflow-accent' as string]: statusHex } as React.CSSProperties}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      <div className="ionex-workflow-card-header">
                         {!compact && (
-                          <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                          <span className="ionex-workflow-card-title">{customerName || 'Unknown customer'}</span>
                         )}
                         {projectLine && (
-                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
+                          <span className="ionex-workflow-card-meta">{projectLine}</span>
                         )}
                         {periodLine && (
-                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
+                          <span className="ionex-workflow-card-meta-period">{periodLine}</span>
                         )}
-                        <span
-                          style={{
-                            fontSize: '12px', fontWeight: 600, padding: '2px 10px', borderRadius: '999px',
-                            backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)',
-                          }}
-                          title="Approver for this batch"
-                        >
-                          Approver: {approverDisplay || '—'}
+                        <span className="ionex-info-pill" title="Approver for this batch">
+                          <span className="label">Approver</span>
+                          {approverDisplay || '—'}
                         </span>
                         {status && (
                           <span
+                            className="ionex-status-pill"
                             style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              padding: '2px 10px',
-                              borderRadius: '999px',
                               backgroundColor: `${statusHex}18`,
                               color: statusHex,
                               border: `1px solid ${statusHex}40`,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em',
                             }}
                           >
                             {status.label}
                           </span>
                         )}
-                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
+                        <span className="ionex-workflow-card-count">{ticketCount} ticket{ticketCount === 1 ? '' : 's'}</span>
                       </div>
                       {/* Invoice line items — shown here (post-approval) so the user can create the invoice */}
                       <div className="ionex-lineitems-block">
@@ -7096,34 +7031,22 @@ export default function Invoices() {
                   const collapsed = isSectionCollapsed('approved', section.key);
                   const bulkBuilding = bulkDownloadingSectionKey === section.key;
                   return (
-                    <div
-                      key={section.key}
-                      style={{
-                        padding: '14px',
-                        backgroundColor: 'var(--bg-secondary)',
-                        borderRadius: '10px',
-                        border: '1px solid rgba(239, 68, 68, 0.45)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
+                    <div key={section.key} className="ionex-customer-section">
+                      <div className="ionex-customer-section-header">
                         <button
                           type="button"
                           onClick={() => toggleSectionCollapsed('approved', section.key)}
                           aria-expanded={!collapsed}
                           title={collapsed ? 'Expand section' : 'Collapse section'}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '8px',
-                            padding: '2px 6px', background: 'transparent', border: 'none',
-                            color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
-                          }}
+                          className="ionex-customer-section-toggle"
                         >
-                          <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
-                          <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
+                          <span aria-hidden className={`ionex-customer-section-chevron${collapsed ? ' is-collapsed' : ''}`}>▾</span>
+                          <span className="ionex-customer-section-name">{section.customerName || 'Unknown customer'}</span>
                         </button>
-                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                        <span className="ionex-customer-section-meta">
                           {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
                         </span>
-                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <div className="ionex-customer-section-actions">
                           <button
                             type="button"
                             disabled={bulkBuilding}
@@ -7191,7 +7114,7 @@ export default function Invoices() {
                         </div>
                       </div>
                       {!collapsed && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="ionex-customer-section-body">
                           {section.groups.map((g) => renderBatch(g, true))}
                         </div>
                       )}
@@ -7291,51 +7214,36 @@ export default function Invoices() {
                     return (
                     <div
                       key={persistId}
-                      style={{
-                        padding: compact ? '12px 14px' : '16px',
-                        backgroundColor: compact ? 'var(--bg-primary)' : 'var(--bg-secondary)',
-                        borderRadius: '8px',
-                        border: '1px solid var(--border-color)',
-                        boxShadow: `inset 3px 0 0 0 ${statusHex}`,
-                      }}
+                      className={`ionex-workflow-card${compact ? ' is-compact' : ''}`}
+                      style={{ ['--workflow-accent' as string]: statusHex } as React.CSSProperties}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                      <div className="ionex-workflow-card-header">
                         {!compact && (
-                          <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{customerName || 'Unknown customer'}</span>
+                          <span className="ionex-workflow-card-title">{customerName || 'Unknown customer'}</span>
                         )}
                         {projectLine && (
-                          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{projectLine}</span>
+                          <span className="ionex-workflow-card-meta">{projectLine}</span>
                         )}
                         {periodLine && (
-                          <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{periodLine}</span>
+                          <span className="ionex-workflow-card-meta-period">{periodLine}</span>
                         )}
-                        <span
-                          style={{
-                            fontSize: '12px', fontWeight: 600, padding: '2px 10px', borderRadius: '999px',
-                            backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)',
-                          }}
-                          title="Approver for this batch"
-                        >
-                          Approver: {approverDisplay || '—'}
+                        <span className="ionex-info-pill" title="Approver for this batch">
+                          <span className="label">Approver</span>
+                          {approverDisplay || '—'}
                         </span>
                         {status && (
                           <span
+                            className="ionex-status-pill"
                             style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              padding: '2px 10px',
-                              borderRadius: '999px',
                               backgroundColor: `${statusHex}18`,
                               color: statusHex,
                               border: `1px solid ${statusHex}40`,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em',
                             }}
                           >
                             {status.label}
                           </span>
                         )}
-                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>{ticketCount} ticket(s)</span>
+                        <span className="ionex-workflow-card-count">{ticketCount} ticket{ticketCount === 1 ? '' : 's'}</span>
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: '12px' }}>
@@ -7493,36 +7401,24 @@ export default function Invoices() {
                   }
                   const collapsed = isSectionCollapsed('portal', section.key);
                   return (
-                    <div
-                      key={section.key}
-                      style={{
-                        padding: '14px',
-                        backgroundColor: 'var(--bg-secondary)',
-                        borderRadius: '10px',
-                        border: '1px solid rgba(239, 68, 68, 0.45)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: collapsed ? 0 : '10px' }}>
+                    <div key={section.key} className="ionex-customer-section">
+                      <div className="ionex-customer-section-header">
                         <button
                           type="button"
                           onClick={() => toggleSectionCollapsed('portal', section.key)}
                           aria-expanded={!collapsed}
                           title={collapsed ? 'Expand section' : 'Collapse section'}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '8px',
-                            padding: '2px 6px', background: 'transparent', border: 'none',
-                            color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
-                          }}
+                          className="ionex-customer-section-toggle"
                         >
-                          <span aria-hidden style={{ display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'none', transition: 'transform 0.15s', fontSize: '12px' }}>▾</span>
-                          <span style={{ fontSize: '15px', fontWeight: 700 }}>{section.customerName || 'Unknown customer'}</span>
+                          <span aria-hidden className={`ionex-customer-section-chevron${collapsed ? ' is-collapsed' : ''}`}>▾</span>
+                          <span className="ionex-customer-section-name">{section.customerName || 'Unknown customer'}</span>
                         </button>
-                        <span style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                        <span className="ionex-customer-section-meta" style={{ marginLeft: 'auto' }}>
                           {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
                         </span>
                       </div>
                       {!collapsed && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="ionex-customer-section-body">
                           {section.groups.map((g) => renderBatch(g, true))}
                         </div>
                       )}
