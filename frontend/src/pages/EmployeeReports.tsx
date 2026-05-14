@@ -485,23 +485,55 @@ export default function EmployeeReports() {
               </button>
             </div>
 
-            {/* KPI Cards */}
-            <div className="ionex-kpi-mini-grid" style={{ marginBottom: '24px' }}>
-              <KpiCard label="Revenue" value={`$${fmt(expandedMetrics.totalRevenue)}`} accent="var(--primary-color)" />
-              <KpiCard label="Labor Cost" value={`$${fmt(expandedMetrics.laborCost)}`} accent="var(--warning-color)" />
-              {expandedMetrics.expenseCost > 0 && (
-                <KpiCard label="Expenses" value={`$${fmt(expandedMetrics.expenseCost)}`} accent="var(--warning-color)" />
-              )}
-              <KpiCard label="Total Cost" value={`$${fmt(expandedMetrics.totalCost)}`} accent="var(--warning-color)" />
-              <KpiCard label="Profit" value={`$${fmt(expandedMetrics.netProfit)}`} accent={expandedMetrics.netProfit >= 0 ? 'var(--success-color)' : 'var(--error-color)'} />
-              <KpiCard label="Margin" value={`${expandedMetrics.profitMargin.toFixed(1)}%`} accent={expandedMetrics.profitMargin >= 20 ? 'var(--success-color)' : expandedMetrics.profitMargin >= 0 ? 'var(--warning-color)' : 'var(--error-color)'} />
-              <KpiCard label="Billable %" value={formatPercentage(expandedMetrics.efficiency)} accent={expandedMetrics.efficiency >= 80 ? 'var(--success-color)' : expandedMetrics.efficiency >= 60 ? 'var(--warning-color)' : 'var(--error-color)'} />
-              <KpiCard label="Hours" value={formatHoursDecimal(expandedMetrics.totalHours)} accent="var(--text-tertiary)" />
+            {/* Headline P&L strip — the arithmetic story of this employee */}
+            <div className="ionex-pl-strip">
+              <div className="ionex-pl-cell is-primary">
+                <span className="ionex-pl-cell-label">Revenue</span>
+                <span className="ionex-pl-cell-value">${fmt(expandedMetrics.totalRevenue)}</span>
+                {expandedMetrics.expenseBilled > 0 && (
+                  <span className="ionex-pl-cell-sub">
+                    incl. ${fmt(expandedMetrics.expenseBilled)} expense billout
+                  </span>
+                )}
+              </div>
+              <span className="ionex-pl-op">−</span>
+              <div className="ionex-pl-cell is-warn">
+                <span className="ionex-pl-cell-label">Cost</span>
+                <span className="ionex-pl-cell-value">${fmt(expandedMetrics.totalCost)}</span>
+                <span className="ionex-pl-cell-sub">
+                  labour ${fmt(expandedMetrics.laborCost)}
+                  {expandedMetrics.expenseCost > 0 ? ` · expenses $${fmt(expandedMetrics.expenseCost)}` : ''}
+                </span>
+              </div>
+              <span className="ionex-pl-op">=</span>
+              <div className={`ionex-pl-cell ${expandedMetrics.netProfit >= 0 ? 'is-positive' : 'is-negative'}`}>
+                <span className="ionex-pl-cell-label">Net Profit</span>
+                <span className="ionex-pl-cell-value">${fmt(expandedMetrics.netProfit)}</span>
+                <span className="ionex-pl-cell-sub">{expandedMetrics.profitMargin.toFixed(1)}% margin</span>
+              </div>
+              <span />
+            </div>
+
+            {/* Secondary stats: utilisation + counts */}
+            <div className="ionex-kpi-mini-grid" style={{ marginBottom: '20px' }}>
+              <KpiCard
+                label="Billable %"
+                value={formatPercentage(expandedMetrics.efficiency)}
+                accent={expandedMetrics.efficiency >= 80 ? 'var(--success-color)' : expandedMetrics.efficiency >= 60 ? 'var(--warning-color)' : 'var(--error-color)'}
+              />
+              <KpiCard label="Total Hours" value={formatHoursDecimal(expandedMetrics.totalHours)} accent="var(--text-tertiary)" />
+              <KpiCard label="Billable Hours" value={formatHoursDecimal(expandedMetrics.billableHours)} accent="var(--text-secondary)" />
+              <KpiCard label="Service Tickets" value={String(expandedMetrics.serviceTicketCount)} accent="var(--text-tertiary)" />
             </div>
 
             {/* Billable Bar (large) */}
-            <div style={{ marginBottom: '24px' }}>
-              <div className="ionex-eyebrow"><span />Billable Utilization</div>
+            <div className="ionex-modal-section" style={{ borderTop: 'none', paddingTop: 0 }}>
+              <div className="ionex-modal-section-head">
+                <span className="ionex-modal-section-title">Billable Utilization</span>
+                <span className="ionex-modal-section-meta">
+                  <strong>{expandedMetrics.efficiency.toFixed(0)}%</strong> of {formatHoursDecimal(expandedMetrics.totalHours)}h
+                </span>
+              </div>
               <BillableBar
                 pct={expandedMetrics.efficiency}
                 billable={expandedMetrics.billableHours}
@@ -512,190 +544,205 @@ export default function EmployeeReports() {
               />
             </div>
 
-            {/* Hours by Rate Type */}
-            <DetailSection title="Hours by Rate Type">
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <th style={detailThStyle}>Type</th>
-                    <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
-                    <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed</th>
-                    <th style={{ ...detailThStyle, textAlign: 'right' }}>Cost</th>
-                    <th style={{ ...detailThStyle, textAlign: 'right' }}>Margin</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { label: 'Non-Billable', data: expandedMetrics.rateTypeBreakdown.internalTime },
-                    { label: 'Shop Time', data: expandedMetrics.rateTypeBreakdown.shopTime },
-                    { label: 'Field Time', data: expandedMetrics.rateTypeBreakdown.fieldTime },
-                    { label: 'Travel Time', data: expandedMetrics.rateTypeBreakdown.travelTime },
-                    { label: 'Shop OT', data: expandedMetrics.rateTypeBreakdown.shopOvertime },
-                    { label: 'Field OT', data: expandedMetrics.rateTypeBreakdown.fieldOvertime },
-                  ]
-                    .filter(row => row.data.hours > 0)
-                    .map((row) => (
-                      <tr key={row.label} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={detailTdStyle}>{row.label}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatHoursDecimal(row.data.hours)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: row.label === 'Non-Billable' ? '#e53935' : undefined }}>
-                          {formatCurrency(row.data.revenue)}
-                        </td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(row.data.cost)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: row.data.profit >= 0 ? '#4caf50' : '#e53935' }}>
-                          {formatCurrency(row.data.profit)}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-                <tfoot>
-                  {(() => {
-                    const bd = expandedMetrics.rateTypeBreakdown;
-                    const visibleRows = [bd.internalTime, bd.shopTime, bd.fieldTime, bd.travelTime, bd.shopOvertime, bd.fieldOvertime].filter(r => r.hours > 0);
-                    const sumHours = visibleRows.reduce((s, r) => s + r.hours, 0);
-                    const sumLaborRevenue = visibleRows.reduce((s, r) => s + r.revenue, 0);
-                    const sumCost = visibleRows.reduce((s, r) => s + r.cost, 0) + expandedMetrics.expenseCost;
-                    const sumRevenueTotal = sumLaborRevenue + (expandedMetrics.expenseBilled || 0);
-                    const sumProfit = sumRevenueTotal - sumCost;
-                    const expenseMargin = (expandedMetrics.expenseBilled || 0) - expandedMetrics.expenseCost;
-                    const hasExpenses = (expandedMetrics.expenseBilled || 0) > 0 || expandedMetrics.expenseCost > 0;
-                    return (
-                      <>
-                        {hasExpenses && (
-                          <>
-                            <tr style={{ borderTop: '1px solid var(--border-color)' }}>
-                              <td style={{ ...detailTdStyle, fontWeight: '600', color: '#e91e63', verticalAlign: 'top' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => setExpenseBreakdownExpanded(v => !v)}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    padding: 0,
-                                    fontSize: 'inherit',
-                                    fontWeight: 'inherit',
-                                    color: 'inherit',
-                                  }}
-                                >
-                                  <span style={{
-                                    display: 'inline-block',
-                                    fontSize: '10px',
-                                    color: 'var(--text-tertiary)',
-                                    transition: 'transform 0.2s ease',
-                                    transform: expenseBreakdownExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                                  }}>&#9654;</span>
-                                  Expenses
-                                </button>
-                              </td>
-                              <td style={detailTdStyle} />
-                              <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
-                                {formatCurrency(expandedMetrics.expenseBilled || 0)}
-                              </td>
-                              <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: '#e91e63' }}>
-                                {formatCurrency(expandedMetrics.expenseCost)}
-                              </td>
-                              <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: expenseMargin >= 0 ? '#4caf50' : '#e53935' }}>
-                                {formatCurrency(expenseMargin)}
-                              </td>
-                            </tr>
-                            {expenseBreakdownExpanded && (expandedMetrics.expenseBreakdown || []).length > 0 && (
-                              (expandedMetrics.expenseBreakdown || []).map((row) => {
-                                const hasDrilldown = EXPENSE_BREAKDOWN_DRILLDOWN_CATEGORIES.has(row.category);
-                                const drilldownItems = hasDrilldown
-                                  ? (ticketExpenses as any[]).filter((exp: any) => {
-                                      const uid = exp.service_tickets?.user_id ?? exp.service_ticket?.user_id;
-                                      if (uid !== expandedMetrics.userId) return false;
-                                      return ticketExpenseCategoryForEmployeeReport(exp) === row.category;
-                                    })
-                                  : [];
-                                const hasDrilldownItems = drilldownItems.length > 0;
-                                const drilldownOpen = expandedExpenseDrilldownKeys.has(row.category);
-                                const toggleDrilldown = () => {
-                                  setExpandedExpenseDrilldownKeys((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(row.category)) next.delete(row.category);
-                                    else next.add(row.category);
-                                    return next;
-                                  });
-                                };
-                                return (
-                                  <Fragment key={row.category}>
-                                    <tr style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                                      <td style={{ ...detailTdStyle, paddingLeft: '28px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                        {hasDrilldown && hasDrilldownItems ? (
-                                          <button
-                                            type="button"
-                                            onClick={toggleDrilldown}
-                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 'inherit', color: 'inherit' }}
-                                          >
-                                            <span style={{
-                                              display: 'inline-block',
-                                              fontSize: '10px',
-                                              color: 'var(--text-tertiary)',
-                                              transition: 'transform 0.2s ease',
-                                              transform: drilldownOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                                            }}>&#9654;</span>
-                                            {row.category}
-                                          </button>
-                                        ) : (
-                                          row.category
-                                        )}
-                                      </td>
-                                      <td style={detailTdStyle} />
-                                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px' }}>{formatCurrency(row.billed)}</td>
-                                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: row.cost > 0 ? '#e91e63' : undefined }}>{formatCurrency(row.cost)}</td>
-                                      <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '13px', color: (row.billed - row.cost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(row.billed - row.cost)}</td>
-                                    </tr>
-                                    {hasDrilldown && hasDrilldownItems && drilldownOpen && drilldownItems.map((exp: any) => {
-                                      const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
-                                      const billedShown = maybeApplyGst(amt, includeGst);
-                                      const ticket = exp.service_tickets ?? exp.service_ticket;
-                                      const lineCost = ticketExpenseCostForMargin(exp, reimbRateForEmployeeReportExpense(exp, expandedEmpRecord));
-                                      const ticketLabel = ticket?.ticket_number ? `#${ticket.ticket_number}` : '—';
-                                      return (
-                                        <tr key={exp.id} style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)' }}>
-                                          <td style={{ ...detailTdStyle, paddingLeft: '44px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
-                                            {exp.description || exp.expense_type || 'Expense'}
-                                            {ticketLabel !== '—' && <span style={{ marginLeft: '6px', color: 'var(--text-tertiary)', fontSize: '11px' }}>({ticketLabel})</span>}
-                                          </td>
-                                          <td style={detailTdStyle} />
-                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px' }}>{formatCurrency(billedShown)}</td>
-                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px', color: lineCost > 0 ? '#e91e63' : undefined }}>{formatCurrency(lineCost)}</td>
-                                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: '12px', color: (billedShown - lineCost) >= 0 ? '#4caf50' : '#e53935' }}>{formatCurrency(billedShown - lineCost)}</td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </Fragment>
-                                );
-                              })
-                            )}
-                          </>
-                        )}
-                        <tr style={{ borderTop: '2px solid var(--border-color)' }}>
-                          <td style={{ ...detailTdStyle, fontWeight: '700' }}>Total</td>
-                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>
-                            {formatHoursDecimal(sumHours)}
-                          </td>
-                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>
-                            {formatCurrency(sumRevenueTotal)}
-                          </td>
-                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>
-                            {formatCurrency(sumCost)}
-                          </td>
-                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', color: sumProfit >= 0 ? '#4caf50' : '#e53935' }}>
-                            {formatCurrency(sumProfit)}
+            {/* Hours by Rate Type — labour only. Expense margin lives in its own section below
+                so this table reads as a clean "where did the hours go" answer. */}
+            {(() => {
+              const bd = expandedMetrics.rateTypeBreakdown;
+              const rows = [
+                { label: 'Non-Billable', data: bd.internalTime },
+                { label: 'Shop Time',    data: bd.shopTime },
+                { label: 'Field Time',   data: bd.fieldTime },
+                { label: 'Travel Time',  data: bd.travelTime },
+                { label: 'Shop OT',      data: bd.shopOvertime },
+                { label: 'Field OT',     data: bd.fieldOvertime },
+              ].filter(r => r.data.hours > 0);
+              const sumHours        = rows.reduce((s, r) => s + r.data.hours, 0);
+              const sumLaborRevenue = rows.reduce((s, r) => s + r.data.revenue, 0);
+              const sumLaborCost    = rows.reduce((s, r) => s + r.data.cost, 0);
+              const sumLaborProfit  = sumLaborRevenue - sumLaborCost;
+              return (
+                <div className="ionex-modal-section">
+                  <div className="ionex-modal-section-head">
+                    <span className="ionex-modal-section-title">Labour breakdown</span>
+                    <span className="ionex-modal-section-meta">
+                      <strong>{formatHoursDecimal(sumHours)}h</strong> · {formatCurrency(sumLaborRevenue)} billed · {formatCurrency(sumLaborCost)} cost
+                    </span>
+                  </div>
+                  {rows.length === 0 ? (
+                    <div className="ionex-mini-empty">No hours logged for this period.</div>
+                  ) : (
+                    <table className="ionex-compact-table">
+                      <thead>
+                        <tr>
+                          <th>Type</th>
+                          <th className="align-right">Hours</th>
+                          <th className="align-right">Billed</th>
+                          <th className="align-right">Cost</th>
+                          <th className="align-right">Margin</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => (
+                          <tr key={row.label} className={row.label === 'Non-Billable' ? 'is-subtle' : undefined}>
+                            <td>{row.label}</td>
+                            <td className="align-right">{formatHoursDecimal(row.data.hours)}</td>
+                            <td className="align-right">
+                              <span className={row.label === 'Non-Billable' ? 'ionex-money is-bad' : 'ionex-money'}>
+                                {formatCurrency(row.data.revenue)}
+                              </span>
+                            </td>
+                            <td className="align-right">
+                              <span className="ionex-money is-muted">{formatCurrency(row.data.cost)}</span>
+                            </td>
+                            <td className="align-right">
+                              <span className={`ionex-money ${row.data.profit >= 0 ? 'is-good' : 'is-bad'}`}>
+                                {formatCurrency(row.data.profit)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td>Labour total</td>
+                          <td className="align-right">{formatHoursDecimal(sumHours)}</td>
+                          <td className="align-right">{formatCurrency(sumLaborRevenue)}</td>
+                          <td className="align-right">{formatCurrency(sumLaborCost)}</td>
+                          <td className="align-right">
+                            <span className={`ionex-money ${sumLaborProfit >= 0 ? 'is-good' : 'is-bad'}`}>
+                              {formatCurrency(sumLaborProfit)}
+                            </span>
                           </td>
                         </tr>
-                      </>
-                    );
-                  })()}
-                </tfoot>
-              </table>
-            </DetailSection>
+                      </tfoot>
+                    </table>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Expense Margin — billed vs cost by category, with line-item drilldown. */}
+            {((expandedMetrics.expenseBilled || 0) > 0 || expandedMetrics.expenseCost > 0) && (() => {
+              const expBilled = expandedMetrics.expenseBilled || 0;
+              const expCost   = expandedMetrics.expenseCost;
+              const expMargin = expBilled - expCost;
+              return (
+                <div className="ionex-modal-section">
+                  <div className="ionex-modal-section-head">
+                    <button
+                      type="button"
+                      className="ionex-disclosure"
+                      aria-expanded={expenseBreakdownExpanded}
+                      onClick={() => setExpenseBreakdownExpanded(v => !v)}
+                    >
+                      <span className="ionex-disclosure-chevron">▶</span>
+                      Expense margin
+                      <span className="ionex-disclosure-sub">
+                        {formatCurrency(expBilled)} billed · {formatCurrency(expCost)} cost ·{' '}
+                        <span className={expMargin >= 0 ? 'ionex-money is-good' : 'ionex-money is-bad'}>
+                          {formatCurrency(expMargin)} markup
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                  {expenseBreakdownExpanded && (expandedMetrics.expenseBreakdown || []).length > 0 && (
+                    <table className="ionex-compact-table">
+                      <thead>
+                        <tr>
+                          <th>Category</th>
+                          <th className="align-right">Billed</th>
+                          <th className="align-right">Cost</th>
+                          <th className="align-right">Markup</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(expandedMetrics.expenseBreakdown || []).map((row) => {
+                          const hasDrilldown = EXPENSE_BREAKDOWN_DRILLDOWN_CATEGORIES.has(row.category);
+                          const drilldownItems = hasDrilldown
+                            ? (ticketExpenses as any[]).filter((exp: any) => {
+                                const uid = exp.service_tickets?.user_id ?? exp.service_ticket?.user_id;
+                                if (uid !== expandedMetrics.userId) return false;
+                                return ticketExpenseCategoryForEmployeeReport(exp) === row.category;
+                              })
+                            : [];
+                          const hasItems = drilldownItems.length > 0;
+                          const open = expandedExpenseDrilldownKeys.has(row.category);
+                          const toggle = () => setExpandedExpenseDrilldownKeys(prev => {
+                            const next = new Set(prev);
+                            if (next.has(row.category)) next.delete(row.category);
+                            else next.add(row.category);
+                            return next;
+                          });
+                          const markup = row.billed - row.cost;
+                          return (
+                            <Fragment key={row.category}>
+                              <tr>
+                                <td>
+                                  {hasDrilldown && hasItems ? (
+                                    <button
+                                      type="button"
+                                      className="ionex-disclosure"
+                                      aria-expanded={open}
+                                      onClick={toggle}
+                                      style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}
+                                    >
+                                      <span className="ionex-disclosure-chevron">▶</span>
+                                      {row.category}
+                                    </button>
+                                  ) : (
+                                    row.category
+                                  )}
+                                </td>
+                                <td className="align-right">{formatCurrency(row.billed)}</td>
+                                <td className="align-right">
+                                  <span className={row.cost > 0 ? 'ionex-money is-warn' : 'ionex-money is-muted'}>
+                                    {formatCurrency(row.cost)}
+                                  </span>
+                                </td>
+                                <td className="align-right">
+                                  <span className={`ionex-money ${markup >= 0 ? 'is-good' : 'is-bad'}`}>
+                                    {formatCurrency(markup)}
+                                  </span>
+                                </td>
+                              </tr>
+                              {hasDrilldown && hasItems && open && drilldownItems.map((exp: any) => {
+                                const amt = (Number(exp.quantity) || 0) * (Number(exp.rate) || 0);
+                                const billedShown = maybeApplyGst(amt, includeGst);
+                                const ticket = exp.service_tickets ?? exp.service_ticket;
+                                const lineCost = ticketExpenseCostForMargin(exp, reimbRateForEmployeeReportExpense(exp, expandedEmpRecord));
+                                const ticketLabel = ticket?.ticket_number ? `#${ticket.ticket_number}` : '—';
+                                const lineMargin = billedShown - lineCost;
+                                return (
+                                  <tr key={exp.id} className="is-subtle">
+                                    <td style={{ paddingLeft: '34px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                                      {exp.description || exp.expense_type || 'Expense'}
+                                      {ticketLabel !== '—' && (
+                                        <span style={{ marginLeft: '6px', fontSize: '11px' }}>({ticketLabel})</span>
+                                      )}
+                                    </td>
+                                    <td className="align-right" style={{ fontSize: '12px' }}>{formatCurrency(billedShown)}</td>
+                                    <td className="align-right" style={{ fontSize: '12px' }}>
+                                      <span className={lineCost > 0 ? 'ionex-money is-warn' : 'ionex-money is-muted'}>
+                                        {formatCurrency(lineCost)}
+                                      </span>
+                                    </td>
+                                    <td className="align-right" style={{ fontSize: '12px' }}>
+                                      <span className={`ionex-money ${lineMargin >= 0 ? 'is-good' : 'is-bad'}`}>
+                                        {formatCurrency(lineMargin)}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Expenses & Reimbursements — collapsible dropdown, shows ALL expenses (billed + reimbursed) */}
             {(() => {
@@ -714,63 +761,88 @@ export default function EmployeeReports() {
 
               const statusBadge = (status: string | null) => {
                 const s = (status || 'pending').toLowerCase();
-                const styles: Record<string, { bg: string; color: string; label: string }> = {
-                  paid: { bg: 'rgba(76,175,80,0.12)', color: '#4caf50', label: 'Paid' },
-                  approved: { bg: 'rgba(33,150,243,0.12)', color: '#2196F3', label: 'Approved' },
-                  rejected: { bg: 'rgba(229,57,53,0.12)', color: '#e53935', label: 'Rejected' },
-                  pending: { bg: 'rgba(255,152,0,0.12)', color: '#ff9800', label: 'Pending' },
+                // Theme-token-driven palette so dark mode adapts.
+                const map: Record<string, { color: string; label: string }> = {
+                  paid:     { color: 'var(--success-color)', label: 'Paid' },
+                  approved: { color: 'var(--primary-color)', label: 'Approved' },
+                  rejected: { color: 'var(--error-color)',   label: 'Rejected' },
+                  pending:  { color: 'var(--warning-color)', label: 'Pending' },
                 };
-                const st = styles[s] || styles.pending;
+                const st = map[s] || map.pending;
                 return (
-                  <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600', backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+                  <span
+                    style={{
+                      padding: '2px 8px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      backgroundColor: `color-mix(in srgb, ${st.color} 12%, transparent)`,
+                      border: `1px solid color-mix(in srgb, ${st.color} 30%, transparent)`,
+                      color: st.color,
+                    }}
+                  >
+                    {st.label}
+                  </span>
                 );
               };
 
               return (
-                <div style={{ marginBottom: '24px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setExpensesSectionExpanded((v) => !v)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      width: '100%',
-                      padding: '0 0 12px 0',
-                      background: 'none',
-                      border: 'none',
-                      borderBottom: '1px solid var(--border-color)',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                    }}
-                  >
-                    <span style={{
-                      display: 'inline-block',
-                      fontSize: '10px',
-                      color: 'var(--text-tertiary)',
-                      transition: 'transform 0.2s ease',
-                      transform: expensesSectionExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                    }}>&#9654;</span>
-                    <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>
-                      Expenses & Reimbursements — ${fmt(totalExpAmt)}
-                    </h3>
-                  </button>
+                <div className="ionex-modal-section">
+                  <div className="ionex-modal-section-head">
+                    <button
+                      type="button"
+                      className="ionex-disclosure"
+                      aria-expanded={expensesSectionExpanded}
+                      onClick={() => setExpensesSectionExpanded(v => !v)}
+                    >
+                      <span className="ionex-disclosure-chevron">▶</span>
+                      Expenses &amp; reimbursements
+                      <span className="ionex-disclosure-sub">{empExpenses.length} {empExpenses.length === 1 ? 'line' : 'lines'} · ${fmt(totalExpAmt)}</span>
+                    </button>
+                  </div>
                   {expensesSectionExpanded && (
-                    <div style={{ marginTop: '12px' }}>
+                    <div>
                       {empExpenses.length === 0 ? (
-                        <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No expenses recorded</p>
+                        <div className="ionex-mini-empty">No expenses recorded for this period.</div>
                       ) : (
                         <>
-                          <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
                             {billedTotal > 0 && (
-                              <span>Billed to customer: <strong style={{ color: 'var(--text-primary)' }}>${fmt(billedTotal)}</strong></span>
+                              <span
+                                className="ionex-tag"
+                                style={{ ['--tag-color' as string]: 'var(--primary-color)' } as React.CSSProperties}
+                              >
+                                <span className="label">Billed to customer</span>
+                                ${fmt(billedTotal)}
+                              </span>
                             )}
                             {reimbTotal > 0 && (
                               <>
-                                <span>Reimbursed to employee: <strong style={{ color: '#e91e63' }}>${fmt(reimbTotal)}</strong></span>
-                                {reimbPaid > 0 && <span style={{ color: '#4caf50' }}>Paid: ${fmt(reimbPaid)}</span>}
-                                {reimbApproved > 0 && <span style={{ color: '#2196F3' }}>Approved: ${fmt(reimbApproved)}</span>}
-                                {reimbPending > 0 && <span style={{ color: '#ff9800' }}>Pending: ${fmt(reimbPending)}</span>}
+                                <span
+                                  className="ionex-tag"
+                                  style={{ ['--tag-color' as string]: 'var(--warning-color)' } as React.CSSProperties}
+                                >
+                                  <span className="label">Reimbursed to employee</span>
+                                  ${fmt(reimbTotal)}
+                                </span>
+                                {reimbPaid > 0 && (
+                                  <span className="ionex-tag" style={{ ['--tag-color' as string]: 'var(--success-color)' } as React.CSSProperties}>
+                                    <span className="label">Paid</span>
+                                    ${fmt(reimbPaid)}
+                                  </span>
+                                )}
+                                {reimbApproved > 0 && (
+                                  <span className="ionex-tag" style={{ ['--tag-color' as string]: 'var(--primary-color)' } as React.CSSProperties}>
+                                    <span className="label">Approved</span>
+                                    ${fmt(reimbApproved)}
+                                  </span>
+                                )}
+                                {reimbPending > 0 && (
+                                  <span className="ionex-tag" style={{ ['--tag-color' as string]: 'var(--warning-color)' } as React.CSSProperties}>
+                                    <span className="label">Pending</span>
+                                    ${fmt(reimbPending)}
+                                  </span>
+                                )}
                               </>
                             )}
                           </div>
@@ -979,61 +1051,77 @@ export default function EmployeeReports() {
               );
             })()}
 
-            {/* Top Projects */}
-            <DetailSection title={`Top Projects \u2014 ${expandedMetrics.projectBreakdown.length}`}>
-              {expandedMetrics.projectBreakdown.length === 0 ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No project data</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <th style={detailThStyle}>Project</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Revenue</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Expenses Billed</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Expense Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expandedMetrics.projectBreakdown.slice(0, 10).map((proj: any) => (
-                      <tr key={proj.projectId} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={detailTdStyle}>{proj.projectName}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatHoursDecimal(proj.hours)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(proj.revenue)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(proj.expenseBilled ?? 0)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: (proj.expenseCost ?? 0) > 0 ? '#e91e63' : undefined }}>{formatCurrency(proj.expenseCost ?? 0)}</td>
+            {/* Top Projects + Top Customers in a 2-col grid when both have data,
+                so they share screen real estate instead of stacking forever. */}
+            <div className="ionex-flow-two-col" style={{ marginTop: '4px' }}>
+              <div className="ionex-modal-section" style={{ borderTop: 'none', paddingTop: 14 }}>
+                <div className="ionex-modal-section-head">
+                  <span className="ionex-modal-section-title">Top projects</span>
+                  <span className="ionex-modal-section-meta">
+                    <strong>{expandedMetrics.projectBreakdown.length}</strong>
+                    {expandedMetrics.projectBreakdown.length > 10 ? ' \u00b7 top 10 shown' : ''}
+                  </span>
+                </div>
+                {expandedMetrics.projectBreakdown.length === 0 ? (
+                  <div className="ionex-mini-empty">No project data.</div>
+                ) : (
+                  <table className="ionex-compact-table">
+                    <thead>
+                      <tr>
+                        <th>Project</th>
+                        <th className="align-right">Hours</th>
+                        <th className="align-right">Revenue</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </DetailSection>
+                    </thead>
+                    <tbody>
+                      {expandedMetrics.projectBreakdown.slice(0, 10).map((proj: any) => (
+                        <tr key={proj.projectId}>
+                          <td>{proj.projectName}</td>
+                          <td className="align-right">{formatHoursDecimal(proj.hours)}</td>
+                          <td className="align-right">
+                            <span className="ionex-money">{formatCurrency(proj.revenue)}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
 
-            {/* Top Customers */}
-            <DetailSection title={`Top Customers \u2014 ${expandedMetrics.customerBreakdown.length}`}>
-              {expandedMetrics.customerBreakdown.length === 0 ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No customer data</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <th style={detailThStyle}>Customer</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expandedMetrics.customerBreakdown.slice(0, 10).map((cust: any) => (
-                      <tr key={cust.customerId} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={detailTdStyle}>{cust.customerName}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatHoursDecimal(cust.hours)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(cust.revenue)}</td>
+              <div className="ionex-modal-section" style={{ borderTop: 'none', paddingTop: 14 }}>
+                <div className="ionex-modal-section-head">
+                  <span className="ionex-modal-section-title">Top customers</span>
+                  <span className="ionex-modal-section-meta">
+                    <strong>{expandedMetrics.customerBreakdown.length}</strong>
+                    {expandedMetrics.customerBreakdown.length > 10 ? ' \u00b7 top 10 shown' : ''}
+                  </span>
+                </div>
+                {expandedMetrics.customerBreakdown.length === 0 ? (
+                  <div className="ionex-mini-empty">No customer data.</div>
+                ) : (
+                  <table className="ionex-compact-table">
+                    <thead>
+                      <tr>
+                        <th>Customer</th>
+                        <th className="align-right">Hours</th>
+                        <th className="align-right">Revenue</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </DetailSection>
+                    </thead>
+                    <tbody>
+                      {expandedMetrics.customerBreakdown.slice(0, 10).map((cust: any) => (
+                        <tr key={cust.customerId}>
+                          <td>{cust.customerName}</td>
+                          <td className="align-right">{formatHoursDecimal(cust.hours)}</td>
+                          <td className="align-right">
+                            <span className="ionex-money">{formatCurrency(cust.revenue)}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

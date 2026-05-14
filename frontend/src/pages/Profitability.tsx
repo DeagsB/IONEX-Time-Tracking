@@ -840,22 +840,66 @@ export default function Profitability() {
               </button>
             </div>
 
-            {/* KPI Cards */}
-            <div className="ionex-kpi-mini-grid" style={{ marginBottom: '24px' }}>
+            {/* Headline P&L strip */}
+            <div className="ionex-pl-strip">
+              <div className="ionex-pl-cell is-primary">
+                <span className="ionex-pl-cell-label">Revenue</span>
+                <span className="ionex-pl-cell-value">${fmt(expandedProject.revenue)}</span>
+                {expandedProject.expenseBilledPreGst > 0 && (
+                  <span className="ionex-pl-cell-sub">
+                    incl. ${fmt(includeGst ? expandedProject.expenseBilledPreGst * 1.05 : expandedProject.expenseBilledPreGst)} expense billout
+                  </span>
+                )}
+              </div>
+              <span className="ionex-pl-op">−</span>
+              <div className="ionex-pl-cell is-warn">
+                <span className="ionex-pl-cell-label">Cost</span>
+                <span className="ionex-pl-cell-value">${fmt(expandedProject.totalCost)}</span>
+                <span className="ionex-pl-cell-sub">
+                  labour ${fmt(expandedProject.laborCost)}
+                  {expandedProject.expenseCost > 0 ? ` · expenses $${fmt(expandedProject.expenseCost)}` : ''}
+                </span>
+              </div>
+              <span className="ionex-pl-op">=</span>
+              <div className={`ionex-pl-cell ${expandedProject.profit >= 0 ? 'is-positive' : 'is-negative'}`}>
+                <span className="ionex-pl-cell-label">Net Profit</span>
+                <span className="ionex-pl-cell-value">${fmt(expandedProject.profit)}</span>
+                <span className="ionex-pl-cell-sub">{expandedProject.margin.toFixed(1)}% margin</span>
+              </div>
+              <span />
+            </div>
+
+            {/* Secondary stats */}
+            <div className="ionex-kpi-mini-grid" style={{ marginBottom: '20px' }}>
               {expandedProject.budget && (
                 <KpiCard label="Budget" value={`$${fmt(expandedProject.budget)}`} accent="var(--text-secondary)" />
               )}
-              <KpiCard label="Revenue"    value={`$${fmt(expandedProject.revenue)}`}     accent="var(--primary-color)" />
-              <KpiCard label="Total Cost" value={`$${fmt(expandedProject.totalCost)}`}   accent="var(--warning-color)" />
-              <KpiCard label="Profit"     value={`$${fmt(expandedProject.profit)}`}      accent={expandedProject.profit >= 0 ? 'var(--success-color)' : 'var(--error-color)'} />
-              <KpiCard label="Margin"     value={`${expandedProject.margin.toFixed(1)}%`} accent={expandedProject.margin >= 20 ? 'var(--success-color)' : expandedProject.margin >= 0 ? 'var(--warning-color)' : 'var(--error-color)'} />
-              <KpiCard label="Hours"      value={expandedProject.totalHours.toFixed(1)}  accent="var(--text-tertiary)" />
+              <KpiCard label="Hours" value={expandedProject.totalHours.toFixed(1)} accent="var(--text-tertiary)" />
+              <KpiCard label="Tickets" value={String(expandedProject.ticketCount)} accent="var(--text-tertiary)" />
+              {expandedProject.budget && (
+                <KpiCard
+                  label="Budget Used"
+                  value={`${Math.min((expandedProject.revenue / expandedProject.budget) * 100, 999).toFixed(0)}%`}
+                  accent={
+                    expandedProject.revenue > expandedProject.budget
+                      ? 'var(--error-color)'
+                      : (expandedProject.revenue / expandedProject.budget) * 100 > 80
+                        ? 'var(--warning-color)'
+                        : 'var(--primary-color)'
+                  }
+                />
+              )}
             </div>
 
             {/* Budget Bar (detail) */}
             {expandedProject.budget && (
-              <div style={{ marginBottom: '24px' }}>
-                <div className="ionex-eyebrow"><span />Budget Usage</div>
+              <div className="ionex-modal-section" style={{ borderTop: 'none', paddingTop: 0 }}>
+                <div className="ionex-modal-section-head">
+                  <span className="ionex-modal-section-title">Budget Usage</span>
+                  <span className="ionex-modal-section-meta">
+                    <strong>${fmt(expandedProject.revenue)}</strong> of ${fmt(expandedProject.budget)}
+                  </span>
+                </div>
                 <BudgetBar
                   pct={Math.min((expandedProject.revenue / expandedProject.budget) * 100, 100)}
                   overBudget={expandedProject.revenue > expandedProject.budget}
@@ -868,105 +912,125 @@ export default function Profitability() {
               </div>
             )}
 
-            {/* Labor Breakdown */}
-            <DetailSection title={`Labor Costs \u2014 $${fmt(expandedProject.laborCost)}`}>
+            {/* Labour Breakdown \u2014 per-employee loaded cost */}
+            <div className="ionex-modal-section">
+              <div className="ionex-modal-section-head">
+                <span className="ionex-modal-section-title">Labour breakdown</span>
+                <span className="ionex-modal-section-meta">
+                  {expandedLaborByEmployee.length} {expandedLaborByEmployee.length === 1 ? 'person' : 'people'} \u00b7 <strong>${fmt(expandedProject.laborCost)}</strong>
+                </span>
+              </div>
               {expandedLaborByEmployee.length === 0 ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No labor recorded</p>
+                <div className="ionex-mini-empty">No labour recorded on this project.</div>
               ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <th style={detailThStyle}>Employee</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Loaded Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expandedLaborByEmployee.map((emp, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={detailTdStyle}>{emp.name}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{emp.hours.toFixed(1)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(emp.cost)}</td>
+                <>
+                  <table className="ionex-compact-table">
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th className="align-right">Hours</th>
+                        <th className="align-right">Loaded Cost</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {expandedLaborByEmployee.map((emp, i) => (
+                        <tr key={i}>
+                          <td>{emp.name}</td>
+                          <td className="align-right">{emp.hours.toFixed(1)}</td>
+                          <td className="align-right">
+                            <span className="ionex-money is-warn">${fmt(emp.cost)}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td>Total</td>
+                        <td className="align-right">{expandedLaborByEmployee.reduce((s, e) => s + e.hours, 0).toFixed(1)}</td>
+                        <td className="align-right">
+                          <span className="ionex-money is-warn">${fmt(expandedProject.laborCost)}</span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                  <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontStyle: 'italic', marginTop: '8px', marginBottom: 0 }}>
+                    Loaded cost includes burden from actual employee data (benefits, CPP, EI, allowances; 5% for contractors).
+                  </p>
+                </>
               )}
-              <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic', marginTop: '8px', marginBottom: 0 }}>
-                * Labor costs include burden from actual employee data (benefits, CPP, EI, allowances; 5% GST for contractors)
-              </p>
-            </DetailSection>
+            </div>
 
-            {/* Billout lines: company/employee cost vs customer billed (markup = billed − cost) */}
-            <div style={{ marginBottom: '24px' }}>
-              <button
-                type="button"
-                onClick={() => setExpenseMarkupExpanded((v) => !v)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: 0,
-                  margin: 0,
-                  border: 'none',
-                  background: 'none',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: 'var(--text-primary)',
-                  paddingBottom: '8px',
-                  borderBottom: '1px solid var(--border-color)',
-                  textAlign: 'left',
-                }}
-              >
-                <span style={{ fontSize: '10px', opacity: 0.8 }}>{expenseMarkupExpanded ? '▼' : '▶'}</span>
-                Expense billout &amp; cost — net markup ${fmt(expandedExpenseMarkupKnownTotal)}
-              </button>
+            {/* Expense billout — billed vs cost */}
+            <div className="ionex-modal-section">
+              <div className="ionex-modal-section-head">
+                <button
+                  type="button"
+                  className="ionex-disclosure"
+                  aria-expanded={expenseMarkupExpanded}
+                  onClick={() => setExpenseMarkupExpanded(v => !v)}
+                >
+                  <span className="ionex-disclosure-chevron">▶</span>
+                  Expense billout
+                  <span className="ionex-disclosure-sub">
+                    net markup{' '}
+                    <span className={expandedExpenseMarkupKnownTotal >= 0 ? 'ionex-money is-good' : 'ionex-money is-bad'}>
+                      ${fmt(expandedExpenseMarkupKnownTotal)}
+                    </span>
+                  </span>
+                </button>
+              </div>
               {expenseMarkupExpanded && (
-                <div style={{ marginTop: '12px' }}>
+                <div>
                   {expandedExpenses.length === 0 ? (
-                    <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
-                      No billout expenses on this project.
-                    </p>
+                    <div className="ionex-mini-empty">No billout expenses on this project.</div>
                   ) : (
                     <>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                          <th style={detailThStyle}>Description</th>
-                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Qty</th>
-                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Rate</th>
-                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Billed Total</th>
-                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Company Cost</th>
-                          <th style={{ ...detailThStyle, textAlign: 'right' }}>Markup</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {expandedExpenses.map((exp: any, i: number) => (
-                          <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                            <td style={detailTdStyle}>
-                              <span style={{ fontWeight: '500' }}>{exp.description}</span>
-                              {exp.type && <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>({exp.type})</span>}
-                            </td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{exp.quantity}</td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.rate)}</td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>${fmt(exp.total)}</td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e91e63' }}>
-                              ${fmt(exp.cost)}
-                            </td>
-                            <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: exp.profit >= 0 ? '#4caf50' : '#e53935' }}>
-                              ${fmt(exp.profit)}
-                            </td>
+                      <table className="ionex-compact-table">
+                        <thead>
+                          <tr>
+                            <th>Description</th>
+                            <th className="align-right">Qty</th>
+                            <th className="align-right">Rate</th>
+                            <th className="align-right">Billed</th>
+                            <th className="align-right">Cost</th>
+                            <th className="align-right">Markup</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '10px', marginBottom: 0 }}>
-                      Company cost uses <strong>Actual Cost ($)</strong> on the ticket line when set; otherwise reimbursable
-                      lines use reimbursement rules, and billed-only equipment/misc uses billed total as a pass-through COGS
-                      estimate (0 markup until vendor cost is entered).
-                    </p>
+                        </thead>
+                        <tbody>
+                          {expandedExpenses.map((exp: any, i: number) => (
+                            <tr key={i}>
+                              <td>
+                                <span style={{ fontWeight: 500 }}>{exp.description}</span>
+                                {exp.type && (
+                                  <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                                    ({exp.type})
+                                  </span>
+                                )}
+                              </td>
+                              <td className="align-right">{exp.quantity}</td>
+                              <td className="align-right">${fmt(exp.rate)}</td>
+                              <td className="align-right">
+                                <span className="ionex-money">${fmt(exp.total)}</span>
+                              </td>
+                              <td className="align-right">
+                                <span className={exp.cost > 0 ? 'ionex-money is-warn' : 'ionex-money is-muted'}>
+                                  ${fmt(exp.cost)}
+                                </span>
+                              </td>
+                              <td className="align-right">
+                                <span className={`ionex-money ${exp.profit >= 0 ? 'is-good' : 'is-bad'}`}>
+                                  ${fmt(exp.profit)}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '10px', marginBottom: 0 }}>
+                        Company cost uses <strong>Actual Cost ($)</strong> on the ticket line when set; otherwise reimbursable
+                        lines use reimbursement rules, and billed-only equipment/misc uses billed total as a pass-through COGS
+                        estimate (0 markup until vendor cost is entered).
+                      </p>
                     </>
                   )}
                 </div>
@@ -974,118 +1038,144 @@ export default function Profitability() {
             </div>
 
             {/* Revenue (Tickets) Breakdown */}
-            <DetailSection title={`Revenue \u2014 ${expandedTickets.length} ticket${expandedTickets.length !== 1 ? 's' : ''}`}>
+            <div className="ionex-modal-section">
+              <div className="ionex-modal-section-head">
+                <span className="ionex-modal-section-title">Revenue by ticket</span>
+                <span className="ionex-modal-section-meta">
+                  <strong>{expandedTickets.length}</strong> {expandedTickets.length === 1 ? 'ticket' : 'tickets'}
+                </span>
+              </div>
               {expandedTickets.length === 0 ? (
-                <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>No tickets recorded</p>
+                <div className="ionex-mini-empty">No tickets recorded for this project.</div>
               ) : (
                 <>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <th style={detailThStyle}>Date</th>
-                      <th style={detailThStyle}>Ticket</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Hours</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Revenue</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Payroll Cost</th>
-                      <th style={{ ...detailThStyle, textAlign: 'right' }}>Net Profit</th>
-                      <th style={{ ...detailThStyle, textAlign: 'center' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expandedTickets.map((t: any) => {
-                      const rev = Number(t.total_amount) || 0;
-                      const emp = empByUserId.get(t.user_id);
-                      const empName = emp?.user ? [emp.user.first_name, emp.user.last_name].filter(Boolean).join(' ') : null;
-                      const isDraft = t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected';
-                      const isInternal = rev === 0 && (t.payrollCost || 0) > 0 && !isDraft;
-                      const hasTicketNumber = !!t.ticket_number;
-                      const ticketDisplay = !hasTicketNumber
-                        ? 'Pending Approval'
-                        : (isInternal && empName ? `${empName} - internal` : t.ticket_number);
-                      return (
-                      <tr key={t.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: isDraft ? 0.7 : 1 }}>
-                        <td style={detailTdStyle}>{t.date}</td>
-                        <td style={detailTdStyle}>
-                          <div>
-                            <span style={{ fontFamily: isInternal && hasTicketNumber ? 'inherit' : 'monospace', color: hasTicketNumber ? 'var(--text-secondary)' : '#ff9800' }}>
-                              {ticketDisplay}
-                            </span>
-                            {empName && !isInternal && (
-                              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>{empName}</div>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{Number(t.total_hours || 0).toFixed(1)}</td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace' }}>
-                          {isDraft ? (
-                            <span style={{ color: '#ff9800', fontStyle: 'italic' }} title="Draft — not included in totals">
-                              ${fmt(rev)} *
-                            </span>
-                          ) : (
-                            `$${fmt(rev)}`
-                          )}
-                        </td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: isDraft ? '#ff9800' : 'var(--text-secondary)' }}>
-                          {isDraft ? (
-                            <span style={{ fontStyle: 'italic' }} title="Draft — not included in totals">${fmt(t.payrollCost || 0)} *</span>
-                          ) : (
-                            `$${fmt(t.payrollCost || 0)}`
-                          )}
-                        </td>
-                        <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: isDraft ? '#ff9800' : ((t.profit || 0) >= 0 ? '#4caf50' : '#e53935') }}>
-                          {isDraft ? (
-                            <span style={{ fontStyle: 'italic' }} title="Draft — not included in totals">${fmt(t.profit || 0)} *</span>
-                          ) : (
-                            `$${fmt(t.profit || 0)}`
-                          )}
-                        </td>
-                        <td style={{ ...detailTdStyle, textAlign: 'center' }}>
-                          {!hasTicketNumber && (t.workflow_status === 'submitted' || t.workflow_status === 'draft') ? (
-                            <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600', backgroundColor: 'rgba(255,152,0,0.12)', color: '#ff9800', textTransform: 'capitalize' }}>
-                              Pending Approval
-                            </span>
-                          ) : (
-                            <StatusBadge status={t.workflow_status} />
-                          )}
-                        </td>
+                  <table className="ionex-compact-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Ticket</th>
+                        <th className="align-right">Hours</th>
+                        <th className="align-right">Revenue</th>
+                        <th className="align-right">Payroll Cost</th>
+                        <th className="align-right">Net Profit</th>
+                        <th className="align-center">Status</th>
                       </tr>
-                    ); })}
-                    {(() => {
-                      const ticketHours = expandedTickets.reduce((sum: number, t: any) => sum + (Number(t.total_hours) || 0), 0);
-                      const ticketCost = expandedTickets.reduce((sum: number, t: any) => sum + (t.payrollCost || 0), 0);
-                      const totalProjectHours = expandedProject?.totalHours || 0;
-                      const totalProjectCost = expandedProject?.laborCost || 0;
-                      const unbilledHours = totalProjectHours - ticketHours;
-                      const unbilledCost = totalProjectCost - ticketCost;
-                      if (unbilledHours <= 0.05) return null;
-                      return (
-                        <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(229, 57, 53, 0.05)' }}>
-                          <td style={detailTdStyle}></td>
-                          <td style={detailTdStyle}>
-                            <span style={{ color: '#e53935', fontStyle: 'italic', fontSize: '12px' }}>Unbilled labor</span>
-                          </td>
-                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>{unbilledHours.toFixed(1)}</td>
-                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-tertiary)' }}>—</td>
-                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>${fmt(unbilledCost)}</td>
-                          <td style={{ ...detailTdStyle, textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>
-                            -${fmt(unbilledCost)}
-                          </td>
-                          <td style={{ ...detailTdStyle, textAlign: 'center' }}>
-                            <span style={{ fontSize: '11px', color: '#e53935', fontStyle: 'italic' }}>No ticket</span>
-                          </td>
-                        </tr>
-                      );
-                    })()}
-                  </tbody>
-                </table>
-                {expandedTickets.some((t: any) => t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected') && (
-                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#ff9800', fontStyle: 'italic' }}>
-                    * Draft/submitted/rejected amounts are shown for reference but not included in revenue or profit totals
-                  </p>
-                )}
+                    </thead>
+                    <tbody>
+                      {expandedTickets.map((t: any) => {
+                        const rev = Number(t.total_amount) || 0;
+                        const emp = empByUserId.get(t.user_id);
+                        const empName = emp?.user ? [emp.user.first_name, emp.user.last_name].filter(Boolean).join(' ') : null;
+                        const isDraft = t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected';
+                        const isInternal = rev === 0 && (t.payrollCost || 0) > 0 && !isDraft;
+                        const hasTicketNumber = !!t.ticket_number;
+                        const ticketDisplay = !hasTicketNumber
+                          ? 'Pending Approval'
+                          : (isInternal && empName ? `${empName} - internal` : t.ticket_number);
+                        const draftTitle = 'Draft – not included in totals';
+                        return (
+                          <tr key={t.id} className={isDraft ? 'is-subtle' : undefined} style={isDraft ? { opacity: 0.78 } : undefined}>
+                            <td style={{ whiteSpace: 'nowrap' }}>{t.date}</td>
+                            <td>
+                              <div>
+                                <span
+                                  style={{
+                                    fontFamily: isInternal && hasTicketNumber ? 'inherit' : 'ui-monospace, monospace',
+                                    color: hasTicketNumber ? 'var(--text-primary)' : 'var(--warning-color)',
+                                    fontWeight: hasTicketNumber ? 500 : 600,
+                                  }}
+                                >
+                                  {ticketDisplay}
+                                </span>
+                                {empName && !isInternal && (
+                                  <div className="row-secondary">{empName}</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="align-right">{Number(t.total_hours || 0).toFixed(1)}</td>
+                            <td className="align-right">
+                              <span className={isDraft ? 'ionex-money is-warn' : 'ionex-money'} title={isDraft ? draftTitle : undefined} style={isDraft ? { fontStyle: 'italic' } : undefined}>
+                                ${fmt(rev)}{isDraft ? ' *' : ''}
+                              </span>
+                            </td>
+                            <td className="align-right">
+                              <span className={isDraft ? 'ionex-money is-warn' : 'ionex-money is-muted'} title={isDraft ? draftTitle : undefined} style={isDraft ? { fontStyle: 'italic' } : undefined}>
+                                ${fmt(t.payrollCost || 0)}{isDraft ? ' *' : ''}
+                              </span>
+                            </td>
+                            <td className="align-right">
+                              <span
+                                className={isDraft ? 'ionex-money is-warn' : (t.profit || 0) >= 0 ? 'ionex-money is-good' : 'ionex-money is-bad'}
+                                title={isDraft ? draftTitle : undefined}
+                                style={isDraft ? { fontStyle: 'italic' } : undefined}
+                              >
+                                ${fmt(t.profit || 0)}{isDraft ? ' *' : ''}
+                              </span>
+                            </td>
+                            <td className="align-center">
+                              {!hasTicketNumber && (t.workflow_status === 'submitted' || t.workflow_status === 'draft') ? (
+                                <span
+                                  style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '999px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    color: 'var(--warning-color)',
+                                    backgroundColor: 'color-mix(in srgb, var(--warning-color) 12%, transparent)',
+                                    border: '1px solid color-mix(in srgb, var(--warning-color) 30%, transparent)',
+                                  }}
+                                >
+                                  Pending
+                                </span>
+                              ) : (
+                                <StatusBadge status={t.workflow_status} />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {(() => {
+                        const ticketHours = expandedTickets.reduce((sum: number, t: any) => sum + (Number(t.total_hours) || 0), 0);
+                        const ticketCost = expandedTickets.reduce((sum: number, t: any) => sum + (t.payrollCost || 0), 0);
+                        const totalProjectHours = expandedProject?.totalHours || 0;
+                        const totalProjectCost = expandedProject?.laborCost || 0;
+                        const unbilledHours = totalProjectHours - ticketHours;
+                        const unbilledCost = totalProjectCost - ticketCost;
+                        if (unbilledHours <= 0.05) return null;
+                        return (
+                          <tr className="is-warn">
+                            <td />
+                            <td>
+                              <span style={{ color: 'var(--error-color)', fontStyle: 'italic', fontSize: '12px', fontWeight: 600 }}>
+                                Unbilled labour
+                              </span>
+                            </td>
+                            <td className="align-right">
+                              <span className="ionex-money is-bad">{unbilledHours.toFixed(1)}</span>
+                            </td>
+                            <td className="align-right" style={{ color: 'var(--text-tertiary)' }}>—</td>
+                            <td className="align-right">
+                              <span className="ionex-money is-bad">${fmt(unbilledCost)}</span>
+                            </td>
+                            <td className="align-right">
+                              <span className="ionex-money is-bad">-${fmt(unbilledCost)}</span>
+                            </td>
+                            <td className="align-center">
+                              <span style={{ fontSize: '11px', color: 'var(--error-color)', fontStyle: 'italic' }}>No ticket</span>
+                            </td>
+                          </tr>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                  {expandedTickets.some((t: any) => t.workflow_status === 'draft' || t.workflow_status === 'submitted' || t.workflow_status === 'rejected') && (
+                    <p style={{ margin: '8px 0 0', fontSize: '11px', color: 'var(--warning-color)', fontStyle: 'italic' }}>
+                      * Draft / submitted / rejected amounts are shown for reference but not included in totals.
+                    </p>
+                  )}
                 </>
               )}
-            </DetailSection>
+            </div>
           </div>
         </div>
       )}
