@@ -32,8 +32,10 @@ interface TimeEntry {
   };
   project?: {
     id: string;
+    name?: string;
     customer?: {
       id: string;
+      name?: string;
     };
   };
 }
@@ -189,6 +191,173 @@ const getPresetRange = (preset: string): { start: string; end: string } | null =
 
 const PRESET_KEYS = ['currentPayPeriod', 'previousPayPeriod', 'thisWeek', 'lastWeek', 'last2Weeks', 'thisMonth', 'lastMonth'] as const;
 
+/** Daily-hours threshold above which a day is flagged as potential overtime (BC standard: 8h/day). */
+const OVERTIME_DAILY_THRESHOLD = 8;
+/** Weekly-hours threshold above which the week is flagged (BC standard: 40h/week). */
+const OVERTIME_WEEKLY_THRESHOLD = 40;
+
+function EmployeeProjectsAndDailyBreakdown({
+  employeeName,
+  entries,
+  isContractor,
+}: {
+  employeeName: string;
+  entries: TimeEntry[];
+  isContractor: boolean;
+}) {
+  // Group by project
+  const byProject = new Map<string, { name: string; customer: string; hours: number; byRateType: Map<string, number> }>();
+  // Group by date for daily overtime check
+  const byDate = new Map<string, { total: number; byRateType: Map<string, number> }>();
+  // Group by ISO week for weekly overtime check
+  const byWeek = new Map<string, { total: number; days: Set<string> }>();
+
+  const isoWeekKey = (dateStr: string): string => {
+    const d = new Date(dateStr + 'T12:00:00');
+    const day = d.getDay() || 7; // Mon=1..Sun=7
+    d.setDate(d.getDate() - day + 1); // Monday of that week
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+
+  for (const e of entries) {
+    const hrs = Number(e.hours) || 0;
+    const projKey = e.project_id || '__none__';
+    const projName = e.project?.name || (e.project_id ? 'Unknown Project' : 'Unassigned');
+    const custName = e.project?.customer?.name || '';
+    if (!byProject.has(projKey)) {
+      byProject.set(projKey, { name: projName, customer: custName, hours: 0, byRateType: new Map() });
+    }
+    const p = byProject.get(projKey)!;
+    p.hours += hrs;
+    const rt = e.rate_type || 'Shop Time';
+    p.byRateType.set(rt, (p.byRateType.get(rt) || 0) + hrs);
+
+    if (!byDate.has(e.date)) byDate.set(e.date, { total: 0, byRateType: new Map() });
+    const d = byDate.get(e.date)!;
+    d.total += hrs;
+    d.byRateType.set(rt, (d.byRateType.get(rt) || 0) + hrs);
+
+    const wk = isoWeekKey(e.date);
+    if (!byWeek.has(wk)) byWeek.set(wk, { total: 0, days: new Set() });
+    const w = byWeek.get(wk)!;
+    w.total += hrs;
+    w.days.add(e.date);
+  }
+
+  const sortedProjects = Array.from(byProject.entries()).sort((a, b) => b[1].hours - a[1].hours);
+  const sortedDates = Array.from(byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  const fmtDate = (s: string) => {
+    try {
+      return new Date(s + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    } catch { return s; }
+  };
+
+  // Per-rate-type totals for daily row "OT?" check — Shop OT and Field OT counted as paid OT already.
+  const isPaidOvertimeRateType = (rt: string) => rt === 'Shop Overtime' || rt === 'Field Overtime';
+
+  return (
+    <div style={{ padding: '14px 16px', borderRadius: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
+      <div style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)', marginBottom: '12px' }}>
+        Project Allocation & Daily Hours — {employeeName}
+        {isContractor && <span style={{ fontSize: '11px', marginLeft: '8px', color: '#f59e0b' }}>(Contractor)</span>}
+      </div>
+
+      {/* Projects */}
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
+          Projects ({sortedProjects.length})
+        </div>
+        {sortedProjects.length === 0 ? (
+          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No project allocations.</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Project</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Customer</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Hours by rate type</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedProjects.map(([key, p]) => (
+                <tr key={key} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '6px 8px' }}>{p.name}</td>
+                  <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>{p.customer || '—'}</td>
+                  <td style={{ padding: '6px 8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {Array.from(p.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
+                  </td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>{p.hours.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Daily hours */}
+      <div>
+        <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
+          Daily Hours — flagged when day &gt; {OVERTIME_DAILY_THRESHOLD}h or week &gt; {OVERTIME_WEEKLY_THRESHOLD}h
+        </div>
+        {sortedDates.length === 0 ? (
+          <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No daily entries.</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Date</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>By rate type</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Total</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>OT?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedDates.map(([date, d]) => {
+                const wk = isoWeekKey(date);
+                const weekTotal = byWeek.get(wk)?.total || 0;
+                const paidOt = Array.from(d.byRateType.entries())
+                  .filter(([rt]) => isPaidOvertimeRateType(rt))
+                  .reduce((s, [, h]) => s + h, 0);
+                const dayOver = d.total > OVERTIME_DAILY_THRESHOLD;
+                const weekOver = weekTotal > OVERTIME_WEEKLY_THRESHOLD;
+                const flagged = dayOver || weekOver;
+                const otAlreadyPaid = paidOt > 0;
+                const rowBg = flagged && !otAlreadyPaid ? 'rgba(245,158,11,0.10)' : 'transparent';
+                return (
+                  <tr key={date} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: rowBg }}>
+                    <td style={{ padding: '6px 8px' }}>{fmtDate(date)}</td>
+                    <td style={{ padding: '6px 8px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      {Array.from(d.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
+                    </td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: dayOver ? '700' : '500', color: dayOver ? '#ff9800' : 'var(--text-primary)' }}>
+                      {d.total.toFixed(2)}
+                    </td>
+                    <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '11px' }}>
+                      {!flagged ? (
+                        <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                      ) : otAlreadyPaid ? (
+                        <span style={{ color: '#4caf50', fontWeight: '600' }} title={`Paid OT: ${paidOt.toFixed(2)}h`}>Paid</span>
+                      ) : (
+                        <span style={{ color: '#ff9800', fontWeight: '700' }} title={`Day ${d.total.toFixed(2)}h${weekOver ? `, Week ${weekTotal.toFixed(2)}h` : ''}`}>
+                          Owed?
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Payroll() {
   const { user, isAdmin } = useAuth();
   const { isDemoMode } = useDemoMode();
@@ -222,7 +391,8 @@ export default function Payroll() {
           user:users!time_entries_user_id_fkey(id, first_name, last_name, email),
           project:projects!time_entries_project_id_fkey(
             id,
-            customer:customers!projects_customer_id_fkey(id)
+            name,
+            customer:customers!projects_customer_id_fkey(id, name)
           )
         `)
         .gte('date', startDate)
@@ -421,8 +591,9 @@ export default function Payroll() {
 
   const isLoading = isLoadingTimeEntries || (isAdmin && isLoadingEmployees);
 
-  /** When true, hide contractors from the employee list (and grand totals). */
-  const [excludeContractors, setExcludeContractors] = useState<boolean>(false);
+  /** When true, hide contractors from the employee list (and grand totals). Default on — admins
+   * usually run payroll for W2 employees only, contractors are paid separately. */
+  const [excludeContractors, setExcludeContractors] = useState<boolean>(true);
   /** 'hours' shows quarter-hour decimals; 'dollars' multiplies each cell by its rate. */
   const [displayMode, setDisplayMode] = useState<'hours' | 'dollars'>('hours');
   const [calendarOpen, setCalendarOpen] = useState<boolean>(false);
@@ -730,7 +901,7 @@ export default function Payroll() {
           ticketExpenseHasPayrollEligibleLinkedReceipt(exp, payrollLinkedApprovedReceipts as any[]))
       ) {
         reimbRate = 1.00;
-        category = 'Other Expense';
+        category = 'Expense Billed to Customer';
       } else {
         continue;
       }
@@ -780,13 +951,13 @@ export default function Payroll() {
   }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink]);
 
   const grandTotalReimbursements = useMemo(() => {
-    const employeeIds = new Set(employeeHours.map((e) => e.userId));
+    const employeeIds = new Set(displayedEmployeeHours.map((e) => e.userId));
     let total = 0;
     reimbursementsByUser.forEach((v, userId) => {
       if (employeeIds.has(userId)) total += v.total;
     });
     return total;
-  }, [reimbursementsByUser, employeeHours]);
+  }, [reimbursementsByUser, displayedEmployeeHours]);
 
   // --- Payroll Breakdown (base pay, benefits, GST, allowances, total payout) ---
   interface PayrollBreakdown {
@@ -960,14 +1131,16 @@ export default function Payroll() {
   const EMPLOYER_EI_MULTIPLIER = 1.4;
   const totalPayrollCost = useMemo(() => {
     if (!isAdmin) return 0;
+    const displayedIds = new Set(displayedEmployeeHours.map((e) => e.userId));
     let total = 0;
-    payrollBreakdownByUser.forEach((b) => {
+    payrollBreakdownByUser.forEach((b, uid) => {
+      if (!displayedIds.has(uid)) return;
       const employerCpp = b.cpp;
       const employerEi = b.ei * EMPLOYER_EI_MULTIPLIER;
       total += b.grossPay + employerCpp + employerEi + b.reimbursements;
     });
     return total;
-  }, [isAdmin, payrollBreakdownByUser]);
+  }, [isAdmin, payrollBreakdownByUser, displayedEmployeeHours]);
   grandTotalsCosts.totalCost = totalPayrollCost;
 
   // Which preset (if any) matches the current date range — used to highlight the active button
@@ -1033,6 +1206,146 @@ export default function Payroll() {
     setEndDate(end.toISOString().split('T')[0]);
   };
   
+  // --- CSV export for QuickBooks ---
+  // Builds a friendly multi-section sheet: project allocations per employee, then a payroll summary
+  // (gross, deductions, net, reimbursements, total payout, allowances) ready for QuickBooks input.
+  const handleExportCsv = () => {
+    const empByUserId = new Map<string, any>();
+    if (allEmployees) {
+      for (const e of allEmployees as any[]) {
+        if (e.user_id) empByUserId.set(e.user_id, e);
+      }
+    }
+
+    const csvEscape = (v: any): string => {
+      const s = v === null || v === undefined ? '' : String(v);
+      if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const rows: string[][] = [];
+    const pushRow = (cells: (string | number)[]) => rows.push(cells.map((c) => typeof c === 'number' ? c.toFixed(2) : String(c)));
+    const blank = () => rows.push([]);
+
+    pushRow(['Payroll Export']);
+    pushRow(['Period Start', startDate, 'Period End', endDate, 'Payday', paydayLabel]);
+    pushRow(['Excludes contractors?', excludeContractors ? 'Yes' : 'No']);
+    blank();
+
+    // Section 1: project allocations (one row per employee × project × rate type)
+    pushRow(['Project Allocations']);
+    pushRow(['Employee', 'Email', 'Employment Type', 'Department', 'Project', 'Customer', 'Rate Type', 'Hours', 'Rate ($/hr)', 'Amount']);
+
+    for (const emp of displayedEmployeeHours) {
+      const employee = empByUserId.get(emp.userId);
+      const empType = employee?.employment_type || 'Employee';
+      const dept = employee?.department || '';
+      const shopRate = Number(employee?.shop_pay_rate) || 0;
+      const shopOtRate = Number(employee?.shop_ot_pay_rate) || shopRate * 1.5;
+      const fieldRate = Number(employee?.field_pay_rate) || shopRate;
+      const fieldOtRate = Number(employee?.field_ot_pay_rate) || fieldRate * 1.5;
+      const isPanelShop = employee?.department === 'Panel Shop';
+      const ftRate = isPanelShop ? (fieldRate || shopRate) : fieldRate;
+      const foRate = isPanelShop ? (fieldOtRate || shopOtRate) : fieldOtRate;
+      const rateFor = (rt: string, billable: boolean): number => {
+        if (!billable) return shopRate;
+        switch (rt) {
+          case 'Shop Time': return shopRate;
+          case 'Shop Overtime': return shopOtRate;
+          case 'Travel Time': return shopRate;
+          case 'Field Time': return ftRate;
+          case 'Field Overtime': return foRate;
+          default: return shopRate;
+        }
+      };
+
+      // Aggregate (project, rate type, billable) → hours
+      const agg = new Map<string, { projName: string; custName: string; rateType: string; billable: boolean; hours: number }>();
+      for (const entry of emp.entries) {
+        const projName = entry.project?.name || (entry.project_id ? 'Unknown Project' : 'Unassigned');
+        const custName = entry.project?.customer?.name || '';
+        const rt = entry.rate_type || 'Shop Time';
+        const billable = !!entry.billable;
+        const key = `${projName}||${custName}||${rt}||${billable ? 'B' : 'I'}`;
+        if (!agg.has(key)) agg.set(key, { projName, custName, rateType: rt, billable, hours: 0 });
+        agg.get(key)!.hours += Number(entry.hours) || 0;
+      }
+
+      if (agg.size === 0) {
+        // employee with no entries — emit a zero row so they still show up
+        pushRow([emp.name, emp.email, empType, dept, '', '', '', 0, 0, 0]);
+        continue;
+      }
+
+      for (const a of agg.values()) {
+        const rate = rateFor(a.rateType, a.billable);
+        const rtLabel = a.billable ? a.rateType : `Internal (${a.rateType})`;
+        pushRow([emp.name, emp.email, empType, dept, a.projName, a.custName, rtLabel, a.hours, rate, a.hours * rate]);
+      }
+    }
+
+    blank();
+
+    // Section 2: payroll summary per employee (QuickBooks-style input columns)
+    pushRow(['Payroll Summary (per employee)']);
+    pushRow([
+      'Employee', 'Email', 'Employment Type',
+      'Internal Hrs', 'Shop Hrs', 'Shop OT Hrs', 'Travel Hrs', 'Field Hrs', 'Field OT Hrs', 'Total Hrs',
+      'Base Pay',
+      'Sick %', 'Sick Pay',
+      'Stat %', 'Stat Holiday Pay',
+      'Vacation %', 'Vacation Pay',
+      'Cell Phone Allowance', 'Health Allowance',
+      'GST (contractor)',
+      'Gross Pay', 'EI', 'CPP', 'Income Tax (est.)', 'Net Pay',
+      'Reimbursements', 'Total Payout',
+    ]);
+
+    for (const emp of displayedEmployeeHours) {
+      const employee = empByUserId.get(emp.userId);
+      const b = payrollBreakdownByUser.get(emp.userId);
+      if (!b) continue;
+      pushRow([
+        emp.name, emp.email, employee?.employment_type || 'Employee',
+        emp.internalHours, emp.shopTime, emp.shopOvertime, emp.travelTime, emp.fieldTime, emp.fieldOvertime, emp.totalHours,
+        b.basePay,
+        b.sickPct, b.sickPay,
+        b.statPct, b.statHolidayPay,
+        b.vacationPct, b.vacationPay,
+        b.cellPhoneAllowance, b.healthAllowance,
+        b.gst,
+        b.grossPay, b.ei, b.cpp, b.incomeTax, b.netPay,
+        b.reimbursements, b.totalPayout,
+      ]);
+    }
+
+    blank();
+
+    // Section 3: reimbursement detail (so we can copy lines straight into QB)
+    pushRow(['Reimbursement Detail']);
+    pushRow(['Employee', 'Email', 'Category', 'Description', 'Ticket', 'Qty', 'Rate', 'Reimb %', 'Amount']);
+    for (const emp of displayedEmployeeHours) {
+      const reimb = reimbursementsByUser.get(emp.userId);
+      if (!reimb || reimb.lines.length === 0) continue;
+      for (const line of reimb.lines) {
+        pushRow([
+          emp.name, emp.email, line.category, line.description, line.ticketNumber || '',
+          line.quantity, line.rate, line.reimbRate * 100, line.amount,
+        ]);
+      }
+    }
+
+    const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payroll_${startDate}_to_${endDate}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // Payday for selected range (if it's a 14-day period) or current pay period's payday
   const paydayLabel = getPaydayForRange(startDate, endDate)
     ?? (() => {
@@ -1176,6 +1489,18 @@ export default function Payroll() {
               />
               Exclude contractors
             </label>
+
+            {/* Export to QuickBooks-friendly CSV */}
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="button button-secondary"
+              style={{ padding: '8px 14px', fontSize: '12px', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="Download a CSV with project allocations, rates, and payroll inputs for QuickBooks"
+              disabled={displayedEmployeeHours.length === 0}
+            >
+              <span aria-hidden>⬇</span> Export CSV
+            </button>
           </div>
         )}
       </div>
@@ -1361,104 +1686,14 @@ export default function Payroll() {
                         : emp.totalHours.toFixed(2)}
                     </td>
                   </tr>
-                  {isExpanded && isAdmin && breakdown && (
+                  {isExpanded && isAdmin && (
                     <tr>
                       <td colSpan={9} style={{ padding: '0 16px 16px 42px', backgroundColor: 'var(--bg-secondary)' }}>
-                        <div style={{ padding: '14px 16px', borderRadius: '6px', backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}>
-                          <div style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)', marginBottom: '10px' }}>
-                            Payroll Breakdown — {emp.name}
-                            {breakdown.isContractor && <span style={{ fontSize: '11px', marginLeft: '8px', color: '#f59e0b' }}>(Contractor)</span>}
-                          </div>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                            <tbody>
-                              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Base Pay (Hours)</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>${breakdown.basePay.toFixed(2)}</td>
-                              </tr>
-                              {!breakdown.isContractor && (
-                                <>
-                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Sick Pay ({breakdown.sickPct}%)</td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.sickPay.toFixed(2)}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Stat Holiday Pay ({breakdown.statPct}%)</td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.statHolidayPay.toFixed(2)}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Vacation Pay ({breakdown.vacationPct}%)</td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.vacationPay.toFixed(2)}</td>
-                                  </tr>
-                                  {breakdown.cellPhoneAllowance > 0 && (
-                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Cell Phone Allowance</td>
-                                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.cellPhoneAllowance.toFixed(2)}</td>
-                                    </tr>
-                                  )}
-                                  {breakdown.healthAllowance > 0 && (
-                                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>Health Allowance</td>
-                                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.healthAllowance.toFixed(2)}</td>
-                                    </tr>
-                                  )}
-                                </>
-                              )}
-                              {breakdown.isContractor && (
-                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                  <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>GST (5%)</td>
-                                  <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>${breakdown.gst.toFixed(2)}</td>
-                                </tr>
-                              )}
-                              <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                                <td style={{ padding: '6px 8px', fontWeight: '600', color: 'var(--text-primary)' }}>Gross Pay</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>${breakdown.grossPay.toFixed(2)}</td>
-                              </tr>
-                              {!breakdown.isContractor && (
-                                <>
-                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                                      EI (1.66% est.){breakdown.eiMaxed && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#ff9800', fontWeight: '600' }}>MAXED</span>}
-                                    </td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>-${breakdown.ei.toFixed(2)}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                                      CPP (5.95% est.){breakdown.cppMaxed && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#ff9800', fontWeight: '600' }}>MAXED</span>}
-                                    </td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>-${breakdown.cpp.toFixed(2)}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                                      Income Tax (15% est.)
-                                    </td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#e53935' }}>-${breakdown.incomeTax.toFixed(2)}</td>
-                                  </tr>
-                                  <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                                    <td style={{ padding: '6px 8px', fontWeight: '600', color: 'var(--text-primary)' }}>Net Pay</td>
-                                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700' }}>${breakdown.netPay.toFixed(2)}</td>
-                                  </tr>
-                                </>
-                              )}
-                              {breakdown.reimbursements > 0 && (
-                                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                  <td style={{ padding: '6px 8px', color: '#00897b' }}>Reimbursements</td>
-                                  <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#00897b' }}>${breakdown.reimbursements.toFixed(2)}</td>
-                                </tr>
-                              )}
-                              <tr style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                                <td style={{ padding: '8px', fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>Total Payout</td>
-                                <td style={{ padding: '8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: '700', fontSize: '14px', color: 'var(--text-primary)' }}>${breakdown.totalPayout.toFixed(2)}</td>
-                              </tr>
-                              {!breakdown.isContractor && (
-                                <tr>
-                                  <td colSpan={2} style={{ padding: '6px 8px', fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'right' }}>
-                                    * EI, CPP &amp; Income Tax are estimates only
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
+                        <EmployeeProjectsAndDailyBreakdown
+                          employeeName={emp.name}
+                          entries={emp.entries}
+                          isContractor={!!breakdown?.isContractor}
+                        />
                       </td>
                     </tr>
                   )}
