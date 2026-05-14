@@ -1609,7 +1609,19 @@ function uninvoicedGroupPeriodStillAccumulating(
   return isInvoicePeriodStillAccumulating(pk, periodGrouping);
 }
 
-type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[]; expensesCombined?: boolean; statusId?: string; statusChangedAt?: string; labourNotes?: Record<string, string> };
+type BatchRejection = {
+  note: string;
+  rejected_at: string;
+  rejected_by?: string | null;
+  /** Counts how many times this batch has been rejected and resubmitted. First rejection = 1. */
+  attempt: number;
+  /** True until next resubmit clears it. Lets us flag the card in the Submitted tab. */
+  active: boolean;
+};
+type FrozenGroupSnapshot = { key: InvoiceGroupKeyWithPeriod; ticketIds: string[]; expensesCombined?: boolean; statusId?: string; statusChangedAt?: string; labourNotes?: Record<string, string>; rejection?: BatchRejection };
+const NEEDS_ADJUSTMENT_STATUS_ID = 'needs_adjustment';
+const NEEDS_ADJUSTMENT_STATUS_LABEL = 'Needs adjustment';
+const NEEDS_ADJUSTMENT_STATUS_COLOR = '#ef4444';
 
 /** Persist service_tickets.id (UUID) in marks so DB locks and Service Tickets match. Falls back to composite t.id if no DB row yet. */
 function snapshotTicketIdsForInvoicedMark(
@@ -1644,6 +1656,7 @@ function mergeMarkSnapshotForGroup(
     expensesCombined: expensesCombined ?? existing?.expensesCombined,
     statusId: statusId ?? existing?.statusId,
     labourNotes: pendingLabourNotes ?? existing?.labourNotes,
+    rejection: existing?.rejection,
   };
 }
 
@@ -2283,6 +2296,29 @@ export default function Invoices() {
     enabled: loadInvoicedBatchMarks,
   });
 
+  /** When invoiced batches load, auto-collapse any whose status is a terminal/forwarded state
+   *  (submitted-for-approval, approved, submitted-to-portal, sent-to-customer). Only acts the first
+   *  time each batch is observed in this session — once seen, user-driven expand sticks across refetches. */
+  useEffect(() => {
+    const AUTO_COLLAPSE_STATUSES = new Set(['submitted_approval', 'approved', 'submitted_portal', 'sent']);
+    const toAdd: string[] = [];
+    for (const row of invoicedMarkRows) {
+      const id = row.group_id;
+      if (!id || autoMinimizedSeenRef.current.has(id)) continue;
+      autoMinimizedSeenRef.current.add(id);
+      const snap = row.key_snapshot as { statusId?: unknown } | undefined;
+      const status = typeof snap?.statusId === 'string' ? snap.statusId : null;
+      if (status && AUTO_COLLAPSE_STATUSES.has(status)) toAdd.push(id);
+    }
+    if (toAdd.length > 0) {
+      setMinimizedBatchIds((prev) => {
+        const next = new Set(prev);
+        for (const id of toAdd) next.add(id);
+        return next;
+      });
+    }
+  }, [invoicedMarkRows]);
+
   /** All ticket IDs (service_tickets.id / recordId) that belong to ANY invoiced batch mark in DB.
    *  Used to permanently exclude invoiced tickets from re-grouping so grouping changes never affect them. */
   const allInvoicedTicketIds = useMemo(() => {
@@ -2646,6 +2682,9 @@ export default function Invoices() {
       return next;
     });
   }, []);
+  /** Tracks which invoiced batches have already been considered for auto-minimize on this session,
+   *  so user-driven expand sticks across React Query refetches. Cleared on full page reload. */
+  const autoMinimizedSeenRef = useRef<Set<string>>(new Set());
   const [combinedExpenseGroupIds, setCombinedExpenseGroupIds] = useState<Set<string>>(new Set());
   const [splitRateGroupIds, setSplitRateGroupIds] = useState<Set<string>>(new Set());
   const [splitDayGroupIds, setSplitDayGroupIds] = useState<Set<string>>(new Set());
@@ -2694,6 +2733,18 @@ export default function Invoices() {
     scope: 'submitted' | 'approved';
     workflowId?: string;
   } | null>(null);
+  /** Open the rejection-note modal for a submitted-for-approval batch. */
+  const [needsAdjustmentModal, setNeedsAdjustmentModal] = useState<{
+    persistId: string;
+    customerName: string;
+    projectLine: string;
+    periodLine: string;
+    ticketCount: number;
+    workflowId?: string;
+    /** Current attempt count (0 if never rejected before). The mutation bumps to attempt+1. */
+    priorAttempt: number;
+  } | null>(null);
+  const [needsAdjustmentNote, setNeedsAdjustmentNote] = useState('');
   /** Bulk undo confirmation for an entire grouped section (multiple approver batches at once). */
   const [undoBulkApprovalConfirm, setUndoBulkApprovalConfirm] = useState<{
     sectionKey: string;
@@ -3227,9 +3278,11 @@ export default function Invoices() {
   });
 
   const updateBatchStatusMutation = useMutation({
-    mutationFn: async ({ groupId, statusId, prevStatusId, statusLabel, customerName, projectNumber, workflowId }: {
+    mutationFn: async ({ groupId, statusId, prevStatusId, statusLabel, customerName, projectNumber, workflowId, snapshotPatch }: {
       groupId: string; statusId: string; prevStatusId?: string;
       statusLabel: string; customerName?: string; projectNumber?: string; workflowId?: string;
+      /** Optional extra snapshot fields to merge alongside statusId (e.g. `rejection` block). */
+      snapshotPatch?: Partial<FrozenGroupSnapshot>;
     }) => {
       const row = invoicedMarkRows.find((r) => r.group_id === groupId);
       if (!row) {
@@ -3237,7 +3290,7 @@ export default function Invoices() {
       }
       const snap = (row.key_snapshot ?? {}) as FrozenGroupSnapshot;
       const now = new Date().toISOString();
-      const updated = { ...snap, statusId, statusChangedAt: now };
+      const updated = { ...snap, ...(snapshotPatch ?? {}), statusId, statusChangedAt: now };
       await invoicedBatchMarksService.upsert(groupId, updated as { key: unknown; ticketIds: string[] });
       if (prevStatusId) {
         await invoiceStatusHistoryService.closeEntry(groupId, prevStatusId).catch((e) => {
@@ -3256,7 +3309,7 @@ export default function Invoices() {
         console.warn('logEntry failed (non-blocking):', e);
       });
     },
-    onMutate: async ({ groupId, statusId }) => {
+    onMutate: async ({ groupId, statusId, snapshotPatch }) => {
       await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
       const previous = queryClient.getQueryData<InvoicedBatchMarkRow[]>(['invoicedBatchMarks']);
       const now = new Date().toISOString();
@@ -3264,7 +3317,7 @@ export default function Invoices() {
         (prev ?? []).map((r) => {
           if (r.group_id !== groupId) return r;
           const snap = (r.key_snapshot ?? {}) as FrozenGroupSnapshot;
-          const updated: FrozenGroupSnapshot = { ...snap, statusId, statusChangedAt: now };
+          const updated: FrozenGroupSnapshot = { ...snap, ...(snapshotPatch ?? {}), statusId, statusChangedAt: now };
           return { ...r, key_snapshot: updated as unknown as InvoicedBatchMarkRow['key_snapshot'] };
         })
       );
@@ -3592,6 +3645,94 @@ export default function Invoices() {
   };
 
   /**
+   * Mark a submitted-for-approval batch as "Needs adjustment". Records the rejection note,
+   * bumps the attempt counter, sets statusId to the synthetic 'needs_adjustment' state, and
+   * logs a status transition for the audit trail. Batch stays in the Submitted tab with a red
+   * banner so the user can either edit overrides on the card and resubmit, or undo back to Ready.
+   */
+  const handleMarkBatchNeedsAdjustment = async (args: {
+    persistId: string;
+    note: string;
+    customerName?: string;
+    projectNumber?: string;
+    workflowId?: string;
+    priorAttempt: number;
+  }) => {
+    const cleanedNote = args.note.trim();
+    if (!cleanedNote) {
+      setExportError('Rejection note is required.');
+      return;
+    }
+    setExportError(null);
+    const nextAttempt = (args.priorAttempt || 0) + 1;
+    const rejection: BatchRejection = {
+      note: cleanedNote,
+      rejected_at: new Date().toISOString(),
+      rejected_by: user?.id ?? null,
+      attempt: nextAttempt,
+      active: true,
+    };
+    try {
+      await updateBatchStatusMutation.mutateAsync({
+        groupId: args.persistId,
+        statusId: NEEDS_ADJUSTMENT_STATUS_ID,
+        prevStatusId: 'submitted_approval',
+        statusLabel: NEEDS_ADJUSTMENT_STATUS_LABEL,
+        customerName: args.customerName,
+        projectNumber: args.projectNumber,
+        workflowId: args.workflowId,
+        snapshotPatch: { rejection },
+      });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Could not mark batch as needs adjustment.');
+    }
+  };
+
+  /**
+   * Resubmit a needs_adjustment batch back to submitted_approval. Regenerates the merged batch
+   * PDF (so the approver gets the latest header/line-item data), downloads it, then flips status.
+   * Preserves the rejection record but clears its `active` flag so the banner disappears; attempt
+   * count stays for downstream display. */
+  const handleResubmitForApproval = async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+    const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+    const customerName = group.tickets[0]?.customerName;
+    const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
+    const submittedStatus = wf?.statuses?.find((s) => s.id === 'submitted_approval');
+    if (!submittedStatus || !wf) {
+      setExportError('Customer is not on a Portal Approval workflow.');
+      return;
+    }
+    const row = invoicedMarkRows.find((r) => r.group_id === persistId);
+    const currentSnap = (row?.key_snapshot ?? {}) as FrozenGroupSnapshot;
+    try {
+      const merged = await buildMergedBatchPdfBlob(group);
+      const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+      saveAs(merged, filename);
+    } catch (err) {
+      console.error('Resubmit batch download error:', err);
+      setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF — not resubmitted.');
+      return;
+    }
+    const clearedRejection = currentSnap.rejection
+      ? { ...currentSnap.rejection, active: false }
+      : undefined;
+    try {
+      await updateBatchStatusMutation.mutateAsync({
+        groupId: persistId,
+        statusId: submittedStatus.id,
+        prevStatusId: NEEDS_ADJUSTMENT_STATUS_ID,
+        statusLabel: submittedStatus.label,
+        customerName,
+        projectNumber: group.key.projectNumber || undefined,
+        workflowId: wf.id,
+        snapshotPatch: clearedRejection ? { rejection: clearedRejection } : {},
+      });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Could not resubmit batch.');
+    }
+  };
+
+  /**
    * Bulk Send-for-approval: build a zip with one merged PDF per group, download the zip,
    * then mark every group as submitted_approval. All groups must share the same customer
    * and that customer must be on a Portal Approval workflow.
@@ -3911,9 +4052,14 @@ export default function Invoices() {
     ticketsForCustomer,
   ]);
 
-  /** Portal Approval batches in the submitted_approval status (waiting for customer approval). */
+  /** Portal Approval batches in the submitted_approval status (waiting for customer approval).
+   *  Also includes batches in the synthetic 'needs_adjustment' state so a rejected batch stays
+   *  alongside its peers in the Submitted tab until the user resubmits or undoes it. */
   const submittedApprovalGroups = useMemo(
-    () => invoicedGroups.filter((g) => getGroupStatusId(g) === 'submitted_approval'),
+    () => invoicedGroups.filter((g) => {
+      const sid = getGroupStatusId(g);
+      return sid === 'submitted_approval' || sid === NEEDS_ADJUSTMENT_STATUS_ID;
+    }),
     [invoicedGroups, getGroupStatusId]
   );
 
@@ -3929,15 +4075,17 @@ export default function Invoices() {
     [invoicedGroups, getGroupStatusId]
   );
 
-  /** Group batches by customer so each customer's batches sit under one heading even when they span
-   *  multiple projects or periods (matches how CNRL is batched per approver — same customer record,
-   *  multiple projects rolled up). Project + period stay on each row so individual submissions stay
+  /** Group batches by customer + period so an older period's batches never merge with a newer
+   *  period's batches under one heading. Prevents the bug where, e.g., approving the May batch
+   *  could visually "swallow" an unapproved April batch sitting in the same Submitted section.
+   *  Project still stays on each row so individual submissions (per approver, per project) remain
    *  visible inside the section. */
   type ApprovalSection<G> = {
     key: string;
     customerName: string;
+    /** Single period label that all batches in this section share (or '' if no period). */
+    periodLabel: string;
     projectCount: number;
-    periodCount: number;
     groups: G[];
   };
   const buildApprovalSections = useCallback(
@@ -3945,28 +4093,25 @@ export default function Invoices() {
       const map = new Map<string, ApprovalSection<G>>();
       const order: string[] = [];
       const projectKeys = new Map<string, Set<string>>();
-      const periodKeys = new Map<string, Set<string>>();
       for (const g of groups) {
         const customerName = g.tickets[0]?.customerName || '';
-        const sectionKey = customerName;
+        const periodKey = g.key.periodKey || g.key.periodLabel || '';
+        const periodLabel = g.key.periodLabel || g.key.periodKey || '';
+        const sectionKey = `${customerName}|${periodKey}`;
         let section = map.get(sectionKey);
         if (!section) {
-          section = { key: sectionKey, customerName, projectCount: 0, periodCount: 0, groups: [] };
+          section = { key: sectionKey, customerName, periodLabel, projectCount: 0, groups: [] };
           map.set(sectionKey, section);
           order.push(sectionKey);
           projectKeys.set(sectionKey, new Set());
-          periodKeys.set(sectionKey, new Set());
         }
         section.groups.push(g);
         const projKey = g.key.projectId || g.key.projectNumber || g.key.projectName || '';
-        const periodKey = g.key.periodKey || g.key.periodLabel || '';
         if (projKey) projectKeys.get(sectionKey)!.add(projKey);
-        if (periodKey) periodKeys.get(sectionKey)!.add(periodKey);
       }
       for (const k of order) {
         const section = map.get(k)!;
         section.projectCount = projectKeys.get(k)!.size;
-        section.periodCount = periodKeys.get(k)!.size;
       }
       return order.map((k) => map.get(k)!);
     },
@@ -4029,7 +4174,7 @@ export default function Invoices() {
   const finalInvoicedGroups = useMemo(
     () => invoicedGroups.filter((g) => {
       const sid = getGroupStatusId(g);
-      return sid !== 'submitted_approval' && sid !== 'approved' && sid !== 'portal_submission';
+      return sid !== 'submitted_approval' && sid !== 'approved' && sid !== 'portal_submission' && sid !== NEEDS_ADJUSTMENT_STATUS_ID;
     }),
     [invoicedGroups, getGroupStatusId]
   );
@@ -5913,12 +6058,18 @@ export default function Invoices() {
                       className="ionex-customer-section-toggle"
                     >
                       <span aria-hidden className={`ionex-customer-section-chevron${collapsed ? ' is-collapsed' : ''}`}>▾</span>
-                      <span className="ionex-customer-section-name">{section.customerName || 'Unknown customer'}</span>
+                      <span className="ionex-customer-section-name">
+                        {section.customerName || 'Unknown customer'}
+                        {section.periodLabel ? (
+                          <span style={{ marginLeft: '8px', fontWeight: 500, color: 'var(--text-secondary)', fontSize: '13px' }}>
+                            — {section.periodLabel}
+                          </span>
+                        ) : null}
+                      </span>
                     </button>
                     <span className="ionex-customer-section-meta">
                       {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'}
                       {section.projectCount > 1 ? ` · ${section.projectCount} projects` : ''}
-                      {section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
                     </span>
                   </div>
                   {!collapsed && (
@@ -6714,8 +6865,13 @@ export default function Invoices() {
                       {section.customerName || 'Unknown customer'}
                     </span>
                   )}
+                  {section.periodLabel && (
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#dc2626' }}>
+                      — {section.periodLabel}
+                    </span>
+                  )}
                   <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-                    {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                    {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}
                   </span>
                   {sectionMulti && sectionIsPortalApproval && (() => {
                     const sectionCustomer = section.customerName || sectionFirstTicket?.customerName || '';
@@ -6798,8 +6954,16 @@ export default function Invoices() {
                     const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
                     const customerName = group.tickets[0]?.customerName;
                     const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
-                    const status = wf?.statuses?.find((s) => s.id === 'submitted_approval');
-                    const statusHex = status ? statusColorHex(status.color) : '#888';
+                    const snap = invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
+                    const isNeedsAdjustment = snap?.statusId === NEEDS_ADJUSTMENT_STATUS_ID;
+                    const activeRejection = isNeedsAdjustment && snap?.rejection?.active ? snap.rejection : null;
+                    const submittedStatusDef = wf?.statuses?.find((s) => s.id === 'submitted_approval');
+                    const statusHex = isNeedsAdjustment
+                      ? NEEDS_ADJUSTMENT_STATUS_COLOR
+                      : (submittedStatusDef ? statusColorHex(submittedStatusDef.color) : '#888');
+                    const statusLabelDisplay = isNeedsAdjustment
+                      ? `${NEEDS_ADJUSTMENT_STATUS_LABEL}${activeRejection ? ` · attempt #${activeRejection.attempt}` : ''}`
+                      : (submittedStatusDef?.label ?? null);
                     const projectLine = [group.key.projectNumber, group.key.projectName].filter(Boolean).join(' – ');
                     const periodLine = group.key.periodLabel || '';
                     const ticketCount = group.tickets.length;
@@ -6812,6 +6976,7 @@ export default function Invoices() {
                       approverDisplay = proj?.approver?.trim() || null;
                     }
                     const isMinSub = minimizedBatchIds.has(persistId);
+                    const isStatusBusy = updateBatchStatusMutation.isPending && updateBatchStatusMutation.variables?.groupId === persistId;
                     return (
                       <div
                         key={persistId}
@@ -6842,7 +7007,7 @@ export default function Invoices() {
                             <span className="label">Approver</span>
                             {approverDisplay || '—'}
                           </span>
-                          {status && (
+                          {statusLabelDisplay && (
                             <span
                               className="ionex-status-pill"
                               style={{
@@ -6851,11 +7016,35 @@ export default function Invoices() {
                                 border: `1px solid ${statusHex}40`,
                               }}
                             >
-                              {status.label}
+                              {statusLabelDisplay}
                             </span>
                           )}
                           <span className="ionex-workflow-card-count">{ticketCount} ticket{ticketCount === 1 ? '' : 's'}</span>
                         </div>
+                        {activeRejection && (
+                          <div
+                            style={{
+                              marginTop: '8px',
+                              padding: '10px 12px',
+                              borderRadius: '8px',
+                              border: `1px solid ${NEEDS_ADJUSTMENT_STATUS_COLOR}66`,
+                              backgroundColor: `${NEEDS_ADJUSTMENT_STATUS_COLOR}14`,
+                              color: 'var(--text-primary)',
+                              fontSize: '13px',
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                              <strong style={{ color: NEEDS_ADJUSTMENT_STATUS_COLOR, fontWeight: 700 }}>
+                                Approver rejected this batch
+                              </strong>
+                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                Attempt #{activeRejection.attempt} · {new Date(activeRejection.rejected_at).toLocaleString()}
+                              </span>
+                            </div>
+                            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{activeRejection.note}</div>
+                          </div>
+                        )}
                         <div
                           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = statusHex; }}
                           onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ''; }}
@@ -6946,6 +7135,63 @@ export default function Invoices() {
                             <span aria-hidden>📥</span>
                             {redownloadingApprovalId === persistId ? 'Building…' : 'Download batch again'}
                           </button>
+                          {isNeedsAdjustment ? (
+                            <button
+                              type="button"
+                              disabled={isStatusBusy}
+                              onClick={() => handleResubmitForApproval(group)}
+                              title="Re-build the merged batch PDF (so the approver gets the latest data), download it, and flip this batch back to Submitted for approval. Attempt counter is preserved for audit."
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                borderRadius: '6px',
+                                border: `1px solid ${NEEDS_ADJUSTMENT_STATUS_COLOR}`,
+                                backgroundColor: NEEDS_ADJUSTMENT_STATUS_COLOR,
+                                color: '#ffffff',
+                                cursor: isStatusBusy ? 'wait' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                              }}
+                            >
+                              <span aria-hidden>📤</span>
+                              {isStatusBusy ? 'Resubmitting…' : 'Re-build & resubmit'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isStatusBusy}
+                              onClick={() => {
+                                setNeedsAdjustmentNote('');
+                                setNeedsAdjustmentModal({
+                                  persistId,
+                                  customerName: customerName || 'Unknown customer',
+                                  projectLine,
+                                  periodLine,
+                                  ticketCount,
+                                  workflowId: wf?.id,
+                                  priorAttempt: snap?.rejection?.attempt ?? 0,
+                                });
+                              }}
+                              title="Mark this batch as rejected by the approver. Captures a rejection note, keeps the batch here in Submitted with a red banner, and lets you re-build & resubmit after edits."
+                              style={{
+                                padding: '6px 12px',
+                                fontSize: '12px',
+                                fontWeight: 500,
+                                borderRadius: '6px',
+                                border: `1px solid ${NEEDS_ADJUSTMENT_STATUS_COLOR}66`,
+                                backgroundColor: 'transparent',
+                                color: NEEDS_ADJUSTMENT_STATUS_COLOR,
+                                cursor: isStatusBusy ? 'not-allowed' : 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                              }}
+                            >
+                              ✗ Needs adjustment
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={unmarkInvoicedMutation.isPending}
@@ -6995,10 +7241,17 @@ export default function Invoices() {
                           className="ionex-customer-section-toggle"
                         >
                           <span aria-hidden className={`ionex-customer-section-chevron${collapsed ? ' is-collapsed' : ''}`}>▾</span>
-                          <span className="ionex-customer-section-name">{section.customerName || 'Unknown customer'}</span>
+                          <span className="ionex-customer-section-name">
+                            {section.customerName || 'Unknown customer'}
+                            {section.periodLabel ? (
+                              <span style={{ marginLeft: '8px', fontWeight: 500, color: 'var(--text-secondary)', fontSize: '13px' }}>
+                                — {section.periodLabel}
+                              </span>
+                            ) : null}
+                          </span>
                         </button>
                         <span className="ionex-customer-section-meta">
-                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}
                         </span>
                         <div className="ionex-customer-section-actions">
                           <button
@@ -7497,10 +7750,17 @@ export default function Invoices() {
                           className="ionex-customer-section-toggle"
                         >
                           <span aria-hidden className={`ionex-customer-section-chevron${collapsed ? ' is-collapsed' : ''}`}>▾</span>
-                          <span className="ionex-customer-section-name">{section.customerName || 'Unknown customer'}</span>
+                          <span className="ionex-customer-section-name">
+                            {section.customerName || 'Unknown customer'}
+                            {section.periodLabel ? (
+                              <span style={{ marginLeft: '8px', fontWeight: 500, color: 'var(--text-secondary)', fontSize: '13px' }}>
+                                — {section.periodLabel}
+                              </span>
+                            ) : null}
+                          </span>
                         </button>
                         <span className="ionex-customer-section-meta">
-                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}
                         </span>
                         <div className="ionex-customer-section-actions">
                           <button
@@ -7878,10 +8138,17 @@ export default function Invoices() {
                           className="ionex-customer-section-toggle"
                         >
                           <span aria-hidden className={`ionex-customer-section-chevron${collapsed ? ' is-collapsed' : ''}`}>▾</span>
-                          <span className="ionex-customer-section-name">{section.customerName || 'Unknown customer'}</span>
+                          <span className="ionex-customer-section-name">
+                            {section.customerName || 'Unknown customer'}
+                            {section.periodLabel ? (
+                              <span style={{ marginLeft: '8px', fontWeight: 500, color: 'var(--text-secondary)', fontSize: '13px' }}>
+                                — {section.periodLabel}
+                              </span>
+                            ) : null}
+                          </span>
                         </button>
                         <span className="ionex-customer-section-meta" style={{ marginLeft: 'auto' }}>
-                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}{section.periodCount > 1 ? ` · ${section.periodCount} periods` : ''}
+                          {section.groups.length} batch{section.groups.length === 1 ? '' : 'es'} · {section.projectCount} project{section.projectCount === 1 ? '' : 's'}
                         </span>
                       </div>
                       {!collapsed && (
@@ -8086,6 +8353,95 @@ export default function Invoices() {
           onClose={() => setInvoiceTicketModalTicket(null)}
         />
       )}
+
+      {needsAdjustmentModal && (() => {
+        const m = needsAdjustmentModal;
+        const noteTrimmed = needsAdjustmentNote.trim();
+        const isFirstRejection = m.priorAttempt === 0;
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="ionex-modal-backdrop"
+            style={{
+              position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1000, padding: '20px',
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setNeedsAdjustmentModal(null); }}
+          >
+            <div className="ionex-modal-card" style={{
+              backgroundColor: 'var(--bg-primary)', borderRadius: '10px',
+              padding: '20px', maxWidth: '520px', width: '100%',
+              border: '1px solid var(--border-color)', boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            }}>
+              <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700 }}>
+                {isFirstRejection ? 'Mark batch as needs adjustment?' : `Mark as needs adjustment (attempt #${m.priorAttempt + 1})?`}
+              </h2>
+              <p style={{ margin: '0 0 14px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                <strong>{m.customerName}</strong>{m.projectLine ? ` — ${m.projectLine}` : ''}{m.periodLine ? ` · ${m.periodLine}` : ''}<br />
+                {m.ticketCount} ticket{m.ticketCount === 1 ? '' : 's'}. Batch stays here in Submitted with a red banner showing the rejection note. Use the card's edit controls to adjust header overrides or line-item descriptions, then click <strong>Re-build &amp; resubmit</strong>. For deeper edits to hours, use Undo to return the batch to Ready (rejection note is lost in that path).
+              </p>
+              <label htmlFor="needs-adjustment-note" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                Rejection note (required)
+              </label>
+              <textarea
+                id="needs-adjustment-note"
+                value={needsAdjustmentNote}
+                onChange={(e) => setNeedsAdjustmentNote(e.target.value)}
+                placeholder="What did the approver flag? (e.g. wrong PO, missing day on ticket 1234, hours need rounding…)"
+                rows={4}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '8px 10px', fontSize: '13px',
+                  borderRadius: '6px', border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                  resize: 'vertical', fontFamily: 'inherit',
+                }}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '14px' }}>
+                <button
+                  type="button"
+                  onClick={() => setNeedsAdjustmentModal(null)}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 600,
+                    borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!noteTrimmed || updateBatchStatusMutation.isPending}
+                  onClick={async () => {
+                    const args = m;
+                    setNeedsAdjustmentModal(null);
+                    await handleMarkBatchNeedsAdjustment({
+                      persistId: args.persistId,
+                      note: noteTrimmed,
+                      customerName: args.customerName,
+                      projectNumber: args.projectLine ? args.projectLine.split(' – ')[0] : undefined,
+                      workflowId: args.workflowId,
+                      priorAttempt: args.priorAttempt,
+                    });
+                  }}
+                  style={{
+                    padding: '8px 14px', fontSize: '13px', fontWeight: 700,
+                    borderRadius: '6px', border: `1px solid ${NEEDS_ADJUSTMENT_STATUS_COLOR}`,
+                    backgroundColor: noteTrimmed ? NEEDS_ADJUSTMENT_STATUS_COLOR : 'var(--bg-tertiary)',
+                    color: noteTrimmed ? '#ffffff' : 'var(--text-tertiary)',
+                    cursor: !noteTrimmed || updateBatchStatusMutation.isPending ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ✗ Mark needs adjustment
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {undoApprovalConfirm && (() => {
         const isApprovedScope = undoApprovalConfirm.scope === 'approved';
