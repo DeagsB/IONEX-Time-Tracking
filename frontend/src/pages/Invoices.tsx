@@ -54,6 +54,18 @@ function statusColorHex(name: string) {
   return STATUS_COLOR_MAP[name] ?? '#6b7280';
 }
 
+// Supabase throws PostgrestError objects (not Error instances), so the
+// classic `err instanceof Error ? err.message : fallback` pattern hides the
+// real cause. This helper pulls .message off either shape.
+function describeError(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object') {
+    const candidate = (err as { message?: unknown }).message;
+    if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+  }
+  return fallback;
+}
+
 type PdfExportEntryOverride = {
   description: string;
   st: number;
@@ -3080,7 +3092,9 @@ export default function Invoices() {
       const updated = { ...snap, statusId, statusChangedAt: now };
       await invoicedBatchMarksService.upsert(groupId, updated as { key: unknown; ticketIds: string[] });
       if (prevStatusId) {
-        await invoiceStatusHistoryService.closeEntry(groupId, prevStatusId).catch(() => {});
+        await invoiceStatusHistoryService.closeEntry(groupId, prevStatusId).catch((e) => {
+          console.warn('closeEntry failed (non-blocking):', e);
+        });
       }
       await invoiceStatusHistoryService.logEntry({
         group_id: groupId,
@@ -3090,7 +3104,9 @@ export default function Invoices() {
         status_id: statusId,
         status_label: statusLabel,
         entered_at: now,
-      }).catch(() => {});
+      }).catch((e) => {
+        console.warn('logEntry failed (non-blocking):', e);
+      });
     },
     onMutate: async ({ groupId, statusId }) => {
       await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
@@ -3201,7 +3217,7 @@ export default function Invoices() {
     },
     onError: (err) => {
       console.error('Move to Portal Submission failed:', err);
-      setExportError(err instanceof Error ? err.message : 'Could not move to Portal Submission.');
+      setExportError(describeError(err, 'Could not move to Portal Submission.'));
     },
   });
 
