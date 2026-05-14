@@ -4103,7 +4103,11 @@ export default function Invoices() {
   const { data: savedInvoiceMetadata } = useQuery({
     queryKey: ['invoicedBatchInvoices', [...invoicedGroupIdsFromDb].sort().join(',')],
     queryFn: () => invoicedBatchInvoicesService.getMetadataByGroupIds(invoicedGroupIdsFromDb),
-    enabled: showInvoiced && invoicedGroupIdsFromDb.length > 0,
+    // The Approved and Portal Submission tabs also read this to detect already-attached
+    // invoice PDFs (e.g., for batches that were invoiced pre-workflow and then advanced
+    // back into Approved). Without this metadata the "Move to Portal Submission" CTA
+    // stays disabled even though the PDF is in the database.
+    enabled: invoicedGroupIdsFromDb.length > 0,
   });
 
   /** Approval (signed batch) PDF metadata for marked batches. Used by the Submitted-for-approval and Approved sections. */
