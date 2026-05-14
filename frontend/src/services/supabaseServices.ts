@@ -336,6 +336,19 @@ export const projectsService = {
     if (error) throw error;
     return data;
   },
+
+  /** Hard delete a project. FK behaviour:
+   *  - project_user_assignments: ON DELETE CASCADE (auto-cleaned)
+   *  - time_entries:             ON DELETE SET NULL (entries lose project link)
+   *  - service_tickets / _demo:  NO ACTION (caller must ensure zero rows or this throws)
+   *  Caller is expected to gate this with a zero-tickets check. */
+  async delete(id: string) {
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
 };
 
 export const employeesService = {

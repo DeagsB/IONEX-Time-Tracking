@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService, timeEntriesService, invoiceWorkflowsService } from '../services/supabaseServices';
+import { supabase } from '../lib/supabaseClient';
 import SearchableSelect from '../components/SearchableSelect';
 export default function Projects() {
   const { user, isAdmin } = useAuth();
@@ -80,6 +81,28 @@ export default function Projects() {
     queryKey: ['allTimeEntries'],
     queryFn: () => timeEntriesService.getAll(isDemoMode),
     enabled: !!user,
+  });
+
+  // Per-project ticket counts (real + demo, including trashed). Gates the
+  // Delete action — a project can only be hard-deleted when it has zero
+  // service tickets anywhere, since service_tickets has ON DELETE NO ACTION.
+  const { data: projectTicketCounts = {} } = useQuery({
+    queryKey: ['projectTicketCounts'],
+    queryFn: async () => {
+      const counts: Record<string, number> = {};
+      const [real, demo] = await Promise.all([
+        supabase.from('service_tickets').select('project_id'),
+        supabase.from('service_tickets_demo').select('project_id'),
+      ]);
+      for (const row of (real.data || []) as { project_id: string | null }[]) {
+        if (row.project_id) counts[row.project_id] = (counts[row.project_id] || 0) + 1;
+      }
+      for (const row of (demo.data || []) as { project_id: string | null }[]) {
+        if (row.project_id) counts[row.project_id] = (counts[row.project_id] || 0) + 1;
+      }
+      return counts;
+    },
+    enabled: isAdmin,
   });
 
   // Calculate total hours per project
@@ -283,6 +306,17 @@ export default function Projects() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  const deleteProjectMutation = useMutation({
+    mutationFn: (id: string) => projectsService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['projectTicketCounts'] });
+    },
+    onError: (err) => {
+      alert(`Could not delete project: ${err instanceof Error ? err.message : 'Unknown error'}`);
     },
   });
 
@@ -1340,6 +1374,49 @@ export default function Projects() {
                   {formatHours(projectHours[project.id] || 0)}
                 </td>
                 <td style={{ textAlign: 'right', verticalAlign: 'middle' }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  {isAdmin && (() => {
+                    const hours = projectHours[project.id] || 0;
+                    const tickets = projectTicketCounts[project.id] || 0;
+                    const canDelete = hours === 0 && tickets === 0;
+                    const isDeleting = deleteProjectMutation.isPending && deleteProjectMutation.variables === project.id;
+                    const blockReason = !canDelete
+                      ? `Cannot delete — ${tickets > 0 ? `${tickets} service ticket${tickets === 1 ? '' : 's'}` : ''}${tickets > 0 && hours > 0 ? ' and ' : ''}${hours > 0 ? `${formatHours(hours)} logged` : ''}. Mark closed instead.`
+                      : 'Permanently delete this empty project.';
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!canDelete || isDeleting) return;
+                          if (!window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) return;
+                          deleteProjectMutation.mutate(project.id);
+                        }}
+                        disabled={!canDelete || isDeleting}
+                        title={blockReason}
+                        style={{
+                          padding: '2px 10px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          lineHeight: 1.25,
+                          letterSpacing: '0.01em',
+                          borderRadius: '999px',
+                          border: canDelete
+                            ? '1px solid color-mix(in srgb, var(--error-color) 55%, var(--border-color))'
+                            : '1px solid var(--border-color)',
+                          backgroundColor: canDelete
+                            ? 'color-mix(in srgb, var(--error-color) 8%, transparent)'
+                            : 'transparent',
+                          color: canDelete ? 'var(--error-color)' : 'var(--text-tertiary)',
+                          cursor: canDelete && !isDeleting ? 'pointer' : 'not-allowed',
+                          opacity: isDeleting ? 0.6 : canDelete ? 1 : 0.6,
+                          transition: 'background-color 0.15s ease, border-color 0.15s ease',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {isDeleting ? 'Deleting…' : 'Delete'}
+                      </button>
+                    );
+                  })()}
                   {user && (
                     <button
                       type="button"
@@ -1373,6 +1450,7 @@ export default function Projects() {
                       {isClosed ? 'Reopen' : 'Mark closed'}
                     </button>
                   )}
+                  </div>
                 </td>
               </tr>
             );})}
