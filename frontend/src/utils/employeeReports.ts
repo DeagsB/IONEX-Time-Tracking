@@ -420,15 +420,12 @@ export function aggregateEmployeeMetrics(
   includeGst: boolean = true
 ): EmployeeMetrics {
   const rateHistoryMap = buildRateHistoryMap(rateHistory || []);
-  console.log('aggregateEmployeeMetrics called:', { entriesCount: entries?.length || 0, employee: employee?.user_id });
-  
+
   if (!entries || entries.length === 0) {
     const userId = employee?.user_id || '';
-    const employeeName = employee?.user 
+    const employeeName = employee?.user
       ? `${employee.user.first_name || ''} ${employee.user.last_name || ''}`.trim() || 'Unknown'
       : employee?.user_id || 'Unknown';
-    
-    console.log('No entries for employee:', { userId, employeeName, employee });
 
     // Still compute project breakdown for expenses-only (employee may have expenses without time entries)
     const projectBreakdown = calculateProjectBreakdown([], employee, undefined, ticketExpenses, includeGst);
@@ -480,8 +477,6 @@ export function aggregateEmployeeMetrics(
 
   const user = entries[0]?.user;
   const userId = entries[0]?.user_id || employee?.user_id || '';
-  
-  console.log('Processing entries for userId:', userId, 'entry count:', entries.length);
 
   // Calculate totals
   let totalHours = 0; // Will be calculated as billable + non-billable

@@ -497,101 +497,132 @@ export default function Profitability() {
     );
   }
 
+  // Derived: overall margin for header KPI (revenue is GST-aware via includeGst).
+  const overallMargin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
+
   return (
-    <div style={{ padding: '30px', maxWidth: '1400px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-            Project Profitability
-          </h1>
-          <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            Financial overview across all projects
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+    <div style={{ padding: '28px 30px 60px', maxWidth: '1400px', margin: '0 auto' }}>
+      <h1 className="ionex-page-title">
+        Project Profitability
+        <span className="ionex-page-title-actions">
+          <span className="ionex-search-inline">
             <input
-              type="checkbox"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
+              type="text"
+              placeholder="Search projects, customers, project #"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
-            Show inactive
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={includeGst}
-              onChange={(e) => setIncludeGst(e.target.checked)}
-            />
-            Include GST (5%) on billable amounts
-          </label>
-          <input
-            type="text"
-            placeholder="Search projects..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: '1px solid var(--border-color)',
-              backgroundColor: 'var(--bg-secondary)',
-              color: 'var(--text-primary)',
-              fontSize: '13px',
-              width: '220px',
-            }}
-          />
+          </span>
+        </span>
+      </h1>
+      <p className="ionex-page-subtitle">
+        Per-project P&amp;L · {filtered.length} of {projectFinancials.length} projects shown
+      </p>
+
+      <div className="ionex-filter-card">
+        <div className="ionex-filter-card-row">
+          <div className="ionex-field">
+            <span className="ionex-field-label">Inactive</span>
+            <div className="ionex-toggle-rail" role="group" aria-label="Active vs inactive">
+              <button
+                type="button"
+                className={`ionex-toggle-button${!showInactive ? ' is-active' : ''}`}
+                onClick={() => setShowInactive(false)}
+              >
+                Active only
+              </button>
+              <button
+                type="button"
+                className={`ionex-toggle-button${showInactive ? ' is-active' : ''}`}
+                onClick={() => setShowInactive(true)}
+              >
+                Include inactive
+              </button>
+            </div>
+          </div>
+          <div className="ionex-field">
+            <span className="ionex-field-label">GST</span>
+            <div className="ionex-toggle-rail" role="group" aria-label="Toggle GST">
+              <button
+                type="button"
+                className={`ionex-toggle-button${includeGst ? ' is-active' : ''}`}
+                onClick={() => setIncludeGst(true)}
+              >
+                Inclusive (+5%)
+              </button>
+              <button
+                type="button"
+                className={`ionex-toggle-button${!includeGst ? ' is-active' : ''}`}
+                onClick={() => setIncludeGst(false)}
+              >
+                Pre-GST
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       <ReportMethodologyCollapsible variant="profitability" />
 
-      {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-        {[
-          { label: 'Total Revenue', value: `$${fmt(totals.revenue)}`, color: '#2196F3' },
-          { label: 'Total Cost', value: `$${fmt(totals.cost)}`, color: '#ff9800' },
-          { label: 'Total Profit', value: `$${fmt(totals.profit)}`, color: totals.profit >= 0 ? '#4caf50' : '#e53935' },
-          { label: 'Total Hours', value: totals.hours.toFixed(1), color: '#9c27b0' },
-          { label: 'Service Tickets', value: String(totals.tickets), color: '#607d8b' },
-        ].map((card) => (
+      {/* Summary Cards — semantic palette mirrors EmployeeReports. */}
+      <div className="ionex-summary-grid">
+        {([
+          { key: 'revenue', label: 'Total Revenue',  value: `$${fmt(totals.revenue)}`, accent: 'var(--primary-color)' },
+          { key: 'cost',    label: 'Total Cost',     value: `$${fmt(totals.cost)}`,    accent: 'var(--warning-color)' },
+          { key: 'profit',  label: 'Total Profit',   value: `$${fmt(totals.profit)}`,  accent: totals.profit >= 0 ? 'var(--success-color)' : 'var(--error-color)' },
+          { key: 'margin',  label: 'Overall Margin', value: `${overallMargin.toFixed(1)}%`, accent: overallMargin >= 20 ? 'var(--success-color)' : overallMargin >= 0 ? 'var(--warning-color)' : 'var(--error-color)' },
+          { key: 'hours',   label: 'Total Hours',    value: totals.hours.toFixed(1),   accent: 'var(--text-tertiary)' },
+          { key: 'tickets', label: 'Service Tickets',value: String(totals.tickets),    accent: 'var(--text-tertiary)' },
+        ]).map((card) => (
           <div
-            key={card.label}
-            style={{
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '12px',
-              padding: '18px 20px',
-              borderLeft: `4px solid ${card.color}`,
-            }}
+            key={card.key}
+            className="ionex-summary-card"
+            style={{ ['--summary-accent' as string]: card.accent } as React.CSSProperties}
           >
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '6px' }}>
+            <span className="ionex-summary-card-eyebrow">
+              <span className="accent" />
               {card.label}
-            </div>
-            <div style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-              {card.value}
-            </div>
+            </span>
+            <span className="ionex-summary-card-value">{card.value}</span>
           </div>
         ))}
       </div>
 
+      <div className="ionex-section-heading">
+        <div className="ionex-section-heading-title-row">
+          <h2>Projects</h2>
+          <span className="ionex-section-heading-meta">
+            <strong>{filtered.length}</strong> {filtered.length === 1 ? 'project' : 'projects'}
+          </span>
+        </div>
+      </div>
+
       {/* Project List */}
-      <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="ionex-report-table-card">
+        <table className="ionex-report-table">
           <thead>
-            <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-              <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => handleSort('project_number')}>Project{sortArrow('project_number')}</th>
-              <th style={{ ...thStyle, textAlign: 'center' }}>Budget Usage</th>
-              <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('revenue')}>Revenue{sortArrow('revenue')}</th>
-              <th style={{ ...thStyle, textAlign: 'right' }}>Cost</th>
-              <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('profit')}>Profit{sortArrow('profit')}</th>
-              <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('margin')}>Margin{sortArrow('margin')}</th>
-              <th style={{ ...thStyle, textAlign: 'right' }}>Hours</th>
+            <tr>
+              <th className={`is-sortable${sortBy === 'project_number' ? ' is-sorted' : ''}`} onClick={() => handleSort('project_number')}>
+                Project{sortBy === 'project_number' && <span className="ionex-sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+              </th>
+              <th className="align-center">Budget Usage</th>
+              <th className={`align-right is-sortable${sortBy === 'revenue' ? ' is-sorted' : ''}`} onClick={() => handleSort('revenue')}>
+                Revenue{sortBy === 'revenue' && <span className="ionex-sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+              </th>
+              <th className="align-right">Cost</th>
+              <th className={`align-right is-sortable${sortBy === 'profit' ? ' is-sorted' : ''}`} onClick={() => handleSort('profit')}>
+                Profit{sortBy === 'profit' && <span className="ionex-sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+              </th>
+              <th className={`align-right is-sortable${sortBy === 'margin' ? ' is-sorted' : ''}`} onClick={() => handleSort('margin')}>
+                Margin{sortBy === 'margin' && <span className="ionex-sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+              </th>
+              <th className="align-right">Hours</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                <td colSpan={7} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
                   No projects found
                 </td>
               </tr>
@@ -601,74 +632,49 @@ export default function Profitability() {
               const budgetPct = p.budget ? Math.min((p.revenue / p.budget) * 100, 100) : null;
               const overBudget = p.budget ? p.revenue > p.budget : false;
               const closedRow = p.isCompleted;
-              const idleBg = closedRow ? 'rgba(148, 163, 184, 0.08)' : 'transparent';
-              const hoverBg = closedRow ? 'rgba(148, 163, 184, 0.14)' : 'var(--bg-secondary)';
-              const expandedBg = closedRow ? 'rgba(148, 163, 184, 0.12)' : 'var(--bg-secondary)';
+              const marginTier = p.margin >= 20 ? 'is-good' : p.margin >= 0 ? 'is-warn' : 'is-bad';
+              const rowCls = [
+                isExpanded ? 'is-active' : '',
+                closedRow ? 'is-muted' : '',
+              ].filter(Boolean).join(' ');
 
               return (
                 <tr
                   key={p.projectId}
                   onClick={() => setExpandedProjectId(isExpanded ? null : p.projectId)}
-                  style={{
-                    borderBottom: '1px solid var(--border-color)',
-                    cursor: 'pointer',
-                    backgroundColor: isExpanded ? expandedBg : idleBg,
-                    transition: 'background-color 0.15s, opacity 0.15s, filter 0.15s',
-                    opacity: closedRow ? 0.78 : 1,
-                    filter: closedRow ? 'grayscale(0.42)' : undefined,
-                  }}
-                  onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = hoverBg; }}
-                  onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = idleBg; }}
+                  className={rowCls}
                 >
-                  <td style={{ ...tdStyle, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div
-                      style={{
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        backgroundColor: p.color,
-                        flexShrink: 0,
-                        opacity: closedRow ? 0.65 : 1,
-                      }}
-                    />
-                    <div style={{ minWidth: 0 }}>
-                      <div
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span
+                        aria-hidden
                         style={{
-                          fontWeight: '600',
-                          fontSize: '13px',
-                          color: closedRow ? 'var(--text-secondary)' : 'var(--text-primary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          flexWrap: 'wrap',
+                          width: '10px',
+                          height: '10px',
+                          borderRadius: '50%',
+                          backgroundColor: p.color,
+                          flexShrink: 0,
+                          opacity: closedRow ? 0.6 : 1,
+                          boxShadow: `0 0 0 2px color-mix(in srgb, ${p.color} 24%, transparent)`,
                         }}
-                      >
-                        <span>
-                          {p.projectNumber ? `${p.projectNumber} - ` : ''}
-                          {p.name}
-                        </span>
-                        {closedRow ? (
-                          <span
-                            style={{
-                              fontSize: '10px',
-                              fontWeight: '700',
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em',
-                              color: 'var(--text-tertiary)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: '4px',
-                              padding: '2px 6px',
-                              flexShrink: 0,
-                            }}
-                          >
-                            Closed
-                          </span>
-                        ) : null}
+                      />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="row-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: closedRow ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
+                          <span>{p.projectNumber ? `${p.projectNumber} · ` : ''}{p.name}</span>
+                          {closedRow && (
+                            <span
+                              className="ionex-tag"
+                              style={{ ['--tag-color' as string]: 'var(--text-tertiary)', padding: '2px 8px', fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase' } as React.CSSProperties}
+                            >
+                              Closed
+                            </span>
+                          )}
+                        </div>
+                        <div className="row-secondary">{p.customerName}</div>
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{p.customerName}</div>
                     </div>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'center', minWidth: '180px' }} onClick={(e) => e.stopPropagation()}>
+                  <td className="align-center" style={{ minWidth: '200px' }} onClick={(e) => e.stopPropagation()}>
                     {p.budget ? (
                       <BudgetBar
                         pct={budgetPct!}
@@ -712,16 +718,8 @@ export default function Profitability() {
                             }
                           }}
                           placeholder="0"
-                          style={{
-                            width: '90px',
-                            padding: '4px 8px',
-                            fontSize: '12px',
-                            fontFamily: 'monospace',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '6px',
-                            backgroundColor: 'var(--bg-primary)',
-                            color: 'var(--text-primary)',
-                          }}
+                          className="ionex-field-input"
+                          style={{ width: '100px', padding: '4px 8px', fontSize: '12px', textAlign: 'right' }}
                         />
                       </div>
                     ) : (
@@ -733,43 +731,32 @@ export default function Profitability() {
                         }}
                         style={{
                           background: 'none',
-                          border: 'none',
-                          padding: 0,
+                          border: '1px dashed var(--border-color)',
+                          borderRadius: '6px',
+                          padding: '3px 10px',
                           cursor: 'pointer',
                           fontSize: '11px',
-                          color: 'var(--text-secondary, #6b7280)',
-                          textDecoration: 'underline',
-                          fontStyle: 'italic',
+                          color: 'var(--text-tertiary)',
+                          fontFamily: 'inherit',
                         }}
                       >
                         + Add budget
                       </button>
                     )}
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
-                    ${fmt(p.revenue)}
+                  <td className="align-right is-mono">
+                    <span className="ionex-money">${fmt(p.revenue)}</span>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                    ${fmt(p.totalCost)}
+                  <td className="align-right is-mono">
+                    <span className="ionex-money is-muted">${fmt(p.totalCost)}</span>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: p.profit >= 0 ? '#4caf50' : '#e53935' }}>
-                    ${fmt(p.profit)}
+                  <td className="align-right is-mono">
+                    <span className={`ionex-money ${p.profit >= 0 ? 'is-good' : 'is-bad'}`}>${fmt(p.profit)}</span>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}>
-                    <span
-                      style={{
-                        padding: '3px 8px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        backgroundColor: p.margin >= 20 ? 'rgba(76,175,80,0.12)' : p.margin >= 0 ? 'rgba(255,152,0,0.12)' : 'rgba(229,57,53,0.12)',
-                        color: p.margin >= 20 ? '#4caf50' : p.margin >= 0 ? '#ff9800' : '#e53935',
-                      }}
-                    >
-                      {p.margin.toFixed(1)}%
-                    </span>
+                  <td className="align-right">
+                    <span className={`ionex-margin-chip ${marginTier}`}>{p.margin.toFixed(1)}%</span>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                  <td className="align-right is-mono" style={{ color: 'var(--text-secondary)' }}>
                     {p.totalHours.toFixed(1)}
                   </td>
                 </tr>
@@ -782,12 +769,10 @@ export default function Profitability() {
       {/* Expanded Detail Panel */}
       {expandedProject && (
         <div
+          className="ionex-modal-backdrop"
           style={{
             position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            inset: 0,
             backgroundColor: 'rgba(0,0,0,0.5)',
             zIndex: 1000,
             display: 'flex',
@@ -798,77 +783,79 @@ export default function Profitability() {
           onClick={() => setExpandedProjectId(null)}
         >
           <div
+            className="ionex-modal-card"
             style={{
               backgroundColor: 'var(--bg-primary)',
-              borderRadius: '16px',
-              maxWidth: '1000px',
+              border: '1px solid var(--border-color)',
+              borderRadius: '14px',
+              maxWidth: '1040px',
               width: '100%',
               maxHeight: '90vh',
               overflowY: 'auto',
-              padding: '32px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              padding: '28px 32px 32px',
+              boxShadow: 'var(--shadow-lg)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px' }}>
-              <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', gap: '16px' }}>
+              <div style={{ minWidth: 0 }}>
                 {expandedProject.isCompleted ? (
                   <div
+                    className="ionex-tag"
                     style={{
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      color: 'var(--text-secondary)',
+                      ['--tag-color' as string]: 'var(--text-tertiary)',
                       marginBottom: '10px',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      backgroundColor: 'rgba(148, 163, 184, 0.15)',
-                      border: '1px solid var(--border-color)',
-                    }}
+                      padding: '6px 12px',
+                      fontSize: '11px',
+                      letterSpacing: '0.05em',
+                    } as React.CSSProperties}
                   >
-                    Marked closed on the Projects page — totals are unchanged; this is visual only.
+                    Closed on Projects page · totals unchanged
                   </div>
                 ) : null}
-                <h2 style={{ margin: 0, fontSize: '22px', color: 'var(--text-primary)' }}>
-                  <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: expandedProject.color, marginRight: '10px', verticalAlign: 'middle' }} />
-                  {expandedProject.projectNumber ? `${expandedProject.projectNumber} - ` : ''}{expandedProject.name}
+                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-0.012em', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span
+                    aria-hidden
+                    style={{
+                      display: 'inline-block',
+                      width: '12px',
+                      height: '12px',
+                      borderRadius: '50%',
+                      backgroundColor: expandedProject.color,
+                      boxShadow: `0 0 0 3px color-mix(in srgb, ${expandedProject.color} 24%, transparent)`,
+                      flexShrink: 0,
+                    }}
+                  />
+                  {expandedProject.projectNumber ? `${expandedProject.projectNumber} · ` : ''}{expandedProject.name}
                 </h2>
-                <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-tertiary)' }}>{expandedProject.customerName}</p>
+                <p style={{ margin: '4px 0 0 24px', fontSize: '13px', color: 'var(--text-tertiary)' }}>{expandedProject.customerName}</p>
               </div>
               <button
                 onClick={() => setExpandedProjectId(null)}
-                style={{
-                  background: 'none',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  padding: '6px 12px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: 'var(--text-secondary)',
-                }}
+                className="ionex-report-action"
+                aria-label="Close"
               >
                 {'\u2715'}
               </button>
             </div>
 
             {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '28px' }}>
+            <div className="ionex-kpi-mini-grid" style={{ marginBottom: '24px' }}>
               {expandedProject.budget && (
-                <KpiCard label="Budget" value={`$${fmt(expandedProject.budget)}`} />
+                <KpiCard label="Budget" value={`$${fmt(expandedProject.budget)}`} accent="var(--text-secondary)" />
               )}
-              <KpiCard label="Revenue" value={`$${fmt(expandedProject.revenue)}`} color="#2196F3" />
-              <KpiCard label="Total Cost" value={`$${fmt(expandedProject.totalCost)}`} color="#ff9800" />
-              <KpiCard label="Profit" value={`$${fmt(expandedProject.profit)}`} color={expandedProject.profit >= 0 ? '#4caf50' : '#e53935'} />
-              <KpiCard label="Margin" value={`${expandedProject.margin.toFixed(1)}%`} color={expandedProject.margin >= 20 ? '#4caf50' : expandedProject.margin >= 0 ? '#ff9800' : '#e53935'} />
-              <KpiCard label="Hours" value={expandedProject.totalHours.toFixed(1)} color="#9c27b0" />
+              <KpiCard label="Revenue"    value={`$${fmt(expandedProject.revenue)}`}     accent="var(--primary-color)" />
+              <KpiCard label="Total Cost" value={`$${fmt(expandedProject.totalCost)}`}   accent="var(--warning-color)" />
+              <KpiCard label="Profit"     value={`$${fmt(expandedProject.profit)}`}      accent={expandedProject.profit >= 0 ? 'var(--success-color)' : 'var(--error-color)'} />
+              <KpiCard label="Margin"     value={`${expandedProject.margin.toFixed(1)}%`} accent={expandedProject.margin >= 20 ? 'var(--success-color)' : expandedProject.margin >= 0 ? 'var(--warning-color)' : 'var(--error-color)'} />
+              <KpiCard label="Hours"      value={expandedProject.totalHours.toFixed(1)}  accent="var(--text-tertiary)" />
             </div>
 
             {/* Budget Bar (detail) */}
             {expandedProject.budget && (
-              <div style={{ marginBottom: '28px' }}>
-                <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Budget Usage
-                </div>
+              <div style={{ marginBottom: '24px' }}>
+                <div className="ionex-eyebrow"><span />Budget Usage</div>
                 <BudgetBar
                   pct={Math.min((expandedProject.revenue / expandedProject.budget) * 100, 100)}
                   overBudget={expandedProject.revenue > expandedProject.budget}
@@ -1123,141 +1110,60 @@ function BudgetBar({
   revenueAllTickets?: number;
   large?: boolean;
 }) {
-  const height = large ? 24 : 16;
-  const barColor = overBudget ? '#e53935' : pct > 80 ? '#ff9800' : '#2196F3';
+  // Tiered accent: error when over, warning when ≥80%, brand red otherwise.
+  const accentVar = overBudget ? 'var(--error-color)' : pct > 80 ? 'var(--warning-color)' : 'var(--primary-color)';
 
-  // Three segments: approved (colored), pending draft/submitted/rejected (greyed), remaining budget (light grey)
   const approvedPct = budget > 0 ? Math.min((revenueApproved / budget) * 100, 100) : 0;
   const pendingPct = budget > 0 ? Math.min(((revenueAllTickets - revenueApproved) / budget) * 100, Math.max(0, 100 - approvedPct)) : 0;
-  const remainingPct = Math.max(0, 100 - approvedPct - pendingPct);
 
   return (
     <div>
       <div
-        style={{
-          position: 'relative',
-          height,
-          borderRadius: height / 2,
-          backgroundColor: 'rgba(158,158,158,0.15)',
-          overflow: 'hidden',
-          display: 'flex',
-        }}
+        className={`ionex-progress${large ? ' is-large' : ''}`}
+        style={{ ['--progress-color' as string]: accentVar } as React.CSSProperties}
       >
-        {/* Approved (revenue-contributing) */}
         {approvedPct > 0 && (
           <div
             title="Approved: revenue from approved/exported tickets"
-            style={{
-              width: `${approvedPct}%`,
-              height: '100%',
-              borderTopLeftRadius: height / 2,
-              borderBottomLeftRadius: height / 2,
-              borderTopRightRadius: pendingPct <= 0 ? height / 2 : 0,
-              borderBottomRightRadius: pendingPct <= 0 ? height / 2 : 0,
-              background: `repeating-linear-gradient(
-                -45deg,
-                ${barColor},
-                ${barColor} 6px,
-                ${adjustAlpha(barColor, 0.6)} 6px,
-                ${adjustAlpha(barColor, 0.6)} 12px
-              )`,
-              transition: 'width 0.4s ease',
-              flexShrink: 0,
-            }}
+            className="ionex-progress-segment is-primary"
+            style={{ width: `${approvedPct}%` }}
           />
         )}
-        {/* Pending (draft/submitted/rejected) */}
         {pendingPct > 0 && (
           <div
             title="Pending: revenue on draft, submitted, or rejected tickets (not yet contributing)"
-            style={{
-              width: `${pendingPct}%`,
-              height: '100%',
-              background: `repeating-linear-gradient(
-                -45deg,
-                rgba(158,158,158,0.5),
-                rgba(158,158,158,0.5) 6px,
-                rgba(158,158,158,0.3) 6px,
-                rgba(158,158,158,0.3) 12px
-              )`,
-              flexShrink: 0,
-              borderTopRightRadius: remainingPct <= 0 ? height / 2 : 0,
-              borderBottomRightRadius: remainingPct <= 0 ? height / 2 : 0,
-            }}
-          />
-        )}
-        {/* Remaining budget */}
-        {remainingPct > 0 && (
-          <div
-            title="Remaining budget"
-            style={{
-              width: `${remainingPct}%`,
-              height: '100%',
-              backgroundColor: 'rgba(158,158,158,0.15)',
-              flexShrink: 0,
-              borderTopRightRadius: height / 2,
-              borderBottomRightRadius: height / 2,
-            }}
+            className="ionex-progress-segment is-pending"
+            style={{ width: `${pendingPct}%` }}
           />
         )}
         {(large || overBudget) && (
           <div
+            className="ionex-progress-label"
             style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: overBudget ? '10px' : '11px',
-              fontWeight: '700',
-              color: overBudget ? '#fff' : pct > 50 ? '#fff' : 'var(--text-primary)',
-              textShadow: (overBudget || pct > 50) ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
-              pointerEvents: 'none',
+              color: overBudget || pct > 50 ? '#fff' : 'var(--text-primary)',
+              textShadow: overBudget || pct > 50 ? '0 1px 2px rgba(0,0,0,0.35)' : 'none',
             }}
           >
-            {overBudget ? 'Overbudget' : `${pct.toFixed(0)}%`}
+            {overBudget ? 'Over budget' : `${pct.toFixed(0)}%`}
           </div>
         )}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
-        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-          ${(revenue / 1000).toFixed(1)}k
-        </span>
-        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-          ${(budget / 1000).toFixed(1)}k
-        </span>
+      <div className="ionex-progress-caption">
+        <span>${(revenue / 1000).toFixed(1)}k</span>
+        <span>${(budget / 1000).toFixed(1)}k</span>
       </div>
     </div>
   );
 }
 
-function adjustAlpha(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function KpiCard({ label, value, color }: { label: string; value: string; color?: string }) {
+function KpiCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div
-      style={{
-        padding: '14px 16px',
-        borderRadius: '10px',
-        border: '1px solid var(--border-color)',
-        backgroundColor: 'var(--bg-secondary)',
-        borderLeft: color ? `3px solid ${color}` : undefined,
-      }}
+      className="ionex-kpi-mini"
+      style={accent ? ({ ['--kpi-accent' as string]: accent } as React.CSSProperties) : undefined}
     >
-      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: '18px', fontWeight: '700', color: color || 'var(--text-primary)', fontFamily: 'monospace' }}>
-        {value}
-      </div>
+      <span className="ionex-kpi-mini-label">{label}</span>
+      <span className="ionex-kpi-mini-value">{value}</span>
     </div>
   );
 }
@@ -1265,61 +1171,55 @@ function KpiCard({ label, value, color }: { label: string; value: string; color?
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: '24px' }}>
-      <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>
-        {title}
-      </h3>
+      <div className="ionex-section-heading">
+        <div className="ionex-section-heading-title-row">
+          <h3>{title}</h3>
+        </div>
+      </div>
       {children}
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const colorMap: Record<string, { bg: string; fg: string }> = {
-    approved: { bg: 'rgba(76,175,80,0.12)', fg: '#4caf50' },
-    pdf_exported: { bg: 'rgba(33,150,243,0.12)', fg: '#2196F3' },
-    qbo_created: { bg: 'rgba(156,39,176,0.12)', fg: '#9c27b0' },
-    sent_to_cnrl: { bg: 'rgba(255,152,0,0.12)', fg: '#ff9800' },
-    cnrl_approved: { bg: 'rgba(0,150,136,0.12)', fg: '#009688' },
-    submitted_to_cnrl: { bg: 'rgba(63,81,181,0.12)', fg: '#3f51b5' },
+  // Semantic mapping using theme tokens so dark mode works.
+  const map: Record<string, string> = {
+    approved: 'var(--success-color)',
+    pdf_exported: 'var(--primary-color)',
+    qbo_created: 'var(--primary-color)',
+    sent_to_cnrl: 'var(--warning-color)',
+    cnrl_approved: 'var(--success-color)',
+    submitted_to_cnrl: 'var(--text-secondary)',
   };
-  const c = colorMap[status] || { bg: 'rgba(158,158,158,0.12)', fg: '#9e9e9e' };
+  const color = map[status] || 'var(--text-tertiary)';
   const label = (status || 'unknown').replace(/_/g, ' ');
   return (
-    <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600', backgroundColor: c.bg, color: c.fg, textTransform: 'capitalize' }}>
+    <span
+      className="ionex-status-pill"
+      style={{
+        backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
+        color,
+        border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+      }}
+    >
       {label}
     </span>
   );
 }
 
-const thStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  fontSize: '11px',
-  fontWeight: '600',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  color: 'var(--text-tertiary)',
-  textAlign: 'left',
-  userSelect: 'none',
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '14px 16px',
-  fontSize: '13px',
-  color: 'var(--text-primary)',
-};
-
 const detailThStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  fontSize: '11px',
-  fontWeight: '600',
+  padding: '10px 12px',
+  fontSize: '10px',
+  fontWeight: 700,
   textTransform: 'uppercase',
-  letterSpacing: '0.3px',
+  letterSpacing: '0.14em',
   color: 'var(--text-tertiary)',
   textAlign: 'left',
 };
 
 const detailTdStyle: React.CSSProperties = {
-  padding: '8px 12px',
+  padding: '10px 12px',
   fontSize: '13px',
   color: 'var(--text-primary)',
+  fontVariantNumeric: 'tabular-nums',
 };

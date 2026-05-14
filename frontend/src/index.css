@@ -1382,3 +1382,347 @@ textarea {
   font-weight: 500;
 }
 
+/* ─── Report-page primitives ────────────────────────────────────────────
+   Shared between Employee Reports, Profitability, and any other dense
+   "operational ledger" data table that hangs under a KPI rail. */
+
+.ionex-report-table-card {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.ionex-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.ionex-report-table thead tr {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+.ionex-report-table thead tr::after {
+  /* second border that fades to give the head a more 'engraved' look */
+  content: '';
+}
+.ionex-report-table th {
+  padding: 11px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  text-align: left;
+  user-select: none;
+  white-space: nowrap;
+}
+.ionex-report-table th.is-sortable {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.ionex-report-table th.is-sortable:hover {
+  color: var(--text-secondary);
+}
+.ionex-report-table th.is-sorted {
+  color: var(--primary-color);
+}
+.ionex-report-table th.align-right { text-align: right; }
+.ionex-report-table th.align-center { text-align: center; }
+.ionex-report-table td {
+  padding: 13px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.ionex-report-table td.align-right { text-align: right; }
+.ionex-report-table td.align-center { text-align: center; }
+.ionex-report-table td.is-mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+.ionex-report-table tbody tr {
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.12s ease;
+  cursor: pointer;
+}
+.ionex-report-table tbody tr:last-child { border-bottom: none; }
+.ionex-report-table tbody tr:hover:not(.is-active) {
+  background-color: color-mix(in srgb, var(--primary-color) 4%, transparent);
+}
+.ionex-report-table tbody tr.is-active {
+  background-color: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+.ionex-report-table tbody tr.is-muted {
+  background-color: color-mix(in srgb, var(--text-tertiary) 6%, transparent);
+  opacity: 0.78;
+}
+.ionex-report-table tbody tr.is-muted:hover {
+  background-color: color-mix(in srgb, var(--text-tertiary) 12%, transparent);
+}
+.ionex-report-table .row-primary {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.ionex-report-table .row-secondary {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* Sort arrow glyph (renders only when class is-sorted is on the TH) */
+.ionex-sort-arrow {
+  display: inline-block;
+  font-size: 9px;
+  margin-left: 4px;
+  vertical-align: middle;
+  opacity: 0.7;
+}
+
+/* Margin/profit pill — three semantic tiers. */
+.ionex-margin-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  background-color: color-mix(in srgb, var(--text-secondary) 10%, transparent);
+  color: var(--text-secondary);
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 25%, transparent);
+}
+.ionex-margin-chip.is-good {
+  background-color: color-mix(in srgb, var(--success-color) 12%, transparent);
+  color: var(--success-color);
+  border-color: color-mix(in srgb, var(--success-color) 32%, transparent);
+}
+.ionex-margin-chip.is-warn {
+  background-color: color-mix(in srgb, var(--warning-color) 14%, transparent);
+  color: var(--warning-color);
+  border-color: color-mix(in srgb, var(--warning-color) 36%, transparent);
+}
+.ionex-margin-chip.is-bad {
+  background-color: color-mix(in srgb, var(--error-color) 14%, transparent);
+  color: var(--error-color);
+  border-color: color-mix(in srgb, var(--error-color) 36%, transparent);
+}
+
+/* Money value cell — emphasis on the value while subduing surrounding text. */
+.ionex-money {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  font-weight: 600;
+}
+.ionex-money.is-muted {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.ionex-money.is-good { color: var(--success-color); font-weight: 700; }
+.ionex-money.is-bad  { color: var(--error-color);   font-weight: 700; }
+.ionex-money.is-warn { color: var(--warning-color); font-weight: 700; }
+
+/* Segmented progress bar (Billable utilization, Budget usage). */
+.ionex-progress {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  background-color: color-mix(in srgb, var(--text-tertiary) 16%, transparent);
+  overflow: hidden;
+  display: flex;
+}
+.ionex-progress.is-large { height: 22px; border-radius: 11px; }
+.ionex-progress-segment {
+  height: 100%;
+  flex-shrink: 0;
+  transition: width 0.4s ease;
+}
+.ionex-progress-segment.is-primary {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--progress-color, var(--primary-color)),
+    var(--progress-color, var(--primary-color)) 6px,
+    color-mix(in srgb, var(--progress-color, var(--primary-color)) 60%, transparent) 6px,
+    color-mix(in srgb, var(--progress-color, var(--primary-color)) 60%, transparent) 12px
+  );
+}
+.ionex-progress-segment.is-pending {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--text-tertiary) 50%, transparent),
+    color-mix(in srgb, var(--text-tertiary) 50%, transparent) 6px,
+    color-mix(in srgb, var(--text-tertiary) 28%, transparent) 6px,
+    color-mix(in srgb, var(--text-tertiary) 28%, transparent) 12px
+  );
+}
+.ionex-progress-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.ionex-progress-caption {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Compact KPI grid for inside modals (smaller than the page-level summary). */
+.ionex-kpi-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.ionex-kpi-mini {
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  border-radius: 10px;
+  border-left: 3px solid var(--kpi-accent, var(--text-tertiary));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ionex-kpi-mini-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-tertiary);
+}
+.ionex-kpi-mini-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--kpi-accent, var(--text-primary));
+  letter-spacing: -0.01em;
+}
+
+/* Search bar with a more compact footprint used on report pages. */
+.ionex-search-inline {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-secondary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ionex-search-inline:focus-within {
+  border-color: color-mix(in srgb, var(--primary-color) 50%, var(--border-color));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+.ionex-search-inline::before {
+  content: '⌕';
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+.ionex-search-inline input {
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 160px;
+}
+.ionex-search-inline input::placeholder { color: var(--text-tertiary); }
+
+/* Page-level subtitle that sits under .ionex-page-title */
+.ionex-page-subtitle {
+  margin: -14px 0 22px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+/* Header action button (Export PDF, Export Excel, etc.) — secondary tone with
+   a quiet brand-red hover. Sits next to the page title. */
+.ionex-report-action {
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease, transform 0.08s ease;
+}
+.ionex-report-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
+  color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 6%, transparent);
+}
+.ionex-report-action:active:not(:disabled) { transform: translateY(1px); }
+.ionex-report-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Vertically stacked label+input field used inside .ionex-filter-card.
+   Keeps a label visible above the control so the filter rail reads at a
+   glance instead of relying on adjacent text. */
+.ionex-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+.ionex-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.ionex-field-input {
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ionex-field-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 14%, transparent);
+}
+
+/* Eyebrow label between sections inside a long modal */
+.ionex-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.ionex-eyebrow::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--eyebrow-color, var(--primary-color));
+}
+

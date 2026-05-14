@@ -219,184 +219,187 @@ export default function EmployeeReports() {
   const profitMargin = totals.totalRevenue > 0 ? (totals.netProfit / totals.totalRevenue) * 100 : 0;
 
   return (
-    <div style={{ padding: '30px', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-            Employee Reports
-          </h1>
-          <p style={{ fontSize: '13px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            Performance and profitability by employee
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+    <div style={{ padding: '28px 30px 60px', maxWidth: '1400px', margin: '0 auto' }}>
+      {/* Page title */}
+      <h1 className="ionex-page-title">
+        Employee Reports
+        <span className="ionex-page-title-actions">
           <button
-            className="button button-secondary"
-            style={{ padding: '8px 16px', fontSize: '13px' }}
+            type="button"
+            className="ionex-report-action"
             onClick={() => exportEmployeeReportsToPDF(sortedMetrics, totals, selectedPeriod, `employee-reports-${startDate}-${endDate}`)}
             disabled={isLoading || sortedMetrics.length === 0}
           >
             Export PDF
           </button>
           <button
-            className="button button-secondary"
-            style={{ padding: '8px 16px', fontSize: '13px' }}
+            type="button"
+            className="ionex-report-action"
             onClick={() => exportEmployeeReportsToExcel(sortedMetrics, totals, selectedPeriod, `employee-reports-${startDate}-${endDate}`)}
             disabled={isLoading || sortedMetrics.length === 0}
           >
             Export Excel
           </button>
-        </div>
-      </div>
+        </span>
+      </h1>
+      <p className="ionex-page-subtitle">Performance and profitability per employee · {selectedPeriod}{selectedPeriod === 'Custom Range' && customStartDate && customEndDate ? ` · ${customStartDate} → ${customEndDate}` : ''}</p>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Period:</label>
-          <select
-            value={selectedPeriod}
-            onChange={(e) => {
-              setSelectedPeriod(e.target.value);
-              if (e.target.value !== 'Custom Range') {
-                setCustomStartDate('');
-                setCustomEndDate('');
-              }
-            }}
-            style={selectStyle}
-          >
-            {periodPresets.map(preset => (
-              <option key={preset.label} value={preset.label}>{preset.label}</option>
-            ))}
-          </select>
+      <div className="ionex-filter-card">
+        <div className="ionex-filter-card-row">
+          <label className="ionex-field">
+            <span className="ionex-field-label">Period</span>
+            <select
+              value={selectedPeriod}
+              onChange={(e) => {
+                setSelectedPeriod(e.target.value);
+                if (e.target.value !== 'Custom Range') {
+                  setCustomStartDate('');
+                  setCustomEndDate('');
+                }
+              }}
+              className="ionex-field-input"
+            >
+              {periodPresets.map(preset => (
+                <option key={preset.label} value={preset.label}>{preset.label}</option>
+              ))}
+            </select>
+          </label>
           {selectedPeriod === 'Custom Range' && (
             <>
-              <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>From:</label>
-              <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} style={selectStyle} />
-              <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>To:</label>
-              <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} min={customStartDate} style={selectStyle} />
+              <label className="ionex-field">
+                <span className="ionex-field-label">From</span>
+                <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="ionex-field-input" />
+              </label>
+              <label className="ionex-field">
+                <span className="ionex-field-label">To</span>
+                <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} min={customStartDate} className="ionex-field-input" />
+              </label>
             </>
           )}
+          <label className="ionex-field">
+            <span className="ionex-field-label">Department</span>
+            <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="ionex-field-input">
+              <option value="all">All departments</option>
+              {departments.map((dept) => <option key={dept} value={dept}>{dept}</option>)}
+            </select>
+          </label>
+          <label className="ionex-field" style={{ minWidth: '200px' }}>
+            <span className="ionex-field-label">Employee</span>
+            <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} className="ionex-field-input">
+              <option value="all">All employees</option>
+              {employees?.map((emp: any) => (
+                <option key={emp.user_id} value={emp.user_id}>{emp.user?.first_name} {emp.user?.last_name}</option>
+              ))}
+            </select>
+          </label>
+          <div className="ionex-field" style={{ alignSelf: 'flex-end' }}>
+            <span className="ionex-field-label">GST</span>
+            <div className="ionex-toggle-rail" role="group" aria-label="Toggle GST">
+              <button
+                type="button"
+                className={`ionex-toggle-button${includeGst ? ' is-active' : ''}`}
+                onClick={() => setIncludeGst(true)}
+              >
+                Inclusive (+5%)
+              </button>
+              <button
+                type="button"
+                className={`ionex-toggle-button${!includeGst ? ' is-active' : ''}`}
+                onClick={() => setIncludeGst(false)}
+              >
+                Pre-GST
+              </button>
+            </div>
+          </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Dept:</label>
-          <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} style={selectStyle}>
-            <option value="all">All</option>
-            {departments.map((dept) => <option key={dept} value={dept}>{dept}</option>)}
-          </select>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Employee:</label>
-          <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} style={selectStyle}>
-            <option value="all">All Employees</option>
-            {employees?.map((emp: any) => (
-              <option key={emp.user_id} value={emp.user_id}>{emp.user?.first_name} {emp.user?.last_name}</option>
-            ))}
-          </select>
-        </div>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-secondary)' }}>
-          <input
-            type="checkbox"
-            checked={includeGst}
-            onChange={(e) => setIncludeGst(e.target.checked)}
-            style={{ width: '16px', height: '16px', accentColor: 'var(--primary-color)' }}
-          />
-          Include GST (5%) on billable amounts
-        </label>
       </div>
 
       <ReportMethodologyCollapsible variant="employee" />
 
-      {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-        {[
-          { label: 'Total Hours', value: formatHoursDecimal(totals.totalHours), color: '#9c27b0' },
-          { label: 'Billable Hours', value: formatHoursDecimal(totals.billableHours), color: '#2196F3' },
-          { label: 'Avg Billable %', value: `${billablePct.toFixed(1)}%`, color: billablePct >= 80 ? '#4caf50' : billablePct >= 60 ? '#ff9800' : '#e53935' },
-          { label: 'Revenue', value: `$${fmt(totals.totalRevenue)}`, color: '#4caf50' },
-          { label: 'Total Cost', value: `$${fmt(totals.totalCost)}`, color: '#ff9800' },
-          { label: 'Net Profit', value: `$${fmt(totals.netProfit)}`, color: totals.netProfit >= 0 ? '#4caf50' : '#e53935' },
-          { label: 'Profit Margin', value: `${profitMargin.toFixed(1)}%`, color: profitMargin >= 20 ? '#4caf50' : profitMargin >= 0 ? '#ff9800' : '#e53935' },
-          { label: 'Service Tickets', value: String(totals.serviceTicketCount), color: '#607d8b' },
-        ].map((card) => (
+      {/* Summary cards — coherent semantic palette:
+          neutral for counts, brand red for money in, warning for money out,
+          tiered success/warn/error for derived signals (margin, billable%, profit). */}
+      <div className="ionex-summary-grid">
+        {([
+          { key: 'hours',    label: 'Total Hours',     value: formatHoursDecimal(totals.totalHours),     accent: 'var(--text-tertiary)' },
+          { key: 'billable', label: 'Billable Hours',  value: formatHoursDecimal(totals.billableHours),  accent: 'var(--text-secondary)' },
+          { key: 'billpct',  label: 'Avg Billable %',  value: `${billablePct.toFixed(1)}%`,              accent: billablePct >= 80 ? 'var(--success-color)' : billablePct >= 60 ? 'var(--warning-color)' : 'var(--error-color)' },
+          { key: 'revenue',  label: 'Revenue',         value: `$${fmt(totals.totalRevenue)}`,            accent: 'var(--primary-color)' },
+          { key: 'cost',     label: 'Total Cost',      value: `$${fmt(totals.totalCost)}`,               accent: 'var(--warning-color)' },
+          { key: 'profit',   label: 'Net Profit',      value: `$${fmt(totals.netProfit)}`,               accent: totals.netProfit >= 0 ? 'var(--success-color)' : 'var(--error-color)' },
+          { key: 'margin',   label: 'Profit Margin',   value: `${profitMargin.toFixed(1)}%`,             accent: profitMargin >= 20 ? 'var(--success-color)' : profitMargin >= 0 ? 'var(--warning-color)' : 'var(--error-color)' },
+          { key: 'tickets',  label: 'Service Tickets', value: String(totals.serviceTicketCount),         accent: 'var(--text-tertiary)' },
+        ]).map((card) => (
           <div
-            key={card.label}
-            style={{
-              backgroundColor: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '12px',
-              padding: '18px 20px',
-              borderLeft: `4px solid ${card.color}`,
-            }}
+            key={card.key}
+            className="ionex-summary-card"
+            style={{ ['--summary-accent' as string]: card.accent } as React.CSSProperties}
           >
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '6px' }}>
+            <span className="ionex-summary-card-eyebrow">
+              <span className="accent" />
               {card.label}
-            </div>
-            <div style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-              {card.value}
-            </div>
+            </span>
+            <span className="ionex-summary-card-value">{card.value}</span>
           </div>
         ))}
       </div>
 
+      <div className="ionex-section-heading">
+        <div className="ionex-section-heading-title-row">
+          <h2>By Employee</h2>
+          <span className="ionex-section-heading-meta">
+            <strong>{sortedMetrics.length}</strong> {sortedMetrics.length === 1 ? 'employee' : 'employees'}
+          </span>
+        </div>
+      </div>
+
       {/* Loading */}
       {isLoading && (
-        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-          Loading employee data...
+        <div className="ionex-status-card">
+          <div className="glyph">∴</div>
+          <div className="title">Loading employee data…</div>
         </div>
       )}
 
       {/* Employee Table */}
       {!isLoading && (
-        <div style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="ionex-report-table-card">
+          <table className="ionex-report-table">
             <thead>
-              <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                <th style={{ ...thStyle, cursor: 'pointer' }} onClick={() => handleSort('employeeName')}>Employee{sortArrow('employeeName')}</th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>Billable %</th>
-                <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('totalRevenue')}>Revenue{sortArrow('totalRevenue')}</th>
-                <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('totalCost')}>Cost{sortArrow('totalCost')}</th>
-                <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('netProfit')}>Profit{sortArrow('netProfit')}</th>
-                <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('profitMargin')}>Margin{sortArrow('profitMargin')}</th>
-                <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('serviceTicketCount')}>Tickets{sortArrow('serviceTicketCount')}</th>
-                <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer' }} onClick={() => handleSort('totalHours')}>Hours{sortArrow('totalHours')}</th>
+              <tr>
+                <th className={`is-sortable${sortField === 'employeeName' ? ' is-sorted' : ''}`} onClick={() => handleSort('employeeName')}>Employee{sortField === 'employeeName' && <span className="ionex-sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>}</th>
+                <th className="align-center">Billable %</th>
+                <th className={`align-right is-sortable${sortField === 'totalRevenue' ? ' is-sorted' : ''}`} onClick={() => handleSort('totalRevenue')}>Revenue{sortField === 'totalRevenue' && <span className="ionex-sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>}</th>
+                <th className={`align-right is-sortable${sortField === 'totalCost' ? ' is-sorted' : ''}`} onClick={() => handleSort('totalCost')}>Cost{sortField === 'totalCost' && <span className="ionex-sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>}</th>
+                <th className={`align-right is-sortable${sortField === 'netProfit' ? ' is-sorted' : ''}`} onClick={() => handleSort('netProfit')}>Profit{sortField === 'netProfit' && <span className="ionex-sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>}</th>
+                <th className={`align-right is-sortable${sortField === 'profitMargin' ? ' is-sorted' : ''}`} onClick={() => handleSort('profitMargin')}>Margin{sortField === 'profitMargin' && <span className="ionex-sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>}</th>
+                <th className={`align-right is-sortable${sortField === 'serviceTicketCount' ? ' is-sorted' : ''}`} onClick={() => handleSort('serviceTicketCount')}>Tickets{sortField === 'serviceTicketCount' && <span className="ionex-sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>}</th>
+                <th className={`align-right is-sortable${sortField === 'totalHours' ? ' is-sorted' : ''}`} onClick={() => handleSort('totalHours')}>Hours{sortField === 'totalHours' && <span className="ionex-sort-arrow">{sortDirection === 'asc' ? '▲' : '▼'}</span>}</th>
               </tr>
             </thead>
             <tbody>
               {sortedMetrics.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                  <td colSpan={8} style={{ padding: '48px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
                     No employee data for this period
                   </td>
                 </tr>
               ) : (
                 sortedMetrics.map((m) => {
                   const eff = m.efficiency;
+                  const marginTier = m.profitMargin >= 20 ? 'is-good' : m.profitMargin >= 0 ? 'is-warn' : 'is-bad';
                   return (
                     <tr
                       key={m.userId}
                       onClick={() => setExpandedEmployee(expandedEmployee === m.userId ? null : m.userId)}
-                      style={{
-                        borderBottom: '1px solid var(--border-color)',
-                        cursor: 'pointer',
-                        backgroundColor: expandedEmployee === m.userId ? 'var(--bg-secondary)' : 'transparent',
-                        transition: 'background-color 0.15s',
-                      }}
-                      onMouseEnter={(e) => { if (expandedEmployee !== m.userId) e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; }}
-                      onMouseLeave={(e) => { if (expandedEmployee !== m.userId) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      className={expandedEmployee === m.userId ? 'is-active' : ''}
                     >
-                      <td style={tdStyle}>
-                        <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text-primary)' }}>
-                          {m.employeeName}
-                        </div>
-                        {m.position && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{m.position}</div>
-                        )}
+                      <td>
+                        <div className="row-primary">{m.employeeName}</div>
+                        {m.position && <div className="row-secondary">{m.position}</div>}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'center', minWidth: '160px' }}>
+                      <td className="align-center" style={{ minWidth: '180px' }}>
                         <BillableBar
                           pct={eff}
                           billable={m.billableHours}
@@ -405,31 +408,22 @@ export default function EmployeeReports() {
                           total={m.totalHours}
                         />
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600' }}>
-                        ${fmt(m.totalRevenue)}
+                      <td className="align-right is-mono">
+                        <span className="ionex-money">${fmt(m.totalRevenue)}</span>
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                        ${fmt(m.totalCost)}
+                      <td className="align-right is-mono">
+                        <span className="ionex-money is-muted">${fmt(m.totalCost)}</span>
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: '600', color: m.netProfit >= 0 ? '#4caf50' : '#e53935' }}>
-                        ${fmt(m.netProfit)}
+                      <td className="align-right is-mono">
+                        <span className={`ionex-money ${m.netProfit >= 0 ? 'is-good' : 'is-bad'}`}>${fmt(m.netProfit)}</span>
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          backgroundColor: m.profitMargin >= 20 ? 'rgba(76,175,80,0.12)' : m.profitMargin >= 0 ? 'rgba(255,152,0,0.12)' : 'rgba(229,57,53,0.12)',
-                          color: m.profitMargin >= 20 ? '#4caf50' : m.profitMargin >= 0 ? '#ff9800' : '#e53935',
-                        }}>
-                          {m.profitMargin.toFixed(1)}%
-                        </span>
+                      <td className="align-right">
+                        <span className={`ionex-margin-chip ${marginTier}`}>{m.profitMargin.toFixed(1)}%</span>
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                      <td className="align-right is-mono" style={{ color: 'var(--text-secondary)' }}>
                         {m.serviceTicketCount}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                      <td className="align-right is-mono" style={{ color: 'var(--text-secondary)' }}>
                         {formatHoursDecimal(m.totalHours)}
                       </td>
                     </tr>
@@ -444,12 +438,10 @@ export default function EmployeeReports() {
       {/* Detail Modal */}
       {expandedMetrics && (
         <div
+          className="ionex-modal-backdrop"
           style={{
             position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            inset: 0,
             backgroundColor: 'rgba(0,0,0,0.5)',
             zIndex: 1000,
             display: 'flex',
@@ -460,22 +452,24 @@ export default function EmployeeReports() {
           onClick={() => setExpandedEmployee(null)}
         >
           <div
+            className="ionex-modal-card"
             style={{
               backgroundColor: 'var(--bg-primary)',
-              borderRadius: '16px',
-              maxWidth: '1000px',
+              border: '1px solid var(--border-color)',
+              borderRadius: '14px',
+              maxWidth: '1040px',
               width: '100%',
               maxHeight: '90vh',
               overflowY: 'auto',
-              padding: '32px',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              padding: '28px 32px 32px',
+              boxShadow: 'var(--shadow-lg)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '22px', color: 'var(--text-primary)' }}>
+                <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 800, letterSpacing: '-0.012em', color: 'var(--text-primary)' }}>
                   {expandedMetrics.employeeName}
                 </h2>
                 {expandedMetrics.position && (
@@ -484,39 +478,30 @@ export default function EmployeeReports() {
               </div>
               <button
                 onClick={() => setExpandedEmployee(null)}
-                style={{
-                  background: 'none',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  padding: '6px 12px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: 'var(--text-secondary)',
-                }}
+                className="ionex-report-action"
+                aria-label="Close"
               >
-                {'\u2715'}
+                \u2715 Close
               </button>
             </div>
 
             {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '28px' }}>
-              <KpiCard label="Revenue" value={`$${fmt(expandedMetrics.totalRevenue)}`} color="#2196F3" />
-              <KpiCard label="Labor Cost" value={`$${fmt(expandedMetrics.laborCost)}`} color="#ff9800" />
+            <div className="ionex-kpi-mini-grid" style={{ marginBottom: '24px' }}>
+              <KpiCard label="Revenue" value={`$${fmt(expandedMetrics.totalRevenue)}`} accent="var(--primary-color)" />
+              <KpiCard label="Labor Cost" value={`$${fmt(expandedMetrics.laborCost)}`} accent="var(--warning-color)" />
               {expandedMetrics.expenseCost > 0 && (
-                <KpiCard label="Expenses" value={`$${fmt(expandedMetrics.expenseCost)}`} color="#e91e63" />
+                <KpiCard label="Expenses" value={`$${fmt(expandedMetrics.expenseCost)}`} accent="var(--warning-color)" />
               )}
-              <KpiCard label="Total Cost" value={`$${fmt(expandedMetrics.totalCost)}`} color="#ff9800" />
-              <KpiCard label="Profit" value={`$${fmt(expandedMetrics.netProfit)}`} color={expandedMetrics.netProfit >= 0 ? '#4caf50' : '#e53935'} />
-              <KpiCard label="Margin" value={`${expandedMetrics.profitMargin.toFixed(1)}%`} color={expandedMetrics.profitMargin >= 20 ? '#4caf50' : expandedMetrics.profitMargin >= 0 ? '#ff9800' : '#e53935'} />
-              <KpiCard label="Billable %" value={formatPercentage(expandedMetrics.efficiency)} color={expandedMetrics.efficiency >= 80 ? '#4caf50' : expandedMetrics.efficiency >= 60 ? '#ff9800' : '#e53935'} />
-              <KpiCard label="Hours" value={formatHoursDecimal(expandedMetrics.totalHours)} color="#9c27b0" />
+              <KpiCard label="Total Cost" value={`$${fmt(expandedMetrics.totalCost)}`} accent="var(--warning-color)" />
+              <KpiCard label="Profit" value={`$${fmt(expandedMetrics.netProfit)}`} accent={expandedMetrics.netProfit >= 0 ? 'var(--success-color)' : 'var(--error-color)'} />
+              <KpiCard label="Margin" value={`${expandedMetrics.profitMargin.toFixed(1)}%`} accent={expandedMetrics.profitMargin >= 20 ? 'var(--success-color)' : expandedMetrics.profitMargin >= 0 ? 'var(--warning-color)' : 'var(--error-color)'} />
+              <KpiCard label="Billable %" value={formatPercentage(expandedMetrics.efficiency)} accent={expandedMetrics.efficiency >= 80 ? 'var(--success-color)' : expandedMetrics.efficiency >= 60 ? 'var(--warning-color)' : 'var(--error-color)'} />
+              <KpiCard label="Hours" value={formatHoursDecimal(expandedMetrics.totalHours)} accent="var(--text-tertiary)" />
             </div>
 
             {/* Billable Bar (large) */}
-            <div style={{ marginBottom: '28px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Billable Utilization
-              </div>
+            <div style={{ marginBottom: '24px' }}>
+              <div className="ionex-eyebrow"><span />Billable Utilization</div>
               <BillableBar
                 pct={expandedMetrics.efficiency}
                 billable={expandedMetrics.billableHours}
@@ -1071,142 +1056,61 @@ function BillableBar({
   total: number;
   large?: boolean;
 }) {
-  const height = large ? 24 : 16;
   const clampedPct = Math.min(Math.max(pct, 0), 100);
-  const barColor = pct >= 80 ? '#4caf50' : pct >= 60 ? '#ff9800' : '#e53935';
+  // Tiered semantic color picks up the CSS variable so it themes correctly in dark mode.
+  const accentVar = pct >= 80 ? 'var(--success-color)' : pct >= 60 ? 'var(--warning-color)' : 'var(--error-color)';
 
-  // Three segments: approved (colored), pending draft/submitted/rejected (greyed), non-billable (light grey)
   const approvedPct = total > 0 ? (billableApproved / total) * 100 : 0;
   const pendingPct = total > 0 ? (Math.max(0, billableAllTickets - billableApproved) / total) * 100 : 0;
-  const nonBillablePct = total > 0 ? ((total - billableAllTickets) / total) * 100 : 0;
 
   return (
     <div>
       <div
-        style={{
-          position: 'relative',
-          height,
-          borderRadius: height / 2,
-          backgroundColor: 'rgba(158,158,158,0.15)',
-          overflow: 'hidden',
-          display: 'flex',
-        }}
+        className={`ionex-progress${large ? ' is-large' : ''}`}
+        style={{ ['--progress-color' as string]: accentVar } as React.CSSProperties}
       >
-        {/* Approved (revenue-contributing) */}
         {approvedPct > 0 && (
           <div
             title="Approved: hours from approved/exported tickets (contributing to revenue)"
-            style={{
-              width: `${approvedPct}%`,
-              height: '100%',
-              borderTopLeftRadius: height / 2,
-              borderBottomLeftRadius: height / 2,
-              borderTopRightRadius: pendingPct <= 0 ? height / 2 : 0,
-              borderBottomRightRadius: pendingPct <= 0 ? height / 2 : 0,
-              background: `repeating-linear-gradient(
-                -45deg,
-                ${barColor},
-                ${barColor} 6px,
-                ${adjustAlpha(barColor, 0.6)} 6px,
-                ${adjustAlpha(barColor, 0.6)} 12px
-              )`,
-              transition: 'width 0.4s ease',
-              flexShrink: 0,
-            }}
+            className="ionex-progress-segment is-primary"
+            style={{ width: `${approvedPct}%` }}
           />
         )}
-        {/* Pending (draft/submitted/rejected) */}
         {pendingPct > 0 && (
           <div
             title="Pending: hours on draft, submitted, or rejected tickets (not yet contributing to revenue)"
-            style={{
-              width: `${pendingPct}%`,
-              height: '100%',
-              background: `repeating-linear-gradient(
-                -45deg,
-                rgba(158,158,158,0.5),
-                rgba(158,158,158,0.5) 6px,
-                rgba(158,158,158,0.3) 6px,
-                rgba(158,158,158,0.3) 12px
-              )`,
-              flexShrink: 0,
-              borderTopRightRadius: nonBillablePct <= 0 ? height / 2 : 0,
-              borderBottomRightRadius: nonBillablePct <= 0 ? height / 2 : 0,
-            }}
-          />
-        )}
-        {/* Non-billable (remaining) */}
-        {nonBillablePct > 0 && (
-          <div
-            title="Non-billable: internal time and unbilled work"
-            style={{
-              width: `${nonBillablePct}%`,
-              height: '100%',
-              backgroundColor: 'rgba(158,158,158,0.15)',
-              flexShrink: 0,
-              borderTopRightRadius: height / 2,
-              borderBottomRightRadius: height / 2,
-            }}
+            className="ionex-progress-segment is-pending"
+            style={{ width: `${pendingPct}%` }}
           />
         )}
         {large && (
           <div
+            className="ionex-progress-label"
             style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '11px',
-              fontWeight: '700',
               color: clampedPct > 50 ? '#fff' : 'var(--text-primary)',
               textShadow: clampedPct > 50 ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
-              pointerEvents: 'none',
             }}
           >
             {clampedPct.toFixed(0)}%
           </div>
         )}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
-        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-          {billable.toFixed(1)}h billable
-        </span>
-        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-          {total.toFixed(1)}h total
-        </span>
+      <div className="ionex-progress-caption">
+        <span>{billable.toFixed(1)}h billable</span>
+        <span>{total.toFixed(1)}h total</span>
       </div>
     </div>
   );
 }
 
-function adjustAlpha(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function KpiCard({ label, value, color }: { label: string; value: string; color?: string }) {
+function KpiCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div
-      style={{
-        padding: '14px 16px',
-        borderRadius: '10px',
-        border: '1px solid var(--border-color)',
-        backgroundColor: 'var(--bg-secondary)',
-        borderLeft: color ? `3px solid ${color}` : undefined,
-      }}
+      className="ionex-kpi-mini"
+      style={accent ? ({ ['--kpi-accent' as string]: accent } as React.CSSProperties) : undefined}
     >
-      <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
-        {label}
-      </div>
-      <div style={{ fontSize: '18px', fontWeight: '700', color: color || 'var(--text-primary)', fontFamily: 'monospace' }}>
-        {value}
-      </div>
+      <span className="ionex-kpi-mini-label">{label}</span>
+      <span className="ionex-kpi-mini-value">{value}</span>
     </div>
   );
 }
@@ -1214,53 +1118,29 @@ function KpiCard({ label, value, color }: { label: string; value: string; color?
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: '24px' }}>
-      <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>
-        {title}
-      </h3>
+      <div className="ionex-section-heading">
+        <div className="ionex-section-heading-title-row">
+          <h3>{title}</h3>
+        </div>
+      </div>
       {children}
     </div>
   );
 }
 
-const selectStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  borderRadius: '8px',
-  border: '1px solid var(--border-color)',
-  backgroundColor: 'var(--bg-secondary)',
-  color: 'var(--text-primary)',
-  fontSize: '13px',
-  cursor: 'pointer',
-};
-
-const thStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  fontSize: '11px',
-  fontWeight: '600',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  color: 'var(--text-tertiary)',
-  textAlign: 'left',
-  userSelect: 'none',
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '14px 16px',
-  fontSize: '13px',
-  color: 'var(--text-primary)',
-};
-
 const detailThStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  fontSize: '11px',
-  fontWeight: '600',
+  padding: '10px 12px',
+  fontSize: '10px',
+  fontWeight: 700,
   textTransform: 'uppercase',
-  letterSpacing: '0.3px',
+  letterSpacing: '0.14em',
   color: 'var(--text-tertiary)',
   textAlign: 'left',
 };
 
 const detailTdStyle: React.CSSProperties = {
-  padding: '8px 12px',
+  padding: '10px 12px',
   fontSize: '13px',
   color: 'var(--text-primary)',
+  fontVariantNumeric: 'tabular-nums',
 };
