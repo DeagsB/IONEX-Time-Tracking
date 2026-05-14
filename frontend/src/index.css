@@ -1164,4 +1164,183 @@ textarea {
   background: linear-gradient(to right, var(--border-color), transparent);
   margin-left: 4px;
 }
+.ionex-page-title-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Summary metric cards (Payroll & similar). Centered hero number with a small
+   uppercase eyebrow label. Used as a grid of cards above a table or chart. */
+.ionex-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.ionex-summary-card {
+  position: relative;
+  padding: 18px 18px 16px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.ionex-summary-card:hover {
+  border-color: var(--border-color-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.ionex-summary-card-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ionex-summary-card-eyebrow .accent {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--summary-accent, var(--primary-color));
+}
+.ionex-summary-card-value {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--summary-accent, var(--text-primary));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.012em;
+}
+.ionex-summary-card-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+/* Page-wide loading/error placeholder cards — unified with the empty state look */
+.ionex-status-card {
+  padding: 56px 28px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 22px;
+}
+.ionex-status-card .glyph {
+  font-size: 36px;
+  line-height: 1;
+  margin-bottom: 4px;
+  opacity: 0.4;
+}
+.ionex-status-card .title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.ionex-status-card.is-error .title {
+  color: var(--error-color);
+}
+
+/* Card-style filter rail that's more vertical than the Invoices grid — Payroll has
+   richer per-cell content (calendar picker, preset row, payday tag) that doesn't
+   fit neatly into the equal-width column model. Same elevated card framing though. */
+.ionex-filter-card {
+  position: relative;
+  padding: 16px 18px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 22px;
+}
+.ionex-filter-card::before {
+  content: 'Filters';
+  position: absolute;
+  top: -8px;
+  left: 14px;
+  padding: 0 8px;
+  background-color: var(--bg-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.ionex-filter-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.ionex-filter-card-row + .ionex-filter-card-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* Tab-bar style toggle (Hours/Dollars or similar binary toggles). */
+.ionex-toggle-rail {
+  display: inline-flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+}
+.ionex-toggle-button {
+  padding: 7px 14px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.ionex-toggle-button + .ionex-toggle-button {
+  border-left: 1px solid var(--border-color);
+}
+.ionex-toggle-button:hover:not(.is-active) {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.ionex-toggle-button.is-active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+/* Inline status tag (Payday: ..., similar). Subtle colored pill. */
+.ionex-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background-color: color-mix(in srgb, var(--tag-color, var(--primary-color)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tag-color, var(--primary-color)) 38%, transparent);
+  color: var(--tag-color, var(--primary-color));
+}
+.ionex-tag .label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
 

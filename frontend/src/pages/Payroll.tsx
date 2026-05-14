@@ -1044,15 +1044,11 @@ export default function Payroll() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-          {isAdmin ? 'Payroll Report' : 'My Payroll'}
-        </h2>
-      </div>
+      <h1 className="ionex-page-title">{isAdmin ? 'Payroll Report' : 'My Payroll'}</h1>
 
       {/* Filters */}
-      <div className="card" style={{ marginBottom: '24px', padding: '20px' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
+      <div className="ionex-filter-card">
+        <div className="ionex-filter-card-row">
           {/* Date Range — pay-period calendar picker, with collapsible custom inputs */}
           <div>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase' }}>
@@ -1145,35 +1141,27 @@ export default function Payroll() {
           </div>
           
           {/* Payday indicator */}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '6px', 
-            padding: '8px 12px',
-            backgroundColor: 'rgba(76, 175, 80, 0.1)',
-            borderRadius: '6px',
-            border: '1px solid rgba(76, 175, 80, 0.3)',
-          }}>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Payday:</span>
-            <span style={{ fontSize: '12px', fontWeight: '600', color: '#4caf50' }}>{paydayLabel}</span>
-          </div>
+          <span className="ionex-tag" style={{ ['--tag-color' as string]: '#4caf50' } as React.CSSProperties}>
+            <span className="label">Payday:</span>
+            {paydayLabel}
+          </span>
         </div>
 
         {isAdmin && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginTop: '12px' }}>
+          <div className="ionex-filter-card-row" style={{ alignItems: 'center' }}>
             {/* Display mode toggle: Hours vs Dollars */}
-            <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+            <div className="ionex-toggle-rail">
               <button
                 type="button"
                 onClick={() => setDisplayMode('hours')}
-                style={{ padding: '6px 14px', border: 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer', backgroundColor: displayMode === 'hours' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: displayMode === 'hours' ? 'white' : 'var(--text-secondary)' }}
+                className={`ionex-toggle-button${displayMode === 'hours' ? ' is-active' : ''}`}
               >
                 Hours
               </button>
               <button
                 type="button"
                 onClick={() => setDisplayMode('dollars')}
-                style={{ padding: '6px 14px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '12px', fontWeight: 600, cursor: 'pointer', backgroundColor: displayMode === 'dollars' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: displayMode === 'dollars' ? 'white' : 'var(--text-secondary)' }}
+                className={`ionex-toggle-button${displayMode === 'dollars' ? ' is-active' : ''}`}
               >
                 Dollars
               </button>
@@ -1194,52 +1182,63 @@ export default function Payroll() {
 
       {/* Loading / Error States */}
       {error ? (
-        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
-          <p style={{ color: '#ef5350' }}>Error loading report data</p>
+        <div className="ionex-status-card is-error">
+          <span className="glyph" aria-hidden>⚠️</span>
+          <span className="title">Error loading report data</span>
         </div>
       ) : isLoading ? (
-        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-secondary)' }}>Loading payroll data...</p>
+        <div className="ionex-status-card">
+          <span className="glyph" aria-hidden>⏳</span>
+          <span className="title">Loading payroll data…</span>
         </div>
       ) : employeeHours.length === 0 ? (
-        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
-          <p style={{ color: 'var(--text-secondary)' }}>No time entries found for the selected period.</p>
+        <div className="ionex-empty">
+          <span className="glyph" aria-hidden>🗓️</span>
+          <h3 className="title">No time entries in this period</h3>
+          <p className="body">Try a different date range or pay period from the filters above.</p>
         </div>
       ) : (
         <>
           {/* Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-            <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>
+          <div className="ionex-summary-grid">
+            <div className="ionex-summary-card" style={{ ['--summary-accent' as string]: 'var(--primary-color)' } as React.CSSProperties}>
+              <span className="ionex-summary-card-eyebrow">
+                <span className="accent" aria-hidden />
                 {isAdmin ? 'Total Cost' : 'Total Hours'}
-              </div>
-              <div style={{ fontSize: '32px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              </span>
+              <span className="ionex-summary-card-value">
                 {isAdmin ? `$${grandTotalsCosts.totalCost.toFixed(2)}` : grandTotals.totalHours.toFixed(2)}
-              </div>
+              </span>
               {isAdmin && (
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px', fontStyle: 'italic' }}>
+                <span className="ionex-summary-card-hint">
                   Gross + employer CPP/EI + reimbursements
-                </div>
+                </span>
               )}
             </div>
-            <div className="card" style={{ padding: '20px', textAlign: 'center' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '4px', textTransform: 'uppercase' }}>Reimbursements</div>
-              <div style={{ fontSize: '32px', fontWeight: '700', color: '#00897b' }}>
+            <div className="ionex-summary-card" style={{ ['--summary-accent' as string]: '#00897b' } as React.CSSProperties}>
+              <span className="ionex-summary-card-eyebrow">
+                <span className="accent" aria-hidden />
+                Reimbursements
+              </span>
+              <span className="ionex-summary-card-value">
                 ${grandTotalReimbursements.toFixed(2)}
-              </div>
+              </span>
             </div>
           </div>
 
           {/* Employee Hours Table */}
-          <div className="card">
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)' }}>
-                {isAdmin ? 'Employee Hours by Rate Type' : 'Hours by Rate Type'}
-              </h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                {startDate} to {endDate}{isAdmin ? ` • ${displayedEmployeeHours.length} employee${displayedEmployeeHours.length !== 1 ? 's' : ''}${excludeContractors ? ' (contractors hidden)' : ''}` : ''}
-              </p>
+          <div className="ionex-section-heading">
+            <div className="ionex-section-heading-title-row">
+              <h3>{isAdmin ? 'Employee Hours by Rate Type' : 'Hours by Rate Type'}</h3>
+              <span className="ionex-section-heading-meta">
+                {startDate} → {endDate}
+                {isAdmin && (
+                  <> · <strong>{displayedEmployeeHours.length}</strong> {displayedEmployeeHours.length === 1 ? 'employee' : 'employees'}{excludeContractors ? ' · contractors hidden' : ''}</>
+                )}
+              </span>
             </div>
+          </div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             {/* overflow-x:auto on this wrapper would hide the scrollbar below the fold on tall tables.
                 Letting the table push the page wide instead surfaces the Layout's existing overflow:auto
                 horizontal scrollbar at the bottom of the viewport, which is always reachable. */}
