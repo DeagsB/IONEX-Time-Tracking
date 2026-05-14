@@ -2285,6 +2285,18 @@ export default function Invoices() {
     enabled: isAdmin && !!startDate && !!endDate,
   });
 
+  // Unapproved tickets in the same range — used to warn when a Ready batch shares its
+  // customer + project + period with tickets still in draft / submitted / rejected.
+  const { data: pendingTicketsInRange } = useQuery({
+    queryKey: ['pendingTicketsInRange', isDemoMode, startDate, endDate],
+    queryFn: () =>
+      serviceTicketsService.getPendingTicketsInRange(isDemoMode, {
+        startDate,
+        endDate,
+      }),
+    enabled: isAdmin && !!startDate && !!endDate,
+  });
+
   // Fetch billable entries
   const { data: billableEntries } = useQuery({
     queryKey: ['billableEntriesForInvoices', startDate, endDate, isDemoMode],
@@ -4716,6 +4728,68 @@ export default function Invoices() {
     [uninvoicedGroups, isGroupAccumulating]
   );
 
+  /** Map of `${customerId}|${projectId}|${periodKey}` → list of unapproved tickets that
+   *  share that customer + project + period. A Ready batch hitting this map means an
+   *  invoice shipped now would leave one or more drafts/submitted tickets stranded
+   *  outside the batch (or force a follow-up invoice once they're approved). */
+  type PendingTicketWarn = {
+    id: string;
+    ticket_number: string | null;
+    date: string;
+    user_id: string;
+    workflow_status: 'draft' | 'submitted' | 'rejected' | string;
+    total_hours: number | null;
+  };
+  const pendingTicketsByMatchKey = useMemo(() => {
+    const map = new Map<string, PendingTicketWarn[]>();
+    const rows = (pendingTicketsInRange ?? []) as Array<PendingTicketWarn & {
+      customer_id: string | null;
+      project_id: string | null;
+      invoice_batch_date_override: string | null;
+    }>;
+    for (const p of rows) {
+      const custId = p.customer_id ?? '';
+      const projId = p.project_id ?? '';
+      const dateForGrouping = p.invoice_batch_date_override || p.date || '';
+      if (!dateForGrouping) continue;
+      const groupingRaw = getGroupingForTicket(custId, projId);
+      const variants = new Set<string>();
+      variants.add(getPeriodKey(dateForGrouping, groupingRaw, projId));
+      // Ready batches under CNRL-style approver grouping force pc/progress → bi-weekly,
+      // so index under that variant too in case the matching Ready batch is CNRL.
+      variants.add(getPeriodKey(dateForGrouping, cnrlPeriodGrouping(groupingRaw), projId));
+      for (const pk of variants) {
+        const mk = `${custId}|${projId}|${pk}`;
+        const list = map.get(mk) ?? [];
+        list.push(p);
+        map.set(mk, list);
+      }
+    }
+    return map;
+  }, [pendingTicketsInRange, getGroupingForTicket]);
+
+  const getPendingTicketsForGroup = useCallback(
+    (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): PendingTicketWarn[] => {
+      const first = group.tickets[0] as ServiceTicket & { recordProjectId?: string } | undefined;
+      if (!first) return [];
+      const custId = first.customerId ?? '';
+      const projId = first.recordProjectId ?? first.projectId ?? '';
+      const pk = group.key.periodKey ?? '';
+      if (!pk) return [];
+      const matches = pendingTicketsByMatchKey.get(`${custId}|${projId}|${pk}`) ?? [];
+      // De-duplicate (a ticket may be indexed under both grouping variants)
+      const seen = new Set<string>();
+      const out: PendingTicketWarn[] = [];
+      for (const m of matches) {
+        if (seen.has(m.id)) continue;
+        seen.add(m.id);
+        out.push(m);
+      }
+      return out;
+    },
+    [pendingTicketsByMatchKey]
+  );
+
   /** Per-customer buckets of ready batches whose workflow is Portal Approval — eligible for the bulk Send-for-approval zip flow. */
   const bulkApprovalCandidates = useMemo(() => {
     const map = new Map<string, { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[]>();
@@ -6978,6 +7052,78 @@ export default function Invoices() {
                     </button>
                   </div>
                 )}
+                {(() => {
+                  const pendingForBatch = getPendingTicketsForGroup(group);
+                  if (pendingForBatch.length === 0) return null;
+                  const draftCt = pendingForBatch.filter((p) => p.workflow_status === 'draft').length;
+                  const submittedCt = pendingForBatch.filter((p) => p.workflow_status === 'submitted').length;
+                  const rejectedCt = pendingForBatch.filter((p) => p.workflow_status === 'rejected').length;
+                  const parts: string[] = [];
+                  if (draftCt > 0) parts.push(`${draftCt} draft${draftCt === 1 ? '' : 's'}`);
+                  if (submittedCt > 0) parts.push(`${submittedCt} awaiting approval`);
+                  if (rejectedCt > 0) parts.push(`${rejectedCt} rejected`);
+                  const summary = parts.join(' · ');
+                  const sample = pendingForBatch.slice(0, 6);
+                  const remaining = pendingForBatch.length - sample.length;
+                  const employeeName = (uid: string) =>
+                    employees?.find((e: { id: string; full_name?: string; name?: string }) => e.id === uid)?.full_name
+                    ?? employees?.find((e: { id: string; full_name?: string; name?: string }) => e.id === uid)?.name
+                    ?? 'Unknown';
+                  return (
+                    <div
+                      style={{
+                        marginBottom: '12px',
+                        padding: '10px 12px',
+                        backgroundColor: 'rgba(220, 38, 38, 0.06)',
+                        border: '1px solid rgba(220, 38, 38, 0.35)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        lineHeight: 1.45,
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'flex-start',
+                        gap: '10px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: 'rgba(220, 38, 38, 0.18)',
+                          color: '#b91c1c',
+                        }}
+                      >
+                        Unapproved
+                      </span>
+                      <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                        <strong style={{ color: 'var(--text-primary)' }}>
+                          {pendingForBatch.length} ticket{pendingForBatch.length === 1 ? '' : 's'} not yet approved
+                        </strong>{' '}
+                        in this customer + project + period ({summary}). Invoicing now will exclude
+                        them — approve or discard them first to keep the batch whole.
+                        <ul style={{ margin: '6px 0 0 0', paddingLeft: '18px', color: 'var(--text-secondary)' }}>
+                          {sample.map((p) => (
+                            <li key={p.id}>
+                              {p.ticket_number ? `#${p.ticket_number}` : 'Untitled draft'} · {p.date} ·{' '}
+                              {employeeName(p.user_id)} · {p.workflow_status}
+                            </li>
+                          ))}
+                          {remaining > 0 && (
+                            <li style={{ listStyle: 'none', color: 'var(--text-tertiary)' }}>
+                              +{remaining} more…
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const periodHeading = key.periodLabel || key.periodKey || key.approver || 'Batch';
                   const customerName = firstTicket?.customerName;

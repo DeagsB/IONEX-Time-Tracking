@@ -1751,6 +1751,39 @@ export const serviceTicketsService = {
    * Criteria: workflow_status='approved', ticket_number not null, is_discarded=false.
    * Optional date range filters to match Service Tickets Approved tab.
    */
+  /**
+   * Get unapproved tickets (draft / submitted / rejected) inside a date range so the
+   * Invoices page can warn the admin when a Ready batch shares its customer + project +
+   * period with a ticket that hasn't been approved yet — those would slot into the batch
+   * once approved, and shipping the batch early would split the invoice.
+   */
+  async getPendingTicketsInRange(
+    isDemo: boolean = false,
+    filters?: { startDate?: string; endDate?: string }
+  ) {
+    const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
+    let query = supabase
+      .from(tableName)
+      .select('id, ticket_number, date, user_id, customer_id, project_id, workflow_status, total_hours, invoice_batch_date_override')
+      .in('workflow_status', ['draft', 'submitted', 'rejected'])
+      .eq('is_discarded', false)
+      .order('date', { ascending: false });
+
+    if (filters?.startDate) {
+      query = query.gte('date', filters.startDate);
+    }
+    if (filters?.endDate) {
+      query = query.lte('date', filters.endDate);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('Error getting pending tickets in range:', error);
+      throw error;
+    }
+    return data || [];
+  },
+
   async getTicketsReadyForExport(
     isDemo: boolean = false,
     filters?: { startDate?: string; endDate?: string }
