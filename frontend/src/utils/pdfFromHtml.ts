@@ -748,7 +748,9 @@ function buildBatchSummaryPdfHtml(
 ): string {
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket);
   const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
-  const useCnrlBreakdown = cnrlBreakdownRows.length > 0;
+  // Only worth dedicating a separate table when there are 2+ distinct PO/AFE/CC
+  // combos. Single-combo batches keep the classic single-row Customer Info layout.
+  const useCnrlBreakdown = cnrlBreakdownRows.length > 1;
 
   return `
     <div id="service-ticket-summary" style="
