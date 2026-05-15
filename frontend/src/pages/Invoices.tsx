@@ -7171,19 +7171,50 @@ export default function Invoices() {
                     }
                     if (isPortal && currentStep === 'attach_signed') {
                       const note = (rejection && !rejection.active && rejection.note) ? rejection.note : null;
+                      const onMarkRejected = async () => {
+                        const input = window.prompt('Rejection note from approver (required). Briefly describe what needs to change:');
+                        if (input === null) return;
+                        const cleaned = input.trim();
+                        if (!cleaned) {
+                          setExportError('Rejection note is required.');
+                          return;
+                        }
+                        await handleMarkBatchNeedsAdjustment({
+                          persistId,
+                          note: cleaned,
+                          customerName: activeGroup.tickets[0]?.customerName,
+                          projectNumber: activeGroup.key.projectNumber || undefined,
+                          workflowId: activeWorkflow?.id,
+                          priorAttempt: rejection?.attempt ?? 0,
+                        });
+                      };
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
                             Waiting for the customer to sign the approval batch. When you receive the signed PDF back,
-                            upload it here — that advances the batch to <em>Approved</em>.
+                            upload it below — that advances the batch to <em>Approved</em>. If the approver rejected it
+                            instead, mark it for adjustment so you can fix the tickets and resubmit.
                           </p>
                           {note && (
                             <div style={{ marginBottom: '12px', padding: '8px 10px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
                               Earlier rejection: <em>{note}</em>
                             </div>
                           )}
-                          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            Got a rejection instead? <button type="button" onClick={() => setActiveTab('submitted')} style={{ ...goButtonStyle, fontSize: '12px', marginLeft: '4px' }}>Open in Submitted →</button>
+                          <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
+                              Approver rejected this batch?
+                            </div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                              Mark it for adjustment with a note. The wizard will reopen the Submit-for-approval step so you can
+                              edit tickets (use the ticket chips above to open or move them between batches), then resubmit.
+                            </div>
+                            <button
+                              type="button"
+                              onClick={onMarkRejected}
+                              style={{ ...goButtonStyle, backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.45)', color: '#b91c1c' }}
+                            >
+                              ⚠ Mark as needs adjustment…
+                            </button>
                           </div>
                           {fileDropZone({
                             id: `wiz-signed-approval-${persistId}`,
@@ -7649,6 +7680,20 @@ export default function Invoices() {
                                   isAdmin={isAdmin}
                                   hasExpense={hasExp}
                                   onOpenTicket={() => setEditTicketRecordId(rid || tt.id)}
+                                  onMoveClick={() => {
+                                    setMoveTicketBatchCustomDate('');
+                                    setMoveTicketBatchDialog({
+                                      ticket: tt as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null },
+                                      sourceGroup: activeGroup,
+                                    });
+                                  }}
+                                  onResetOverride={rid && tt.invoiceBatchDateOverride ? () => {
+                                    void runTicketBatchMove(
+                                      tt as ServiceTicket & { recordId?: string; invoiceBatchDateOverride?: string | null },
+                                      null,
+                                      'ticket date',
+                                    );
+                                  } : undefined}
                                 />
                               );
                             })}
