@@ -7657,16 +7657,20 @@ export default function Invoices() {
                               // Each stage gets its own color so Ready-to-submit vs Awaiting-approval
                               // (and the other portal stages) are distinguishable at a glance.
                               const cStatusId = getGroupStatusId(c.group);
+                              // Color = action urgency, not lifecycle position.
+                              //   Yellow = needs action by admin (send / attach / submit)
+                              //   Gray = waiting on customer, no admin action available
+                              //   Red = blocked, needs admin attention
                               const stage: { label: string; fg: string; bg: string; border: string; cardTint?: string } | null = c.isPortal
                                 ? (cStatusId === NEEDS_ADJUSTMENT_STATUS_ID
                                     ? { label: 'Needs adjustment', fg: '#b91c1c', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.45)', cardTint: 'rgba(239, 68, 68, 0.06)' }
                                     : cStatusId === 'submitted_approval'
-                                      ? { label: 'Awaiting approval', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' }
+                                      ? { label: 'Awaiting approval', fg: '#475569', bg: 'rgba(100, 116, 139, 0.14)', border: 'rgba(100, 116, 139, 0.45)', cardTint: 'rgba(100, 116, 139, 0.05)' }
                                       : cStatusId === 'approved'
-                                        ? { label: 'Approved · attach invoice', fg: '#1d4ed8', bg: 'rgba(37, 99, 235, 0.14)', border: 'rgba(37, 99, 235, 0.50)', cardTint: 'rgba(37, 99, 235, 0.06)' }
+                                        ? { label: 'Approved · attach invoice', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' }
                                         : cStatusId === 'portal_submission'
-                                          ? { label: 'Portal submission', fg: '#0f766e', bg: 'rgba(20, 184, 166, 0.14)', border: 'rgba(20, 184, 166, 0.50)', cardTint: 'rgba(20, 184, 166, 0.06)' }
-                                          : { label: 'Ready to submit', fg: '#475569', bg: 'rgba(100, 116, 139, 0.14)', border: 'rgba(100, 116, 139, 0.45)', cardTint: 'rgba(100, 116, 139, 0.05)' })
+                                          ? { label: 'Portal submission', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' }
+                                          : { label: 'Ready to submit', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' })
                                 : null;
                               const cardBorder = isActive
                                 ? '1px solid var(--accent-color, #2563eb)'
