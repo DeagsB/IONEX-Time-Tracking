@@ -6911,20 +6911,31 @@ export default function Invoices() {
                   type StandardStepId = 'line_items' | 'send' | 'done';
                   type PortalStepId = 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'submit_portal' | 'done';
                   type WizardStepId = StandardStepId | PortalStepId;
-                  // Standard flow used to be three steps (create / attach / send). Step 2 was
-                  // just a dropzone — collapsing it into step 1 means the user drops the PDF
-                  // alongside the line-item breakdown and jumps straight to "send".
-                  const STANDARD_STEPS: { id: StandardStepId; label: string }[] = [
-                    { id: 'line_items', label: 'Create invoice & attach PDF' },
-                    { id: 'send', label: 'Download combined PDF & finish' },
-                  ];
-                  const PORTAL_STEPS: { id: PortalStepId; label: string }[] = [
-                    { id: 'submit_approval', label: 'Mark batch as sent for approval' },
-                    { id: 'attach_signed', label: 'Attach signed approval' },
-                    { id: 'attach_invoice', label: 'Create invoice & attach PDF' },
-                    { id: 'submit_portal', label: 'Submit to customer portal' },
-                  ];
-                  const STEP_DEFS = isPortal ? PORTAL_STEPS : STANDARD_STEPS;
+                  // Each queue surfaces only the steps the user actually performs in that
+                  // queue — the others are out of scope and just add noise.
+                  //   Needs Approval   → send the batch to the approver (1 step)
+                  //   Awaiting Signed  → drop the signed approval PDF (1 step)
+                  //   Ready to Invoice → finish invoicing the batch (standard: 2 steps,
+                  //                       portal at this point: attach invoice → submit to portal)
+                  const STEP_DEFS: { id: WizardStepId; label: string }[] = (() => {
+                    if (effectiveQueue === 'needs_to_be_approved') {
+                      return [{ id: 'submit_approval', label: 'Mark batch as sent for approval' }];
+                    }
+                    if (effectiveQueue === 'awaiting_signed') {
+                      return [{ id: 'attach_signed', label: 'Attach signed approval PDF' }];
+                    }
+                    // ready_to_be_invoiced
+                    if (isPortal) {
+                      return [
+                        { id: 'attach_invoice', label: 'Create invoice & attach PDF' },
+                        { id: 'submit_portal', label: 'Submit to customer portal' },
+                      ];
+                    }
+                    return [
+                      { id: 'line_items', label: 'Create invoice & attach PDF' },
+                      { id: 'send', label: 'Download combined PDF & finish' },
+                    ];
+                  })();
 
                   const groupId = getGroupId(activeGroup);
                   const persistId = resolvedPersistGroupId(activeGroup, invoicedMarkRows);
