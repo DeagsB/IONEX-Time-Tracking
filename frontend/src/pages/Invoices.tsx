@@ -5082,6 +5082,20 @@ export default function Invoices() {
     setExportingGroupIdx(groupId);
     setExportError(null);
     try {
+      // Customer-supplied timesheet short-circuit: when the customer requires their own
+      // format, the export is just their timesheet PDF — no IONEX summary, no per-ticket
+      // PDFs. Check both persistId and groupId in case the timesheet was uploaded before
+      // the batch was marked.
+      const customerTimesheet =
+        savedCustomerTimesheetMetadata?.[exportPersistId] ??
+        savedCustomerTimesheetMetadata?.[groupId];
+      if (customerTimesheet) {
+        const timesheetBlob = await invoicedBatchCustomerTimesheetsService.downloadTimesheet(customerTimesheet.storagePath);
+        const filename = getInvoicePdfFilename(key, groupTickets);
+        saveAs(timesheetBlob, filename);
+        return;
+      }
+
       const blobs: Blob[] = [];
       const allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
 
@@ -5146,15 +5160,20 @@ export default function Invoices() {
     const downloadFilename = mergedInvoiceBatchDownloadFilename(sourceInvoiceName);
     const dlSnap = invoicedMarkRows.find((r) => r.group_id === groupId)?.key_snapshot as FrozenGroupSnapshot | undefined;
     const dlLabourNotes = dlSnap?.labourNotes ?? pendingLabourNotes[groupId];
+    const dlLocalGroupId = getGroupId(group);
 
     const { tickets: groupTickets } = group;
     setDownloadingWithInvoiceGroupId(groupId);
     setExportError(null);
     try {
-      // Customer-supplied timesheet short-circuit: when a portal customer requires their
-      // own format, the combined package is just invoice + their timesheet. No summary,
-      // no IONEX ticket PDFs.
-      const customerTimesheet = savedCustomerTimesheetMetadata?.[groupId];
+      // Customer-supplied timesheet short-circuit: when the customer requires their own
+      // format, the combined package is just our invoice + their timesheet. No IONEX
+      // summary, no IONEX per-ticket PDFs. Check both persistId (the groupId passed in)
+      // and the local groupId, since the timesheet may have been uploaded before the
+      // batch was marked.
+      const customerTimesheet =
+        savedCustomerTimesheetMetadata?.[groupId] ??
+        savedCustomerTimesheetMetadata?.[dlLocalGroupId];
       if (customerTimesheet) {
         const timesheetBlob = await invoicedBatchCustomerTimesheetsService.downloadTimesheet(customerTimesheet.storagePath);
         const merged = await mergePdfBlobs([invoiceBlob, timesheetBlob]);
