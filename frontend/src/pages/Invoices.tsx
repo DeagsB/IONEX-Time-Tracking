@@ -7249,6 +7249,25 @@ export default function Invoices() {
                             <strong>Subtotal (pre-GST)</strong>
                             <strong>${lineTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                           </div>
+                          {/* Shortcut: if the user already has the invoice PDF ready, let them
+                              drop it here on step 1 — we ack line-items, upload, and trigger the
+                              combined download in one move, jumping straight to step 3. */}
+                          {!hasBlockers && (
+                            <div style={{ marginBottom: '12px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                                Already created the invoice? Skip step 2
+                              </div>
+                              {fileDropZone({
+                                id: `wiz-std-invoice-step1-${persistId}`,
+                                label: 'Drop invoice PDF here to skip ahead',
+                                uploading: uploadingInvoiceGroupId === persistId,
+                                onPick: async (file: File) => {
+                                  onContinueFromLineItems();
+                                  await onAttachStandardAutoDownload(file);
+                                },
+                              })}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button type="button" onClick={onDownloadBatchPdf} style={goButtonStyle}>
                               ⬇ Download batch PDF
