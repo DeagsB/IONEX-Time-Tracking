@@ -5998,6 +5998,13 @@ export default function Invoices() {
                         ? (batchWorkflow?.statuses?.find((s) => s.id === 'sent')
                             ?? batchWorkflow?.statuses?.find((s) => s.id !== 'draft'))
                         : null;
+                      // If the batch landed in submitted_portal but the user needs to swap
+                      // the invoice PDF or correct something, offer a soft rollback to the
+                      // portal_submission stage. Keeps the mark row + invoice intact.
+                      const isSubmittedPortal = batchStatusId === 'submitted_portal';
+                      const portalSubmissionStatus = isSubmittedPortal
+                        ? batchWorkflow?.statuses?.find((s) => s.id === 'portal_submission')
+                        : null;
                       return (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                         {isDraft && sentStatus && (
@@ -6053,6 +6060,63 @@ export default function Invoices() {
                             }}
                           >
                             ✓ Mark as sent to customer
+                          </span>
+                        )}
+                        {isSubmittedPortal && portalSubmissionStatus && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Send this batch back to Portal Submission so you can swap the invoice or fix portal details."
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (updateBatchStatusMutation.isPending) return;
+                              if (!window.confirm('Send this batch back to Portal Submission? The invoice PDF stays attached.')) return;
+                              updateBatchStatusMutation.mutate({
+                                groupId: persistId,
+                                statusId: portalSubmissionStatus.id,
+                                prevStatusId: batchStatusId,
+                                statusLabel: portalSubmissionStatus.label,
+                                customerName: groupTickets[0]?.customerName,
+                                projectNumber: key.projectNumber || undefined,
+                                workflowId: batchWorkflow?.id,
+                              });
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                if (updateBatchStatusMutation.isPending) return;
+                                if (!window.confirm('Send this batch back to Portal Submission? The invoice PDF stays attached.')) return;
+                                updateBatchStatusMutation.mutate({
+                                  groupId: persistId,
+                                  statusId: portalSubmissionStatus.id,
+                                  prevStatusId: batchStatusId,
+                                  statusLabel: portalSubmissionStatus.label,
+                                  customerName: groupTickets[0]?.customerName,
+                                  projectNumber: key.projectNumber || undefined,
+                                  workflowId: batchWorkflow?.id,
+                                });
+                              }
+                            }}
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              padding: '3px 10px',
+                              borderRadius: '999px',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              color: 'var(--text-secondary)',
+                              border: '1px solid var(--border-color)',
+                              whiteSpace: 'nowrap',
+                              cursor: updateBatchStatusMutation.isPending ? 'wait' : 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              outline: 'none',
+                              transition: 'background-color 0.12s ease',
+                            }}
+                          >
+                            ← Back to Portal Submission
                           </span>
                         )}
                         <span
@@ -7523,6 +7587,9 @@ export default function Invoices() {
                           workflowId: activeWorkflow?.id,
                           priorAttempt: rejection?.attempt ?? 0,
                         });
+                        // Wipe any stale wizard-step progress for this batch so the resubmit
+                        // step doesn't open mid-flow with old ack flags.
+                        clearWizardProgressForGroup(groupId);
                       };
                       return (
                         <div>
@@ -10235,6 +10302,38 @@ export default function Invoices() {
                           }}
                         >
                           {isMarking ? 'Saving…' : 'Mark as invoiced'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!wf) return;
+                            const approvedStatus = wf.statuses.find((s) => s.id === 'approved');
+                            if (!approvedStatus) return;
+                            if (!window.confirm('Send this batch back to Approved? The invoice PDF stays attached so you can swap it before resubmitting.')) return;
+                            updateBatchStatusMutation.mutate({
+                              groupId: persistId,
+                              statusId: approvedStatus.id,
+                              prevStatusId: 'portal_submission',
+                              statusLabel: approvedStatus.label,
+                              customerName,
+                              projectNumber: group.key.projectNumber || undefined,
+                              workflowId: wf.id,
+                            });
+                          }}
+                          disabled={updateBatchStatusMutation.isPending}
+                          title="Send this batch back to Approved so you can swap the invoice PDF or re-attach a different one."
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            color: 'var(--text-primary)',
+                            cursor: updateBatchStatusMutation.isPending ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          ← Back to Approved
                         </button>
                         {invoice && (
                           <button
