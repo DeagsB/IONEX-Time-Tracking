@@ -2754,8 +2754,7 @@ export default function Invoices() {
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
   type InvoiceTab = 'helper' | 'pending' | 'ready' | 'submitted' | 'approved' | 'portal_submission' | 'invoiced' | 'settings';
-  const [activeTab, setActiveTab] = useState<InvoiceTab>('pending');
-  const [didAutoPickInitialTab, setDidAutoPickInitialTab] = useState(false);
+  const [activeTab, setActiveTab] = useState<InvoiceTab>('helper');
   const showInvoiced = activeTab === 'invoiced';
   const setShowInvoiced = (v: boolean) => setActiveTab(v ? 'invoiced' : 'pending');
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
@@ -4831,17 +4830,6 @@ export default function Invoices() {
     }
     return [...map.entries()].map(([customer, groups]) => ({ customer, groups })).sort((a, b) => a.customer.localeCompare(b.customer));
   }, [readyGroups, getWorkflowForCustomer, isPortalApprovalWorkflow]);
-
-  // On first data load, open Ready tab if any ready groups exist, else stay on Pending.
-  // Skips after data loads once — user-driven tab changes are not overridden later.
-  // Wait for groupedTickets to actually populate (initial useMemo returns []) so we don't
-  // lock the choice before tickets finish loading.
-  useEffect(() => {
-    if (didAutoPickInitialTab) return;
-    if (!groupedTickets || groupedTickets.length === 0) return;
-    if (readyGroups.length > 0) setActiveTab('ready');
-    setDidAutoPickInitialTab(true);
-  }, [didAutoPickInitialTab, groupedTickets, readyGroups.length]);
 
   const filteredUninvoicedGroups = useMemo(() => {
     const base = activeTab === 'pending' ? pendingAccumulatingGroups : activeTab === 'ready' ? readyGroups : uninvoicedGroups;
