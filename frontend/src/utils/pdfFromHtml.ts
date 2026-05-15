@@ -739,7 +739,9 @@ function buildBatchSummaryPdfHtml(
   labourNotes?: Record<string, string>,
   ticketNumbers: string[] = []
 ): string {
-  const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket);
+  // Customer Info header now defers Service Location / PO/AFE/CC / Coding entirely
+  // to the labour summary — only Approver/Other still come from the first ticket.
+  const { approver } = getApproverPoAfeCcFromTicket(ticket);
   const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
   // When any labour row carries location/coding metadata, hours have been split per
   // line item. The Customer Info Service Location / PO/AFE / Coding cells then point
@@ -996,13 +998,13 @@ function buildBatchSummaryPdfHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
-              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${labourSplitOnCoding ? 'See labour summary' : (ticket.customerInfo.service_location || '')}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-style: italic; color: #555;">See labour summary</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; width: 100px;">PO/AFE/CC (Cost Center)</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${labourSplitOnCoding ? 'See labour summary' : poAfe}</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc; font-style: italic; color: #555;">See labour summary</td>
               <td style="padding: 2px 4px; width: 40px;">Coding</td>
-              <td style="padding: 2px 4px;">${labourSplitOnCoding ? 'See labour summary' : cc}</td>
+              <td style="padding: 2px 4px; font-style: italic; color: #555;">See labour summary</td>
             </tr>
             <tr style="border-top: 1px solid #ccc;">
               <td style="padding: 2px 4px; width: 100px;">Approver</td>
