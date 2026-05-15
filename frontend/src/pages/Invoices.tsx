@@ -3387,6 +3387,12 @@ export default function Invoices() {
     },
   });
 
+  /**
+   * Soft-removes only the attached invoice PDF row — the invoiced_batch_marks row
+   * stays put so the batch keeps its status, snapshot, and history. Callers can then
+   * re-upload a different invoice without re-marking. To fully discard a batch
+   * (mark row + invoice + approval + timesheet) use `unmarkInvoicedMutation` instead.
+   */
   const removeInvoiceMutation = useMutation({
     mutationFn: async (groupId: string) => {
       await invoicedBatchInvoicesService.deleteInvoice(groupId);
@@ -3425,11 +3431,12 @@ export default function Invoices() {
   const unmarkInvoicedMutation = useMutation({
     mutationFn: async (groupId: string) => {
       await invoicedBatchMarksService.deleteMark(groupId);
-      try {
-        await invoicedBatchInvoicesService.deleteInvoice(groupId);
-      } catch {
-        // No linked invoice PDF row
-      }
+      // Best-effort cascade: invoice PDF, signed approval, and customer-supplied timesheet
+      // all key off the same group_id. Leaving them behind creates orphan rows that the
+      // next mark-as-invoiced would re-attach by accident.
+      try { await invoicedBatchInvoicesService.deleteInvoice(groupId); } catch { /* no linked invoice */ }
+      try { await invoicedBatchApprovalsService.deleteApproval(groupId); } catch { /* no linked approval */ }
+      try { await invoicedBatchCustomerTimesheetsService.deleteTimesheet(groupId); } catch { /* no linked timesheet */ }
     },
     onMutate: async (groupId) => {
       await queryClient.cancelQueries({ queryKey: ['invoicedBatchMarks'] });
@@ -3476,6 +3483,8 @@ export default function Invoices() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
       queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchApprovals'] });
+      queryClient.invalidateQueries({ queryKey: ['invoicedBatchCustomerTimesheets'] });
       queryClient.invalidateQueries({ queryKey: ['lockedServiceTicketIdsForMe'] });
     },
   });
@@ -6571,6 +6580,9 @@ export default function Invoices() {
                             e.currentTarget.style.borderColor = '';
                             const file = e.dataTransfer?.files?.[0];
                             if (file?.type !== 'application/pdf') return;
+                            // Guard against a click + drop firing both handlers — second
+                            // mutation would overwrite the first's snapshot.
+                            if (markInvoicedMutation.isPending || uploadingInvoiceGroupId === persistId) return;
                             setUploadingInvoiceGroupId(persistId);
                             setExportError(null);
                             try {
@@ -6610,6 +6622,9 @@ export default function Invoices() {
                               const file = e.target.files?.[0];
                               e.target.value = '';
                               if (!file) return;
+                              // Guard against a click + drop firing both handlers — second
+                              // mutation would overwrite the first's snapshot.
+                              if (markInvoicedMutation.isPending || uploadingInvoiceGroupId === persistId) return;
                               setUploadingInvoiceGroupId(persistId);
                               setExportError(null);
                               try {
@@ -6981,7 +6996,12 @@ export default function Invoices() {
                   }
 
                   const activeGroup = activeCandidate.group;
-                  const isPortal = activeCandidate.isPortal;
+                  // Recompute portal-ness from the current workflow rather than trusting the
+                  // candidate's cached isPortal flag — workflow changes mid-session (admin
+                  // moves a customer between flows) should reflect immediately without a
+                  // page refresh.
+                  const activeWf = getWorkflowForCustomer(activeCandidate.group.tickets[0]?.customerName, activeCandidate.group.key.projectNumber);
+                  const isPortal = isPortalApprovalWorkflow(activeWf);
 
                   type StandardStepId = 'line_items' | 'send' | 'done';
                   type PortalStepId = 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'submit_portal' | 'done';
