@@ -6880,26 +6880,41 @@ export default function Invoices() {
                       setExportError(err instanceof Error ? err.message : 'Could not generate combined PDF.');
                     }
                   };
-                  const onAttach = async (file: File) => {
+                  const onAttach = async (file: File): Promise<File | null> => {
                     if (file.type !== 'application/pdf') {
                       setExportError('Invoice must be a PDF.');
-                      return;
+                      return null;
                     }
                     setUploadingInvoiceGroupId(persistId);
                     setExportError(null);
                     try {
                       if (isDemoMode) {
                         setInvoiceFileForGroup(persistId, file);
-                      } else {
-                        const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
-                        const fileForUi = new File([file], storedName, { type: file.type });
-                        setInvoiceFileForGroup(persistId, fileForUi);
-                        await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                        return file;
                       }
+                      const { filename: storedName } = await invoicedBatchInvoicesService.uploadInvoice(persistId, file);
+                      const fileForUi = new File([file], storedName, { type: file.type });
+                      setInvoiceFileForGroup(persistId, fileForUi);
+                      await queryClient.invalidateQueries({ queryKey: ['invoicedBatchInvoices'] });
+                      return fileForUi;
                     } catch (err) {
                       setExportError(err instanceof Error ? err.message : 'Could not upload invoice PDF.');
+                      return null;
                     } finally {
                       setUploadingInvoiceGroupId(null);
+                    }
+                  };
+                  // Standard step 2: after a successful invoice upload, kick off the combined
+                  // download automatically so the user doesn't have to click again on step 3.
+                  // Falls through to the regular handler for any upload failure.
+                  const onAttachStandardAutoDownload = async (file: File) => {
+                    const uploaded = await onAttach(file);
+                    if (!uploaded) return;
+                    try {
+                      await handleDownloadBatchWithInvoice(activeGroup, persistId, uploaded);
+                      setWizardDownloadToast('Downloaded combined invoice + service tickets PDF');
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not generate combined PDF.');
                     }
                   };
                   const advanceToNext = () => {
@@ -7235,14 +7250,14 @@ export default function Invoices() {
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Upload the invoice PDF you just generated from your invoicing system. The wizard will combine it with the service tickets in the next step.
+                            Drop the invoice PDF from your invoicing system. The wizard will combine it with the service tickets and download the bundle automatically.
                           </p>
                           {summaryBlock}
                           {fileDropZone({
                             id: `wiz-std-invoice-${persistId}`,
                             label: 'Click to select invoice PDF',
                             uploading: uploadingInvoiceGroupId === persistId,
-                            onPick: onAttach,
+                            onPick: onAttachStandardAutoDownload,
                           })}
                           <div style={{ marginTop: '12px' }}>
                             <button type="button" onClick={() => onReopen('line_items')} style={goButtonStyle}>
@@ -7534,13 +7549,24 @@ export default function Invoices() {
                   // the attached invoice so the user lands back at the picked step. Portal steps
                   // reflect persisted DB status — they cannot be rewound from the wizard. Use the
                   // corresponding tab (Submitted, Approved, Portal Submission) for those.
+                  //
+                  // Clearing only local state isn't enough — once the invoice PDF is uploaded
+                  // it lives in invoiced_batch_invoices and savedInvoiceMetadata keeps the step
+                  // pinned at 'send'. Delete the persisted row too so step derivation rolls
+                  // back to 'attach'.
                   const onReopen = (stepId: WizardStepId) => {
                     if (isMarked || isPortal) return;
                     if (stepId === 'line_items') {
                       clearWizardProgressForGroup(groupId);
                       setInvoiceFileForGroup(persistId, null);
+                      if (!isDemoMode && savedInvoiceMetadata?.[persistId]) {
+                        removeInvoiceMutation.mutate(persistId);
+                      }
                     } else if (stepId === 'attach') {
                       setInvoiceFileForGroup(persistId, null);
+                      if (!isDemoMode && savedInvoiceMetadata?.[persistId]) {
+                        removeInvoiceMutation.mutate(persistId);
+                      }
                     }
                   };
 
@@ -7552,7 +7578,11 @@ export default function Invoices() {
                           <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
                             {([
                               { id: 'standard' as WizardQueue, label: 'Standard', count: standardCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
-                              { id: 'portal' as WizardQueue, label: 'Portal', count: portalCandidates.length, fg: '#6d28d9', bg: '#ede9fe' },
+                              // Badge counts only batches waiting to be sent for approval
+                              // (fresh Ready + needs-adjustment resubmits) — those are the
+                              // action items. Batches already with the approver or further
+                              // along stay in the queue but don't inflate the urgency badge.
+                              { id: 'portal' as WizardQueue, label: 'Portal', count: readyPortal.length + needsAdjustment.length, fg: '#6d28d9', bg: '#ede9fe' },
                             ] as const).map((q) => {
                               const isActiveQ = q.id === effectiveQueue;
                               return (
@@ -7665,12 +7695,12 @@ export default function Invoices() {
                                 ? (cStatusId === NEEDS_ADJUSTMENT_STATUS_ID
                                     ? { label: 'Needs adjustment', fg: '#b91c1c', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.45)', cardTint: 'rgba(239, 68, 68, 0.06)' }
                                     : cStatusId === 'submitted_approval'
-                                      ? { label: 'Awaiting approval', fg: '#475569', bg: 'rgba(100, 116, 139, 0.14)', border: 'rgba(100, 116, 139, 0.45)', cardTint: 'rgba(100, 116, 139, 0.05)' }
+                                      ? { label: 'Sent for approval', fg: '#475569', bg: 'rgba(100, 116, 139, 0.14)', border: 'rgba(100, 116, 139, 0.45)', cardTint: 'rgba(100, 116, 139, 0.05)' }
                                       : cStatusId === 'approved'
                                         ? { label: 'Approved · attach invoice', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' }
                                         : cStatusId === 'portal_submission'
                                           ? { label: 'Portal submission', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' }
-                                          : { label: 'Ready to submit', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' })
+                                          : { label: 'Ready to send to approver', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' })
                                 : null;
                               const cardBorder = isActive
                                 ? '1px solid var(--accent-color, #2563eb)'
