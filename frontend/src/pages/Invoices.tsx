@@ -6776,12 +6776,14 @@ export default function Invoices() {
                   const activeGroup = activeCandidate.group;
                   const isPortal = activeCandidate.isPortal;
 
-                  type StandardStepId = 'line_items' | 'attach' | 'send' | 'done';
+                  type StandardStepId = 'line_items' | 'send' | 'done';
                   type PortalStepId = 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'submit_portal' | 'done';
                   type WizardStepId = StandardStepId | PortalStepId;
+                  // Standard flow used to be three steps (create / attach / send). Step 2 was
+                  // just a dropzone — collapsing it into step 1 means the user drops the PDF
+                  // alongside the line-item breakdown and jumps straight to "send".
                   const STANDARD_STEPS: { id: StandardStepId; label: string }[] = [
-                    { id: 'line_items', label: 'Create invoice in your system' },
-                    { id: 'attach', label: 'Attach invoice PDF' },
+                    { id: 'line_items', label: 'Create invoice & attach PDF' },
                     { id: 'send', label: 'Download combined PDF & finish' },
                   ];
                   const PORTAL_STEPS: { id: PortalStepId; label: string }[] = [
@@ -6794,7 +6796,6 @@ export default function Invoices() {
 
                   const groupId = getGroupId(activeGroup);
                   const persistId = resolvedPersistGroupId(activeGroup, invoicedMarkRows);
-                  const progress = wizardStepProgress[groupId] ?? {};
                   const isMarked = invoicedMarkRows.some((r) => r.group_id === persistId);
                   const statusId = getGroupStatusId(activeGroup);
                   const invoiceFile = invoiceFilesByGroupId[persistId] ?? null;
@@ -6857,7 +6858,6 @@ export default function Invoices() {
                   } else {
                     if (isMarked) currentStep = 'done';
                     else if (hasInvoiceFile) currentStep = 'send';
-                    else if (progress.lineItemsAckAt) currentStep = 'attach';
                     else currentStep = 'line_items';
                   }
 
@@ -6871,9 +6871,6 @@ export default function Invoices() {
                   const periodLabel = activeGroup.key.periodLabel ?? activeGroup.key.periodKey ?? '';
 
                   // --- Step actions ---
-                  const onContinueFromLineItems = () => {
-                    updateWizardProgress(groupId, { lineItemsAckAt: new Date().toISOString() });
-                  };
                   const onDownloadBatchPdf = async () => {
                     setExportError(null);
                     try {
@@ -7249,52 +7246,26 @@ export default function Invoices() {
                             <strong>Subtotal (pre-GST)</strong>
                             <strong>${lineTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                           </div>
-                          {/* Shortcut: if the user already has the invoice PDF ready, let them
-                              drop it here on step 1 — we ack line-items, upload, and trigger the
-                              combined download in one move, jumping straight to step 3. */}
-                          {!hasBlockers && (
-                            <div style={{ marginBottom: '12px' }}>
-                              <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                                Already created the invoice? Skip step 2
-                              </div>
-                              {fileDropZone({
-                                id: `wiz-std-invoice-step1-${persistId}`,
-                                label: 'Drop invoice PDF here to skip ahead',
-                                uploading: uploadingInvoiceGroupId === persistId,
-                                onPick: async (file: File) => {
-                                  onContinueFromLineItems();
-                                  await onAttachStandardAutoDownload(file);
-                                },
-                              })}
+                          <div style={{ marginBottom: '12px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                              Once the invoice is created, drop the PDF here
                             </div>
-                          )}
+                            {fileDropZone({
+                              id: `wiz-std-invoice-${persistId}`,
+                              label: hasBlockers ? 'Fix the blockers above to enable upload' : 'Drop invoice PDF here to combine + download',
+                              uploading: uploadingInvoiceGroupId === persistId,
+                              onPick: async (file: File) => {
+                                if (hasBlockers) {
+                                  setExportError('Fix the blockers above before attaching the invoice.');
+                                  return;
+                                }
+                                await onAttachStandardAutoDownload(file);
+                              },
+                            })}
+                          </div>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button type="button" onClick={onDownloadBatchPdf} style={goButtonStyle}>
                               ⬇ Download batch PDF
-                            </button>
-                            <button type="button" onClick={onContinueFromLineItems} disabled={hasBlockers} title={hasBlockers ? 'Fix the blockers above before continuing.' : undefined} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', opacity: hasBlockers ? 0.5 : 1, cursor: hasBlockers ? 'not-allowed' : 'pointer' }}>
-                              Continue to upload invoice →
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    }
-                    if (!isPortal && currentStep === 'attach') {
-                      return (
-                        <div>
-                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Drop the invoice PDF from your invoicing system. The wizard will combine it with the service tickets and download the bundle automatically.
-                          </p>
-                          {summaryBlock}
-                          {fileDropZone({
-                            id: `wiz-std-invoice-${persistId}`,
-                            label: 'Click to select invoice PDF',
-                            uploading: uploadingInvoiceGroupId === persistId,
-                            onPick: onAttachStandardAutoDownload,
-                          })}
-                          <div style={{ marginTop: '12px' }}>
-                            <button type="button" onClick={() => onReopen('line_items')} style={goButtonStyle}>
-                              ← Back to line items
                             </button>
                           </div>
                         </div>
@@ -7309,7 +7280,7 @@ export default function Invoices() {
                             Download the combined PDF (invoice + service tickets) and send it to the customer, then mark the batch as invoiced to finish.
                           </p>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            <button type="button" onClick={() => onReopen('attach')} style={goButtonStyle}>
+                            <button type="button" onClick={() => onReopen('line_items')} style={goButtonStyle}>
                               ← Replace invoice PDF
                             </button>
                             <button type="button" onClick={onDownloadCombined} disabled={isDownloading} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
@@ -7591,11 +7562,6 @@ export default function Invoices() {
                     if (isMarked || isPortal) return;
                     if (stepId === 'line_items') {
                       clearWizardProgressForGroup(groupId);
-                      setInvoiceFileForGroup(persistId, null);
-                      if (!isDemoMode && savedInvoiceMetadata?.[persistId]) {
-                        removeInvoiceMutation.mutate(persistId);
-                      }
-                    } else if (stepId === 'attach') {
                       setInvoiceFileForGroup(persistId, null);
                       if (!isDemoMode && savedInvoiceMetadata?.[persistId]) {
                         removeInvoiceMutation.mutate(persistId);
