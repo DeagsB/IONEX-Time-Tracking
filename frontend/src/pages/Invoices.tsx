@@ -7388,6 +7388,30 @@ export default function Invoices() {
                               const flowTag = c.isPortal ? 'Portal' : 'Standard';
                               const tagBg = c.isPortal ? '#ede9fe' : '#dbeafe';
                               const tagFg = c.isPortal ? '#6d28d9' : '#1d4ed8';
+                              // Overdue badge: based on the original batch period's age, so a batch
+                              // that sat in submitted_approval for two periods then bounced to
+                              // needs_adjustment still surfaces as overdue.
+                              const ticketForGrouping = c.group.tickets[0];
+                              const custIdForGrouping = ticketForGrouping?.customerId ?? '';
+                              const projIdForGrouping = (ticketForGrouping as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? ticketForGrouping?.projectId ?? '';
+                              const rawGrouping = getGroupingForTicket(custIdForGrouping, projIdForGrouping);
+                              const cKey = c.group.key;
+                              const targetIsCnrl = !!cKey.periodKey && !!cKey.approverCode && cKey.approverCode !== cKey.periodKey;
+                              const groupingForAge = targetIsCnrl ? cnrlPeriodGrouping(rawGrouping) : rawGrouping;
+                              const ageBadge = buildBatchAgeBadge(cKey.periodKey, groupingForAge);
+                              // Sub-status hint so user sees what stage a portal batch is at.
+                              const cStatusId = getGroupStatusId(c.group);
+                              const stageLabel = c.isPortal
+                                ? (cStatusId === NEEDS_ADJUSTMENT_STATUS_ID
+                                    ? 'Needs adjustment'
+                                    : cStatusId === 'submitted_approval'
+                                      ? 'Awaiting approval'
+                                      : cStatusId === 'approved'
+                                        ? 'Approved · attach invoice'
+                                        : cStatusId === 'portal_submission'
+                                          ? 'Portal submission'
+                                          : 'Ready to submit')
+                                : null;
                               return (
                                 <button
                                   key={gid}
@@ -7397,7 +7421,7 @@ export default function Invoices() {
                                     textAlign: 'left',
                                     padding: '8px 10px',
                                     borderRadius: '6px',
-                                    border: isActive ? '1px solid var(--accent-color, #2563eb)' : '1px solid transparent',
+                                    border: isActive ? '1px solid var(--accent-color, #2563eb)' : ageBadge ? `1px solid ${ageBadge.border}` : '1px solid transparent',
                                     backgroundColor: isActive ? 'rgba(37, 99, 235, 0.10)' : 'var(--bg-primary)',
                                     cursor: 'pointer',
                                     fontFamily: 'inherit',
@@ -7414,6 +7438,20 @@ export default function Invoices() {
                                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {c.group.key.periodLabel ?? c.group.key.periodKey ?? ''} · {c.group.tickets.length} ticket{c.group.tickets.length === 1 ? '' : 's'}
                                   </div>
+                                  {(ageBadge || stageLabel) && (
+                                    <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                      {ageBadge && (
+                                        <span title={`${ageBadge.daysOld} days since the period ended`} style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', backgroundColor: ageBadge.bg, color: ageBadge.color, border: `1px solid ${ageBadge.border}`, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                                          ⚠ {ageBadge.label}
+                                        </span>
+                                      )}
+                                      {stageLabel && (
+                                        <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 6px', borderRadius: '999px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', letterSpacing: '0.02em' }}>
+                                          {stageLabel}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 </button>
                               );
                             })}
