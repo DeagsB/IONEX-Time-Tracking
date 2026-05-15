@@ -545,14 +545,19 @@ export async function generateBatchSummaryPdf(
   const firstTicket = groupTickets[0];
   if (!firstTicket) throw new Error('No tickets in batch');
 
-  // Group labour by type and rate. ticketNumbers tracks which service tickets contributed
-  // hours to this rate, so the summary PDF can show "ST1234, ST5678" right under the label
-  // (and before any rate-specific note).
-  const labourMap = new Map<string, { label: string; hours: number; amount: number; rate: number; typeKey: string; ticketNumbers: Set<string> }>();
+  // Group labour by type + rate, and additionally by service-location + PO/AFE + CC when
+  // the customer is CNRL. The CNRL batch grouping (project + approver + period) leaves
+  // location and coding free to vary within a batch, so splitting labour rows on those
+  // axes gives the approver and AP a per-line-item hour breakout to reconcile against
+  // the invoice. Non-CNRL customers keep the original one-row-per-labour-type layout
+  // (empty location/poAfe/cc fields).
+  const isCnrl = (firstTicket.customerInfo.name ?? '').toUpperCase().includes('CNRL');
+  const labourMap = new Map<string, { label: string; hours: number; amount: number; rate: number; typeKey: string; location: string; poAfe: string; cc: string; ticketNumbers: Set<string> }>();
 
-  const addLabour = (type: string, label: string, hours: number, rate: number, ticketNumber: string) => {
+  const addLabour = (type: string, label: string, hours: number, rate: number, ticketNumber: string, location: string, poAfe: string, cc: string) => {
     if (hours > 0) {
-      const key = `${type}_${rate}`;
+      const splitPart = isCnrl ? `${location}|${poAfe}|${cc}` : '';
+      const key = `${type}_${rate}_${splitPart}`;
       const existing = labourMap.get(key);
       if (existing) {
         existing.hours += hours;
@@ -561,7 +566,13 @@ export async function generateBatchSummaryPdf(
       } else {
         const ticketNumbers = new Set<string>();
         if (ticketNumber) ticketNumbers.add(ticketNumber);
-        labourMap.set(key, { label, hours, amount: hours * rate, rate, typeKey: type, ticketNumbers });
+        labourMap.set(key, {
+          label, hours, amount: hours * rate, rate, typeKey: type,
+          location: isCnrl ? location : '',
+          poAfe: isCnrl ? poAfe : '',
+          cc: isCnrl ? cc : '',
+          ticketNumbers,
+        });
       }
     }
   };
@@ -573,12 +584,17 @@ export async function generateBatchSummaryPdf(
   for (const ticket of groupTickets) {
     const { rtHours: tRt, ttHours: tTt, ftHours: tFt, shopOtHours: tSo, fieldOtHours: tFo } = computeServiceTicketPdfHoursAndLines(ticket);
     const tNum = (ticket.ticketNumber || '').toString().trim();
+    const ov = (ticket as ServiceTicket & { headerOverrides?: { service_location?: string; po_afe?: string; cc?: string; approver?: string } | null }).headerOverrides ?? undefined;
+    const coding = getApproverPoAfeCcFromTicket(ticket, ov ?? undefined);
+    const tLoc = (ov?.service_location ?? ticket.location ?? (ticket as ServiceTicket & { projectLocation?: string }).projectLocation ?? ticket.customerInfo.service_location ?? '').trim();
+    const tPoAfe = coding.poAfe;
+    const tCc = coding.cc;
 
-    addLabour('ST', 'Shop Time (ST)', tRt, ticket.rates.rt, tNum);
-    addLabour('TT', 'Travel Time (TT)', tTt, ticket.rates.tt, tNum);
-    addLabour('FT', 'Field Time (FT)', tFt, ticket.rates.ft, tNum);
-    addLabour('SO', 'Shop OT (SO)', tSo, ticket.rates.shop_ot, tNum);
-    addLabour('FO', 'Field OT (FO)', tFo, ticket.rates.field_ot, tNum);
+    addLabour('ST', 'Shop Time (ST)', tRt, ticket.rates.rt, tNum, tLoc, tPoAfe, tCc);
+    addLabour('TT', 'Travel Time (TT)', tTt, ticket.rates.tt, tNum, tLoc, tPoAfe, tCc);
+    addLabour('FT', 'Field Time (FT)', tFt, ticket.rates.ft, tNum, tLoc, tPoAfe, tCc);
+    addLabour('SO', 'Shop OT (SO)', tSo, ticket.rates.shop_ot, tNum, tLoc, tPoAfe, tCc);
+    addLabour('FO', 'Field OT (FO)', tFo, ticket.rates.field_ot, tNum, tLoc, tPoAfe, tCc);
 
     const name = ticket.entries[0]?.user?.first_name && ticket.entries[0]?.user?.last_name
       ? `${ticket.entries[0].user.first_name} ${ticket.entries[0].user.last_name}`
@@ -629,10 +645,24 @@ export async function generateBatchSummaryPdf(
     if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
     return a.localeCompare(b);
   });
-  const labourLines = Array.from(labourMap.values()).map((l) => ({
-    ...l,
-    ticketNumbersList: sortTicketNumbersArr(Array.from(l.ticketNumbers)),
-  }));
+  // Preserve the canonical type order (ST → TT → FT → SO → FO) and within a type
+  // sort by service-location then PO/AFE then CC so the split rows cluster sensibly.
+  const TYPE_ORDER: Record<string, number> = { ST: 0, TT: 1, FT: 2, SO: 3, FO: 4 };
+  const labourLines = Array.from(labourMap.values())
+    .map((l) => ({
+      ...l,
+      ticketNumbersList: sortTicketNumbersArr(Array.from(l.ticketNumbers)),
+    }))
+    .sort((a, b) => {
+      const ta = TYPE_ORDER[a.typeKey] ?? 99;
+      const tb = TYPE_ORDER[b.typeKey] ?? 99;
+      if (ta !== tb) return ta - tb;
+      const la = (a.location || '').localeCompare(b.location || '');
+      if (la !== 0) return la;
+      const pa = (a.poAfe || '').localeCompare(b.poAfe || '');
+      if (pa !== 0) return pa;
+      return (a.cc || '').localeCompare(b.cc || '');
+    });
   const totalLabourHours = labourLines.reduce((sum, l) => sum + l.hours, 0);
   const totalLabourAmount = labourLines.reduce((sum, l) => sum + l.amount, 0);
   const grandTotal = totalLabourAmount + expensesTotal;
@@ -648,47 +678,9 @@ export async function generateBatchSummaryPdf(
     return a.localeCompare(b);
   });
 
-  // CNRL batches can mix multiple PO/AFE/CC combos in one summary (one ticket per location
-  // / approver). Build a per-tuple breakdown so the cover page shows one line per
-  // PO/AFE/CC with the tickets that contributed — mirrors the invoice line-item layout
-  // the customer sees. For non-CNRL customers we keep the single-row classic layout.
-  const isCnrl = (firstTicket.customerInfo.name ?? '').toUpperCase().includes('CNRL');
-  type CnrlBreakdownRow = {
-    location: string;
-    poAfe: string;
-    cc: string;
-    approver: string;
-    other: string;
-    ticketNumbers: string[];
-  };
-  const cnrlBreakdownRows: CnrlBreakdownRow[] = (() => {
-    if (!isCnrl) return [];
-    const map = new Map<string, CnrlBreakdownRow>();
-    for (const t of groupTickets) {
-      const ov = (t as ServiceTicket & { headerOverrides?: { service_location?: string; po_afe?: string; cc?: string; approver?: string; other?: string } | null }).headerOverrides ?? undefined;
-      const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(t, ov ?? undefined);
-      const location = (ov?.service_location ?? t.location ?? (t as ServiceTicket & { projectLocation?: string }).projectLocation ?? t.customerInfo.service_location ?? '').trim();
-      const other = (ov?.other ?? (t as ServiceTicket & { projectOther?: string }).projectOther ?? t.customerInfo.location_code ?? '').trim();
-      // Group on PO/AFE + CC only — those are the line-item-equivalent keys.
-      // Approver and service-location vary per ticket but live in the Customer Info
-      // block, so including them would split rows that should logically merge.
-      const key = poAfe + '' + cc;
-      const tNum = (t.ticketNumber || '').toString().trim();
-      const row = map.get(key);
-      if (row) {
-        if (tNum && !row.ticketNumbers.includes(tNum)) row.ticketNumbers.push(tNum);
-      } else {
-        map.set(key, {
-          location, poAfe, cc, approver, other,
-          ticketNumbers: tNum ? [tNum] : [],
-        });
-      }
-    }
-    const rows = Array.from(map.values());
-    for (const row of rows) row.ticketNumbers = sortTicketNumbersArr(row.ticketNumbers);
-    rows.sort((a, b) => (a.poAfe || '').localeCompare(b.poAfe || '') || (a.cc || '').localeCompare(b.cc || ''));
-    return rows;
-  })();
+  // Per-coding labour split now lives inside the Labour Summary itself (one row per
+  // (type, rate, location, poAfe, cc) tuple), so the standalone breakdown table was
+  // retired.
 
   const html = buildBatchSummaryPdfHtml(
     firstTicket,
@@ -702,8 +694,7 @@ export async function generateBatchSummaryPdf(
     expensesTotal,
     grandTotal,
     labourNotes,
-    ticketNumbers,
-    cnrlBreakdownRows
+    ticketNumbers
   );
 
   const container = document.createElement('div');
@@ -737,20 +728,20 @@ function buildBatchSummaryPdfHtml(
   employeeName: string,
   employeeEmail: string,
   ticketDate: string,
-  labourLines: Array<{ label: string; hours: number; amount: number; rate: number; typeKey: string; ticketNumbersList: string[] }>,
+  labourLines: Array<{ label: string; hours: number; amount: number; rate: number; typeKey: string; location: string; poAfe: string; cc: string; ticketNumbersList: string[] }>,
   totalLabourHours: number,
   totalLabourAmount: number,
   expensesTotal: number,
   grandTotal: number,
   labourNotes?: Record<string, string>,
-  ticketNumbers: string[] = [],
-  cnrlBreakdownRows: Array<{ location: string; poAfe: string; cc: string; approver: string; other: string; ticketNumbers: string[] }> = []
+  ticketNumbers: string[] = []
 ): string {
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket);
   const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
-  // Only worth dedicating a separate table when there are 2+ distinct PO/AFE/CC
-  // combos. Single-combo batches keep the classic single-row Customer Info layout.
-  const useCnrlBreakdown = cnrlBreakdownRows.length > 1;
+  // When any labour row carries location/coding metadata, hours have been split per
+  // line item. The Customer Info PO/AFE/CC and Service Location cells then point to
+  // the labour summary instead of locking in a single value.
+  const labourSplitOnCoding = labourLines.some((l) => (l.location || '').trim() !== '' || (l.poAfe || '').trim() !== '' || (l.cc || '').trim() !== '');
 
   return `
     <div id="service-ticket-summary" style="
@@ -850,13 +841,13 @@ function buildBatchSummaryPdfHtml(
             </tr>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
-              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
+              <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${labourSplitOnCoding ? 'See labour summary' : (ticket.customerInfo.service_location || '')}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; width: 100px;">PO/AFE/CC (Cost Center)</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${useCnrlBreakdown ? 'See breakdown below' : poAfe}</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${labourSplitOnCoding ? 'See labour summary' : poAfe}</td>
               <td style="padding: 2px 4px; width: 40px;">Coding</td>
-              <td style="padding: 2px 4px;">${cc}</td>
+              <td style="padding: 2px 4px;">${labourSplitOnCoding ? '' : cc}</td>
             </tr>
             <tr style="border-top: 1px solid #ccc;">
               <td style="padding: 2px 4px; width: 100px;">Approver</td>
@@ -867,40 +858,6 @@ function buildBatchSummaryPdfHtml(
           </table>
         </div>
       </div>
-
-      ${useCnrlBreakdown ? `
-      <!-- PO/AFE/CC breakdown by ticket — mirrors the invoice line-item layout so the
-           approver and AP can cross-reference each coding to the tickets it applies to.
-           Service location / coding / approver / other still live in the Customer Info
-           block above. -->
-      <div style="border: 1px solid #000; margin-bottom: 10px;">
-        <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">PO/AFE/CC by Ticket</div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
-          <colgroup>
-            <col style="width: 45%;" />
-            <col style="width: auto;" />
-          </colgroup>
-          <thead>
-            <tr style="background: #f5f5f5; font-weight: bold;">
-              <td style="padding: 3px 6px; border-bottom: 1px solid #000;">PO/AFE/CC</td>
-              <td style="padding: 3px 6px; border-bottom: 1px solid #000; border-left: 1px solid #ccc;">Tickets</td>
-            </tr>
-          </thead>
-          <tbody>
-            ${cnrlBreakdownRows.map((r) => {
-              const parts = [r.poAfe, r.cc].map((p) => (p || '').trim()).filter(Boolean);
-              const label = parts.length > 0 ? parts.join(' / ') : '—';
-              return `
-            <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 3px 6px; vertical-align: top;">${label}</td>
-              <td style="padding: 3px 6px; vertical-align: top; border-left: 1px solid #ccc;">${r.ticketNumbers.length > 0 ? r.ticketNumbers.join(', ') : '—'}</td>
-            </tr>
-            `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-      ` : ''}
 
       <!-- Labour Summary -->
       <div style="border: 1px solid #000; margin-bottom: 10px;">
@@ -924,6 +881,16 @@ function buildBatchSummaryPdfHtml(
               const ticketsLine = line.ticketNumbersList.length > 0
                 ? `<div style="font-size: 7.5pt; color: #555; margin-top: 1px;">Tickets: ${line.ticketNumbersList.join(', ')}</div>`
                 : '';
+              // When labour is split on coding, surface Location / PO/AFE / CC right
+              // under the labour-type label so each row stands on its own as an
+              // auditable line item.
+              const codingParts: string[] = [];
+              if ((line.location || '').trim()) codingParts.push(`Location: ${line.location}`);
+              const poAfeCc = [line.poAfe, line.cc].map((p) => (p || '').trim()).filter(Boolean).join(' / ');
+              if (poAfeCc) codingParts.push(`PO/AFE/CC: ${poAfeCc}`);
+              const codingLine = codingParts.length > 0
+                ? `<div style="font-size: 7.5pt; color: #444; margin-top: 1px; font-weight: 600;">${codingParts.join(' &middot; ')}</div>`
+                : '';
               const noteLine = labourNotes?.[line.typeKey]
                 ? `<div style="font-size: 7.5pt; color: #555; font-style: italic; margin-top: 1px;">${labourNotes[line.typeKey]}</div>`
                 : '';
@@ -931,6 +898,7 @@ function buildBatchSummaryPdfHtml(
             <tr style="border-bottom: 1px solid #eee;">
               <td style="padding: 2px 4px; font-size: 8pt; vertical-align: top; box-sizing: border-box;">
                 <div>${line.label}</div>
+                ${codingLine}
                 ${ticketsLine}
                 ${noteLine}
               </td>
