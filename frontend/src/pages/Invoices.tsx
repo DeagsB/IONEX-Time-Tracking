@@ -6309,7 +6309,7 @@ export default function Invoices() {
                                 cursor: 'pointer',
                                 whiteSpace: 'normal',
                               }}
-                              title="Short description for each rate type (ST/TT/FT/SO/FO) — used to justify or explain rates on the batch summary PDF cover page (e.g. 'overtime > 8 hrs')"
+                              title="Explain the overtime policy or why each rate type (ST/TT/FT/SO/FO) is being charged — shows on the batch summary PDF cover page (e.g. 'OT outside regular business hours', 'hours beyond 8/day')"
                             >
                               Edit rate descriptions
                             </button>
@@ -6345,10 +6345,10 @@ export default function Invoices() {
                           borderLeft: '4px solid var(--primary-color)',
                         }}>
                           <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            Rate descriptions (justify/annotate each rate type)
+                            Rate descriptions (explain overtime policy or why the rate applies)
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
-                            Short justification or explanation for each rate type. Appears in brackets after the rate on the <strong>batch summary PDF</strong> (cover page of the exported invoice bundle) — e.g. <em>Shop Time (ST) (overtime &gt; 8 hrs)</em>. Leave a field blank to omit. Does not appear on per-ticket PDFs or in QuickBooks.
+                            Explain the overtime policy or why each rate is being charged so the approver can sanity-check the invoice. Appears in brackets after the rate on the <strong>batch summary PDF</strong> (cover page of the exported invoice bundle) — e.g. <em>Field Overtime (FO) (work performed outside regular business hours — Mon–Fri 7am–5pm)</em> or <em>Shop Overtime (SO) (hours beyond 8 hrs/day per company OT policy)</em>. Leave a field blank to omit. Does not appear on per-ticket PDFs or in QuickBooks.
                           </div>
                           {SUMMARY_LABOUR_TYPES.map(({ key: ltKey, label: ltLabel }) => (
                             <div key={ltKey} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
@@ -6357,7 +6357,7 @@ export default function Invoices() {
                                 type="text"
                                 value={editingLabourNotes[ltKey] ?? ''}
                                 onChange={(e) => setEditingLabourNotes((prev) => ({ ...prev, [ltKey]: e.target.value }))}
-                                placeholder="Add a note…"
+                                placeholder="e.g. OT outside regular business hours, hours beyond 8/day…"
                                 style={{
                                   flex: 1,
                                   padding: '4px 8px',
@@ -8446,7 +8446,7 @@ export default function Invoices() {
                               alignItems: 'center',
                               gap: '6px',
                             }}
-                            title="Short description for each rate type (ST/TT/FT/SO/FO) — used to justify or explain rates on the batch summary PDF cover page (e.g. 'overtime > 8 hrs')"
+                            title="Explain the overtime policy or why each rate type (ST/TT/FT/SO/FO) is being charged — shows on the batch summary PDF cover page (e.g. 'OT outside regular business hours', 'hours beyond 8/day')"
                           >
                             <span aria-hidden style={{ fontSize: '13px' }}>📝</span>
                             Rate notes
