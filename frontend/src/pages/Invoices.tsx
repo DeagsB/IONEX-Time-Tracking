@@ -2817,7 +2817,7 @@ export default function Invoices() {
    *  gets its own narrow worklist (portal especially: bulk approval works per-customer).
    *  `stepProgress` holds per-batch flags that aren't derivable from DB state (e.g. did
    *  the user acknowledge the line-items step so the wizard can advance to attach?). */
-  type WizardQueue = 'standard' | 'portal';
+  type WizardQueue = 'standard' | 'portal' | 'awaiting';
   type WizardStepProgress = { lineItemsAckAt?: string };
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
   const [wizardQueue, setWizardQueue] = useState<WizardQueue>('standard');
@@ -6810,16 +6810,12 @@ export default function Invoices() {
             return (
               <div>
                 {(() => {
-                  // Two queues, organised by what the admin needs to do next:
-                  //   "Needs to be approved" — portal batches still waiting on the approver
-                  //     (Ready / submitted_approval / needs_adjustment). Once the signed
-                  //     approval PDF lands on step 2, status flips to 'approved' and the
-                  //     batch moves out of this queue.
-                  //   "Ready to be invoiced" — everything actually ready to invoice now:
-                  //     all standard Ready batches, plus portal batches at 'approved' or
-                  //     'portal_submission' (signed approval is in, invoice is the next step).
-                  // The 'standard'/'portal' queue ids are kept internally so persisted state
-                  // doesn't reset; only the labels and membership rules changed.
+                  // Three queues, each scoped to a single admin action:
+                  //   "Needs Approval"    — portal Ready + needs_adjustment (admin sends to approver)
+                  //   "Awaiting Signed"   — submitted_approval (drop signed PDF when it comes back)
+                  //   "Ready to Invoice"  — standard Ready + approved + portal_submission
+                  // 'standard'/'portal'/'awaiting' queue ids are internal so persisted state
+                  // doesn't reset across the rename history.
                   type WizardCandidate = {
                     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
                     isPortal: boolean;
@@ -6831,18 +6827,24 @@ export default function Invoices() {
                   ];
                   const portalCandidates: WizardCandidate[] = [
                     ...readyPortal.map((b) => ({ group: b.group, isPortal: true as const })),
-                    ...waitingOnApproval.map((g) => ({ group: g, isPortal: true as const })),
                     ...needsAdjustment.map((g) => ({ group: g, isPortal: true as const })),
                   ];
-                  // If the active queue is empty but the other isn't, auto-switch so the user
-                  // sees something useful rather than the "all caught up" empty state.
+                  const awaitingCandidates: WizardCandidate[] = [
+                    ...waitingOnApproval.map((g) => ({ group: g, isPortal: true as const })),
+                  ];
+                  // Auto-switch when the active queue is empty but another has work, so the
+                  // user always lands somewhere useful instead of an empty state.
+                  const queueOrderForFallback: WizardQueue[] = ['portal', 'awaiting', 'standard'];
+                  const queueLookup: Record<WizardQueue, WizardCandidate[]> = {
+                    standard: standardCandidates,
+                    portal: portalCandidates,
+                    awaiting: awaitingCandidates,
+                  };
                   const effectiveQueue: WizardQueue =
-                    wizardQueue === 'standard' && standardCandidates.length === 0 && portalCandidates.length > 0
-                      ? 'portal'
-                      : wizardQueue === 'portal' && portalCandidates.length === 0 && standardCandidates.length > 0
-                        ? 'standard'
-                        : wizardQueue;
-                  const queueCandidates: WizardCandidate[] = effectiveQueue === 'standard' ? standardCandidates : portalCandidates;
+                    queueLookup[wizardQueue].length > 0
+                      ? wizardQueue
+                      : (queueOrderForFallback.find((q) => queueLookup[q].length > 0) ?? wizardQueue);
+                  const queueCandidates: WizardCandidate[] = queueLookup[effectiveQueue];
                   // Action-needed batches float to the top: portal batches waiting to be sent
                   // (no submit yet, or needs adjustment), and every standard batch (those are
                   // always action items). Sent-for-approval / approved / portal-submission
@@ -7686,14 +7688,12 @@ export default function Invoices() {
                       {/* Left rail: queue switcher + batch picker + step list */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
                             {([
-                              { id: 'standard' as WizardQueue, label: 'Ready to be invoiced', count: standardCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
-                              // Badge counts only batches waiting to be sent for approval
-                              // (fresh Ready + needs-adjustment resubmits) — those are the
-                              // action items. Batches already with the approver stay in the
-                              // queue but don't inflate the urgency badge.
-                              { id: 'portal' as WizardQueue, label: 'Needs to be approved', count: readyPortal.length + needsAdjustment.length, fg: '#6d28d9', bg: '#ede9fe' },
+                              // Three single-purpose queues: send for approval / drop signed PDF / invoice now.
+                              { id: 'portal' as WizardQueue, label: 'Needs Approval', count: portalCandidates.length, fg: '#6d28d9', bg: '#ede9fe' },
+                              { id: 'awaiting' as WizardQueue, label: 'Awaiting Signed', count: awaitingCandidates.length, fg: '#475569', bg: '#e2e8f0' },
+                              { id: 'standard' as WizardQueue, label: 'Ready to Invoice', count: standardCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
                             ] as const).map((q) => {
                               const isActiveQ = q.id === effectiveQueue;
                               return (
