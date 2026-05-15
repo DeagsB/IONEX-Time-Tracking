@@ -2769,7 +2769,7 @@ export default function Invoices() {
     return set;
   }, [legacyMarkedInvoicedIds, dbMarkedIdSet, invoicedGroupIdsFromDb]);
 
-  type InvoiceTab = 'helper' | 'pending' | 'ready' | 'submitted' | 'approved' | 'portal_submission' | 'invoiced' | 'settings';
+  type InvoiceTab = 'helper' | 'pending' | 'needs_approval' | 'ready' | 'submitted' | 'approved' | 'portal_submission' | 'invoiced' | 'settings';
   const [activeTab, setActiveTab] = useState<InvoiceTab>('helper');
   const showInvoiced = activeTab === 'invoiced';
   const setShowInvoiced = (v: boolean) => setActiveTab(v ? 'invoiced' : 'pending');
@@ -4828,6 +4828,21 @@ export default function Invoices() {
     () => uninvoicedGroups.filter((g) => !isGroupAccumulating(g)),
     [uninvoicedGroups, isGroupAccumulating]
   );
+  // Split Ready by workflow type so portal batches that still need to be sent to the
+  // approver get their own "Needs Approval" tab. Standard batches stay on "Ready" — those
+  // are actually ready to invoice.
+  const readyGroupsByPortal = useMemo(() => {
+    const std: typeof readyGroups = [];
+    const portal: typeof readyGroups = [];
+    for (const g of readyGroups) {
+      const wf = getWorkflowForCustomer(g.tickets[0]?.customerName, g.key.projectNumber);
+      if (isPortalApprovalWorkflow(wf)) portal.push(g);
+      else std.push(g);
+    }
+    return { std, portal };
+  }, [readyGroups, getWorkflowForCustomer, isPortalApprovalWorkflow]);
+  const readyStdGroups = readyGroupsByPortal.std;
+  const needsApprovalGroups = readyGroupsByPortal.portal;
 
   /** Map of `${customerId}|${projectId}|${periodKey}` → list of unapproved tickets that
    *  share that customer + project + period. A Ready batch hitting this map means an
@@ -4906,7 +4921,13 @@ export default function Invoices() {
   }, [readyGroups, getWorkflowForCustomer, isPortalApprovalWorkflow]);
 
   const filteredUninvoicedGroups = useMemo(() => {
-    const base = activeTab === 'pending' ? pendingAccumulatingGroups : activeTab === 'ready' ? readyGroups : uninvoicedGroups;
+    const base = activeTab === 'pending'
+      ? pendingAccumulatingGroups
+      : activeTab === 'ready'
+        ? readyStdGroups
+        : activeTab === 'needs_approval'
+          ? needsApprovalGroups
+          : uninvoicedGroups;
     if (!invoiceSearchQuery.trim()) return base;
     const q = invoiceSearchQuery.trim().toLowerCase();
     return base.filter((g) => {
@@ -4916,7 +4937,7 @@ export default function Invoices() {
       const ticketNums = g.tickets.map(t => t.ticketNumber?.toLowerCase() ?? '').join(' ');
       return custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
     });
-  }, [uninvoicedGroups, pendingAccumulatingGroups, readyGroups, invoiceSearchQuery, activeTab]);
+  }, [uninvoicedGroups, pendingAccumulatingGroups, readyStdGroups, needsApprovalGroups, invoiceSearchQuery, activeTab]);
 
   /** Ready/Pending tab sections — same project+period grouping so it's obvious when a project produces
    *  multiple separate invoices/approvals (e.g. CNRL splits one project by approver). Each card inside
@@ -5315,9 +5336,15 @@ export default function Invoices() {
         {([
           { id: 'helper' as const, label: 'Guide me', count: null as number | null, kind: 'terminal' as const },
           { id: 'pending' as const, label: 'Pending', count: pendingAccumulatingGroups.length, kind: 'lifecycle' as const },
-          { id: 'ready' as const, label: 'Ready', count: readyGroups.length, kind: 'lifecycle' as const },
+          // Lifecycle order: pending (accumulating) → needs approval (portal batches that
+          // still need to be sent to the approver) → submitted (already with the approver) →
+          // approved (signed) → ready (standard batches actually ready to invoice) → portal
+          // submission → invoiced. Portal batches walk down to "ready" once approved; standard
+          // batches enter directly at "ready".
+          { id: 'needs_approval' as const, label: 'Needs Approval', count: needsApprovalGroups.length, kind: 'lifecycle' as const },
           { id: 'submitted' as const, label: 'Submitted', count: submittedApprovalGroups.length, kind: 'lifecycle' as const },
           { id: 'approved' as const, label: 'Approved', count: approvedGroups.length, kind: 'lifecycle' as const },
+          { id: 'ready' as const, label: 'Ready', count: readyStdGroups.length, kind: 'lifecycle' as const },
           { id: 'portal_submission' as const, label: 'Portal Submission', count: portalSubmissionGroups.length, kind: 'lifecycle' as const },
           { id: 'invoiced' as const, label: 'Invoiced', count: finalInvoicedGroups.length, kind: 'lifecycle' as const },
           { id: 'settings' as const, label: 'Settings', count: null as number | null, kind: 'terminal' as const },
@@ -5595,7 +5622,7 @@ export default function Invoices() {
         durationMs={4000}
       />
 
-      {groupedTickets.length === 0 && invoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
+      {groupedTickets.length === 0 && invoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready' || activeTab === 'needs_approval') ? (
         <div className="ionex-empty">
           <span className="glyph" aria-hidden>📋</span>
           <h3 className="title">
@@ -5612,7 +5639,7 @@ export default function Invoices() {
             </Link>
           </div>
         </div>
-      ) : groupedTickets.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
+      ) : groupedTickets.length === 0 && (activeTab === 'pending' || activeTab === 'ready' || activeTab === 'needs_approval') ? (
         <div className="ionex-empty">
           <span className="glyph" aria-hidden>✅</span>
           <h3 className="title">All caught up</h3>
@@ -6725,7 +6752,7 @@ export default function Invoices() {
           </>
           )}
         </div>
-      ) : uninvoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
+      ) : uninvoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready' || activeTab === 'needs_approval') ? (
         <div className="ionex-empty">
           <span className="glyph" aria-hidden>✅</span>
           <h3 className="title">All groups invoiced</h3>
@@ -7988,28 +8015,35 @@ export default function Invoices() {
             );
           })()}
 
-          {(activeTab === 'pending' || activeTab === 'ready') && (<>
+          {(activeTab === 'pending' || activeTab === 'ready' || activeTab === 'needs_approval') && (<>
           {(() => {
-            const groupsForTab = activeTab === 'ready' ? readyGroups : pendingAccumulatingGroups;
+            const groupsForTab = activeTab === 'ready'
+              ? readyStdGroups
+              : activeTab === 'needs_approval'
+                ? needsApprovalGroups
+                : pendingAccumulatingGroups;
             const ticketCount = groupsForTab.reduce((sum, g) => sum + g.tickets.length, 0);
+            const heading = activeTab === 'ready' ? 'Ready for invoicing' : activeTab === 'needs_approval' ? 'Needs Approval' : 'Pending';
             return (
               <div className="ionex-section-heading">
                 <div className="ionex-section-heading-title-row">
-                  <h2>{activeTab === 'ready' ? 'Ready for invoicing' : 'Pending'}</h2>
+                  <h2>{heading}</h2>
                   <span className="ionex-section-heading-meta">
                     <strong>{ticketCount}</strong> {ticketCount === 1 ? 'ticket' : 'tickets'} · <strong>{groupsForTab.length}</strong> {groupsForTab.length === 1 ? 'group' : 'groups'}
                   </span>
                 </div>
                 <p>
                   {activeTab === 'ready'
-                    ? <>Billing periods are closed for these batches — actionable now. Use <strong>Mark invoiced</strong> for non-portal customers, or <strong>Mark as sent for approval</strong> for Portal Approval customers (per batch, or bulk per customer from the banner below).</>
-                    : <>Billing periods still open — more tickets may still be added before the period closes. These move to <strong>Ready</strong> automatically once their period ends.</>}
+                    ? <>Billing periods are closed for these batches and they're ready to invoice. Use <strong>Mark invoiced</strong> to finish.</>
+                    : activeTab === 'needs_approval'
+                      ? <>Portal Approval batches with closed billing periods that still need to be sent to the approver. Use <strong>Mark as sent for approval</strong> per batch, or the bulk action per customer from the banner below.</>
+                      : <>Billing periods still open — more tickets may still be added before the period closes. These move to <strong>Ready</strong> automatically once their period ends.</>}
                 </p>
               </div>
             );
           })()}
 
-          {activeTab === 'ready' && bulkApprovalCandidates.length > 0 && (
+          {activeTab === 'needs_approval' && bulkApprovalCandidates.length > 0 && (
             <div className="ionex-banner is-warning">
               <div className="ionex-banner-title">
                 <span aria-hidden style={{ fontSize: '13px' }}>📦</span>
@@ -9386,7 +9420,7 @@ export default function Invoices() {
               <div className="ionex-empty">
                 <span className="glyph" aria-hidden>✅</span>
                 <h3 className="title">No approved batches yet</h3>
-                <p className="body">Drop a signed batch PDF on a Submitted card to advance it here.</p>
+                <p className="body">Drop a signed batch PDF on a Needs Approval card to advance it here.</p>
                 {submittedApprovalGroups.length > 0 && (
                   <div className="cta-row">
                     <button
@@ -9394,7 +9428,7 @@ export default function Invoices() {
                       onClick={() => setActiveTab('submitted')}
                       className="ionex-empty-cta-secondary"
                     >
-                      Go to Submitted ({submittedApprovalGroups.length})
+                      Go to Needs Approval ({submittedApprovalGroups.length})
                     </button>
                   </div>
                 )}
