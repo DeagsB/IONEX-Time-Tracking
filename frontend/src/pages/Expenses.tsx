@@ -382,27 +382,10 @@ export default function Expenses() {
       .finally(() => { setLoadingEditReceipt(false); });
   }, [editingExpense?.id, editingExpense?.receipt_url]);
 
-  // Auto-mark approved expenses as paid for any past payday that has fully passed.
-  // Runs once per admin session on mount; safe re-runs are idempotent.
-  const hasAutoSweptRef = useRef(false);
-  useEffect(() => {
-    if (!isAdmin || hasAutoSweptRef.current) return;
-    hasAutoSweptRef.current = true;
-    (async () => {
-      try {
-        const [r1, r2] = await Promise.all([
-          userExpensesService.autoMarkPastPaydaysPaid(),
-          serviceTicketExpensesService.autoMarkPastPaydaysPaid(),
-        ]);
-        if ((r1.count || 0) + (r2.count || 0) > 0) {
-          queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
-          queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
-        }
-      } catch {
-        // Silent fail — admin can still mark paid manually.
-      }
-    })();
-  }, [isAdmin, queryClient]);
+  // Auto-mark-paid-on-mount was removed: expenses should only become "paid" when an
+  // admin explicitly marks them so. Rows already in 'paid' status stay paid — the
+  // sweep just stops adding new ones silently. Manual "Mark Paid" actions in the
+  // Employee Overview still work as before.
 
   // Dashboard action items: open Employee Overview and set tab from URL params
   useEffect(() => {
