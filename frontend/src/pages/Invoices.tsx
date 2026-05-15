@@ -6731,7 +6731,21 @@ export default function Invoices() {
                         ? 'standard'
                         : wizardQueue;
                   const queueCandidates: WizardCandidate[] = effectiveQueue === 'standard' ? standardCandidates : portalCandidates;
+                  // Action-needed batches float to the top: portal batches waiting to be sent
+                  // (no submit yet, or needs adjustment), and every standard batch (those are
+                  // always action items). Sent-for-approval / approved / portal-submission
+                  // batches drop below since they're waiting on the customer or a later step.
+                  const readyToSendPriority = (c: WizardCandidate): number => {
+                    if (!c.isPortal) return 0;
+                    const sid = getGroupStatusId(c.group);
+                    if (sid === NEEDS_ADJUSTMENT_STATUS_ID) return 0;
+                    if (!sid || sid === 'draft') return 0;
+                    return 1;
+                  };
                   const sortedCandidates = [...queueCandidates].sort((a, b) => {
+                    const pa = readyToSendPriority(a);
+                    const pb = readyToSendPriority(b);
+                    if (pa !== pb) return pa - pb;
                     const ga = cnrlPeriodGrouping(getGroupingForTicket(
                       a.group.tickets[0]?.customerId ?? '',
                       (a.group.tickets[0] as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? a.group.tickets[0]?.projectId ?? '',
