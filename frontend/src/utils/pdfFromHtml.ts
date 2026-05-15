@@ -669,7 +669,10 @@ export async function generateBatchSummaryPdf(
       const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(t, ov ?? undefined);
       const location = (ov?.service_location ?? t.location ?? (t as ServiceTicket & { projectLocation?: string }).projectLocation ?? t.customerInfo.service_location ?? '').trim();
       const other = (ov?.other ?? (t as ServiceTicket & { projectOther?: string }).projectOther ?? t.customerInfo.location_code ?? '').trim();
-      const key = [location, poAfe, cc, approver, other].join('');
+      // Group on PO/AFE + CC only — those are the line-item-equivalent keys.
+      // Approver and service-location vary per ticket but live in the Customer Info
+      // block, so including them would split rows that should logically merge.
+      const key = poAfe + '' + cc;
       const tNum = (t.ticketNumber || '').toString().trim();
       const row = map.get(key);
       if (row) {
@@ -683,11 +686,7 @@ export async function generateBatchSummaryPdf(
     }
     const rows = Array.from(map.values());
     for (const row of rows) row.ticketNumbers = sortTicketNumbersArr(row.ticketNumbers);
-    rows.sort((a, b) => {
-      const aa = (a.approver || '').localeCompare(b.approver || '');
-      if (aa !== 0) return aa;
-      return (a.poAfe || '').localeCompare(b.poAfe || '');
-    });
+    rows.sort((a, b) => (a.poAfe || '').localeCompare(b.poAfe || '') || (a.cc || '').localeCompare(b.cc || ''));
     return rows;
   })();
 
@@ -847,14 +846,13 @@ function buildBatchSummaryPdfHtml(
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Phone</td>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.phone || ''}</td>
             </tr>
-            ${useCnrlBreakdown ? '' : `
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc;">Service Location</td>
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc;">${ticket.customerInfo.service_location || ''}</td>
             </tr>
             <tr>
               <td style="padding: 2px 4px; width: 100px;">PO/AFE/CC (Cost Center)</td>
-              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${poAfe}</td>
+              <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${useCnrlBreakdown ? 'See breakdown below' : poAfe}</td>
               <td style="padding: 2px 4px; width: 40px;">Coding</td>
               <td style="padding: 2px 4px;">${cc}</td>
             </tr>
@@ -863,39 +861,40 @@ function buildBatchSummaryPdfHtml(
               <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${approver}</td>
               <td style="padding: 2px 4px; width: 40px;">Other</td>
               <td style="padding: 2px 4px;">${otherVal}</td>
-            </tr>`}
+            </tr>
           </table>
         </div>
       </div>
 
       ${useCnrlBreakdown ? `
-      <!-- CNRL Coding Breakdown — one row per PO/AFE/CC/Approver tuple, listing the
-           tickets that share it. Mirrors the invoice line-item layout so the approver
-           and AP can cross-reference batch coding ↔ invoice line. -->
+      <!-- PO/AFE/CC breakdown by ticket — mirrors the invoice line-item layout so the
+           approver and AP can cross-reference each coding to the tickets it applies to.
+           Service location / coding / approver / other still live in the Customer Info
+           block above. -->
       <div style="border: 1px solid #000; margin-bottom: 10px;">
-        <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Coding Breakdown by Ticket</div>
+        <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">PO/AFE/CC by Ticket</div>
         <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
+          <colgroup>
+            <col style="width: 45%;" />
+            <col style="width: auto;" />
+          </colgroup>
           <thead>
             <tr style="background: #f5f5f5; font-weight: bold;">
-              <td style="padding: 3px 6px; border-bottom: 1px solid #000;">Tickets</td>
-              <td style="padding: 3px 6px; border-bottom: 1px solid #000; border-left: 1px solid #ccc;">Service Location</td>
-              <td style="padding: 3px 6px; border-bottom: 1px solid #000; border-left: 1px solid #ccc;">PO/AFE</td>
-              <td style="padding: 3px 6px; border-bottom: 1px solid #000; border-left: 1px solid #ccc;">CC (Coding)</td>
-              <td style="padding: 3px 6px; border-bottom: 1px solid #000; border-left: 1px solid #ccc;">Approver</td>
-              <td style="padding: 3px 6px; border-bottom: 1px solid #000; border-left: 1px solid #ccc;">Other</td>
+              <td style="padding: 3px 6px; border-bottom: 1px solid #000;">PO/AFE/CC</td>
+              <td style="padding: 3px 6px; border-bottom: 1px solid #000; border-left: 1px solid #ccc;">Tickets</td>
             </tr>
           </thead>
           <tbody>
-            ${cnrlBreakdownRows.map((r) => `
+            ${cnrlBreakdownRows.map((r) => {
+              const parts = [r.poAfe, r.cc].map((p) => (p || '').trim()).filter(Boolean);
+              const label = parts.length > 0 ? parts.join(' / ') : '—';
+              return `
             <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 3px 6px; vertical-align: top;">${r.ticketNumbers.length > 0 ? r.ticketNumbers.join(', ') : '—'}</td>
-              <td style="padding: 3px 6px; vertical-align: top; border-left: 1px solid #ccc;">${r.location || '—'}</td>
-              <td style="padding: 3px 6px; vertical-align: top; border-left: 1px solid #ccc;">${r.poAfe || '—'}</td>
-              <td style="padding: 3px 6px; vertical-align: top; border-left: 1px solid #ccc;">${r.cc || '—'}</td>
-              <td style="padding: 3px 6px; vertical-align: top; border-left: 1px solid #ccc;">${r.approver || '—'}</td>
-              <td style="padding: 3px 6px; vertical-align: top; border-left: 1px solid #ccc;">${r.other || '—'}</td>
+              <td style="padding: 3px 6px; vertical-align: top;">${label}</td>
+              <td style="padding: 3px 6px; vertical-align: top; border-left: 1px solid #ccc;">${r.ticketNumbers.length > 0 ? r.ticketNumbers.join(', ') : '—'}</td>
             </tr>
-            `).join('')}
+            `;
+            }).join('')}
           </tbody>
         </table>
       </div>
