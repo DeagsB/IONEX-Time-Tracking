@@ -2794,8 +2794,8 @@ export default function Invoices() {
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
   /** Guide-me wizard state. `activeGroupId` is the batch currently being walked through.
    *  `stepProgress` holds per-batch flags that aren't derivable from DB state (e.g. did
-   *  the user download the merged PDF this session?). */
-  type WizardStepProgress = { downloadedAt?: string };
+   *  the user acknowledge the line-items step so the wizard can advance to attach?). */
+  type WizardStepProgress = { lineItemsAckAt?: string };
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
   const [wizardStepProgress, setWizardStepProgress] = useState<Record<string, WizardStepProgress>>(() => {
     try {
@@ -6655,14 +6655,14 @@ export default function Invoices() {
                   const activeGroup = activeCandidate.group;
                   const isPortal = activeCandidate.isPortal;
 
-                  type StandardStepId = 'preflight' | 'download' | 'attach' | 'mark' | 'done';
+                  type StandardStepId = 'preflight' | 'line_items' | 'attach' | 'send' | 'done';
                   type PortalStepId = 'preflight' | 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'submit_portal' | 'done';
                   type WizardStepId = StandardStepId | PortalStepId;
                   const STANDARD_STEPS: { id: StandardStepId; label: string }[] = [
                     { id: 'preflight', label: 'Pre-flight checks' },
-                    { id: 'download', label: 'Download batch PDF' },
-                    { id: 'attach', label: 'Create invoice & attach PDF' },
-                    { id: 'mark', label: 'Mark as invoiced' },
+                    { id: 'line_items', label: 'Copy invoice line items' },
+                    { id: 'attach', label: 'Attach invoice PDF' },
+                    { id: 'send', label: 'Download combined PDF & finish' },
                   ];
                   const PORTAL_STEPS: { id: PortalStepId; label: string }[] = [
                     { id: 'preflight', label: 'Pre-flight checks' },
@@ -6736,10 +6736,10 @@ export default function Invoices() {
                     else currentStep = 'submit_approval';
                   } else {
                     if (isMarked) currentStep = 'done';
-                    else if (hasInvoiceFile) currentStep = 'mark';
-                    else if (progress.downloadedAt) currentStep = 'attach';
+                    else if (hasInvoiceFile) currentStep = 'send';
+                    else if (progress.lineItemsAckAt) currentStep = 'attach';
                     else if (blockers.length > 0) currentStep = 'preflight';
-                    else currentStep = 'download';
+                    else currentStep = 'line_items';
                   }
 
                   const stepIndex = (id: WizardStepId): number => STEP_DEFS.findIndex((s) => s.id === id);
@@ -6752,17 +6752,10 @@ export default function Invoices() {
                   const periodLabel = activeGroup.key.periodLabel ?? activeGroup.key.periodKey ?? '';
 
                   // --- Step actions ---
-                  const onDownload = async () => {
-                    setExportError(null);
-                    try {
-                      const merged = await buildMergedBatchPdfBlob(activeGroup);
-                      const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects);
-                      saveAs(merged, filename);
-                      updateWizardProgress(groupId, { downloadedAt: new Date().toISOString() });
-                    } catch (err) {
-                      setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
-                    }
+                  const onContinueFromLineItems = () => {
+                    updateWizardProgress(groupId, { lineItemsAckAt: new Date().toISOString() });
                   };
+                  const onDownloadCombined = () => handleDownloadBatchWithInvoice(activeGroup, persistId);
                   const onAttach = async (file: File) => {
                     if (file.type !== 'application/pdf') {
                       setExportError('Invoice must be a PDF.');
@@ -6909,15 +6902,94 @@ export default function Invoices() {
                       );
                     }
                     // ----- Standard flow -----
-                    if (!isPortal && currentStep === 'download') {
+                    if (!isPortal && currentStep === 'line_items') {
+                      // Mirror Approved-tab line-items: copy-pastable labour + expense lines for entry
+                      // into the user's invoicing system. Toggle controls match the Invoiced tab.
+                      const isCombined = combinedExpenseGroupIds.has(persistId);
+                      const isSplitRate = splitRateGroupIds.has(persistId);
+                      const isSplitDay = splitDayGroupIds.has(persistId);
+                      const linesMode: LinesMode = isSplitRate && isSplitDay ? 'rate-day' : isSplitRate ? 'rate' : isSplitDay ? 'day' : 'itemized';
+                      const tks = activeGroup.tickets as (ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string })[];
+                      const isCnrlPeriodGroupForLines = !!(activeGroup.key.periodKey && activeGroup.key.approverCode && activeGroup.key.approverCode !== activeGroup.key.periodKey);
+                      const breakdownLines = isSplitRate
+                        ? buildRateTypeBreakdown(tks, expensesByRecordId, false, isSplitDay)
+                        : isSplitDay
+                          ? buildDayBreakdown(tks, expensesByRecordId, isCombined)
+                          : activeGroup.key.periodKey && !isCnrlPeriodGroupForLines
+                            ? buildSingleLineBreakdown(tks, expensesByRecordId, isCombined)
+                            : buildPoAfeBreakdown(
+                                tks,
+                                (t) =>
+                                  getInvoiceGroupKey(
+                                    {
+                                      projectId: t.recordProjectId ?? t.projectId,
+                                      projectName: t.projectName,
+                                      projectNumber: t.projectNumber,
+                                      location: t.location,
+                                      projectApproverPoAfe: (t as ServiceTicket & { projectApproverPoAfe?: string }).projectApproverPoAfe,
+                                      projectLocation: (t as ServiceTicket & { projectLocation?: string }).projectLocation,
+                                      projectOther: (t as ServiceTicket & { projectOther?: string }).projectOther,
+                                      customerInfo: t.customerInfo,
+                                      entries: t.entries,
+                                    },
+                                    t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                                  ),
+                                expensesByRecordId,
+                                isCombined
+                              );
+                      const { lines: expLinesForCopy } = computeGroupExpenseTotal(tks, expensesByRecordId);
+                      const expensesFolded = isCombined && !isSplitRate;
+                      const categoryLabel = expensesFolded && expLinesForCopy.length > 0
+                        ? `labour & ${expLinesForCopy.length === 1 ? 'expense' : 'expenses'}`
+                        : undefined;
+                      const lineTotal = breakdownLines.reduce((s, l) => s + (Number(l.totalAmount) || 0), 0)
+                        + ((isSplitRate || !isCombined) ? expLinesForCopy.reduce((s, l) => s + (Number(l.amount) || 0), 0) : 0);
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Generate the merged batch PDF (per-ticket pages + summary). Save it locally — you'll use it as the source when creating the invoice in your invoicing system.
+                            Create the invoice in your invoicing system using the lines below. Click any line or amount to copy it.
+                            When the invoice is raised, continue to upload the invoice PDF — the wizard will combine it with the service tickets so you can send a single bundle to the customer.
                           </p>
                           {summaryBlock}
-                          <button type="button" onClick={onDownload} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
-                            ⬇ Download batch PDF
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)' }}>
+                              Invoice line items
+                            </span>
+                            <BreakdownModeToggle
+                              lines={linesMode}
+                              combined={isCombined}
+                              onLines={(m) => {
+                                setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'rate' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
+                                setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
+                              }}
+                              onCombined={(c) => {
+                                setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (c) next.add(persistId); else next.delete(persistId); return next; });
+                              }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                            {breakdownLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
+                              <PoAfeBreakdownLine key={`wiz-li-${i}`} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
+                            ))}
+                            {(isSplitRate || !isCombined) && expLinesForCopy.map((l, i) => {
+                              const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                              return (
+                                <PoAfeBreakdownLine
+                                  key={`wiz-exp-${i}`}
+                                  ticketList={`${l.label}${suffix}`}
+                                  poAfe=""
+                                  totalAmount={l.amount}
+                                  category="expense"
+                                />
+                              );
+                            })}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                            <strong>Subtotal (pre-GST)</strong>
+                            <strong>${lineTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                          </div>
+                          <button type="button" onClick={onContinueFromLineItems} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                            Continue to upload invoice →
                           </button>
                         </div>
                       );
@@ -6926,7 +6998,7 @@ export default function Invoices() {
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Create the invoice for this batch in your invoicing system using the figures above, then upload the resulting invoice PDF here.
+                            Upload the invoice PDF you just generated from your invoicing system. The wizard will combine it with the service tickets in the next step.
                           </p>
                           {summaryBlock}
                           {fileDropZone({
@@ -6937,16 +7009,22 @@ export default function Invoices() {
                         </div>
                       );
                     }
-                    if (!isPortal && currentStep === 'mark') {
+                    if (!isPortal && currentStep === 'send') {
+                      const isDownloading = downloadingWithInvoiceGroupId === persistId;
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Invoice attached: <strong>{invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf'}</strong>. Mark this batch as invoiced
-                            to lock it down and move it to the Invoiced tab.
+                            Invoice attached: <strong>{invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf'}</strong>.
+                            Download the combined PDF (invoice + service tickets) and send it to the customer, then mark the batch as invoiced to finish.
                           </p>
-                          <button type="button" onClick={onMark} disabled={markInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}>
-                            {markInvoicedMutation.isPending ? 'Saving…' : '✓ Mark as invoiced'}
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button type="button" onClick={onDownloadCombined} disabled={isDownloading} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                              {isDownloading ? 'Building…' : '⬇ Download combined PDF'}
+                            </button>
+                            <button type="button" onClick={onMark} disabled={markInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}>
+                              {markInvoicedMutation.isPending ? 'Saving…' : '✓ Mark as invoiced'}
+                            </button>
+                          </div>
                         </div>
                       );
                     }
@@ -7138,14 +7216,13 @@ export default function Invoices() {
                     );
                   };
 
-                  // Past-step reopen: only the standard 'download' step is locally resettable
-                  // (it clears the wizard's downloaded-PDF flag so user lands back at Download).
-                  // Portal steps reflect persisted DB status — they cannot be rewound from the
-                  // wizard. Use the corresponding tab (Submitted, Approved, Portal Submission)
-                  // for status-changing actions.
+                  // Past-step reopen for the standard flow: clears the line-items ack flag and/or
+                  // the attached invoice so the user lands back at the picked step. Portal steps
+                  // reflect persisted DB status — they cannot be rewound from the wizard. Use the
+                  // corresponding tab (Submitted, Approved, Portal Submission) for those.
                   const onReopen = (stepId: WizardStepId) => {
                     if (isMarked || isPortal) return;
-                    if (stepId === 'download') {
+                    if (stepId === 'line_items') {
                       clearWizardProgressForGroup(groupId);
                       setInvoiceFileForGroup(persistId, null);
                     } else if (stepId === 'attach') {
