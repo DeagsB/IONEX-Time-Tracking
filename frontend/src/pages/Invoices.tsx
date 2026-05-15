@@ -5342,7 +5342,7 @@ export default function Invoices() {
           // submission → invoiced. Portal batches walk down to "ready" once approved; standard
           // batches enter directly at "ready".
           { id: 'needs_approval' as const, label: 'Needs Approval', count: needsApprovalGroups.length, kind: 'lifecycle' as const },
-          { id: 'submitted' as const, label: 'Submitted', count: submittedApprovalGroups.length, kind: 'lifecycle' as const },
+          { id: 'submitted' as const, label: 'Sent for Approval', count: submittedApprovalGroups.length, kind: 'lifecycle' as const },
           { id: 'approved' as const, label: 'Approved', count: approvedGroups.length, kind: 'lifecycle' as const },
           { id: 'ready' as const, label: 'Ready', count: readyStdGroups.length, kind: 'lifecycle' as const },
           { id: 'portal_submission' as const, label: 'Portal Submission', count: portalSubmissionGroups.length, kind: 'lifecycle' as const },
@@ -8957,7 +8957,7 @@ export default function Invoices() {
             <div>
               <div className="ionex-section-heading">
                 <div className="ionex-section-heading-title-row">
-                  <h3>Submitted for approval</h3>
+                  <h3>Sent for Approval</h3>
                   <span className="ionex-section-heading-meta">
                     <strong>{submittedApprovalGroups.length}</strong> {submittedApprovalGroups.length === 1 ? 'batch' : 'batches'}
                   </span>
@@ -9420,7 +9420,7 @@ export default function Invoices() {
               <div className="ionex-empty">
                 <span className="glyph" aria-hidden>✅</span>
                 <h3 className="title">No approved batches yet</h3>
-                <p className="body">Drop a signed batch PDF on a Needs Approval card to advance it here.</p>
+                <p className="body">Drop a signed batch PDF on a Sent for Approval card to advance it here.</p>
                 {submittedApprovalGroups.length > 0 && (
                   <div className="cta-row">
                     <button
@@ -9428,7 +9428,7 @@ export default function Invoices() {
                       onClick={() => setActiveTab('submitted')}
                       className="ionex-empty-cta-secondary"
                     >
-                      Go to Needs Approval ({submittedApprovalGroups.length})
+                      Go to Sent for Approval ({submittedApprovalGroups.length})
                     </button>
                   </div>
                 )}
