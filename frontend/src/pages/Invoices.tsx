@@ -6780,7 +6780,7 @@ export default function Invoices() {
                   type PortalStepId = 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'submit_portal' | 'done';
                   type WizardStepId = StandardStepId | PortalStepId;
                   const STANDARD_STEPS: { id: StandardStepId; label: string }[] = [
-                    { id: 'line_items', label: 'Copy invoice line items' },
+                    { id: 'line_items', label: 'Create invoice in your system' },
                     { id: 'attach', label: 'Attach invoice PDF' },
                     { id: 'send', label: 'Download combined PDF & finish' },
                   ];
