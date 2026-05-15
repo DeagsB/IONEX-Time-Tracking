@@ -2813,14 +2813,16 @@ export default function Invoices() {
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
   /** Guide-me wizard state. `activeGroupId` is the batch currently being walked through.
-   *  `wizardQueue` swaps between the Standard and Portal Approval queues so each workflow
-   *  gets its own narrow worklist (portal especially: bulk approval works per-customer).
-   *  `stepProgress` holds per-batch flags that aren't derivable from DB state (e.g. did
-   *  the user acknowledge the line-items step so the wizard can advance to attach?). */
-  type WizardQueue = 'standard' | 'portal' | 'awaiting';
+   *  `wizardQueue` swaps between the three single-purpose queues:
+   *    'needs_to_be_approved'  — portal Ready + needs_adjustment (admin sends)
+   *    'awaiting_signed'       — submitted_approval (admin drops signed PDF here)
+   *    'ready_to_be_invoiced'  — standard Ready + approved + portal_submission (admin invoices)
+   *  Names mirror the UI labels so future references map back unambiguously.
+   *  `stepProgress` holds per-batch flags that aren't derivable from DB state. */
+  type WizardQueue = 'ready_to_be_invoiced' | 'needs_to_be_approved' | 'awaiting_signed';
   type WizardStepProgress = { lineItemsAckAt?: string };
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
-  const [wizardQueue, setWizardQueue] = useState<WizardQueue>('standard');
+  const [wizardQueue, setWizardQueue] = useState<WizardQueue>('ready_to_be_invoiced');
   /** Toast surfaced after a bulk Send-for-approval completes. Carries the persistIds that
    *  were freshly marked submitted_approval so the toast's Undo action can roll them back. */
   const [wizardBulkToast, setWizardBulkToast] = useState<{ customer: string; persistIds: string[] } | null>(null);
@@ -6810,35 +6812,35 @@ export default function Invoices() {
             return (
               <div>
                 {(() => {
-                  // Three queues, each scoped to a single admin action:
-                  //   "Needs Approval"    — portal Ready + needs_adjustment (admin sends to approver)
-                  //   "Awaiting Signed"   — submitted_approval (drop signed PDF when it comes back)
-                  //   "Ready to Invoice"  — standard Ready + approved + portal_submission
-                  // 'standard'/'portal'/'awaiting' queue ids are internal so persisted state
-                  // doesn't reset across the rename history.
+                  // Three queues, each scoped to a single admin action. Queue id names
+                  // mirror the UI labels so referring to them in conversation is unambiguous.
+                  //   needs_to_be_approved   — portal Ready + needs_adjustment (admin sends to approver)
+                  //   awaiting_signed        — submitted_approval (drop signed PDF when it comes back)
+                  //   ready_to_be_invoiced   — standard Ready + approved + portal_submission
                   type WizardCandidate = {
                     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
                     isPortal: boolean;
                   };
-                  const standardCandidates: WizardCandidate[] = [
+                  const readyToBeInvoicedCandidates: WizardCandidate[] = [
                     ...readyStd.map((b) => ({ group: b.group, isPortal: false })),
                     ...approvedAwaiting.map((g) => ({ group: g, isPortal: true as const })),
                     ...portalAwaiting.map((g) => ({ group: g, isPortal: true as const })),
                   ];
-                  const portalCandidates: WizardCandidate[] = [
+                  const needsToBeApprovedCandidates: WizardCandidate[] = [
                     ...readyPortal.map((b) => ({ group: b.group, isPortal: true as const })),
                     ...needsAdjustment.map((g) => ({ group: g, isPortal: true as const })),
                   ];
-                  const awaitingCandidates: WizardCandidate[] = [
+                  const awaitingSignedCandidates: WizardCandidate[] = [
                     ...waitingOnApproval.map((g) => ({ group: g, isPortal: true as const })),
                   ];
                   // Auto-switch when the active queue is empty but another has work, so the
-                  // user always lands somewhere useful instead of an empty state.
-                  const queueOrderForFallback: WizardQueue[] = ['portal', 'awaiting', 'standard'];
+                  // user always lands somewhere useful instead of an empty state. Fallback
+                  // order: action-first (needs approval) → awaiting → ready-to-invoice.
+                  const queueOrderForFallback: WizardQueue[] = ['needs_to_be_approved', 'awaiting_signed', 'ready_to_be_invoiced'];
                   const queueLookup: Record<WizardQueue, WizardCandidate[]> = {
-                    standard: standardCandidates,
-                    portal: portalCandidates,
-                    awaiting: awaitingCandidates,
+                    ready_to_be_invoiced: readyToBeInvoicedCandidates,
+                    needs_to_be_approved: needsToBeApprovedCandidates,
+                    awaiting_signed: awaitingSignedCandidates,
                   };
                   const effectiveQueue: WizardQueue =
                     queueLookup[wizardQueue].length > 0
@@ -7688,12 +7690,15 @@ export default function Invoices() {
                       {/* Left rail: queue switcher + batch picker + step list */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                          {/* Three queues fit awkwardly side-by-side in the narrow left rail
+                              once the labels gained words. Stack them vertically so each row
+                              has room to breathe; the count chip lives on the right, mirroring
+                              the main tab bar treatment. */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
                             {([
-                              // Three single-purpose queues: send for approval / drop signed PDF / invoice now.
-                              { id: 'portal' as WizardQueue, label: 'Needs Approval', count: portalCandidates.length, fg: '#6d28d9', bg: '#ede9fe' },
-                              { id: 'awaiting' as WizardQueue, label: 'Awaiting Signed', count: awaitingCandidates.length, fg: '#475569', bg: '#e2e8f0' },
-                              { id: 'standard' as WizardQueue, label: 'Ready to Invoice', count: standardCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
+                              { id: 'needs_to_be_approved' as WizardQueue, label: 'Needs Approval', count: needsToBeApprovedCandidates.length, fg: '#6d28d9', bg: '#ede9fe' },
+                              { id: 'awaiting_signed' as WizardQueue, label: 'Awaiting Signed', count: awaitingSignedCandidates.length, fg: '#475569', bg: '#e2e8f0' },
+                              { id: 'ready_to_be_invoiced' as WizardQueue, label: 'Ready to Invoice', count: readyToBeInvoicedCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
                             ] as const).map((q) => {
                               const isActiveQ = q.id === effectiveQueue;
                               return (
@@ -7702,26 +7707,43 @@ export default function Invoices() {
                                   type="button"
                                   onClick={() => { setWizardQueue(q.id); setWizardActiveGroupId(null); }}
                                   style={{
-                                    flex: 1,
-                                    padding: '6px 8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '8px',
+                                    padding: '8px 10px',
                                     borderRadius: '6px',
                                     border: isActiveQ ? `1px solid ${q.fg}` : '1px solid var(--border-color)',
                                     backgroundColor: isActiveQ ? q.bg : 'var(--bg-primary)',
                                     color: isActiveQ ? q.fg : 'var(--text-secondary)',
-                                    fontSize: '11px',
+                                    fontSize: '12px',
                                     fontWeight: 700,
                                     cursor: 'pointer',
                                     fontFamily: 'inherit',
-                                    letterSpacing: '0.02em',
-                                    textTransform: 'uppercase',
+                                    textAlign: 'left',
                                   }}
                                 >
-                                  {q.label} · {q.count}
+                                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.label}</span>
+                                  <span
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      padding: '1px 7px',
+                                      borderRadius: '999px',
+                                      backgroundColor: isActiveQ ? 'rgba(255,255,255,0.55)' : 'var(--bg-tertiary)',
+                                      color: isActiveQ ? q.fg : 'var(--text-secondary)',
+                                      minWidth: '20px',
+                                      textAlign: 'center',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {q.count}
+                                  </span>
                                 </button>
                               );
                             })}
                           </div>
-                          {effectiveQueue === 'portal' && bulkApprovalCandidates.length > 0 && (
+                          {effectiveQueue === 'needs_to_be_approved' && bulkApprovalCandidates.length > 0 && (
                             <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px' }}>
                               <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#92400e', marginBottom: '6px' }}>
                                 📦 Bulk mark as sent for approval
