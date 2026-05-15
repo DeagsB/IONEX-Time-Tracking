@@ -2800,6 +2800,11 @@ export default function Invoices() {
   type WizardStepProgress = { lineItemsAckAt?: string };
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
   const [wizardQueue, setWizardQueue] = useState<WizardQueue>('standard');
+  /** Toast surfaced after a bulk Send-for-approval completes. Carries the persistIds that
+   *  were freshly marked submitted_approval so the toast's Undo action can roll them back. */
+  const [wizardBulkToast, setWizardBulkToast] = useState<{ customer: string; persistIds: string[] } | null>(null);
+  /** Toast surfaced after the wizard downloads a PDF (batch or combined). Informational only. */
+  const [wizardDownloadToast, setWizardDownloadToast] = useState<string | null>(null);
   const [wizardStepProgress, setWizardStepProgress] = useState<Record<string, WizardStepProgress>>(() => {
     try {
       const raw = localStorage.getItem('ionex-wizard-step-progress');
@@ -5494,6 +5499,30 @@ export default function Invoices() {
           },
         } : undefined}
       />
+      <Toast
+        message={wizardBulkToast ? `Sent ${wizardBulkToast.persistIds.length} batch${wizardBulkToast.persistIds.length === 1 ? '' : 'es'} for ${wizardBulkToast.customer} for approval` : null}
+        onDismiss={() => setWizardBulkToast(null)}
+        variant="success"
+        position="bottom-center"
+        durationMs={9000}
+        action={wizardBulkToast ? {
+          label: 'Undo',
+          onClick: () => {
+            const t = wizardBulkToast;
+            for (const pid of t.persistIds) {
+              unmarkInvoicedMutation.mutate(pid);
+            }
+            setWizardBulkToast(null);
+          },
+        } : undefined}
+      />
+      <Toast
+        message={wizardDownloadToast}
+        onDismiss={() => setWizardDownloadToast(null)}
+        variant="info"
+        position="bottom-center"
+        durationMs={4000}
+      />
 
       {groupedTickets.length === 0 && invoicedGroups.length === 0 && (activeTab === 'pending' || activeTab === 'ready') ? (
         <div className="ionex-empty">
@@ -6649,40 +6678,6 @@ export default function Invoices() {
                   });
                   const activeCandidate = sortedCandidates.find((c) => getGroupId(c.group) === wizardActiveGroupId) ?? sortedCandidates[0];
 
-                  // Wizard-specific bulk buckets: per-customer groupings of portal batches at any
-                  // pre-invoice stage (Ready, Submitted, Needs Adjustment). Lets the bulk panel
-                  // persist after a Send-for-approval click so the user can re-download the zip
-                  // without re-clicking through every batch individually.
-                  type WizardBulkBucket = {
-                    customer: string;
-                    groups: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[];
-                    readyCount: number;
-                    submittedCount: number;
-                  };
-                  const wizardBulkBuckets: WizardBulkBucket[] = (() => {
-                    const map = new Map<string, WizardBulkBucket>();
-                    const pushTo = (customer: string, g: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }, kind: 'ready' | 'submitted') => {
-                      if (!map.has(customer)) map.set(customer, { customer, groups: [], readyCount: 0, submittedCount: 0 });
-                      const b = map.get(customer)!;
-                      b.groups.push(g);
-                      if (kind === 'ready') b.readyCount++;
-                      else b.submittedCount++;
-                    };
-                    for (const b of readyPortal) {
-                      const cust = b.group.tickets[0]?.customerName;
-                      if (cust) pushTo(cust, b.group, 'ready');
-                    }
-                    for (const g of waitingOnApproval) {
-                      const cust = g.tickets[0]?.customerName;
-                      if (cust) pushTo(cust, g, 'submitted');
-                    }
-                    for (const g of needsAdjustment) {
-                      const cust = g.tickets[0]?.customerName;
-                      if (cust) pushTo(cust, g, 'ready'); // counts as ready — Resubmit advances to submitted_approval
-                    }
-                    return [...map.values()].sort((a, b) => a.customer.localeCompare(b.customer));
-                  })();
-
                   if (!activeCandidate) {
                     return (
                       <div className="ionex-empty">
@@ -6800,11 +6795,20 @@ export default function Invoices() {
                       const merged = await buildMergedBatchPdfBlob(activeGroup);
                       const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects);
                       saveAs(merged, filename);
+                      setWizardDownloadToast(`Downloaded ${filename}`);
                     } catch (err) {
                       setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
                     }
                   };
-                  const onDownloadCombined = () => handleDownloadBatchWithInvoice(activeGroup, persistId);
+                  const onDownloadCombined = async () => {
+                    setExportError(null);
+                    try {
+                      await handleDownloadBatchWithInvoice(activeGroup, persistId);
+                      setWizardDownloadToast('Downloaded combined invoice + service tickets PDF');
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not generate combined PDF.');
+                    }
+                  };
                   const onAttach = async (file: File) => {
                     if (file.type !== 'application/pdf') {
                       setExportError('Invoice must be a PDF.');
@@ -6833,6 +6837,29 @@ export default function Invoices() {
                     const next = sortedCandidates.find((c) => getGroupId(c.group) !== groupId);
                     setWizardActiveGroupId(next ? getGroupId(next.group) : null);
                     clearWizardProgressForGroup(groupId);
+                  };
+                  /** Bulk Send-for-approval wrapper: captures the persistIds that will be
+                   *  freshly marked submitted_approval (i.e. those without an existing mark
+                   *  row), runs the existing handler, then surfaces an Undo toast pointing at
+                   *  exactly those persistIds. */
+                  const onBulkSendForApprovalWithToast = async (
+                    customer: string,
+                    groups: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[]
+                  ) => {
+                    const freshlyMarked: string[] = [];
+                    for (const g of groups) {
+                      const pid = resolvedPersistGroupId(g, invoicedMarkRows);
+                      const existing = invoicedMarkRows.find((r) => r.group_id === pid)?.key_snapshot as FrozenGroupSnapshot | undefined;
+                      // Only treat as freshly-markable if no submitted-or-later status already set.
+                      const SKIP = new Set(['submitted_approval', 'approved', 'portal_submission', 'submitted_portal', 'sent', 'invoiced']);
+                      if (!existing?.statusId || !SKIP.has(existing.statusId)) {
+                        freshlyMarked.push(pid);
+                      }
+                    }
+                    await handleBulkSendForApproval(customer, groups);
+                    if (freshlyMarked.length > 0) {
+                      setWizardBulkToast({ customer, persistIds: freshlyMarked });
+                    }
                   };
                   const onMark = () => {
                     handleMarkAsInvoiced(activeGroup);
@@ -7417,13 +7444,13 @@ export default function Invoices() {
                               );
                             })}
                           </div>
-                          {effectiveQueue === 'portal' && wizardBulkBuckets.length > 0 && (
+                          {effectiveQueue === 'portal' && bulkApprovalCandidates.length > 0 && (
                             <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px' }}>
                               <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#92400e', marginBottom: '6px' }}>
                                 📦 Bulk send for approval
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                {wizardBulkBuckets.map(({ customer, groups, readyCount, submittedCount }) => {
+                                {bulkApprovalCandidates.map(({ customer, groups }) => {
                                   const isBusy = bulkSendProgress?.customer === customer;
                                   const periodLabels = [...new Set(
                                     groups.map((g) => g.key.periodLabel?.trim()).filter((s): s is string => !!s)
@@ -7433,26 +7460,13 @@ export default function Invoices() {
                                     : periodLabels.length === 1
                                       ? periodLabels[0]
                                       : `${periodLabels.length} periods`;
-                                  const sendMode = readyCount > 0;
-                                  const labelMain = sendMode
-                                    ? `📥 ${customer} — Send for approval`
-                                    : `📥 ${customer} — Re-download zip`;
-                                  const stageDetail = sendMode
-                                    ? (submittedCount > 0
-                                        ? `${readyCount} ready + ${submittedCount} already sent`
-                                        : `${readyCount} ready`)
-                                    : `${submittedCount} sent`;
                                   return (
                                     <button
                                       key={customer}
                                       type="button"
                                       disabled={!!bulkSendProgress}
-                                      onClick={() => handleBulkSendForApproval(customer, groups)}
-                                      title={
-                                        sendMode
-                                          ? `Zip merged PDFs for all ${groups.length} batches and mark the ${readyCount} ready batch${readyCount === 1 ? '' : 'es'} as submitted_approval. Already-sent batches are included in the zip but skip the status change. Periods: ${periodLabels.join(', ') || '(none)'}.`
-                                          : `Re-download the merged-PDF zip for all ${submittedCount} already-submitted batch${submittedCount === 1 ? '' : 'es'} — no status change. Periods: ${periodLabels.join(', ') || '(none)'}.`
-                                      }
+                                      onClick={() => onBulkSendForApprovalWithToast(customer, groups)}
+                                      title={`Generates one merged PDF per batch for ${customer}, zips them, downloads the zip, then marks each batch as ready to send. Periods: ${periodLabels.join(', ') || '(none)'}.`}
                                       style={{
                                         textAlign: 'left',
                                         padding: '8px 10px',
@@ -7468,11 +7482,11 @@ export default function Invoices() {
                                       <div style={{ fontWeight: 700 }}>
                                         {isBusy
                                           ? `Building ${bulkSendProgress!.current}/${bulkSendProgress!.total}…`
-                                          : labelMain}
+                                          : `📥 ${customer}`}
                                       </div>
                                       {!isBusy && (
                                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                          {groups.length} batch{groups.length === 1 ? '' : 'es'} · {stageDetail}{periodSummary ? ` · ${periodSummary}` : ''}
+                                          {groups.length} batch{groups.length === 1 ? '' : 'es'}{periodSummary ? ` · ${periodSummary}` : ''}
                                         </div>
                                       )}
                                     </button>
