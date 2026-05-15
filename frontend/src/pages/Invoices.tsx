@@ -5725,6 +5725,10 @@ export default function Invoices() {
               const collapsed = isSectionCollapsed('invoiced', section.key);
               // Overdue badge is meaningless once a batch is invoiced — it's done.
               const ageBadge = null as BatchAgeBadge | null;
+              // Flag the whole section yellow when any batch inside is still in the draft
+              // (not-sent) state — the customer hasn't received it yet, so the section
+              // needs attention even when collapsed.
+              const sectionHasDraft = section.groups.some((g) => getInvoicedGroupStatusId(g) === 'draft');
               const batchNodes = section.groups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
@@ -5925,12 +5929,75 @@ export default function Invoices() {
                     {batchCurrentStatus && (() => {
                       // Override gray "draft" pill with an amber treatment so unsent invoices
                       // demand attention. Other statuses (sent, submitted_portal, etc.) keep
-                      // their workflow-defined color.
+                      // their workflow-defined color. The "Draft" label confuses users —
+                      // surface what's actually needed (mark it sent to the customer).
                       const pillHex = isDraft ? '#f59e0b' : statusColorHex(batchCurrentStatus.color);
-                      const pillLabel = isDraft ? `${batchCurrentStatus.label} · not sent` : batchCurrentStatus.label;
+                      const pillLabel = isDraft ? 'Not sent to customer' : batchCurrentStatus.label;
                       const canEdit = !!batchWorkflow && batchWorkflow.statuses.length > 1;
+                      // The next status after draft in a Standard workflow is "sent". Prefer
+                      // an explicit 'sent' status id when available; otherwise jump to the
+                      // second workflow status (any non-draft terminal works).
+                      const sentStatus = isDraft
+                        ? (batchWorkflow?.statuses?.find((s) => s.id === 'sent')
+                            ?? batchWorkflow?.statuses?.find((s) => s.id !== 'draft'))
+                        : null;
                       return (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        {isDraft && sentStatus && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Mark this invoice as sent to the customer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (updateBatchStatusMutation.isPending) return;
+                              updateBatchStatusMutation.mutate({
+                                groupId: persistId,
+                                statusId: sentStatus.id,
+                                prevStatusId: batchStatusId,
+                                statusLabel: sentStatus.label,
+                                customerName: groupTickets[0]?.customerName,
+                                projectNumber: key.projectNumber || undefined,
+                                workflowId: batchWorkflow?.id,
+                              });
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                if (updateBatchStatusMutation.isPending) return;
+                                updateBatchStatusMutation.mutate({
+                                  groupId: persistId,
+                                  statusId: sentStatus.id,
+                                  prevStatusId: batchStatusId,
+                                  statusLabel: sentStatus.label,
+                                  customerName: groupTickets[0]?.customerName,
+                                  projectNumber: key.projectNumber || undefined,
+                                  workflowId: batchWorkflow?.id,
+                                });
+                              }
+                            }}
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '4px 12px',
+                              borderRadius: '999px',
+                              backgroundColor: 'rgba(34, 197, 94, 0.16)',
+                              color: '#15803d',
+                              border: '1px solid rgba(34, 197, 94, 0.55)',
+                              whiteSpace: 'nowrap',
+                              cursor: updateBatchStatusMutation.isPending ? 'wait' : 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              outline: 'none',
+                              transition: 'background-color 0.12s ease, box-shadow 0.12s ease',
+                            }}
+                          >
+                            ✓ Mark as sent to customer
+                          </span>
+                        )}
                         <span
                           data-status-edit-trigger={canEdit ? '' : undefined}
                           role={canEdit ? 'button' : undefined}
@@ -6600,7 +6667,14 @@ export default function Invoices() {
               });
 
               return (
-                <div key={section.key} className="ionex-customer-section is-state-approved">
+                <div
+                  key={section.key}
+                  className="ionex-customer-section is-state-approved"
+                  style={sectionHasDraft ? {
+                    border: '2px solid #f59e0b',
+                    boxShadow: '0 0 0 1px rgba(245, 158, 11, 0.15), 0 1px 3px rgba(245, 158, 11, 0.18)',
+                  } : undefined}
+                >
                   <div className="ionex-customer-section-header">
                     <button
                       type="button"
@@ -6708,19 +6782,29 @@ export default function Invoices() {
             return (
               <div>
                 {(() => {
-                  // Wizard candidates: standard batches in Ready, plus Portal Approval batches
-                  // at any active stage (Ready, Submitted, Approved, Portal Submission).
+                  // Two queues, organised by what the admin needs to do next:
+                  //   "Needs to be approved" — portal batches still waiting on the approver
+                  //     (Ready / submitted_approval / needs_adjustment). Once the signed
+                  //     approval PDF lands on step 2, status flips to 'approved' and the
+                  //     batch moves out of this queue.
+                  //   "Ready to be invoiced" — everything actually ready to invoice now:
+                  //     all standard Ready batches, plus portal batches at 'approved' or
+                  //     'portal_submission' (signed approval is in, invoice is the next step).
+                  // The 'standard'/'portal' queue ids are kept internally so persisted state
+                  // doesn't reset; only the labels and membership rules changed.
                   type WizardCandidate = {
                     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
                     isPortal: boolean;
                   };
-                  const standardCandidates: WizardCandidate[] = readyStd.map((b) => ({ group: b.group, isPortal: false }));
+                  const standardCandidates: WizardCandidate[] = [
+                    ...readyStd.map((b) => ({ group: b.group, isPortal: false })),
+                    ...approvedAwaiting.map((g) => ({ group: g, isPortal: true as const })),
+                    ...portalAwaiting.map((g) => ({ group: g, isPortal: true as const })),
+                  ];
                   const portalCandidates: WizardCandidate[] = [
                     ...readyPortal.map((b) => ({ group: b.group, isPortal: true as const })),
                     ...waitingOnApproval.map((g) => ({ group: g, isPortal: true as const })),
                     ...needsAdjustment.map((g) => ({ group: g, isPortal: true as const })),
-                    ...approvedAwaiting.map((g) => ({ group: g, isPortal: true as const })),
-                    ...portalAwaiting.map((g) => ({ group: g, isPortal: true as const })),
                   ];
                   // If the active queue is empty but the other isn't, auto-switch so the user
                   // sees something useful rather than the "all caught up" empty state.
@@ -7576,12 +7660,12 @@ export default function Invoices() {
                         <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
                           <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
                             {([
-                              { id: 'standard' as WizardQueue, label: 'Standard', count: standardCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
+                              { id: 'standard' as WizardQueue, label: 'Ready to be invoiced', count: standardCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
                               // Badge counts only batches waiting to be sent for approval
                               // (fresh Ready + needs-adjustment resubmits) — those are the
-                              // action items. Batches already with the approver or further
-                              // along stay in the queue but don't inflate the urgency badge.
-                              { id: 'portal' as WizardQueue, label: 'Portal', count: readyPortal.length + needsAdjustment.length, fg: '#6d28d9', bg: '#ede9fe' },
+                              // action items. Batches already with the approver stay in the
+                              // queue but don't inflate the urgency badge.
+                              { id: 'portal' as WizardQueue, label: 'Needs to be approved', count: readyPortal.length + needsAdjustment.length, fg: '#6d28d9', bg: '#ede9fe' },
                             ] as const).map((q) => {
                               const isActiveQ = q.id === effectiveQueue;
                               return (
