@@ -5618,7 +5618,8 @@ export default function Invoices() {
             {invoicedSections.map((section) => {
               const sectionMulti = section.groups.length > 1;
               const collapsed = isSectionCollapsed('invoiced', section.key);
-              const ageBadge = getSectionAgeBadge(section);
+              // Overdue badge is meaningless once a batch is invoiced — it's done.
+              const ageBadge = null as BatchAgeBadge | null;
               const batchNodes = section.groups.map((group) => {
               const { key, tickets: groupTickets } = group;
               const groupId = getGroupId(group);
