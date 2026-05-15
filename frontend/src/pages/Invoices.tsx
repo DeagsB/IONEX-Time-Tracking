@@ -2795,9 +2795,9 @@ export default function Invoices() {
   /** Guide-me wizard state. `subview` toggles between the old overview cards and the new
    *  step-by-step wizard. `activeGroupId` is the batch currently being walked through.
    *  `stepProgress` holds per-batch flags that aren't derivable from DB state (e.g. did
-   *  the user download the merged PDF this session? has the QB invoice been created?). */
+   *  the user download the merged PDF this session?). */
   type WizardSubview = 'overview' | 'wizard';
-  type WizardStepProgress = { downloadedAt?: string; qbCreatedAt?: string };
+  type WizardStepProgress = { downloadedAt?: string };
   const [helperSubview, setHelperSubview] = useState<WizardSubview>('overview');
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
   const [wizardStepProgress, setWizardStepProgress] = useState<Record<string, WizardStepProgress>>(() => {
@@ -2815,16 +2815,12 @@ export default function Invoices() {
       return next;
     });
   }, []);
-  const clearWizardProgressFromStep = useCallback((groupId: string, fromStep: 'download' | 'create_invoice' | 'attach') => {
+  const clearWizardProgressForGroup = useCallback((groupId: string) => {
     setWizardStepProgress((prev) => {
-      const cur = prev[groupId] ?? {};
-      const next: WizardStepProgress = { ...cur };
-      if (fromStep === 'download') { delete next.downloadedAt; delete next.qbCreatedAt; }
-      if (fromStep === 'create_invoice') { delete next.qbCreatedAt; }
-      // 'attach' clears the uploaded file — handled via setInvoiceFileForGroup directly
-      const merged = { ...prev, [groupId]: next };
-      try { localStorage.setItem('ionex-wizard-step-progress', JSON.stringify(merged)); } catch {}
-      return merged;
+      const next = { ...prev };
+      delete next[groupId];
+      try { localStorage.setItem('ionex-wizard-step-progress', JSON.stringify(next)); } catch {}
+      return next;
     });
   }, []);
   const [moveTicketBatchDialog, setMoveTicketBatchDialog] = useState<{
@@ -6771,7 +6767,7 @@ export default function Invoices() {
                     <>
                       <strong>Standard customers.</strong> For each batch below:
                       <ol style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
-                        <li>Download the merged batch PDF from the <em>Ready</em> tab and raise the invoice in QuickBooks.</li>
+                        <li>Download the merged batch PDF from the <em>Ready</em> tab, then create the invoice in your invoicing system.</li>
                         <li>Click <strong>Mark as invoiced</strong> on the batch (or drop the invoice PDF onto it).</li>
                       </ol>
                     </>
@@ -6818,7 +6814,7 @@ export default function Invoices() {
                       <strong>Approved batches — your turn.</strong> The service techs got the signed approval back. Now:
                       <ol style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
                         <li>Open the batch on the <em>Approved</em> tab. The signed batch PDF is already attached.</li>
-                        <li>Create the invoice in QuickBooks for this batch's amount.</li>
+                        <li>Create the invoice for this batch's amount in your invoicing system.</li>
                         <li>Drag the invoice PDF onto the batch card, then click <strong>Move to Portal Submission</strong>.</li>
                       </ol>
                     </>
@@ -6857,56 +6853,80 @@ export default function Invoices() {
                 </>)}
 
                 {helperSubview === 'wizard' && (() => {
-                  // Phase 1 + 2: standard (non-portal) flow only. Portal Approval batches show a
-                  // placeholder pointing at the overview until phase 3 ships their flow.
-                  const wizardCandidates = readyStd.map((b) => b.group);
-                  const sortedCandidates = [...wizardCandidates].sort((a, b) => {
+                  // Wizard candidates: standard batches in Ready, plus Portal Approval batches
+                  // at any active stage (Ready, Submitted, Approved, Portal Submission).
+                  type WizardCandidate = {
+                    group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
+                    isPortal: boolean;
+                  };
+                  const allCandidates: WizardCandidate[] = [
+                    ...readyStd.map((b) => ({ group: b.group, isPortal: false })),
+                    ...readyPortal.map((b) => ({ group: b.group, isPortal: true })),
+                    ...waitingOnApproval.map((g) => ({ group: g, isPortal: true })),
+                    ...needsAdjustment.map((g) => ({ group: g, isPortal: true })),
+                    ...approvedAwaiting.map((g) => ({ group: g, isPortal: true })),
+                    ...portalAwaiting.map((g) => ({ group: g, isPortal: true })),
+                  ];
+                  const sortedCandidates = [...allCandidates].sort((a, b) => {
                     const ga = cnrlPeriodGrouping(getGroupingForTicket(
-                      a.tickets[0]?.customerId ?? '',
-                      (a.tickets[0] as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? a.tickets[0]?.projectId ?? '',
+                      a.group.tickets[0]?.customerId ?? '',
+                      (a.group.tickets[0] as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? a.group.tickets[0]?.projectId ?? '',
                     ));
                     const gb = cnrlPeriodGrouping(getGroupingForTicket(
-                      b.tickets[0]?.customerId ?? '',
-                      (b.tickets[0] as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? b.tickets[0]?.projectId ?? '',
+                      b.group.tickets[0]?.customerId ?? '',
+                      (b.group.tickets[0] as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? b.group.tickets[0]?.projectId ?? '',
                     ));
-                    const ea = getPeriodEndYmd(a.key.periodKey ?? '', ga) ?? '9999-12-31';
-                    const eb = getPeriodEndYmd(b.key.periodKey ?? '', gb) ?? '9999-12-31';
+                    const ea = getPeriodEndYmd(a.group.key.periodKey ?? '', ga) ?? '9999-12-31';
+                    const eb = getPeriodEndYmd(b.group.key.periodKey ?? '', gb) ?? '9999-12-31';
                     if (ea !== eb) return ea.localeCompare(eb);
-                    const ca = a.tickets[0]?.customerName ?? '';
-                    const cb = b.tickets[0]?.customerName ?? '';
+                    const ca = a.group.tickets[0]?.customerName ?? '';
+                    const cb = b.group.tickets[0]?.customerName ?? '';
                     return ca.localeCompare(cb);
                   });
-                  const activeGroup = sortedCandidates.find((g) => getGroupId(g) === wizardActiveGroupId) ?? sortedCandidates[0];
-                  const portalReadyCount = readyPortal.length;
+                  const activeCandidate = sortedCandidates.find((c) => getGroupId(c.group) === wizardActiveGroupId) ?? sortedCandidates[0];
 
-                  if (!activeGroup) {
+                  if (!activeCandidate) {
                     return (
                       <div className="ionex-empty">
                         <span className="glyph" aria-hidden>🎉</span>
-                        <h3 className="title">No standard batches ready</h3>
-                        <p className="body">
-                          {portalReadyCount > 0
-                            ? `${portalReadyCount} Portal Approval batch${portalReadyCount === 1 ? ' is' : 'es are'} waiting — use the Overview tab for those until the wizard supports portal flows.`
-                            : 'Nothing to invoice right now. Come back when more service tickets are approved.'}
-                        </p>
+                        <h3 className="title">All caught up</h3>
+                        <p className="body">Nothing to invoice right now. Come back when more service tickets are approved.</p>
                       </div>
                     );
                   }
 
-                  type WizardStepId = 'preflight' | 'download' | 'create_invoice' | 'attach' | 'mark' | 'done';
-                  const STEP_DEFS: { id: WizardStepId; label: string; short: string }[] = [
-                    { id: 'preflight', label: 'Pre-flight checks', short: 'Verify' },
-                    { id: 'download', label: 'Download batch PDF', short: 'Download' },
-                    { id: 'create_invoice', label: 'Create invoice in QuickBooks', short: 'QuickBooks' },
-                    { id: 'attach', label: 'Attach invoice PDF', short: 'Attach' },
-                    { id: 'mark', label: 'Mark as invoiced', short: 'Mark' },
+                  const activeGroup = activeCandidate.group;
+                  const isPortal = activeCandidate.isPortal;
+
+                  type StandardStepId = 'preflight' | 'download' | 'attach' | 'mark' | 'done';
+                  type PortalStepId = 'preflight' | 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'submit_portal' | 'done';
+                  type WizardStepId = StandardStepId | PortalStepId;
+                  const STANDARD_STEPS: { id: StandardStepId; label: string }[] = [
+                    { id: 'preflight', label: 'Pre-flight checks' },
+                    { id: 'download', label: 'Download batch PDF' },
+                    { id: 'attach', label: 'Create invoice & attach PDF' },
+                    { id: 'mark', label: 'Mark as invoiced' },
                   ];
+                  const PORTAL_STEPS: { id: PortalStepId; label: string }[] = [
+                    { id: 'preflight', label: 'Pre-flight checks' },
+                    { id: 'submit_approval', label: 'Submit batch for approval' },
+                    { id: 'attach_signed', label: 'Attach signed approval' },
+                    { id: 'attach_invoice', label: 'Create invoice & attach PDF' },
+                    { id: 'submit_portal', label: 'Submit to customer portal' },
+                  ];
+                  const STEP_DEFS = isPortal ? PORTAL_STEPS : STANDARD_STEPS;
 
                   const groupId = getGroupId(activeGroup);
                   const persistId = resolvedPersistGroupId(activeGroup, invoicedMarkRows);
                   const progress = wizardStepProgress[groupId] ?? {};
                   const isMarked = invoicedMarkRows.some((r) => r.group_id === persistId);
+                  const statusId = getGroupStatusId(activeGroup);
                   const invoiceFile = invoiceFilesByGroupId[persistId] ?? null;
+                  const hasInvoiceFile = !!invoiceFile || !!savedInvoiceMetadata?.[persistId];
+                  const hasApprovalFile = !!savedApprovalMetadata?.[persistId];
+                  const rejection = (invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined)?.rejection;
+                  const activeRejectionNote = rejection?.active ? rejection.note : null;
+                  const activeWorkflow = getWorkflowForCustomer(activeGroup.tickets[0]?.customerName, activeGroup.key.projectNumber);
 
                   // --- Pre-flight blockers (hard-gate before download) ---
                   const blockers: { id: string; message: string; deepLinkTab?: InvoiceTab }[] = [];
@@ -6949,15 +6969,25 @@ export default function Invoices() {
 
                   // --- Active step derivation ---
                   let currentStep: WizardStepId;
-                  if (isMarked) currentStep = 'done';
-                  else if (invoiceFile) currentStep = 'mark';
-                  else if (progress.qbCreatedAt) currentStep = 'attach';
-                  else if (progress.downloadedAt) currentStep = 'create_invoice';
-                  else if (blockers.length > 0) currentStep = 'preflight';
-                  else currentStep = 'download';
+                  if (isPortal) {
+                    if (statusId === 'submitted_portal' || statusId === 'sent' || statusId === 'invoiced') currentStep = 'done';
+                    else if (statusId === 'portal_submission') currentStep = 'submit_portal';
+                    else if (statusId === 'approved') currentStep = 'attach_invoice';
+                    else if (statusId === 'submitted_approval') currentStep = 'attach_signed';
+                    else if (statusId === NEEDS_ADJUSTMENT_STATUS_ID) currentStep = blockers.length > 0 ? 'preflight' : 'submit_approval';
+                    else if (blockers.length > 0) currentStep = 'preflight';
+                    else currentStep = 'submit_approval';
+                  } else {
+                    if (isMarked) currentStep = 'done';
+                    else if (hasInvoiceFile) currentStep = 'mark';
+                    else if (progress.downloadedAt) currentStep = 'attach';
+                    else if (blockers.length > 0) currentStep = 'preflight';
+                    else currentStep = 'download';
+                  }
 
                   const stepIndex = (id: WizardStepId): number => STEP_DEFS.findIndex((s) => s.id === id);
-                  const currentIdx = stepIndex(currentStep === 'done' ? 'mark' : currentStep);
+                  const lastStepId = STEP_DEFS[STEP_DEFS.length - 1].id;
+                  const currentIdx = stepIndex(currentStep === 'done' ? lastStepId : currentStep);
 
                   const totalHours = activeGroup.tickets.reduce((s, t) => s + (Number(t.totalHours) || 0), 0);
                   const customer = t0?.customerName ?? '—';
@@ -6976,7 +7006,6 @@ export default function Invoices() {
                       setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
                     }
                   };
-                  const onQbConfirm = () => updateWizardProgress(groupId, { qbCreatedAt: new Date().toISOString() });
                   const onAttach = async (file: File) => {
                     if (file.type !== 'application/pdf') {
                       setExportError('Invoice must be a PDF.');
@@ -7001,12 +7030,107 @@ export default function Invoices() {
                   };
                   const onMark = () => handleMarkAsInvoiced(activeGroup);
 
+                  // Portal-flow actions
+                  const onSubmitForApproval = async () => {
+                    setExportError(null);
+                    if (statusId === NEEDS_ADJUSTMENT_STATUS_ID) {
+                      await handleResubmitForApproval(activeGroup);
+                    } else {
+                      await handleMarkAsSubmittedForApproval(activeGroup);
+                    }
+                  };
+                  const onAttachSignedApproval = async (file: File) => {
+                    if (file.type !== 'application/pdf') {
+                      setExportError('Signed approval must be a PDF.');
+                      return;
+                    }
+                    if (!activeWorkflow) {
+                      setExportError('No invoice workflow assigned to this customer/project.');
+                      return;
+                    }
+                    setExportError(null);
+                    try {
+                      await uploadApprovalMutation.mutateAsync({
+                        groupId: persistId,
+                        file,
+                        customerName: activeGroup.tickets[0]?.customerName,
+                        projectNumber: activeGroup.key.projectNumber || undefined,
+                        workflow: activeWorkflow,
+                      });
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not upload signed approval PDF.');
+                    }
+                  };
+                  const onMoveToPortalSubmission = () => {
+                    if (!activeWorkflow) {
+                      setExportError('No invoice workflow assigned to this customer/project.');
+                      return;
+                    }
+                    advanceToPortalSubmissionMutation.mutate({
+                      groupId: persistId,
+                      customerName: activeGroup.tickets[0]?.customerName,
+                      projectNumber: activeGroup.key.projectNumber || undefined,
+                      workflow: activeWorkflow,
+                    });
+                  };
+                  const onMarkPortalSubmitted = () => {
+                    if (!activeWorkflow) {
+                      setExportError('No invoice workflow assigned to this customer/project.');
+                      return;
+                    }
+                    markFinalInvoicedMutation.mutate({
+                      groupId: persistId,
+                      customerName: activeGroup.tickets[0]?.customerName,
+                      projectNumber: activeGroup.key.projectNumber || undefined,
+                      workflow: activeWorkflow,
+                    });
+                  };
+
+                  const summaryBlock = (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', padding: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                      <strong>Customer:</strong><span>{customer}</span>
+                      <strong>Project:</strong><span>{projectLabel || '—'}</span>
+                      <strong>Period:</strong><span>{periodLabel || '—'}</span>
+                      <strong>Tickets:</strong><span>{activeGroup.tickets.length}</span>
+                      <strong>Total hours:</strong><span>{totalHours.toFixed(2)}</span>
+                    </div>
+                  );
+
+                  const fileDropZone = (opts: { label: string; uploading: boolean; onPick: (f: File) => void }) => (
+                    <label
+                      style={{
+                        display: 'block',
+                        padding: '20px',
+                        border: '2px dashed var(--border-color)',
+                        borderRadius: '8px',
+                        textAlign: 'center',
+                        cursor: opts.uploading ? 'wait' : 'pointer',
+                        backgroundColor: 'var(--bg-tertiary)',
+                      }}
+                    >
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        style={{ display: 'none' }}
+                        disabled={opts.uploading}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) opts.onPick(f);
+                          e.target.value = '';
+                        }}
+                      />
+                      {opts.uploading
+                        ? 'Uploading…'
+                        : <strong>{opts.label}</strong>}
+                    </label>
+                  );
+
                   const renderStepBody = () => {
                     if (currentStep === 'preflight') {
                       return (
                         <div>
                           <p style={{ marginTop: 0, marginBottom: '12px', color: 'var(--text-secondary)' }}>
-                            Fix the issues below before this batch can be invoiced. The wizard won't let you continue while
+                            Fix the issues below before this batch can move forward. The wizard won't let you continue while
                             blockers exist.
                           </p>
                           <ul style={{ margin: '0 0 12px 0', paddingLeft: '18px' }}>
@@ -7027,77 +7151,40 @@ export default function Invoices() {
                         </div>
                       );
                     }
-                    if (currentStep === 'download') {
+                    // ----- Standard flow -----
+                    if (!isPortal && currentStep === 'download') {
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Generate the merged batch PDF (per-ticket pages + summary). Save it locally — you'll need it when raising the invoice.
+                            Generate the merged batch PDF (per-ticket pages + summary). Save it locally — you'll use it as the source when creating the invoice in your invoicing system.
                           </p>
+                          {summaryBlock}
                           <button type="button" onClick={onDownload} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
                             ⬇ Download batch PDF
                           </button>
                         </div>
                       );
                     }
-                    if (currentStep === 'create_invoice') {
+                    if (!isPortal && currentStep === 'attach') {
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Open QuickBooks and raise the invoice for this batch using the figures below.
+                            Create the invoice for this batch in your invoicing system using the figures above, then upload the resulting invoice PDF here.
                           </p>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', padding: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
-                            <strong>Customer:</strong><span>{customer}</span>
-                            <strong>Project:</strong><span>{projectLabel || '—'}</span>
-                            <strong>Period:</strong><span>{periodLabel || '—'}</span>
-                            <strong>Tickets:</strong><span>{activeGroup.tickets.length}</span>
-                            <strong>Total hours:</strong><span>{totalHours.toFixed(2)}</span>
-                          </div>
-                          <button type="button" onClick={onQbConfirm} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
-                            ✓ Invoice created in QuickBooks
-                          </button>
+                          {summaryBlock}
+                          {fileDropZone({
+                            label: 'Click to select invoice PDF',
+                            uploading: uploadingInvoiceGroupId === persistId,
+                            onPick: onAttach,
+                          })}
                         </div>
                       );
                     }
-                    if (currentStep === 'attach') {
+                    if (!isPortal && currentStep === 'mark') {
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Upload the invoice PDF you just generated from QuickBooks. It'll be stored against this batch.
-                          </p>
-                          <label
-                            style={{
-                              display: 'block',
-                              padding: '20px',
-                              border: '2px dashed var(--border-color)',
-                              borderRadius: '8px',
-                              textAlign: 'center',
-                              cursor: uploadingInvoiceGroupId === persistId ? 'wait' : 'pointer',
-                              backgroundColor: 'var(--bg-tertiary)',
-                            }}
-                          >
-                            <input
-                              type="file"
-                              accept="application/pdf"
-                              style={{ display: 'none' }}
-                              disabled={uploadingInvoiceGroupId === persistId}
-                              onChange={(e) => {
-                                const f = e.target.files?.[0];
-                                if (f) onAttach(f);
-                                e.target.value = '';
-                              }}
-                            />
-                            {uploadingInvoiceGroupId === persistId
-                              ? 'Uploading…'
-                              : <><strong>Click to select invoice PDF</strong><div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>or drag it onto the batch in the Ready tab</div></>}
-                          </label>
-                        </div>
-                      );
-                    }
-                    if (currentStep === 'mark') {
-                      return (
-                        <div>
-                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Invoice attached: <strong>{invoiceFile?.name ?? 'invoice.pdf'}</strong>. Mark this batch as invoiced
+                            Invoice attached: <strong>{invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf'}</strong>. Mark this batch as invoiced
                             to lock it down and move it to the Invoiced tab.
                           </p>
                           <button type="button" onClick={onMark} disabled={markInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}>
@@ -7106,17 +7193,116 @@ export default function Invoices() {
                         </div>
                       );
                     }
+                    // ----- Portal flow -----
+                    if (isPortal && currentStep === 'submit_approval') {
+                      const isResubmit = statusId === NEEDS_ADJUSTMENT_STATUS_ID;
+                      return (
+                        <div>
+                          {activeRejectionNote && (
+                            <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '8px', fontSize: '13px', color: 'var(--text-primary)' }}>
+                              <strong style={{ color: '#b91c1c' }}>Approver rejected this batch:</strong><br />
+                              <em>{activeRejectionNote}</em><br />
+                              <span style={{ color: 'var(--text-secondary)' }}>Fix the tickets the note points to, then resubmit.</span>
+                            </div>
+                          )}
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            This downloads the merged approval-batch PDF and moves the batch into <em>Submitted for approval</em>.
+                            Send the PDF to the customer's approver — the wizard waits here until you receive the signed copy back.
+                          </p>
+                          {summaryBlock}
+                          <button type="button" onClick={onSubmitForApproval} disabled={markInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                            {markInvoicedMutation.isPending ? 'Saving…' : isResubmit ? '↻ Resubmit for approval' : '📨 Submit for approval'}
+                          </button>
+                        </div>
+                      );
+                    }
+                    if (isPortal && currentStep === 'attach_signed') {
+                      const note = (rejection && !rejection.active && rejection.note) ? rejection.note : null;
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            Waiting for the customer to sign the approval batch. When you receive the signed PDF back,
+                            upload it here — that advances the batch to <em>Approved</em>.
+                          </p>
+                          {note && (
+                            <div style={{ marginBottom: '12px', padding: '8px 10px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              Earlier rejection: <em>{note}</em>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            Got a rejection instead? <button type="button" onClick={() => setActiveTab('submitted')} style={{ ...goButtonStyle, fontSize: '12px', marginLeft: '4px' }}>Open in Submitted →</button>
+                          </div>
+                          {fileDropZone({
+                            label: 'Click to upload signed approval PDF',
+                            uploading: uploadApprovalMutation.isPending,
+                            onPick: onAttachSignedApproval,
+                          })}
+                        </div>
+                      );
+                    }
+                    if (isPortal && currentStep === 'attach_invoice') {
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            Signed approval is in. Now create the invoice for this batch's amount in your invoicing system,
+                            then upload the invoice PDF and move the batch to <em>Portal Submission</em>.
+                          </p>
+                          {summaryBlock}
+                          {hasApprovalFile && (
+                            <div style={{ marginBottom: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              ✓ Signed approval attached: <strong>{savedApprovalMetadata?.[persistId]?.filename ?? 'approval.pdf'}</strong>
+                            </div>
+                          )}
+                          {!hasInvoiceFile ? (
+                            fileDropZone({
+                              label: 'Click to upload invoice PDF',
+                              uploading: uploadingInvoiceGroupId === persistId,
+                              onPick: onAttach,
+                            })
+                          ) : (
+                            <div>
+                              <div style={{ marginBottom: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                Invoice attached: <strong>{invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf'}</strong>
+                              </div>
+                              <button type="button" onClick={onMoveToPortalSubmission} disabled={advanceToPortalSubmissionMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                                {advanceToPortalSubmissionMutation.isPending ? 'Saving…' : '→ Move to Portal Submission'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (isPortal && currentStep === 'submit_portal') {
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            Open the customer's invoicing portal and copy the invoice details across (invoice number, dates, line items, totals).
+                            When everything is uploaded in their portal, mark this batch as invoiced to finish.
+                          </p>
+                          {summaryBlock}
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button type="button" onClick={() => setActiveTab('portal_submission')} style={goButtonStyle}>
+                              Open Portal Submission tab →
+                            </button>
+                            <button type="button" onClick={onMarkPortalSubmitted} disabled={markFinalInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}>
+                              {markFinalInvoicedMutation.isPending ? 'Saving…' : '✓ Mark as invoiced'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    // currentStep === 'done'
                     return (
                       <div>
                         <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                          🎉 Batch marked as invoiced. Pick the next one or jump to the Invoiced tab to review.
+                          🎉 Batch finished. Pick the next one or jump to the Invoiced tab to review.
                         </p>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
                             type="button"
                             onClick={() => {
-                              const remaining = sortedCandidates.filter((g) => getGroupId(g) !== groupId);
-                              setWizardActiveGroupId(remaining[0] ? getGroupId(remaining[0]) : null);
+                              const remaining = sortedCandidates.filter((c) => getGroupId(c.group) !== groupId);
+                              setWizardActiveGroupId(remaining[0] ? getGroupId(remaining[0].group) : null);
                             }}
                             style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}
                           >
@@ -7130,16 +7316,15 @@ export default function Invoices() {
                     );
                   };
 
-                  // Past-step reopen handler: clears progress flags from that step onward so the
-                  // user lands back at the picked step. Marked-invoiced state isn't undone here —
-                  // use the Ready tab's Unmark for that.
+                  // Past-step reopen: only the standard 'download' step is locally resettable
+                  // (it clears the wizard's downloaded-PDF flag so user lands back at Download).
+                  // Portal steps reflect persisted DB status — they cannot be rewound from the
+                  // wizard. Use the corresponding tab (Submitted, Approved, Portal Submission)
+                  // for status-changing actions.
                   const onReopen = (stepId: WizardStepId) => {
-                    if (stepId === 'preflight' || isMarked) return;
+                    if (isMarked || isPortal) return;
                     if (stepId === 'download') {
-                      clearWizardProgressFromStep(groupId, 'download');
-                      setInvoiceFileForGroup(persistId, null);
-                    } else if (stepId === 'create_invoice') {
-                      clearWizardProgressFromStep(groupId, 'create_invoice');
+                      clearWizardProgressForGroup(groupId);
                       setInvoiceFileForGroup(persistId, null);
                     } else if (stepId === 'attach') {
                       setInvoiceFileForGroup(persistId, null);
@@ -7155,10 +7340,13 @@ export default function Invoices() {
                             Queue · {sortedCandidates.length} batch{sortedCandidates.length === 1 ? '' : 'es'}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto' }}>
-                            {sortedCandidates.map((g) => {
-                              const gid = getGroupId(g);
+                            {sortedCandidates.map((c) => {
+                              const gid = getGroupId(c.group);
                               const isActive = gid === getGroupId(activeGroup);
-                              const t = g.tickets[0];
+                              const t = c.group.tickets[0];
+                              const flowTag = c.isPortal ? 'Portal' : 'Standard';
+                              const tagBg = c.isPortal ? '#ede9fe' : '#dbeafe';
+                              const tagFg = c.isPortal ? '#6d28d9' : '#1d4ed8';
                               return (
                                 <button
                                   key={gid}
@@ -7174,11 +7362,16 @@ export default function Invoices() {
                                     fontFamily: 'inherit',
                                   }}
                                 >
-                                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {t?.customerName ?? '—'}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {t?.customerName ?? '—'}
+                                    </div>
+                                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', backgroundColor: tagBg, color: tagFg, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                                      {flowTag}
+                                    </span>
                                   </div>
                                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {g.key.periodLabel ?? g.key.periodKey ?? ''} · {g.tickets.length} ticket{g.tickets.length === 1 ? '' : 's'}
+                                    {c.group.key.periodLabel ?? c.group.key.periodKey ?? ''} · {c.group.tickets.length} ticket{c.group.tickets.length === 1 ? '' : 's'}
                                   </div>
                                 </button>
                               );
@@ -7192,9 +7385,9 @@ export default function Invoices() {
                           <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             {STEP_DEFS.map((s, idx) => {
                               const isCurrent = s.id === currentStep;
-                              const isPast = idx < currentIdx || isMarked;
+                              const isPast = idx < currentIdx || currentStep === 'done' || (!isPortal && isMarked);
                               const isFuture = !isCurrent && !isPast;
-                              const canClick = isPast && !isMarked && s.id !== 'preflight';
+                              const canClick = !isPortal && isPast && !isMarked && s.id !== 'preflight' && currentStep !== 'done';
                               return (
                                 <li key={s.id}>
                                   <button
@@ -7245,15 +7438,41 @@ export default function Invoices() {
                               {customer}{projectLabel ? ` · ${projectLabel}` : ''}{periodLabel ? ` · ${periodLabel}` : ''}
                             </div>
                           </div>
-                          <button type="button" onClick={() => setActiveTab('ready')} style={goButtonStyle}>
-                            Open in Ready tab →
-                          </button>
+                          {(() => {
+                            // Deep-link button targets the most relevant tab for the current step.
+                            const targetTab: InvoiceTab = isPortal
+                              ? (statusId === 'portal_submission'
+                                  ? 'portal_submission'
+                                  : statusId === 'approved'
+                                    ? 'approved'
+                                    : (statusId === 'submitted_approval' || statusId === NEEDS_ADJUSTMENT_STATUS_ID)
+                                      ? 'submitted'
+                                      : 'ready')
+                              : 'ready';
+                            const targetLabel = targetTab === 'portal_submission'
+                              ? 'Open in Portal Submission tab →'
+                              : targetTab === 'approved'
+                                ? 'Open in Approved tab →'
+                                : targetTab === 'submitted'
+                                  ? 'Open in Submitted tab →'
+                                  : 'Open in Ready tab →';
+                            return (
+                              <button type="button" onClick={() => setActiveTab(targetTab)} style={goButtonStyle}>
+                                {targetLabel}
+                              </button>
+                            );
+                          })()}
                         </div>
-                        {portalReadyCount > 0 && (
-                          <div style={{ marginBottom: '12px', padding: '8px 10px', backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            Note: {portalReadyCount} Portal Approval batch{portalReadyCount === 1 ? '' : 'es'} not shown here yet — wizard supports standard customers in this phase. Use Overview for portal flows.
-                          </div>
-                        )}
+                        <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: isPortal ? '#ede9fe' : '#dbeafe', color: isPortal ? '#6d28d9' : '#1d4ed8', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                            {isPortal ? 'Portal Approval' : 'Standard'} flow
+                          </span>
+                          {isPortal && (
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              Multi-step: approval → invoice → portal
+                            </span>
+                          )}
+                        </div>
                         {renderStepBody()}
                       </div>
                     </div>
