@@ -2945,6 +2945,9 @@ export default function Invoices() {
     workflowId?: string;
     /** Current attempt count (0 if never rejected before). The mutation bumps to attempt+1. */
     priorAttempt: number;
+    /** Optional local groupId — when set (wizard flow), wizard-step progress is cleared
+     *  after a successful commit so resubmit doesn't show stale acks. */
+    wizardGroupId?: string;
   } | null>(null);
   const [needsAdjustmentNote, setNeedsAdjustmentNote] = useState('');
   /** Bulk undo confirmation for an entire grouped section (multiple approver batches at once). */
@@ -7591,25 +7594,22 @@ export default function Invoices() {
                     }
                     if (isPortal && currentStep === 'attach_signed') {
                       const note = (rejection && !rejection.active && rejection.note) ? rejection.note : null;
-                      const onMarkRejected = async () => {
-                        const input = window.prompt('Rejection note from approver (required). Briefly describe what needs to change:');
-                        if (input === null) return;
-                        const cleaned = input.trim();
-                        if (!cleaned) {
-                          setExportError('Rejection note is required.');
-                          return;
-                        }
-                        await handleMarkBatchNeedsAdjustment({
+                      const onMarkRejected = () => {
+                        // Open the shared in-app modal rather than a browser prompt — modal
+                        // shows batch context (customer/project/period/tickets) and supports
+                        // multiline rejection notes. wizardGroupId carries through so the
+                        // wizard-step progress is cleared after a successful commit.
+                        setNeedsAdjustmentNote('');
+                        setNeedsAdjustmentModal({
                           persistId,
-                          note: cleaned,
-                          customerName: activeGroup.tickets[0]?.customerName,
-                          projectNumber: activeGroup.key.projectNumber || undefined,
+                          customerName: activeGroup.tickets[0]?.customerName ?? 'Unknown customer',
+                          projectLine: [activeGroup.key.projectNumber, activeGroup.key.projectName].filter(Boolean).join(' – '),
+                          periodLine: activeGroup.key.periodLabel ?? activeGroup.key.periodKey ?? '',
+                          ticketCount: activeGroup.tickets.length,
                           workflowId: activeWorkflow?.id,
                           priorAttempt: rejection?.attempt ?? 0,
+                          wizardGroupId: groupId,
                         });
-                        // Wipe any stale wizard-step progress for this batch so the resubmit
-                        // step doesn't open mid-flow with old ack flags.
-                        clearWizardProgressForGroup(groupId);
                       };
                       return (
                         <div>
@@ -10757,6 +10757,10 @@ export default function Invoices() {
                       workflowId: args.workflowId,
                       priorAttempt: args.priorAttempt,
                     });
+                    if (args.wizardGroupId) {
+                      // Wizard caller: nuke step progress so resubmit lands clean.
+                      clearWizardProgressForGroup(args.wizardGroupId);
+                    }
                   }}
                   style={{
                     padding: '8px 14px', fontSize: '13px', fontWeight: 700,
