@@ -618,34 +618,14 @@ export function aggregateEmployeeMetrics(
   // Non-billable hours = rounded internal time entries + unbilled work from billable rate types
   const nonBillableHours = internalTimeEntryHours + totalUnbilledWork;
   
-  // Calculate the COST of unbilled work (hours worked but not billed still have a cost)
-  // Use the employee's loaded pay rates (with burden) to determine the cost of unbilled hours
+  // Calculate the COST of unbilled work (hours worked but not billed still have a cost).
+  // These hours roll up into non-billable, so they cost at the employee's INTERNAL rate
+  // (with burden) — matching the explicit-non-billable-entry cost basis above. Falls
+  // back to shop_pay_rate when internal_rate is unset, same as the STEP 1 internal calc.
   const unbilledBurden = 1 + calculateBurden(employee);
-  const getPayRateForUnbilled = (rateType: 'shop' | 'field' | 'travel' | 'shopOT' | 'fieldOT'): number => {
-    if (!employee) return 0;
-    const panelShop = employee.department === 'Panel Shop';
-    let baseRate = 0;
-    if (panelShop) {
-      if (rateType === 'shopOT') baseRate = employee.shop_ot_pay_rate || employee.shop_pay_rate || 0;
-      else if (rateType === 'fieldOT') baseRate = employee.field_ot_pay_rate || employee.shop_pay_rate || 0;
-      else if (rateType === 'field') baseRate = employee.field_pay_rate || employee.shop_pay_rate || 0;
-      else baseRate = employee.shop_pay_rate || 0;
-    } else {
-      if (rateType === 'shopOT') baseRate = employee.shop_ot_pay_rate || 0;
-      else if (rateType === 'fieldOT') baseRate = employee.field_ot_pay_rate || 0;
-      else if (rateType === 'field') baseRate = employee.field_pay_rate || 0;
-      else if (rateType === 'travel') baseRate = employee.shop_pay_rate || 0;
-      else baseRate = employee.shop_pay_rate || 0;
-    }
-    return baseRate * unbilledBurden;
-  };
-  
-  const unbilledShopTimeCost = unbilledShopTime * getPayRateForUnbilled('shop');
-  const unbilledFieldTimeCost = unbilledFieldTime * getPayRateForUnbilled('field');
-  const unbilledTravelTimeCost = unbilledTravelTime * getPayRateForUnbilled('travel');
-  const unbilledShopOTCost = unbilledShopOT * getPayRateForUnbilled('shopOT');
-  const unbilledFieldOTCost = unbilledFieldOT * getPayRateForUnbilled('fieldOT');
-  const totalUnbilledWorkCost = unbilledShopTimeCost + unbilledFieldTimeCost + unbilledTravelTimeCost + unbilledShopOTCost + unbilledFieldOTCost;
+  const internalBaseForUnbilled = Number(employee?.internal_rate) || Number(employee?.shop_pay_rate) || 0;
+  const unbilledPayRate = internalBaseForUnbilled * unbilledBurden;
+  const totalUnbilledWorkCost = totalUnbilledWork * unbilledPayRate;
 
   // Update the rate type breakdown to reflect the non-billable hours AND cost (for display)
   rateTypeBreakdown.internalTime.hours = nonBillableHours;
