@@ -12,6 +12,7 @@ import {
   projectsService,
   invoicedBatchInvoicesService,
   invoicedBatchApprovalsService,
+  invoicedBatchCustomerTimesheetsService,
   invoicedBatchMarksService,
   type InvoicedBatchMarkRow,
   invoiceFilenameForDownload,
@@ -2724,6 +2725,21 @@ export default function Invoices() {
     queryFn: () => invoicedBatchInvoicesService.getAllInvoicedGroupIds(),
   });
 
+  // Customer-supplied timesheet group IDs — tracked separately from
+  // invoicedGroupIdsFromDb because timesheets get uploaded at submit-for-approval,
+  // well before a batch has an invoice attached. Hoisted up here so buildMergedBatchPdfBlob
+  // (below) can swap out the IONEX summary + tickets when a timesheet is attached.
+  const { data: customerTimesheetGroupIds = [] } = useQuery({
+    queryKey: ['invoicedBatchCustomerTimesheets', 'allGroupIds'],
+    queryFn: () => invoicedBatchCustomerTimesheetsService.getAllGroupIds(),
+  });
+
+  const { data: savedCustomerTimesheetMetadata } = useQuery({
+    queryKey: ['invoicedBatchCustomerTimesheets', [...customerTimesheetGroupIds].sort().join(',')],
+    queryFn: () => invoicedBatchCustomerTimesheetsService.getMetadataByGroupIds(customerTimesheetGroupIds),
+    enabled: customerTimesheetGroupIds.length > 0,
+  });
+
   const dbMarkedIdSet = useMemo(
     () => new Set(invoicedMarkRows.map((r) => r.group_id)),
     [invoicedMarkRows]
@@ -2789,6 +2805,10 @@ export default function Invoices() {
   const [invoiceFilesByGroupId, setInvoiceFilesByGroupId] = useState<Record<string, File>>({});
   const [downloadingWithInvoiceGroupId, setDownloadingWithInvoiceGroupId] = useState<string | null>(null);
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
+  /** Customer-supplied timesheet (e.g. for portal customers that require their own format).
+   *  When a timesheet is attached for a group, the approval-batch PDF and the combined
+   *  invoice-download both skip our summary + service-ticket PDFs and use only this. */
+  const [uploadingCustomerTimesheetGroupId, setUploadingCustomerTimesheetGroupId] = useState<string | null>(null);
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
   /** Guide-me wizard state. `activeGroupId` is the batch currently being walked through.
@@ -3706,6 +3726,18 @@ export default function Invoices() {
     async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): Promise<Blob> => {
       const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
       const groupId = getGroupId(group);
+
+      // Customer-supplied timesheet short-circuit: when a portal customer requires their
+      // own format, the approval batch is JUST their timesheet — no summary cover, no
+      // IONEX service-ticket PDFs. Try persistId first, then fall back to groupId in
+      // case the timesheet was uploaded before the mark row existed.
+      const customerTimesheet =
+        savedCustomerTimesheetMetadata?.[persistId] ??
+        savedCustomerTimesheetMetadata?.[groupId];
+      if (customerTimesheet) {
+        return invoicedBatchCustomerTimesheetsService.downloadTimesheet(customerTimesheet.storagePath);
+      }
+
       const exportSnap = invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
       const exportLabourNotes = exportSnap?.labourNotes ?? pendingLabourNotes[groupId];
       const blobs: Blob[] = [];
@@ -3729,7 +3761,7 @@ export default function Invoices() {
       if (blobs.length === 0) throw new Error('No PDFs generated.');
       return mergePdfBlobs(blobs);
     },
-    [invoicedMarkRows, pendingLabourNotes]
+    [invoicedMarkRows, pendingLabourNotes, savedCustomerTimesheetMetadata]
   );
 
   /**
@@ -5050,6 +5082,17 @@ export default function Invoices() {
     setDownloadingWithInvoiceGroupId(groupId);
     setExportError(null);
     try {
+      // Customer-supplied timesheet short-circuit: when a portal customer requires their
+      // own format, the combined package is just invoice + their timesheet. No summary,
+      // no IONEX ticket PDFs.
+      const customerTimesheet = savedCustomerTimesheetMetadata?.[groupId];
+      if (customerTimesheet) {
+        const timesheetBlob = await invoicedBatchCustomerTimesheetsService.downloadTimesheet(customerTimesheet.storagePath);
+        const merged = await mergePdfBlobs([invoiceBlob, timesheetBlob]);
+        saveAs(merged, downloadFilename);
+        return;
+      }
+
       const blobs: Blob[] = [invoiceBlob];
       const allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }> = [];
 
@@ -6925,6 +6968,41 @@ export default function Invoices() {
                     advanceToNext();
                   };
 
+                  // Customer-supplied timesheet upload (portal customers that require their own format).
+                  // When attached, the approval-batch download and the combined-invoice download both
+                  // swap their summary + service-ticket PDFs out for this file. Upload uses persistId
+                  // so it stays paired with the batch as it moves through Submitted/Approved/etc.
+                  const customerTimesheetSaved =
+                    savedCustomerTimesheetMetadata?.[persistId] ??
+                    savedCustomerTimesheetMetadata?.[groupId];
+                  const onUploadCustomerTimesheet = async (file: File) => {
+                    if (file.type !== 'application/pdf') {
+                      setExportError('Customer timesheet must be a PDF.');
+                      return;
+                    }
+                    setExportError(null);
+                    setUploadingCustomerTimesheetGroupId(persistId);
+                    try {
+                      await invoicedBatchCustomerTimesheetsService.uploadTimesheet(persistId, file);
+                      await queryClient.invalidateQueries({ queryKey: ['invoicedBatchCustomerTimesheets'] });
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not upload customer timesheet.');
+                    } finally {
+                      setUploadingCustomerTimesheetGroupId(null);
+                    }
+                  };
+                  const onRemoveCustomerTimesheet = async () => {
+                    setExportError(null);
+                    try {
+                      // Delete by whichever id is actually keyed in storage — see customerTimesheetSaved fallback.
+                      const targetId = savedCustomerTimesheetMetadata?.[persistId] ? persistId : groupId;
+                      await invoicedBatchCustomerTimesheetsService.deleteTimesheet(targetId);
+                      await queryClient.invalidateQueries({ queryKey: ['invoicedBatchCustomerTimesheets'] });
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not remove customer timesheet.');
+                    }
+                  };
+
                   const summaryBlock = (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', padding: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
                       <strong>Customer:</strong><span>{customer}</span>
@@ -7187,6 +7265,36 @@ export default function Invoices() {
                             Send the PDF to the customer's approver — the wizard waits here until you receive the signed copy back.
                           </p>
                           {summaryBlock}
+                          <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px dashed var(--border-color)' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                              Customer requires their own timesheet?
+                            </div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: customerTimesheetSaved ? '8px' : '10px' }}>
+                              Attach the customer's timesheet PDF. When present, the approval batch and the final
+                              invoice download skip our summary + service-ticket PDFs and use only the customer's file.
+                            </div>
+                            {customerTimesheetSaved ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                                <span style={{ color: 'var(--text-primary)' }}>
+                                  ✓ Attached: <strong>{customerTimesheetSaved.filename}</strong>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={onRemoveCustomerTimesheet}
+                                  style={{ padding: '4px 10px', fontSize: '11px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer' }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ) : (
+                              fileDropZone({
+                                id: `wiz-customer-timesheet-${persistId}`,
+                                label: 'Click to upload customer timesheet PDF',
+                                uploading: uploadingCustomerTimesheetGroupId === persistId,
+                                onPick: onUploadCustomerTimesheet,
+                              })
+                            )}
+                          </div>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button type="button" onClick={onDownloadBatchPdf} style={goButtonStyle}>
                               ⬇ Download batch PDF
