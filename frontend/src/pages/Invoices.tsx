@@ -3427,6 +3427,7 @@ export default function Invoices() {
         return next;
       });
       setInvoiceFileForGroup(groupId, null);
+      clearWizardProgressForGroup(groupId);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['invoicedBatchMarks'] });
@@ -4074,6 +4075,7 @@ export default function Invoices() {
         return next;
       });
       setInvoiceFileForGroup(groupId, null);
+      clearWizardProgressForGroup(groupId);
       return;
     }
     unmarkInvoicedMutation.mutate(groupId, {
