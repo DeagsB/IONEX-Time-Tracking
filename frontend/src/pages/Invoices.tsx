@@ -5926,21 +5926,10 @@ export default function Invoices() {
                     <span style={{ fontSize: '11px', flexShrink: 0, color: 'var(--text-tertiary)' }}>
                       {isAccordionOpen ? '▼' : '▶'}
                     </span>
-                    {!sectionMulti && (
-                      <span
-                        style={{
-                          fontSize: '16px',
-                          fontWeight: 800,
-                          color: '#dc2626',
-                          letterSpacing: '0.02em',
-                          textShadow: '0 1px 0 rgba(239, 68, 68, 0.12)',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {groupTickets[0]?.customerName || 'Unknown'}
-                      </span>
-                    )}
-                    <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>
+                    {/* Customer name lives on the outer section header — repeating it here
+                        was redundant. Project number is the actual identifier per batch, so
+                        bold it for scanability. */}
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 700, flexShrink: 0 }}>
                       #{ionexProjectNum || '—'}
                     </span>
                     {(key.periodLabel || key.periodKey) && (
