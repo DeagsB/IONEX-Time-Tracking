@@ -9532,11 +9532,26 @@ export default function Invoices() {
                                 setExportError(null);
                                 setBulkDownloadingSectionKey(section.key);
                                 try {
+                                  // One zip with every approval PDF rather than dropping N
+                                  // individual files in the user's downloads folder.
+                                  const zip = new JSZip();
+                                  const used = new Set<string>();
                                   for (const g of section.groups) {
                                     const merged = await buildMergedBatchPdfBlob(g);
-                                    const filename = getApprovalBatchFilename(g.key, g.tickets, projects);
-                                    saveAs(merged, filename);
+                                    let name = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                    if (used.has(name)) {
+                                      const stem = name.replace(/\.pdf$/i, '');
+                                      let n = 2;
+                                      while (used.has(`${stem} (${n}).pdf`)) n++;
+                                      name = `${stem} (${n}).pdf`;
+                                    }
+                                    used.add(name);
+                                    zip.file(name, merged);
                                   }
+                                  const blob = await zip.generateAsync({ type: 'blob' });
+                                  const periodPart = (section.periodLabel || '').trim();
+                                  const zipName = `${sanitizeFilenamePart(section.customerName || 'batches')} - for approval${periodPart ? ` - ${sanitizeFilenamePart(periodPart)}` : ''}.zip`;
+                                  saveAs(blob, zipName);
                                 } catch (err) {
                                   console.error('Bulk re-download error:', err);
                                   setExportError(err instanceof Error ? err.message : 'Could not generate one or more batch PDFs.');
@@ -9544,7 +9559,7 @@ export default function Invoices() {
                                   setBulkDownloadingSectionKey(null);
                                 }
                               }}
-                              title="Re-generate and download every approver batch PDF in this group. Each batch saves as its own file."
+                              title="Re-generate every approver batch PDF in this group and download as a single zip."
                               style={{
                                 padding: '6px 10px', fontSize: '12px', fontWeight: 600,
                                 borderRadius: '6px', border: '1px solid var(--border-color)',
@@ -10056,11 +10071,24 @@ export default function Invoices() {
                                 setExportError(null);
                                 setBulkDownloadingSectionKey(section.key);
                                 try {
+                                  const zip = new JSZip();
+                                  const used = new Set<string>();
                                   for (const g of section.groups) {
                                     const merged = await buildMergedBatchPdfBlob(g);
-                                    const filename = getApprovalBatchFilename(g.key, g.tickets, projects);
-                                    saveAs(merged, filename);
+                                    let name = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                    if (used.has(name)) {
+                                      const stem = name.replace(/\.pdf$/i, '');
+                                      let n = 2;
+                                      while (used.has(`${stem} (${n}).pdf`)) n++;
+                                      name = `${stem} (${n}).pdf`;
+                                    }
+                                    used.add(name);
+                                    zip.file(name, merged);
                                   }
+                                  const blob = await zip.generateAsync({ type: 'blob' });
+                                  const periodPart = (section.periodLabel || '').trim();
+                                  const zipName = `${sanitizeFilenamePart(section.customerName || 'batches')} - approved${periodPart ? ` - ${sanitizeFilenamePart(periodPart)}` : ''}.zip`;
+                                  saveAs(blob, zipName);
                                 } catch (err) {
                                   console.error('Bulk re-download error:', err);
                                   setExportError(err instanceof Error ? err.message : 'Could not generate one or more batch PDFs.');
@@ -10068,7 +10096,7 @@ export default function Invoices() {
                                   setBulkDownloadingSectionKey(null);
                                 }
                               }}
-                              title="Re-generate and download every approver batch PDF in this group."
+                              title="Re-generate every approver batch PDF in this group and download as a single zip."
                               style={{
                                 padding: '6px 10px', fontSize: '12px', fontWeight: 600,
                                 borderRadius: '6px', border: '1px solid var(--border-color)',
