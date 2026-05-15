@@ -7380,6 +7380,27 @@ export default function Invoices() {
                             </span>
                           )}
                         </div>
+                        <div style={{ marginBottom: '14px', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+                            Tickets in this batch · {activeGroup.tickets.length}
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {activeGroup.tickets.map((t) => {
+                              const tt = t as TicketChipTicket;
+                              const rid = tt.recordId?.trim() || '';
+                              const hasExp = !!rid && (expensesByRecordId.get(rid)?.length ?? 0) > 0;
+                              return (
+                                <TicketChip
+                                  key={tt.id}
+                                  ticket={tt}
+                                  isAdmin={isAdmin}
+                                  hasExpense={hasExp}
+                                  onOpenTicket={() => setEditTicketRecordId(rid || tt.id)}
+                                />
+                              );
+                            })}
+                          </div>
+                        </div>
                         {renderStepBody()}
                       </div>
                     </div>
