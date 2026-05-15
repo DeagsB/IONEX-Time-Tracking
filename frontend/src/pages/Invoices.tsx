@@ -2822,7 +2822,23 @@ export default function Invoices() {
   type WizardQueue = 'ready_to_be_invoiced' | 'needs_to_be_approved' | 'awaiting_signed';
   type WizardStepProgress = { lineItemsAckAt?: string };
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
-  const [wizardQueue, setWizardQueue] = useState<WizardQueue>('ready_to_be_invoiced');
+  // Persist queue selection per-browser so each role lands on their queue automatically:
+  // accountants pick "Ready to Invoice" once, service techs pick "Needs Approval" once,
+  // and the choice sticks across sessions without any user-role infrastructure.
+  const WIZARD_QUEUE_STORAGE_KEY = 'ionex-wizard-queue';
+  const [wizardQueue, setWizardQueueState] = useState<WizardQueue>(() => {
+    try {
+      const saved = localStorage.getItem(WIZARD_QUEUE_STORAGE_KEY);
+      if (saved === 'ready_to_be_invoiced' || saved === 'needs_to_be_approved' || saved === 'awaiting_signed') {
+        return saved;
+      }
+    } catch { /* localStorage unavailable */ }
+    return 'ready_to_be_invoiced';
+  });
+  const setWizardQueue = useCallback((q: WizardQueue) => {
+    setWizardQueueState(q);
+    try { localStorage.setItem(WIZARD_QUEUE_STORAGE_KEY, q); } catch { /* ignore */ }
+  }, []);
   /** Toast surfaced after a bulk Send-for-approval completes. Carries the persistIds that
    *  were freshly marked submitted_approval so the toast's Undo action can roll them back. */
   const [wizardBulkToast, setWizardBulkToast] = useState<{ customer: string; persistIds: string[] } | null>(null);
@@ -7690,15 +7706,30 @@ export default function Invoices() {
                       {/* Left rail: queue switcher + batch picker + step list */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                          {/* Three queues fit awkwardly side-by-side in the narrow left rail
-                              once the labels gained words. Stack them vertically so each row
-                              has room to breathe; the count chip lives on the right, mirroring
-                              the main tab bar treatment. */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
+                          {/* Queue selector. Styled as a distinct "role view" picker — leading
+                              icon, accent strip on the active row, raised card with shadow —
+                              so it visibly outranks the batch list it sits above and reads as
+                              a control (action), not just another list item. */}
+                          <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '6px' }}>
+                            Work queue
+                          </div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '2px',
+                              marginBottom: '14px',
+                              padding: '4px',
+                              backgroundColor: 'var(--bg-tertiary)',
+                              borderRadius: '8px',
+                              border: '1px solid var(--border-color)',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.4)',
+                            }}
+                          >
                             {([
-                              { id: 'needs_to_be_approved' as WizardQueue, label: 'Needs Approval', count: needsToBeApprovedCandidates.length, fg: '#6d28d9', bg: '#ede9fe' },
-                              { id: 'awaiting_signed' as WizardQueue, label: 'Awaiting Signed', count: awaitingSignedCandidates.length, fg: '#475569', bg: '#e2e8f0' },
-                              { id: 'ready_to_be_invoiced' as WizardQueue, label: 'Ready to Invoice', count: readyToBeInvoicedCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
+                              { id: 'needs_to_be_approved' as WizardQueue, label: 'Needs Approval', count: needsToBeApprovedCandidates.length, fg: '#6d28d9', bg: '#ede9fe', icon: '📤' },
+                              { id: 'awaiting_signed' as WizardQueue, label: 'Awaiting Signed', count: awaitingSignedCandidates.length, fg: '#475569', bg: '#e2e8f0', icon: '⏳' },
+                              { id: 'ready_to_be_invoiced' as WizardQueue, label: 'Ready to Invoice', count: readyToBeInvoicedCandidates.length, fg: '#1d4ed8', bg: '#dbeafe', icon: '💰' },
                             ] as const).map((q) => {
                               const isActiveQ = q.id === effectiveQueue;
                               return (
@@ -7707,34 +7738,57 @@ export default function Invoices() {
                                   type="button"
                                   onClick={() => { setWizardQueue(q.id); setWizardActiveGroupId(null); }}
                                   style={{
+                                    position: 'relative',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
                                     gap: '8px',
-                                    padding: '8px 10px',
+                                    padding: '9px 12px 9px 16px',
                                     borderRadius: '6px',
-                                    border: isActiveQ ? `1px solid ${q.fg}` : '1px solid var(--border-color)',
-                                    backgroundColor: isActiveQ ? q.bg : 'var(--bg-primary)',
+                                    border: 'none',
+                                    backgroundColor: isActiveQ ? q.bg : 'transparent',
                                     color: isActiveQ ? q.fg : 'var(--text-secondary)',
-                                    fontSize: '12px',
-                                    fontWeight: 700,
+                                    fontSize: '13px',
+                                    fontWeight: isActiveQ ? 700 : 600,
                                     cursor: 'pointer',
                                     fontFamily: 'inherit',
                                     textAlign: 'left',
+                                    boxShadow: isActiveQ ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    transition: 'background-color 0.12s ease, color 0.12s ease',
                                   }}
+                                  onMouseEnter={(e) => { if (!isActiveQ) e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; }}
+                                  onMouseLeave={(e) => { if (!isActiveQ) e.currentTarget.style.backgroundColor = 'transparent'; }}
                                 >
-                                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.label}</span>
+                                  {isActiveQ && (
+                                    <span
+                                      aria-hidden
+                                      style={{
+                                        position: 'absolute',
+                                        left: '4px',
+                                        top: '7px',
+                                        bottom: '7px',
+                                        width: '3px',
+                                        borderRadius: '2px',
+                                        backgroundColor: q.fg,
+                                      }}
+                                    />
+                                  )}
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                    <span aria-hidden style={{ fontSize: '14px', flexShrink: 0 }}>{q.icon}</span>
+                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{q.label}</span>
+                                  </span>
                                   <span
                                     style={{
                                       fontSize: '11px',
                                       fontWeight: 700,
-                                      padding: '1px 7px',
+                                      padding: '2px 8px',
                                       borderRadius: '999px',
-                                      backgroundColor: isActiveQ ? 'rgba(255,255,255,0.55)' : 'var(--bg-tertiary)',
-                                      color: isActiveQ ? q.fg : 'var(--text-secondary)',
-                                      minWidth: '20px',
+                                      backgroundColor: isActiveQ ? 'rgba(255,255,255,0.7)' : 'var(--bg-primary)',
+                                      color: isActiveQ ? q.fg : 'var(--text-tertiary)',
+                                      minWidth: '22px',
                                       textAlign: 'center',
                                       flexShrink: 0,
+                                      border: isActiveQ ? 'none' : '1px solid var(--border-color)',
                                     }}
                                   >
                                     {q.count}
