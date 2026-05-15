@@ -4928,16 +4928,27 @@ export default function Invoices() {
         : activeTab === 'needs_approval'
           ? needsApprovalGroups
           : uninvoicedGroups;
-    if (!invoiceSearchQuery.trim()) return base;
     const q = invoiceSearchQuery.trim().toLowerCase();
-    return base.filter((g) => {
+    let filtered = q ? base.filter((g) => {
       const custName = g.tickets[0]?.customerName?.toLowerCase() ?? '';
       const projName = g.key.projectName?.toLowerCase() ?? '';
       const projNum = g.key.projectNumber?.toLowerCase() ?? '';
       const ticketNums = g.tickets.map(t => t.ticketNumber?.toLowerCase() ?? '').join(' ');
       return custName.includes(q) || projName.includes(q) || projNum.includes(q) || ticketNums.includes(q);
-    });
-  }, [uninvoicedGroups, pendingAccumulatingGroups, readyStdGroups, needsApprovalGroups, invoiceSearchQuery, activeTab]);
+    }) : base;
+    // Pending tab: surface batches that will need approval (Portal Approval workflow) first
+    // so the user spots upcoming approval work before the standard invoice-only batches.
+    if (activeTab === 'pending') {
+      filtered = [...filtered].sort((a, b) => {
+        const aWf = getWorkflowForCustomer(a.tickets[0]?.customerName, a.key.projectNumber);
+        const bWf = getWorkflowForCustomer(b.tickets[0]?.customerName, b.key.projectNumber);
+        const aPortal = isPortalApprovalWorkflow(aWf) ? 0 : 1;
+        const bPortal = isPortalApprovalWorkflow(bWf) ? 0 : 1;
+        return aPortal - bPortal;
+      });
+    }
+    return filtered;
+  }, [uninvoicedGroups, pendingAccumulatingGroups, readyStdGroups, needsApprovalGroups, invoiceSearchQuery, activeTab, getWorkflowForCustomer, isPortalApprovalWorkflow]);
 
   /** Ready/Pending tab sections — same project+period grouping so it's obvious when a project produces
    *  multiple separate invoices/approvals (e.g. CNRL splits one project by approver). Each card inside
