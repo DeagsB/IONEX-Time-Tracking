@@ -1880,7 +1880,12 @@ function getApprovalBatchFilename(
     ?? tickets[0]?.customerName?.trim()
     ?? 'batch';
   const period = key.periodLabel?.trim() || getTicketDateRangeStr(tickets);
-  return `${sanitizeFilenamePart(name)} - ${sanitizeFilenamePart(period)}.pdf`;
+  // Always suffix the IONEX project number (260xx) so each export is unambiguously
+  // tied to a project — critical when signed approvals come back and need to be
+  // matched to the right batch by filename.
+  const projNum = key.projectNumber?.trim();
+  const projSuffix = projNum ? ` (${sanitizeFilenamePart(projNum)})` : '';
+  return `${sanitizeFilenamePart(name)} - ${sanitizeFilenamePart(period)}${projSuffix}.pdf`;
 }
 
 /** Invoice PDF filename: Approver_ProjectNumber_DateRange.pdf (CNRL) or ProjectNumber_PeriodLabel.pdf (non-CNRL) */
@@ -3957,28 +3962,15 @@ export default function Invoices() {
     setBulkSendProgress({ customer: customerName, current: 0, total: groupsForCustomer.length });
     try {
       const zip = new JSZip();
-      // Pre-compute base filenames so we can tell which groups would collide. When two
-      // groups share the same approver + period the base name is identical — append the
-      // IONEX project number (e.g. "BR10 - 27-04-2026 to 10-05-2026 (26037).pdf") so the
-      // approver can tell the sub-batches apart in the zip. Counter-suffix only if the
-      // project number is missing or still collides.
-      const baseNames = groupsForCustomer.map((g) => getApprovalBatchFilename(g.key, g.tickets, projects));
-      const baseCounts = new Map<string, number>();
-      for (const n of baseNames) baseCounts.set(n, (baseCounts.get(n) ?? 0) + 1);
+      // getApprovalBatchFilename now always suffixes the IONEX project number, so each
+      // batch comes out uniquely named in the zip. Counter-suffix only if a name still
+      // collides (e.g. legacy batches missing a project number).
       const usedNames = new Set<string>();
       for (let i = 0; i < groupsForCustomer.length; i++) {
         const group = groupsForCustomer[i];
         setBulkSendProgress({ customer: customerName, current: i + 1, total: groupsForCustomer.length });
         const merged = await buildMergedBatchPdfBlob(group);
-        const baseName = baseNames[i];
-        const stem = baseName.replace(/\.pdf$/i, '');
-        let filename = baseName;
-        if ((baseCounts.get(baseName) ?? 0) > 1) {
-          const projNum = group.key.projectNumber?.trim();
-          if (projNum) {
-            filename = `${stem} (${sanitizeFilenamePart(projNum)}).pdf`;
-          }
-        }
+        let filename = getApprovalBatchFilename(group.key, group.tickets, projects);
         if (usedNames.has(filename)) {
           const baseStem = filename.replace(/\.pdf$/i, '');
           let n = 2;
@@ -7925,6 +7917,14 @@ export default function Invoices() {
                                   <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {t?.customerName ?? '—'}
                                   </div>
+                                  {/* IONEX project number on its own line so the user can match
+                                      a returned signed PDF (filename also carries the project
+                                      number) back to the exact batch without guessing. */}
+                                  {c.group.key.projectNumber?.trim() && (
+                                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      #{c.group.key.projectNumber.trim()}
+                                    </div>
+                                  )}
                                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {c.group.key.periodLabel ?? c.group.key.periodKey ?? ''} · {c.group.tickets.length} ticket{c.group.tickets.length === 1 ? '' : 's'}
                                   </div>
