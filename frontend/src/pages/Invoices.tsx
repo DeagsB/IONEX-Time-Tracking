@@ -3938,18 +3938,33 @@ export default function Invoices() {
     setBulkSendProgress({ customer: customerName, current: 0, total: groupsForCustomer.length });
     try {
       const zip = new JSZip();
+      // Pre-compute base filenames so we can tell which groups would collide. When two
+      // groups share the same approver + period the base name is identical — append the
+      // IONEX project number (e.g. "BR10 - 27-04-2026 to 10-05-2026 (26037).pdf") so the
+      // approver can tell the sub-batches apart in the zip. Counter-suffix only if the
+      // project number is missing or still collides.
+      const baseNames = groupsForCustomer.map((g) => getApprovalBatchFilename(g.key, g.tickets, projects));
+      const baseCounts = new Map<string, number>();
+      for (const n of baseNames) baseCounts.set(n, (baseCounts.get(n) ?? 0) + 1);
       const usedNames = new Set<string>();
       for (let i = 0; i < groupsForCustomer.length; i++) {
         const group = groupsForCustomer[i];
         setBulkSendProgress({ customer: customerName, current: i + 1, total: groupsForCustomer.length });
         const merged = await buildMergedBatchPdfBlob(group);
-        let filename = getApprovalBatchFilename(group.key, group.tickets, projects);
-        // Dedupe filenames inside zip if two batches share the same approver+period
+        const baseName = baseNames[i];
+        const stem = baseName.replace(/\.pdf$/i, '');
+        let filename = baseName;
+        if ((baseCounts.get(baseName) ?? 0) > 1) {
+          const projNum = group.key.projectNumber?.trim();
+          if (projNum) {
+            filename = `${stem} (${sanitizeFilenamePart(projNum)}).pdf`;
+          }
+        }
         if (usedNames.has(filename)) {
-          const stem = filename.replace(/\.pdf$/i, '');
+          const baseStem = filename.replace(/\.pdf$/i, '');
           let n = 2;
-          while (usedNames.has(`${stem} (${n}).pdf`)) n++;
-          filename = `${stem} (${n}).pdf`;
+          while (usedNames.has(`${baseStem} (${n}).pdf`)) n++;
+          filename = `${baseStem} (${n}).pdf`;
         }
         usedNames.add(filename);
         zip.file(filename, merged);
@@ -6756,7 +6771,7 @@ export default function Invoices() {
                     { id: 'send', label: 'Download combined PDF & finish' },
                   ];
                   const PORTAL_STEPS: { id: PortalStepId; label: string }[] = [
-                    { id: 'submit_approval', label: 'Submit batch for approval' },
+                    { id: 'submit_approval', label: 'Mark batch as sent for approval' },
                     { id: 'attach_signed', label: 'Attach signed approval' },
                     { id: 'attach_invoice', label: 'Create invoice & attach PDF' },
                     { id: 'submit_portal', label: 'Submit to customer portal' },
@@ -7311,7 +7326,7 @@ export default function Invoices() {
                               ⬇ Download batch PDF
                             </button>
                             <button type="button" onClick={onSubmitForApproval} disabled={markInvoicedMutation.isPending || hasBlockers} title={hasBlockers ? 'Fix the blockers above before continuing.' : undefined} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', opacity: hasBlockers ? 0.5 : 1, cursor: hasBlockers ? 'not-allowed' : 'pointer' }}>
-                              {markInvoicedMutation.isPending ? 'Saving…' : isResubmit ? '↻ Resubmit for approval' : '📨 Submit for approval'}
+                              {markInvoicedMutation.isPending ? 'Saving…' : isResubmit ? '↻ Mark as resent for approval' : '📨 Mark as sent for approval'}
                             </button>
                           </div>
                         </div>
@@ -7568,7 +7583,7 @@ export default function Invoices() {
                           {effectiveQueue === 'portal' && bulkApprovalCandidates.length > 0 && (
                             <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px' }}>
                               <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#92400e', marginBottom: '6px' }}>
-                                📦 Bulk send for approval
+                                📦 Bulk mark as sent for approval
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 {bulkApprovalCandidates.map(({ customer, groups }) => {
@@ -7639,18 +7654,30 @@ export default function Invoices() {
                               const groupingForAge = targetIsCnrl ? cnrlPeriodGrouping(rawGrouping) : rawGrouping;
                               const ageBadge = buildBatchAgeBadge(cKey.periodKey, groupingForAge);
                               // Sub-status hint so user sees what stage a portal batch is at.
+                              // Each stage gets its own color so Ready-to-submit vs Awaiting-approval
+                              // (and the other portal stages) are distinguishable at a glance.
                               const cStatusId = getGroupStatusId(c.group);
-                              const stageLabel = c.isPortal
+                              const stage: { label: string; fg: string; bg: string; border: string; cardTint?: string } | null = c.isPortal
                                 ? (cStatusId === NEEDS_ADJUSTMENT_STATUS_ID
-                                    ? 'Needs adjustment'
+                                    ? { label: 'Needs adjustment', fg: '#b91c1c', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.45)', cardTint: 'rgba(239, 68, 68, 0.06)' }
                                     : cStatusId === 'submitted_approval'
-                                      ? 'Awaiting approval'
+                                      ? { label: 'Awaiting approval', fg: '#b45309', bg: 'rgba(245, 158, 11, 0.14)', border: 'rgba(245, 158, 11, 0.50)', cardTint: 'rgba(245, 158, 11, 0.06)' }
                                       : cStatusId === 'approved'
-                                        ? 'Approved · attach invoice'
+                                        ? { label: 'Approved · attach invoice', fg: '#1d4ed8', bg: 'rgba(37, 99, 235, 0.14)', border: 'rgba(37, 99, 235, 0.50)', cardTint: 'rgba(37, 99, 235, 0.06)' }
                                         : cStatusId === 'portal_submission'
-                                          ? 'Portal submission'
-                                          : 'Ready to submit')
+                                          ? { label: 'Portal submission', fg: '#0f766e', bg: 'rgba(20, 184, 166, 0.14)', border: 'rgba(20, 184, 166, 0.50)', cardTint: 'rgba(20, 184, 166, 0.06)' }
+                                          : { label: 'Ready to submit', fg: '#475569', bg: 'rgba(100, 116, 139, 0.14)', border: 'rgba(100, 116, 139, 0.45)', cardTint: 'rgba(100, 116, 139, 0.05)' })
                                 : null;
+                              const cardBorder = isActive
+                                ? '1px solid var(--accent-color, #2563eb)'
+                                : ageBadge
+                                  ? `1px solid ${ageBadge.border}`
+                                  : stage
+                                    ? `1px solid ${stage.border}`
+                                    : '1px solid transparent';
+                              const cardBg = isActive
+                                ? 'rgba(37, 99, 235, 0.10)'
+                                : stage?.cardTint ?? 'var(--bg-primary)';
                               return (
                                 <button
                                   key={gid}
@@ -7660,8 +7687,8 @@ export default function Invoices() {
                                     textAlign: 'left',
                                     padding: '8px 10px',
                                     borderRadius: '6px',
-                                    border: isActive ? '1px solid var(--accent-color, #2563eb)' : ageBadge ? `1px solid ${ageBadge.border}` : '1px solid transparent',
-                                    backgroundColor: isActive ? 'rgba(37, 99, 235, 0.10)' : 'var(--bg-primary)',
+                                    border: cardBorder,
+                                    backgroundColor: cardBg,
                                     cursor: 'pointer',
                                     fontFamily: 'inherit',
                                   }}
@@ -7677,16 +7704,16 @@ export default function Invoices() {
                                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {c.group.key.periodLabel ?? c.group.key.periodKey ?? ''} · {c.group.tickets.length} ticket{c.group.tickets.length === 1 ? '' : 's'}
                                   </div>
-                                  {(ageBadge || stageLabel) && (
+                                  {(ageBadge || stage) && (
                                     <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                       {ageBadge && (
                                         <span title={`${ageBadge.daysOld} days since the period ended`} style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', backgroundColor: ageBadge.bg, color: ageBadge.color, border: `1px solid ${ageBadge.border}`, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
                                           ⚠ {ageBadge.label}
                                         </span>
                                       )}
-                                      {stageLabel && (
-                                        <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 6px', borderRadius: '999px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', letterSpacing: '0.02em' }}>
-                                          {stageLabel}
+                                      {stage && (
+                                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', backgroundColor: stage.bg, color: stage.fg, border: `1px solid ${stage.border}`, letterSpacing: '0.02em' }}>
+                                          {stage.label}
                                         </span>
                                       )}
                                     </div>
@@ -7858,7 +7885,7 @@ export default function Invoices() {
                 </div>
                 <p>
                   {activeTab === 'ready'
-                    ? <>Billing periods are closed for these batches — actionable now. Use <strong>Mark invoiced</strong> for non-portal customers, or <strong>Submit for approval</strong> for Portal Approval customers (per batch, or bulk per customer from the banner below).</>
+                    ? <>Billing periods are closed for these batches — actionable now. Use <strong>Mark invoiced</strong> for non-portal customers, or <strong>Mark as sent for approval</strong> for Portal Approval customers (per batch, or bulk per customer from the banner below).</>
                     : <>Billing periods still open — more tickets may still be added before the period closes. These move to <strong>Ready</strong> automatically once their period ends.</>}
                 </p>
               </div>
@@ -7924,7 +7951,7 @@ export default function Invoices() {
               const sectionIsPortalApproval = isPortalApprovalWorkflow(sectionWorkflow);
               const sectionBatchNoun = sectionIsPortalApproval ? 'approval' : 'invoice';
               // Ready-tab section border accent — determined by the customer's workflow type:
-              //   Portal Approval workflow → yellow (must Submit for approval before invoicing)
+              //   Portal Approval workflow → yellow (must Mark as sent for approval before invoicing)
               //   Direct invoice (non-portal)  → green (can Mark invoiced right now)
               // Section's first batch is representative since a customer/project section uses one workflow.
               const sectionAccent = sectionIsPortalApproval
@@ -8298,7 +8325,7 @@ export default function Invoices() {
                               title="Portal Approval flow: downloads the batch PDF for you to email/submit to the approver, then marks the batch as ready-to-send so it moves to the Submitted tab. Nothing is sent automatically. When the signed PDF comes back, drop it on the card under Submitted to advance to Approved."
                             >
                               <span aria-hidden style={{ fontSize: '13px' }}>📤</span>
-                              {markInvoicedMutation.isPending ? 'Saving…' : 'Submit for approval'}
+                              {markInvoicedMutation.isPending ? 'Saving…' : 'Mark as sent for approval'}
                             </button>
                           ) : (
                             <button
@@ -8764,7 +8791,7 @@ export default function Invoices() {
               <div className="ionex-empty">
                 <span className="glyph" aria-hidden>📤</span>
                 <h3 className="title">No batches awaiting approval</h3>
-                <p className="body">From the Ready tab, click <strong>Submit for approval</strong> on a batch to prepare it for the approver.</p>
+                <p className="body">From the Ready tab, click <strong>Mark as sent for approval</strong> on a batch to prepare it for the approver.</p>
                 <div className="cta-row">
                   <button
                     type="button"
