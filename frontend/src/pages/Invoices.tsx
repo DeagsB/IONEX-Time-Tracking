@@ -2792,10 +2792,14 @@ export default function Invoices() {
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
   /** Guide-me wizard state. `activeGroupId` is the batch currently being walked through.
+   *  `wizardQueue` swaps between the Standard and Portal Approval queues so each workflow
+   *  gets its own narrow worklist (portal especially: bulk approval works per-customer).
    *  `stepProgress` holds per-batch flags that aren't derivable from DB state (e.g. did
    *  the user acknowledge the line-items step so the wizard can advance to attach?). */
+  type WizardQueue = 'standard' | 'portal';
   type WizardStepProgress = { lineItemsAckAt?: string };
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
+  const [wizardQueue, setWizardQueue] = useState<WizardQueue>('standard');
   const [wizardStepProgress, setWizardStepProgress] = useState<Record<string, WizardStepProgress>>(() => {
     try {
       const raw = localStorage.getItem('ionex-wizard-step-progress');
@@ -6604,15 +6608,24 @@ export default function Invoices() {
                     group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] };
                     isPortal: boolean;
                   };
-                  const allCandidates: WizardCandidate[] = [
-                    ...readyStd.map((b) => ({ group: b.group, isPortal: false })),
-                    ...readyPortal.map((b) => ({ group: b.group, isPortal: true })),
-                    ...waitingOnApproval.map((g) => ({ group: g, isPortal: true })),
-                    ...needsAdjustment.map((g) => ({ group: g, isPortal: true })),
-                    ...approvedAwaiting.map((g) => ({ group: g, isPortal: true })),
-                    ...portalAwaiting.map((g) => ({ group: g, isPortal: true })),
+                  const standardCandidates: WizardCandidate[] = readyStd.map((b) => ({ group: b.group, isPortal: false }));
+                  const portalCandidates: WizardCandidate[] = [
+                    ...readyPortal.map((b) => ({ group: b.group, isPortal: true as const })),
+                    ...waitingOnApproval.map((g) => ({ group: g, isPortal: true as const })),
+                    ...needsAdjustment.map((g) => ({ group: g, isPortal: true as const })),
+                    ...approvedAwaiting.map((g) => ({ group: g, isPortal: true as const })),
+                    ...portalAwaiting.map((g) => ({ group: g, isPortal: true as const })),
                   ];
-                  const sortedCandidates = [...allCandidates].sort((a, b) => {
+                  // If the active queue is empty but the other isn't, auto-switch so the user
+                  // sees something useful rather than the "all caught up" empty state.
+                  const effectiveQueue: WizardQueue =
+                    wizardQueue === 'standard' && standardCandidates.length === 0 && portalCandidates.length > 0
+                      ? 'portal'
+                      : wizardQueue === 'portal' && portalCandidates.length === 0 && standardCandidates.length > 0
+                        ? 'standard'
+                        : wizardQueue;
+                  const queueCandidates: WizardCandidate[] = effectiveQueue === 'standard' ? standardCandidates : portalCandidates;
+                  const sortedCandidates = [...queueCandidates].sort((a, b) => {
                     const ga = cnrlPeriodGrouping(getGroupingForTicket(
                       a.group.tickets[0]?.customerId ?? '',
                       (a.group.tickets[0] as ServiceTicket & { recordProjectId?: string })?.recordProjectId ?? a.group.tickets[0]?.projectId ?? '',
@@ -7279,9 +7292,91 @@ export default function Invoices() {
 
                   return (
                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) 1fr', gap: '20px', alignItems: 'flex-start' }}>
-                      {/* Left rail: batch picker + step list */}
+                      {/* Left rail: queue switcher + batch picker + step list */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <div style={{ padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                            {([
+                              { id: 'standard' as WizardQueue, label: 'Standard', count: standardCandidates.length, fg: '#1d4ed8', bg: '#dbeafe' },
+                              { id: 'portal' as WizardQueue, label: 'Portal', count: portalCandidates.length, fg: '#6d28d9', bg: '#ede9fe' },
+                            ] as const).map((q) => {
+                              const isActiveQ = q.id === effectiveQueue;
+                              return (
+                                <button
+                                  key={q.id}
+                                  type="button"
+                                  onClick={() => { setWizardQueue(q.id); setWizardActiveGroupId(null); }}
+                                  style={{
+                                    flex: 1,
+                                    padding: '6px 8px',
+                                    borderRadius: '6px',
+                                    border: isActiveQ ? `1px solid ${q.fg}` : '1px solid var(--border-color)',
+                                    backgroundColor: isActiveQ ? q.bg : 'var(--bg-primary)',
+                                    color: isActiveQ ? q.fg : 'var(--text-secondary)',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
+                                    letterSpacing: '0.02em',
+                                    textTransform: 'uppercase',
+                                  }}
+                                >
+                                  {q.label} · {q.count}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {effectiveQueue === 'portal' && bulkApprovalCandidates.length > 0 && (
+                            <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#92400e', marginBottom: '6px' }}>
+                                📦 Bulk send for approval
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {bulkApprovalCandidates.map(({ customer, groups }) => {
+                                  const isBusy = bulkSendProgress?.customer === customer;
+                                  const periodLabels = [...new Set(
+                                    groups.map((g) => g.key.periodLabel?.trim()).filter((s): s is string => !!s)
+                                  )].sort();
+                                  const periodSummary = periodLabels.length === 0
+                                    ? ''
+                                    : periodLabels.length === 1
+                                      ? periodLabels[0]
+                                      : `${periodLabels.length} periods`;
+                                  return (
+                                    <button
+                                      key={customer}
+                                      type="button"
+                                      disabled={!!bulkSendProgress}
+                                      onClick={() => handleBulkSendForApproval(customer, groups)}
+                                      title={`Generates one merged PDF per batch for ${customer}, zips them, downloads the zip, then marks each batch as ready to send. Periods: ${periodLabels.join(', ') || '(none)'}.`}
+                                      style={{
+                                        textAlign: 'left',
+                                        padding: '8px 10px',
+                                        borderRadius: '6px',
+                                        border: '1px solid rgba(245, 158, 11, 0.45)',
+                                        backgroundColor: isBusy ? 'rgba(245, 158, 11, 0.18)' : 'var(--bg-primary)',
+                                        color: 'var(--text-primary)',
+                                        fontFamily: 'inherit',
+                                        fontSize: '12px',
+                                        cursor: bulkSendProgress ? 'wait' : 'pointer',
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 700 }}>
+                                        {isBusy
+                                          ? `Building ${bulkSendProgress!.current}/${bulkSendProgress!.total}…`
+                                          : `📥 ${customer}`}
+                                      </div>
+                                      {!isBusy && (
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                          {groups.length} batch{groups.length === 1 ? '' : 'es'}{periodSummary ? ` · ${periodSummary}` : ''}
+                                        </div>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                           <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
                             Queue · {sortedCandidates.length} batch{sortedCandidates.length === 1 ? '' : 'es'}
                           </div>
