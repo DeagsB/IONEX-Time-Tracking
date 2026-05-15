@@ -711,7 +711,10 @@ export async function generateBatchSummaryPdf(
       filename: 'summary.pdf',
       image: { type: 'jpeg', quality: 0.85 },
       html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const }
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const },
+      // Honour the explicit page-break markers in the HTML so multi-page summaries
+      // pick up the continuation header + repeated sign-off boxes per page.
+      pagebreak: { mode: ['css', 'legacy'] },
     };
 
     const rawBlob = await html2pdf().set(opt).from(element).outputPdf('blob') as Blob;
@@ -739,41 +742,195 @@ function buildBatchSummaryPdfHtml(
   const { approver, poAfe, cc } = getApproverPoAfeCcFromTicket(ticket);
   const otherVal = ticket.projectOther ?? ticket.customerInfo.location_code ?? '';
   // When any labour row carries location/coding metadata, hours have been split per
-  // line item. The Customer Info PO/AFE/CC and Service Location cells then point to
-  // the labour summary instead of locking in a single value.
+  // line item. The Customer Info Service Location / PO/AFE / Coding cells then point
+  // to the labour summary instead of locking in a single value.
   const labourSplitOnCoding = labourLines.some((l) => (l.location || '').trim() !== '' || (l.poAfe || '').trim() !== '' || (l.cc || '').trim() !== '');
 
-  return `
-    <div id="service-ticket-summary" style="
-      width: 8.5in;
-      font-family: Arial, sans-serif;
-      font-size: 9pt;
-      color: #000;
-      background: #fff;
-      padding: 0.3in;
-      box-sizing: border-box;
-    ">
-      <!-- Header -->
+  // Chunk labour rows across pages. Split rows render taller (Location + PO/AFE/CC
+  // + Tickets sub-lines) so capacity drops; pick a row count that leaves head-room
+  // for the customer info header on page 1 and the sign-off boxes on every page.
+  const rowsFirstPage = labourSplitOnCoding ? 7 : 14;
+  const rowsContinuedPage = labourSplitOnCoding ? 13 : 22;
+  const chunks: Array<typeof labourLines> = [];
+  if (labourLines.length === 0) {
+    chunks.push([]);
+  } else {
+    let i = 0;
+    chunks.push(labourLines.slice(i, i + rowsFirstPage));
+    i += rowsFirstPage;
+    while (i < labourLines.length) {
+      chunks.push(labourLines.slice(i, i + rowsContinuedPage));
+      i += rowsContinuedPage;
+    }
+  }
+
+  const renderHeader = (isContinued: boolean) => `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
         <div style="width: 180px;">
-          <img 
-            src="/ionex-logo.png" 
-            alt="IONEX Systems" 
-            style="max-width: 180px; max-height: 60px; height: auto;" 
+          <img
+            src="/ionex-logo.png"
+            alt="IONEX Systems"
+            style="max-width: 180px; max-height: 60px; height: auto;"
             onerror="this.onerror=null; this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%2250%22><text x=%220%22 y=%2235%22 font-family=%22Arial%22 font-size=%2224%22 font-weight=%22bold%22 fill=%22%23cc0000%22>IONEX</text></svg>';"
           />
         </div>
         <div style="flex: 1; text-align: center;">
-          <div style="font-size: 16pt; font-weight: bold; letter-spacing: 2px;">SERVICE TICKET SUMMARY</div>
-          <div style="font-size: 8pt; color: #555; margin-top: 2px;">Summary of all service tickets attached below${ticketNumbers.length > 0 ? ` &nbsp;·&nbsp; <span style="font-weight:600;">${ticketNumbers.length} ticket${ticketNumbers.length === 1 ? '' : 's'}:</span> ${ticketNumbers.join(', ')}` : ''}</div>
+          <div style="font-size: 16pt; font-weight: bold; letter-spacing: 2px;">SERVICE TICKET SUMMARY${isContinued ? ' &mdash; CONTINUED' : ''}</div>
+          <div style="font-size: 8pt; color: #555; margin-top: 2px;">${isContinued
+            ? 'Additional labour line items continued from the previous page.'
+            : `Summary of all service tickets attached below${ticketNumbers.length > 0 ? ` &nbsp;·&nbsp; <span style="font-weight:600;">${ticketNumbers.length} ticket${ticketNumbers.length === 1 ? '' : 's'}:</span> ${ticketNumbers.join(', ')}` : ''}`}</div>
         </div>
         <div style="width: 140px; text-align: right;">
         </div>
-      </div>
+      </div>`;
 
-      <!-- Customer Info and Service Info Row -->
+  const renderLabourTable = (chunk: typeof labourLines, isLastPage: boolean) => `
+      <div style="border: 1px solid #000; margin-bottom: 10px;">
+        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+          <colgroup>
+            <col style="width: auto;" />
+            <col style="width: 80px;" />
+            <col style="width: 80px;" />
+            <col style="width: 80px;" />
+          </colgroup>
+          <thead>
+            <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
+              <td style="padding: 3px 6px;">Labour Type</td>
+              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">Hours</td>
+              <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Rate</td>
+              <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Amount</td>
+            </tr>
+          </thead>
+          <tbody>
+            ${chunk.map(line => {
+              const ticketsLine = line.ticketNumbersList.length > 0
+                ? `<div style="font-size: 7.5pt; color: #555; margin-top: 1px;">Tickets: ${line.ticketNumbersList.join(', ')}</div>`
+                : '';
+              const codingParts: string[] = [];
+              if ((line.location || '').trim()) codingParts.push(`Location: ${line.location}`);
+              const poAfeCc = [line.poAfe, line.cc].map((p) => (p || '').trim()).filter(Boolean).join(' / ');
+              if (poAfeCc) codingParts.push(`PO/AFE/CC: ${poAfeCc}`);
+              const codingLine = codingParts.length > 0
+                ? `<div style="font-size: 7.5pt; color: #444; margin-top: 1px; font-weight: 600;">${codingParts.join(' &middot; ')}</div>`
+                : '';
+              const noteLine = labourNotes?.[line.typeKey]
+                ? `<div style="font-size: 7.5pt; color: #555; font-style: italic; margin-top: 1px;">${labourNotes[line.typeKey]}</div>`
+                : '';
+              return `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 2px 4px; font-size: 8pt; vertical-align: top; box-sizing: border-box;">
+                <div>${line.label}</div>
+                ${codingLine}
+                ${ticketsLine}
+                ${noteLine}
+              </td>
+              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">${line.hours.toFixed(2)}</td>
+              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">$${line.rate.toFixed(2)}</td>
+              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">$${line.amount.toFixed(2)}</td>
+            </tr>`;
+            }).join('')}
+            ${!labourSplitOnCoding && isLastPage ? Array.from({ length: Math.max(0, 5 - chunk.length) }).map(() => `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
+              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+            </tr>`).join('') : ''}
+          </tbody>
+          ${isLastPage ? `
+          <tfoot>
+            <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
+              <td style="padding: 4px 6px; text-align: right;">Total Labour</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${totalLabourHours.toFixed(2)}</td>
+              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;"></td>
+              <td style="padding: 4px 6px; text-align: right; border-left: 1px solid #000;">$${totalLabourAmount.toFixed(2)}</td>
+            </tr>
+          </tfoot>` : ''}
+        </table>
+      </div>`;
+
+  const renderExpensesAndSummary = () => `
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <!-- Service Info (Left) -->
+        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column;">
+          <table style="width: 100%; border-collapse: collapse; flex: 1;">
+            <colgroup>
+              <col style="width: auto;" />
+              <col style="width: 60px;" />
+              <col style="width: 50px;" />
+              <col style="width: 70px;" />
+            </colgroup>
+            <thead>
+              <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
+                <td style="padding: 3px 6px;">Expenses</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">RATE</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">QTY</td>
+                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SUB</td>
+              </tr>
+            </thead>
+            <tbody>
+              ${expenses.length > 0 ? expenses.map((expense) => `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${expense.rate.toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: center; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">${expense.quantity.toFixed(2)}</td>
+                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box; white-space: nowrap;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
+              </tr>`).join('') : ''}
+              ${Array.from({ length: Math.max(0, 6 - expenses.length) }).map(() => `
+              <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
+              </tr>`).join('')}
+            </tbody>
+            <tfoot>
+              <tr style="border-top: 2px solid #000; font-weight: bold; background: #f0f0f0;">
+                <td style="padding: 4px 6px; text-align: right; vertical-align: bottom;">Total Expenses</td>
+                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
+                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
+                <td style="padding: 4px 6px; border-left: 1px solid #000; text-align: right; vertical-align: bottom; font-size: 10pt; white-space: nowrap;">$${expensesTotal.toFixed(2)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div style="width: 200px; border: 1px solid #000; display: flex; flex-direction: column;">
+          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Ticket Summary</div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 8pt; flex: 1;">
+            <tr style="border-bottom: 1px solid #ccc; height: 33%;">
+              <td style="padding: 6px; vertical-align: middle;">Total Labour</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; vertical-align: middle; white-space: nowrap;">$${totalLabourAmount.toFixed(2)}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #ccc; height: 33%;">
+              <td style="padding: 6px; vertical-align: middle;">Total Expenses</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; vertical-align: middle; white-space: nowrap;">$${expensesTotal.toFixed(2)}</td>
+            </tr>
+            <tr style="background: #f0f0f0; height: 34%;">
+              <td style="padding: 6px; font-weight: bold; font-size: 10pt; vertical-align: middle;">TOTAL</td>
+              <td style="padding: 6px; text-align: right; font-weight: bold; font-size: 12pt; vertical-align: middle; white-space: nowrap;">$${grandTotal.toFixed(2)}</td>
+            </tr>
+          </table>
+        </div>
+      </div>`;
+
+  const renderSignOff = () => `
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <div style="flex: 1; border: 1px solid #000;">
+          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Customer Approval / Coding</div>
+          <div style="padding: 20px 6px; font-size: 8pt;"></div>
+        </div>
+        <div style="flex: 1; border: 1px solid #000;">
+          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Customer Signature</div>
+          <div style="padding: 20px 6px; font-size: 8pt;"></div>
+        </div>
+      </div>`;
+
+  const renderFooter = () => `
+      <div style="text-align: center; font-size: 7pt; color: #666; margin-top: 15px; border-top: 1px solid #ccc; padding-top: 6px;">
+        IONEX Systems | Calgary, Alberta | Email: accounting@ionexsystems.com
+      </div>`;
+
+  const renderCustomerInfo = () => `
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
         <div style="flex: 1; border: 1px solid #000;">
           <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Info</div>
           <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
@@ -809,8 +966,6 @@ function buildBatchSummaryPdfHtml(
             </tr>
           </table>
         </div>
-
-        <!-- Customer Info (Right) -->
         <div style="flex: 1.2; border: 1px solid #000;">
           <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
             <tr>
@@ -847,7 +1002,7 @@ function buildBatchSummaryPdfHtml(
               <td style="padding: 2px 4px; width: 100px;">PO/AFE/CC (Cost Center)</td>
               <td style="padding: 2px 4px; border-right: 1px solid #ccc;">${labourSplitOnCoding ? 'See labour summary' : poAfe}</td>
               <td style="padding: 2px 4px; width: 40px;">Coding</td>
-              <td style="padding: 2px 4px;">${labourSplitOnCoding ? '' : cc}</td>
+              <td style="padding: 2px 4px;">${labourSplitOnCoding ? 'See labour summary' : cc}</td>
             </tr>
             <tr style="border-top: 1px solid #ccc;">
               <td style="padding: 2px 4px; width: 100px;">Approver</td>
@@ -857,164 +1012,27 @@ function buildBatchSummaryPdfHtml(
             </tr>
           </table>
         </div>
-      </div>
+      </div>`;
 
-      <!-- Labour Summary -->
-      <div style="border: 1px solid #000; margin-bottom: 10px;">
-        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
-          <colgroup>
-            <col style="width: auto;" />
-            <col style="width: 80px;" />
-            <col style="width: 80px;" />
-            <col style="width: 80px;" />
-          </colgroup>
-          <thead>
-            <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
-              <td style="padding: 3px 6px;">Labour Type</td>
-              <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">Hours</td>
-              <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Rate</td>
-              <td style="padding: 3px; text-align: right; border-left: 1px solid #000;">Amount</td>
-            </tr>
-          </thead>
-          <tbody>
-            ${labourLines.map(line => {
-              const ticketsLine = line.ticketNumbersList.length > 0
-                ? `<div style="font-size: 7.5pt; color: #555; margin-top: 1px;">Tickets: ${line.ticketNumbersList.join(', ')}</div>`
-                : '';
-              // When labour is split on coding, surface Location / PO/AFE / CC right
-              // under the labour-type label so each row stands on its own as an
-              // auditable line item.
-              const codingParts: string[] = [];
-              if ((line.location || '').trim()) codingParts.push(`Location: ${line.location}`);
-              const poAfeCc = [line.poAfe, line.cc].map((p) => (p || '').trim()).filter(Boolean).join(' / ');
-              if (poAfeCc) codingParts.push(`PO/AFE/CC: ${poAfeCc}`);
-              const codingLine = codingParts.length > 0
-                ? `<div style="font-size: 7.5pt; color: #444; margin-top: 1px; font-weight: 600;">${codingParts.join(' &middot; ')}</div>`
-                : '';
-              const noteLine = labourNotes?.[line.typeKey]
-                ? `<div style="font-size: 7.5pt; color: #555; font-style: italic; margin-top: 1px;">${labourNotes[line.typeKey]}</div>`
-                : '';
-              return `
-            <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 2px 4px; font-size: 8pt; vertical-align: top; box-sizing: border-box;">
-                <div>${line.label}</div>
-                ${codingLine}
-                ${ticketsLine}
-                ${noteLine}
-              </td>
-              <td style="padding: 2px; text-align: center; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">${line.hours.toFixed(2)}</td>
-              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">$${line.rate.toFixed(2)}</td>
-              <td style="padding: 2px 4px; text-align: right; border-left: 1px solid #ccc; vertical-align: top; box-sizing: border-box;">$${line.amount.toFixed(2)}</td>
-            </tr>
-            `;
-            }).join('')}
-            ${Array.from({ length: Math.max(0, 5 - labourLines.length) }).map(() => `
-            <tr style="border-bottom: 1px solid #eee;">
-              <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
-              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
-              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
-              <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
-            </tr>
-            `).join('')}
-          </tbody>
-          <tfoot>
-            <tr style="border-top: 2px solid #000; background: #f5f5f5; font-weight: bold;">
-              <td style="padding: 4px 6px; text-align: right;">Total Labour</td>
-              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;">${totalLabourHours.toFixed(2)}</td>
-              <td style="padding: 4px; text-align: center; border-left: 1px solid #000;"></td>
-              <td style="padding: 4px 6px; text-align: right; border-left: 1px solid #000;">$${totalLabourAmount.toFixed(2)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+  const pageStyle = 'width: 8.5in; font-family: Arial, sans-serif; font-size: 9pt; color: #000; background: #fff; padding: 0.3in; box-sizing: border-box;';
 
-      <!-- Travel/Expenses and Summary Row -->
-      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <!-- Travel/Expenses -->
-        <div style="flex: 1; border: 1px solid #000; display: flex; flex-direction: column;">
-          <table style="width: 100%; border-collapse: collapse; flex: 1;">
-            <colgroup>
-              <col style="width: auto;" />
-              <col style="width: 60px;" />
-              <col style="width: 50px;" />
-              <col style="width: 70px;" />
-            </colgroup>
-            <thead>
-              <tr style="background: #e0e0e0; font-weight: bold; border-bottom: 1px solid #000;">
-                <td style="padding: 3px 6px;">Expenses</td>
-                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">RATE</td>
-                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">QTY</td>
-                <td style="padding: 3px; text-align: center; border-left: 1px solid #000;">SUB</td>
-              </tr>
-            </thead>
-            <tbody>
-              ${expenses.length > 0 ? expenses.map((expense) => `
-              <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 2px 4px; font-size: 8pt; height: 20px; vertical-align: top; box-sizing: border-box;">${expense.description}${expense.unit ? ` (${expense.unit})` : ''}</td>
-                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">$${expense.rate.toFixed(2)}</td>
-                <td style="padding: 2px 4px; text-align: center; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box;">${expense.quantity.toFixed(2)}</td>
-                <td style="padding: 2px 4px; text-align: right; font-size: 8pt; height: 20px; border-left: 1px solid #ccc; vertical-align: middle; box-sizing: border-box; white-space: nowrap;">$${(expense.quantity * expense.rate).toFixed(2)}</td>
-              </tr>
-              `).join('') : ''}
-              ${Array.from({ length: Math.max(0, 6 - expenses.length) }).map(() => `
-              <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 2px 4px; height: 20px; vertical-align: top; box-sizing: border-box;">&nbsp;</td>
-                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
-                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
-                <td style="padding: 2px; height: 20px; border-left: 1px solid #ccc; box-sizing: border-box;"></td>
-              </tr>
-              `).join('')}
-            </tbody>
-            <tfoot>
-              <tr style="border-top: 2px solid #000; font-weight: bold; background: #f0f0f0;">
-                <td style="padding: 4px 6px; text-align: right; vertical-align: bottom;">Total Expenses</td>
-                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
-                <td style="padding: 4px 4px; border-left: 1px solid #000; vertical-align: bottom;"></td>
-                <td style="padding: 4px 6px; border-left: 1px solid #000; text-align: right; vertical-align: bottom; font-size: 10pt; white-space: nowrap;">$${expensesTotal.toFixed(2)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+  const pagesHtml = chunks.map((chunk, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === chunks.length - 1;
+    const pageBreakStyle = isFirst ? '' : 'page-break-before: always;';
+    return `
+    <div style="${pageStyle} ${pageBreakStyle}">
+      ${renderHeader(!isFirst)}
+      ${isFirst ? renderCustomerInfo() : ''}
+      ${renderLabourTable(chunk, isLast)}
+      ${isLast ? renderExpensesAndSummary() : ''}
+      ${renderSignOff()}
+      ${renderFooter()}
+    </div>`;
+  }).join('');
 
-        <!-- Service Ticket Summary -->
-        <div style="width: 200px; border: 1px solid #000; display: flex; flex-direction: column;">
-          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Service Ticket Summary</div>
-          <table style="width: 100%; border-collapse: collapse; font-size: 8pt; flex: 1;">
-            <tr style="border-bottom: 1px solid #ccc; height: 33%;">
-              <td style="padding: 6px; vertical-align: middle;">Total Labour</td>
-              <td style="padding: 6px; text-align: right; font-weight: bold; vertical-align: middle; white-space: nowrap;">$${totalLabourAmount.toFixed(2)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #ccc; height: 33%;">
-              <td style="padding: 6px; vertical-align: middle;">Total Expenses</td>
-              <td style="padding: 6px; text-align: right; font-weight: bold; vertical-align: middle; white-space: nowrap;">$${expensesTotal.toFixed(2)}</td>
-            </tr>
-            <tr style="background: #f0f0f0; height: 34%;">
-              <td style="padding: 6px; font-weight: bold; font-size: 10pt; vertical-align: middle;">TOTAL</td>
-              <td style="padding: 6px; text-align: right; font-weight: bold; font-size: 12pt; vertical-align: middle; white-space: nowrap;">$${grandTotal.toFixed(2)}</td>
-            </tr>
-          </table>
-        </div>
-      </div>
-
-      <!-- Customer Approval / Coding Row -->
-      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <div style="flex: 1; border: 1px solid #000;">
-          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Customer Approval / Coding</div>
-          <div style="padding: 20px 6px; font-size: 8pt;">
-          </div>
-        </div>
-        <div style="flex: 1; border: 1px solid #000;">
-          <div style="background: #e0e0e0; padding: 3px 6px; font-weight: bold; border-bottom: 1px solid #000;">Customer Signature</div>
-          <div style="padding: 20px 6px; font-size: 8pt;">
-          </div>
-        </div>
-      </div>
-
-      <!-- Company Footer -->
-      <div style="text-align: center; font-size: 7pt; color: #666; margin-top: 15px; border-top: 1px solid #ccc; padding-top: 6px;">
-        IONEX Systems | Calgary, Alberta | Email: accounting@ionexsystems.com
-      </div>
-    </div>
+  return `
+    <div id="service-ticket-summary">${pagesHtml}</div>
   `;
 }
 
