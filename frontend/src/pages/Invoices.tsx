@@ -6655,17 +6655,15 @@ export default function Invoices() {
                   const activeGroup = activeCandidate.group;
                   const isPortal = activeCandidate.isPortal;
 
-                  type StandardStepId = 'preflight' | 'line_items' | 'attach' | 'send' | 'done';
-                  type PortalStepId = 'preflight' | 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'submit_portal' | 'done';
+                  type StandardStepId = 'line_items' | 'attach' | 'send' | 'done';
+                  type PortalStepId = 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'submit_portal' | 'done';
                   type WizardStepId = StandardStepId | PortalStepId;
                   const STANDARD_STEPS: { id: StandardStepId; label: string }[] = [
-                    { id: 'preflight', label: 'Pre-flight checks' },
                     { id: 'line_items', label: 'Copy invoice line items' },
                     { id: 'attach', label: 'Attach invoice PDF' },
                     { id: 'send', label: 'Download combined PDF & finish' },
                   ];
                   const PORTAL_STEPS: { id: PortalStepId; label: string }[] = [
-                    { id: 'preflight', label: 'Pre-flight checks' },
                     { id: 'submit_approval', label: 'Submit batch for approval' },
                     { id: 'attach_signed', label: 'Attach signed approval' },
                     { id: 'attach_invoice', label: 'Create invoice & attach PDF' },
@@ -6725,20 +6723,20 @@ export default function Invoices() {
                   }
 
                   // --- Active step derivation ---
+                  // Blockers no longer take a step slot — they render as a banner above the
+                  // active step body, with the step's primary action disabled until cleared.
+                  const hasBlockers = blockers.length > 0;
                   let currentStep: WizardStepId;
                   if (isPortal) {
                     if (statusId === 'submitted_portal' || statusId === 'sent' || statusId === 'invoiced') currentStep = 'done';
                     else if (statusId === 'portal_submission') currentStep = 'submit_portal';
                     else if (statusId === 'approved') currentStep = 'attach_invoice';
                     else if (statusId === 'submitted_approval') currentStep = 'attach_signed';
-                    else if (statusId === NEEDS_ADJUSTMENT_STATUS_ID) currentStep = blockers.length > 0 ? 'preflight' : 'submit_approval';
-                    else if (blockers.length > 0) currentStep = 'preflight';
                     else currentStep = 'submit_approval';
                   } else {
                     if (isMarked) currentStep = 'done';
                     else if (hasInvoiceFile) currentStep = 'send';
                     else if (progress.lineItemsAckAt) currentStep = 'attach';
-                    else if (blockers.length > 0) currentStep = 'preflight';
                     else currentStep = 'line_items';
                   }
 
@@ -6924,32 +6922,33 @@ export default function Invoices() {
                     );
                   };
 
-                  const renderStepBody = () => {
-                    if (currentStep === 'preflight') {
-                      return (
-                        <div>
-                          <p style={{ marginTop: 0, marginBottom: '12px', color: 'var(--text-secondary)' }}>
-                            Fix the issues below before this batch can move forward. The wizard won't let you continue while
-                            blockers exist.
-                          </p>
-                          <ul style={{ margin: '0 0 12px 0', paddingLeft: '18px' }}>
-                            {blockers.map((b) => (
-                              <li key={b.id} style={{ marginBottom: '8px', color: 'var(--text-primary)' }}>
-                                <strong style={{ color: '#b91c1c' }}>Blocker:</strong> {b.message}
-                                {b.deepLinkTab && (
-                                  <>
-                                    {' '}
-                                    <button type="button" onClick={() => setActiveTab(b.deepLinkTab!)} style={{ ...goButtonStyle, marginLeft: '6px' }}>
-                                      Open {b.deepLinkTab} →
-                                    </button>
-                                  </>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
+                  const renderBlockerBanner = () => {
+                    if (!hasBlockers) return null;
+                    return (
+                      <div style={{ marginBottom: '12px', padding: '12px 14px', backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '8px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#b91c1c', marginBottom: '6px' }}>
+                          Fix {blockers.length === 1 ? 'this blocker' : `${blockers.length} blockers`} before continuing
                         </div>
-                      );
-                    }
+                        <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                          {blockers.map((b) => (
+                            <li key={b.id} style={{ marginBottom: '4px', color: 'var(--text-primary)', fontSize: '13px' }}>
+                              {b.message}
+                              {b.deepLinkTab && (
+                                <>
+                                  {' '}
+                                  <button type="button" onClick={() => setActiveTab(b.deepLinkTab!)} style={{ ...goButtonStyle, marginLeft: '6px' }}>
+                                    Open {b.deepLinkTab} →
+                                  </button>
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  };
+
+                  const renderStepBody = () => {
                     // ----- Standard flow -----
                     if (!isPortal && currentStep === 'line_items') {
                       // Mirror Approved-tab line-items: copy-pastable labour + expense lines for entry
@@ -7037,7 +7036,7 @@ export default function Invoices() {
                             <strong>Subtotal (pre-GST)</strong>
                             <strong>${lineTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                           </div>
-                          <button type="button" onClick={onContinueFromLineItems} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                          <button type="button" onClick={onContinueFromLineItems} disabled={hasBlockers} title={hasBlockers ? 'Fix the blockers above before continuing.' : undefined} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', opacity: hasBlockers ? 0.5 : 1, cursor: hasBlockers ? 'not-allowed' : 'pointer' }}>
                             Continue to upload invoice →
                           </button>
                         </div>
@@ -7103,7 +7102,7 @@ export default function Invoices() {
                             Send the PDF to the customer's approver — the wizard waits here until you receive the signed copy back.
                           </p>
                           {summaryBlock}
-                          <button type="button" onClick={onSubmitForApproval} disabled={markInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
+                          <button type="button" onClick={onSubmitForApproval} disabled={markInvoicedMutation.isPending || hasBlockers} title={hasBlockers ? 'Fix the blockers above before continuing.' : undefined} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', opacity: hasBlockers ? 0.5 : 1, cursor: hasBlockers ? 'not-allowed' : 'pointer' }}>
                             {markInvoicedMutation.isPending ? 'Saving…' : isResubmit ? '↻ Resubmit for approval' : '📨 Submit for approval'}
                           </button>
                         </div>
@@ -7346,7 +7345,7 @@ export default function Invoices() {
                               const isCurrent = s.id === currentStep;
                               const isPast = idx < currentIdx || currentStep === 'done' || (!isPortal && isMarked);
                               const isFuture = !isCurrent && !isPast;
-                              const canClick = !isPortal && isPast && !isMarked && s.id !== 'preflight' && currentStep !== 'done';
+                              const canClick = !isPortal && isPast && !isMarked && currentStep !== 'done';
                               return (
                                 <li key={s.id}>
                                   <button
@@ -7461,6 +7460,7 @@ export default function Invoices() {
                             })}
                           </div>
                         </div>
+                        {renderBlockerBanner()}
                         {renderStepBody()}
                       </div>
                     </div>
