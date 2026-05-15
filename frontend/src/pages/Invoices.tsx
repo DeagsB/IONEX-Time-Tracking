@@ -3941,9 +3941,14 @@ export default function Invoices() {
     }
     // All PDFs generated and zip downloaded — now mark each batch as submitted_approval.
     // Each failure is logged but does not stop the rest, since the user already has the file.
+    // Already-sent batches (status submitted_approval / approved / portal_submission / etc.) are
+    // skipped so a re-download doesn't bump statusChangedAt and clutter the audit log.
+    const SKIP_REMARK_STATUS = new Set(['submitted_approval', 'approved', 'portal_submission', 'submitted_portal', 'sent', 'invoiced']);
     const now = new Date().toISOString();
     for (const group of groupsForCustomer) {
       const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+      const currentSnap = invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
+      if (currentSnap?.statusId && SKIP_REMARK_STATUS.has(currentSnap.statusId)) continue;
       const isCombined = combinedExpenseGroupIds.has(getGroupId(group));
       const wf = getWorkflowForCustomer(customerName, group.key.projectNumber);
       const submittedStatus = wf?.statuses?.find((s) => s.id === 'submitted_approval');
@@ -6644,6 +6649,40 @@ export default function Invoices() {
                   });
                   const activeCandidate = sortedCandidates.find((c) => getGroupId(c.group) === wizardActiveGroupId) ?? sortedCandidates[0];
 
+                  // Wizard-specific bulk buckets: per-customer groupings of portal batches at any
+                  // pre-invoice stage (Ready, Submitted, Needs Adjustment). Lets the bulk panel
+                  // persist after a Send-for-approval click so the user can re-download the zip
+                  // without re-clicking through every batch individually.
+                  type WizardBulkBucket = {
+                    customer: string;
+                    groups: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }[];
+                    readyCount: number;
+                    submittedCount: number;
+                  };
+                  const wizardBulkBuckets: WizardBulkBucket[] = (() => {
+                    const map = new Map<string, WizardBulkBucket>();
+                    const pushTo = (customer: string, g: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }, kind: 'ready' | 'submitted') => {
+                      if (!map.has(customer)) map.set(customer, { customer, groups: [], readyCount: 0, submittedCount: 0 });
+                      const b = map.get(customer)!;
+                      b.groups.push(g);
+                      if (kind === 'ready') b.readyCount++;
+                      else b.submittedCount++;
+                    };
+                    for (const b of readyPortal) {
+                      const cust = b.group.tickets[0]?.customerName;
+                      if (cust) pushTo(cust, b.group, 'ready');
+                    }
+                    for (const g of waitingOnApproval) {
+                      const cust = g.tickets[0]?.customerName;
+                      if (cust) pushTo(cust, g, 'submitted');
+                    }
+                    for (const g of needsAdjustment) {
+                      const cust = g.tickets[0]?.customerName;
+                      if (cust) pushTo(cust, g, 'ready'); // counts as ready — Resubmit advances to submitted_approval
+                    }
+                    return [...map.values()].sort((a, b) => a.customer.localeCompare(b.customer));
+                  })();
+
                   if (!activeCandidate) {
                     return (
                       <div className="ionex-empty">
@@ -6754,6 +6793,16 @@ export default function Invoices() {
                   // --- Step actions ---
                   const onContinueFromLineItems = () => {
                     updateWizardProgress(groupId, { lineItemsAckAt: new Date().toISOString() });
+                  };
+                  const onDownloadBatchPdf = async () => {
+                    setExportError(null);
+                    try {
+                      const merged = await buildMergedBatchPdfBlob(activeGroup);
+                      const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects);
+                      saveAs(merged, filename);
+                    } catch (err) {
+                      setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
+                    }
                   };
                   const onDownloadCombined = () => handleDownloadBatchWithInvoice(activeGroup, persistId);
                   const onAttach = async (file: File) => {
@@ -7038,9 +7087,14 @@ export default function Invoices() {
                             <strong>Subtotal (pre-GST)</strong>
                             <strong>${lineTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                           </div>
-                          <button type="button" onClick={onContinueFromLineItems} disabled={hasBlockers} title={hasBlockers ? 'Fix the blockers above before continuing.' : undefined} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', opacity: hasBlockers ? 0.5 : 1, cursor: hasBlockers ? 'not-allowed' : 'pointer' }}>
-                            Continue to upload invoice →
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button type="button" onClick={onDownloadBatchPdf} style={goButtonStyle}>
+                              ⬇ Download batch PDF
+                            </button>
+                            <button type="button" onClick={onContinueFromLineItems} disabled={hasBlockers} title={hasBlockers ? 'Fix the blockers above before continuing.' : undefined} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', opacity: hasBlockers ? 0.5 : 1, cursor: hasBlockers ? 'not-allowed' : 'pointer' }}>
+                              Continue to upload invoice →
+                            </button>
+                          </div>
                         </div>
                       );
                     }
@@ -7104,9 +7158,14 @@ export default function Invoices() {
                             Send the PDF to the customer's approver — the wizard waits here until you receive the signed copy back.
                           </p>
                           {summaryBlock}
-                          <button type="button" onClick={onSubmitForApproval} disabled={markInvoicedMutation.isPending || hasBlockers} title={hasBlockers ? 'Fix the blockers above before continuing.' : undefined} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', opacity: hasBlockers ? 0.5 : 1, cursor: hasBlockers ? 'not-allowed' : 'pointer' }}>
-                            {markInvoicedMutation.isPending ? 'Saving…' : isResubmit ? '↻ Resubmit for approval' : '📨 Submit for approval'}
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button type="button" onClick={onDownloadBatchPdf} style={goButtonStyle}>
+                              ⬇ Download batch PDF
+                            </button>
+                            <button type="button" onClick={onSubmitForApproval} disabled={markInvoicedMutation.isPending || hasBlockers} title={hasBlockers ? 'Fix the blockers above before continuing.' : undefined} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', opacity: hasBlockers ? 0.5 : 1, cursor: hasBlockers ? 'not-allowed' : 'pointer' }}>
+                              {markInvoicedMutation.isPending ? 'Saving…' : isResubmit ? '↻ Resubmit for approval' : '📨 Submit for approval'}
+                            </button>
+                          </div>
                         </div>
                       );
                     }
@@ -7327,13 +7386,13 @@ export default function Invoices() {
                               );
                             })}
                           </div>
-                          {effectiveQueue === 'portal' && bulkApprovalCandidates.length > 0 && (
+                          {effectiveQueue === 'portal' && wizardBulkBuckets.length > 0 && (
                             <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: 'rgba(245, 158, 11, 0.10)', border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '8px' }}>
                               <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#92400e', marginBottom: '6px' }}>
                                 📦 Bulk send for approval
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                {bulkApprovalCandidates.map(({ customer, groups }) => {
+                                {wizardBulkBuckets.map(({ customer, groups, readyCount, submittedCount }) => {
                                   const isBusy = bulkSendProgress?.customer === customer;
                                   const periodLabels = [...new Set(
                                     groups.map((g) => g.key.periodLabel?.trim()).filter((s): s is string => !!s)
@@ -7343,13 +7402,26 @@ export default function Invoices() {
                                     : periodLabels.length === 1
                                       ? periodLabels[0]
                                       : `${periodLabels.length} periods`;
+                                  const sendMode = readyCount > 0;
+                                  const labelMain = sendMode
+                                    ? `📥 ${customer} — Send for approval`
+                                    : `📥 ${customer} — Re-download zip`;
+                                  const stageDetail = sendMode
+                                    ? (submittedCount > 0
+                                        ? `${readyCount} ready + ${submittedCount} already sent`
+                                        : `${readyCount} ready`)
+                                    : `${submittedCount} sent`;
                                   return (
                                     <button
                                       key={customer}
                                       type="button"
                                       disabled={!!bulkSendProgress}
                                       onClick={() => handleBulkSendForApproval(customer, groups)}
-                                      title={`Generates one merged PDF per batch for ${customer}, zips them, downloads the zip, then marks each batch as ready to send. Periods: ${periodLabels.join(', ') || '(none)'}.`}
+                                      title={
+                                        sendMode
+                                          ? `Zip merged PDFs for all ${groups.length} batches and mark the ${readyCount} ready batch${readyCount === 1 ? '' : 'es'} as submitted_approval. Already-sent batches are included in the zip but skip the status change. Periods: ${periodLabels.join(', ') || '(none)'}.`
+                                          : `Re-download the merged-PDF zip for all ${submittedCount} already-submitted batch${submittedCount === 1 ? '' : 'es'} — no status change. Periods: ${periodLabels.join(', ') || '(none)'}.`
+                                      }
                                       style={{
                                         textAlign: 'left',
                                         padding: '8px 10px',
@@ -7365,11 +7437,11 @@ export default function Invoices() {
                                       <div style={{ fontWeight: 700 }}>
                                         {isBusy
                                           ? `Building ${bulkSendProgress!.current}/${bulkSendProgress!.total}…`
-                                          : `📥 ${customer}`}
+                                          : labelMain}
                                       </div>
                                       {!isBusy && (
                                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                          {groups.length} batch{groups.length === 1 ? '' : 'es'}{periodSummary ? ` · ${periodSummary}` : ''}
+                                          {groups.length} batch{groups.length === 1 ? '' : 'es'} · {stageDetail}{periodSummary ? ` · ${periodSummary}` : ''}
                                         </div>
                                       )}
                                     </button>
