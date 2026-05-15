@@ -250,9 +250,6 @@ const initialReceiptForm: ReceiptFormState = {
   lineItems: [newLineItem()],
 };
 
-/** After delete, server row is removed only after this delay unless the user clicks Undo. */
-const DELETE_UNDO_MS = 8000;
-
 const ST_NEEDS_RECEIPT_TICKET_IDS_KEY = 'ionex_st_needs_receipt_record_ids';
 const ST_PENDING_OPEN_RECORD_KEY = 'ionex_st_pending_open_record';
 
@@ -482,6 +479,18 @@ export default function Expenses() {
       if (ownerId && contractorByUserId.get(ownerId)) return false;
       return true;
     });
+  }, [pendingReceiptLines, pendingReceiptRequiringTypes, contractorByUserId]);
+
+  /** Count of receipt-required lines suppressed because the owner is a contractor — surfaced
+   *  in the Awaiting Receipts banner so admins know why the list is shorter than expected. */
+  const pendingReceiptContractorSuppressedCount = useMemo(() => {
+    let n = 0;
+    for (const r of pendingReceiptLines as any[]) {
+      if (!pendingReceiptRequiringTypes.has(String(r.expense_type || ''))) continue;
+      const ownerId = String(r.service_tickets?.user_id ?? '');
+      if (ownerId && contractorByUserId.get(ownerId)) n++;
+    }
+    return n;
   }, [pendingReceiptLines, pendingReceiptRequiringTypes, contractorByUserId]);
 
   const pendingReceiptTypeOptions = useMemo(() => {
@@ -1056,86 +1065,28 @@ export default function Expenses() {
     },
   });
 
-  /** Pending receipt delete: removed from UI immediately; server delete runs after timeout unless Undo. */
-  const pendingDeleteRef = useRef<{ expense: any; timer: ReturnType<typeof setTimeout> } | null>(null);
-  const [deleteUndoLabel, setDeleteUndoLabel] = useState<string | null>(null);
-
-  const insertExpenseSortedInCache = (expense: any) => {
-    queryClient.setQueryData(['userExpenses'], (old: any[] | undefined) => {
-      const list = old || [];
-      if (list.some((e) => e.id === expense.id)) return list;
-      const next = [...list, expense];
-      next.sort((a, b) => {
-        const da = String(a.expense_date || '');
-        const db = String(b.expense_date || '');
-        if (da !== db) return db.localeCompare(da);
-        return String(b.id).localeCompare(String(a.id));
-      });
-      return next;
-    });
-  };
-
   const removeExpenseFromCache = (id: string) => {
     queryClient.setQueryData(['userExpenses'], (old: any[] | undefined) => (old || []).filter((e) => e.id !== id));
   };
 
-  const flushPreviousPendingDelete = () => {
-    const p = pendingDeleteRef.current;
-    if (!p) return;
-    clearTimeout(p.timer);
-    pendingDeleteRef.current = null;
-    setDeleteUndoLabel(null);
-    deleteExpenseMutation.mutate(p.expense.id);
-  };
-
-  const undoPendingExpenseDelete = () => {
-    const p = pendingDeleteRef.current;
-    if (!p) return;
-    clearTimeout(p.timer);
-    pendingDeleteRef.current = null;
-    setDeleteUndoLabel(null);
-    insertExpenseSortedInCache(p.expense);
-  };
-
   const requestDeleteExpense = (exp: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    flushPreviousPendingDelete();
+    // Standard confirm replaces the 3-second undo banner — undo silently completed
+    // the delete if the user navigated away or refreshed the page, leaving no audit
+    // trail. Confirm matches how the unapply/destructive actions work elsewhere in
+    // the app.
+    const desc = (exp.description || 'Expense').trim();
+    const short = desc.length > 60 ? `${desc.slice(0, 60)}…` : desc || 'this expense';
+    const amount = Number(exp.amount) || 0;
+    const proceed = window.confirm(`Delete "${short}"${amount > 0 ? ` ($${amount.toFixed(2)})` : ''}?`);
+    if (!proceed) return;
     if (editingExpense?.id === exp.id) {
       setEditingExpense(null);
       setEditReceiptPreviewUrl(null);
     }
     removeExpenseFromCache(exp.id);
-    const desc = (exp.description || 'Expense').trim();
-    const short = desc.length > 52 ? `${desc.slice(0, 52)}…` : desc || 'Expense';
-    setDeleteUndoLabel(short);
-    const timer = setTimeout(() => {
-      pendingDeleteRef.current = null;
-      setDeleteUndoLabel(null);
-      deleteExpenseMutation.mutate(exp.id);
-    }, DELETE_UNDO_MS);
-    pendingDeleteRef.current = { expense: exp, timer };
+    deleteExpenseMutation.mutate(exp.id);
   };
-
-  useEffect(() => {
-    return () => {
-      const p = pendingDeleteRef.current;
-      if (!p) return;
-      clearTimeout(p.timer);
-      pendingDeleteRef.current = null;
-      queryClient.setQueryData(['userExpenses'], (old: any[] | undefined) => {
-        const list = old || [];
-        if (list.some((e) => e.id === p.expense.id)) return list;
-        const next = [...list, p.expense];
-        next.sort((a, b) => {
-          const da = String(a.expense_date || '');
-          const db = String(b.expense_date || '');
-          if (da !== db) return db.localeCompare(da);
-          return String(b.id).localeCompare(String(a.id));
-        });
-        return next;
-      });
-    };
-  }, [queryClient]);
 
   const handleStartEdit = (exp: any) => {
     setEditingExpense(exp);
@@ -1201,6 +1152,12 @@ export default function Expenses() {
     newStatus: 'pending' | 'paid'
   ) => {
     if (rows.length === 0) return;
+    // Confirm before flipping a batch — single-row marks already prompt for the
+    // receipt-required case, but batch actions had no guard and could flip dozens of
+    // rows in one click. Show count + intended state so admins can sanity check.
+    const verb = newStatus === 'paid' ? 'paid' : 'unpaid';
+    const proceed = window.confirm(`Mark ${rows.length} expense${rows.length === 1 ? '' : 's'} as ${verb}?`);
+    if (!proceed) return;
     setOverviewBatchBusy(true);
     try {
       await Promise.all(
@@ -1788,6 +1745,19 @@ export default function Expenses() {
     setShowTicketPickerModal(true);
   };
 
+  /** Apply-to-ticket flow spans three states (applyExpenseId, ticket picker, markup
+   *  modal). Use this helper everywhere we exit so they always reset together — a
+   *  partial close was the source of stuck/zombie modals when the user re-clicked the
+   *  Apply button while a flow was open. */
+  const closeApplyToTicketFlow = () => {
+    setShowTicketPickerModal(false);
+    setMarkupModalTicket(null);
+    setApplyExpenseId(null);
+    setDetailsTicketId(null);
+    setTicketSearchQuery('');
+  };
+  const isApplyToTicketFlowOpen = !!applyExpenseId || showTicketPickerModal || !!markupModalTicket;
+
   const handleViewReceipt = async (expense: any) => {
     if (!expense.receipt_url) return;
     setLoadingReceiptId(expense.id);
@@ -1867,6 +1837,11 @@ export default function Expenses() {
               <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-primary)', lineHeight: 1.45, maxWidth: '720px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0, 137, 123, 0.08)', border: '1px solid rgba(0, 137, 123, 0.3)' }}>
                 <strong style={{ color: '#00897b' }}>Reimbursement note:</strong> as soon as a receipt is attached, this expense is included on the next payroll for reimbursement to the employee. Lines that don't need a receipt (Mileage, Truck Hours, Per Diem, basic Equipment) are reimbursed automatically on the next payroll once flagged needs-reimbursement.
               </p>
+              {isAdmin && pendingReceiptContractorSuppressedCount > 0 && (
+                <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '720px', padding: '6px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-tertiary)', border: '1px dashed var(--border-color)' }}>
+                  <strong>Note:</strong> {pendingReceiptContractorSuppressedCount} receipt-required line{pendingReceiptContractorSuppressedCount === 1 ? '' : 's'} hidden because the owner is a contractor — contractors invoice IONEX directly, so we don't track receipts for them here.
+                </p>
+              )}
               <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 {isAdmin && pendingReceiptEmpOptions.length > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -3724,7 +3699,16 @@ export default function Expenses() {
                     ) : (
                       exp.is_billable && !exp.service_ticket_id ? (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setApplyExpenseId(exp.id); setShowTicketPickerModal(true); setTicketSearchQuery(''); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Ignore the click if a previous Apply-to-Ticket flow hasn't
+                            // closed yet — otherwise re-opening with a different expenseId
+                            // stacks state from two flows on top of each other.
+                            if (isApplyToTicketFlowOpen) return;
+                            setApplyExpenseId(exp.id);
+                            setShowTicketPickerModal(true);
+                            setTicketSearchQuery('');
+                          }}
                           style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                         >
                           Apply to Ticket
@@ -4531,7 +4515,7 @@ export default function Expenses() {
         <div style={{
           position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => { setShowTicketPickerModal(false); setApplyExpenseId(null); setDetailsTicketId(null); }}>
+        }} onClick={closeApplyToTicketFlow}>
           <div onClick={(e) => e.stopPropagation()} style={{
             backgroundColor: 'var(--bg-primary)', borderRadius: '10px', width: '90%', maxWidth: '600px',
             maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
@@ -4709,14 +4693,14 @@ export default function Expenses() {
           <div className="ionex-modal-backdrop" style={{
             position: 'fixed', inset: 0, zIndex: 10003, backgroundColor: 'rgba(0,0,0,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }} onMouseDown={(e) => { if (e.target === e.currentTarget) { setMarkupModalTicket(null); setApplyExpenseId(null); } }}>
+          }} onMouseDown={(e) => { if (e.target === e.currentTarget) closeApplyToTicketFlow(); }}>
             <div className="ionex-modal-card" onMouseDown={(e) => e.stopPropagation()} style={{
               backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px',
               maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>Apply Markup</h3>
-                <button onClick={() => { setMarkupModalTicket(null); setApplyExpenseId(null); }} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
+                <button onClick={closeApplyToTicketFlow} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
               </div>
 
               <div style={{ marginBottom: '16px', padding: '10px 12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '13px' }}>
@@ -5189,50 +5173,6 @@ export default function Expenses() {
         </div>
       )}
 
-      {deleteUndoLabel && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: 'fixed',
-            bottom: '24px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 10006,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            padding: '12px 20px',
-            borderRadius: '10px',
-            backgroundColor: 'var(--bg-primary)',
-            border: '1px solid var(--border-color)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
-            maxWidth: 'min(560px, calc(100vw - 32px))',
-          }}
-        >
-          <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>
-            Expense removed.{' '}
-            <span style={{ color: 'var(--text-secondary)' }}>{deleteUndoLabel}</span>
-          </span>
-          <button
-            type="button"
-            onClick={undoPendingExpenseDelete}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: 'var(--primary-color)',
-              color: 'white',
-              fontSize: '13px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            Undo
-          </button>
-        </div>
-      )}
 
       {viewingTicketRecordId && (
         <ServiceTickets
