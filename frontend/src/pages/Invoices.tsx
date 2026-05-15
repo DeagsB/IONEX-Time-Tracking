@@ -4207,13 +4207,21 @@ export default function Invoices() {
       const snappedIds = new Set(
         snap.ticketIds.map((x: unknown) => (typeof x === 'string' ? x.trim() : String(x ?? '').trim())).filter(Boolean)
       );
-      const tickets = ticketsForCustomer.filter((t) => {
+      const matchSnapped = (t: ServiceTicket) => {
         const rid = (t as ServiceTicket & { recordId?: string }).recordId?.trim();
         return (rid && snappedIds.has(rid)) || snappedIds.has(t.id);
-      });
-      if (tickets.length === 0) continue;
-      tickets.sort((a, b) => (a.date || '').localeCompare(b.date || '') || ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber));
-      result.push({ key: snappedKey, tickets });
+      };
+      // Invoiced batches are frozen by snapshot — a stale customer/project filter must
+      // never make a marked batch disappear from the Invoiced tab. Try the filtered list
+      // first; if it yields nothing, fall back to the unfiltered tickets so the batch
+      // still surfaces regardless of the active filter selection.
+      let matchedTickets = ticketsForCustomer.filter(matchSnapped);
+      if (matchedTickets.length === 0 && (selectedCustomerId || selectedProjectId)) {
+        matchedTickets = tickets.filter(matchSnapped);
+      }
+      if (matchedTickets.length === 0) continue;
+      matchedTickets.sort((a, b) => (a.date || '').localeCompare(b.date || '') || ticketNumberSortValue(a.ticketNumber) - ticketNumberSortValue(b.ticketNumber));
+      result.push({ key: snappedKey, tickets: matchedTickets });
       coveredGroupIds.add(row.group_id);
     }
 
@@ -4247,6 +4255,9 @@ export default function Invoices() {
     effectiveMarkedInvoicedIds,
     frozenInvoicedGroups,
     ticketsForCustomer,
+    tickets,
+    selectedCustomerId,
+    selectedProjectId,
   ]);
 
   /** Portal Approval batches in the submitted_approval status (waiting for customer approval).
