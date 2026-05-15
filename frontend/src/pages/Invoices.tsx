@@ -6778,7 +6778,17 @@ export default function Invoices() {
                       setUploadingInvoiceGroupId(null);
                     }
                   };
-                  const onMark = () => handleMarkAsInvoiced(activeGroup);
+                  const advanceToNext = () => {
+                    // Pick next candidate that isn't the one we're leaving — fallback handles
+                    // the case where the marked batch is still mid-invalidation in candidates.
+                    const next = sortedCandidates.find((c) => getGroupId(c.group) !== groupId);
+                    setWizardActiveGroupId(next ? getGroupId(next.group) : null);
+                    clearWizardProgressForGroup(groupId);
+                  };
+                  const onMark = () => {
+                    handleMarkAsInvoiced(activeGroup);
+                    advanceToNext();
+                  };
 
                   // Portal-flow actions
                   const onSubmitForApproval = async () => {
@@ -6834,6 +6844,7 @@ export default function Invoices() {
                       projectNumber: activeGroup.key.projectNumber || undefined,
                       workflow: activeWorkflow,
                     });
+                    advanceToNext();
                   };
 
                   const summaryBlock = (
@@ -6846,34 +6857,72 @@ export default function Invoices() {
                     </div>
                   );
 
-                  const fileDropZone = (opts: { label: string; uploading: boolean; onPick: (f: File) => void }) => (
-                    <label
-                      style={{
-                        display: 'block',
-                        padding: '20px',
-                        border: '2px dashed var(--border-color)',
-                        borderRadius: '8px',
-                        textAlign: 'center',
-                        cursor: opts.uploading ? 'wait' : 'pointer',
-                        backgroundColor: 'var(--bg-tertiary)',
-                      }}
-                    >
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        style={{ display: 'none' }}
-                        disabled={opts.uploading}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) opts.onPick(f);
-                          e.target.value = '';
+                  const fileDropZone = (opts: { id: string; label: string; uploading: boolean; onPick: (f: File) => void }) => {
+                    const baseBorder = 'var(--border-color)';
+                    const baseBg = 'var(--bg-tertiary)';
+                    const hoverBorder = 'var(--primary-color, #2563eb)';
+                    const hoverBg = 'rgba(37, 99, 235, 0.06)';
+                    return (
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (opts.uploading) return;
+                          e.currentTarget.style.borderColor = hoverBorder;
+                          e.currentTarget.style.backgroundColor = hoverBg;
                         }}
-                      />
-                      {opts.uploading
-                        ? 'Uploading…'
-                        : <strong>{opts.label}</strong>}
-                    </label>
-                  );
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.style.borderColor = baseBorder;
+                          e.currentTarget.style.backgroundColor = baseBg;
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.style.borderColor = baseBorder;
+                          e.currentTarget.style.backgroundColor = baseBg;
+                          if (opts.uploading) return;
+                          const f = e.dataTransfer?.files?.[0];
+                          if (f) opts.onPick(f);
+                        }}
+                        onClick={() => {
+                          if (opts.uploading) return;
+                          document.getElementById(opts.id)?.click();
+                        }}
+                        style={{
+                          padding: '20px',
+                          border: `2px dashed ${baseBorder}`,
+                          borderRadius: '8px',
+                          textAlign: 'center',
+                          cursor: opts.uploading ? 'wait' : 'pointer',
+                          backgroundColor: baseBg,
+                          transition: 'border-color 0.12s, background-color 0.12s',
+                        }}
+                      >
+                        <input
+                          id={opts.id}
+                          type="file"
+                          accept="application/pdf"
+                          style={{ display: 'none' }}
+                          disabled={opts.uploading}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) opts.onPick(f);
+                            e.target.value = '';
+                          }}
+                        />
+                        {opts.uploading ? (
+                          'Uploading…'
+                        ) : (
+                          <>
+                            <strong>{opts.label}</strong>
+                            <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>or drag the PDF here</div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  };
 
                   const renderStepBody = () => {
                     if (currentStep === 'preflight') {
@@ -7002,10 +7051,16 @@ export default function Invoices() {
                           </p>
                           {summaryBlock}
                           {fileDropZone({
+                            id: `wiz-std-invoice-${persistId}`,
                             label: 'Click to select invoice PDF',
                             uploading: uploadingInvoiceGroupId === persistId,
                             onPick: onAttach,
                           })}
+                          <div style={{ marginTop: '12px' }}>
+                            <button type="button" onClick={() => onReopen('line_items')} style={goButtonStyle}>
+                              ← Back to line items
+                            </button>
+                          </div>
                         </div>
                       );
                     }
@@ -7018,6 +7073,9 @@ export default function Invoices() {
                             Download the combined PDF (invoice + service tickets) and send it to the customer, then mark the batch as invoiced to finish.
                           </p>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button type="button" onClick={() => onReopen('attach')} style={goButtonStyle}>
+                              ← Replace invoice PDF
+                            </button>
                             <button type="button" onClick={onDownloadCombined} disabled={isDownloading} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
                               {isDownloading ? 'Building…' : '⬇ Download combined PDF'}
                             </button>
@@ -7068,6 +7126,7 @@ export default function Invoices() {
                             Got a rejection instead? <button type="button" onClick={() => setActiveTab('submitted')} style={{ ...goButtonStyle, fontSize: '12px', marginLeft: '4px' }}>Open in Submitted →</button>
                           </div>
                           {fileDropZone({
+                            id: `wiz-signed-approval-${persistId}`,
                             label: 'Click to upload signed approval PDF',
                             uploading: uploadApprovalMutation.isPending,
                             onPick: onAttachSignedApproval,
@@ -7090,6 +7149,7 @@ export default function Invoices() {
                           )}
                           {!hasInvoiceFile ? (
                             fileDropZone({
+                              id: `wiz-port-invoice-${persistId}`,
                               label: 'Click to upload invoice PDF',
                               uploading: uploadingInvoiceGroupId === persistId,
                               onPick: onAttach,
