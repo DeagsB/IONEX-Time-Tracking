@@ -1576,7 +1576,8 @@ type BatchAgeBadge = { label: string; color: string; bg: string; border: string;
 
 /** Build a colored "N periods overdue" badge for a section based on its period age. Returns null
  *  for sections whose period is still accumulating or whose grouping has no fixed period (project
- *  completion, progress). Color escalates: yellow at 1 period, orange at 2, red at 3+. */
+ *  completion, progress). Palette escalates through reds — kept distinct from the amber/yellow
+ *  used by the "Ready to send to approver" wizard chips so overdue ≠ ready-to-act. */
 function buildBatchAgeBadge(periodKey: string | undefined, grouping: DateRangeGrouping): BatchAgeBadge | null {
   const days = getBatchAgeDays(periodKey, grouping);
   const periods = getBatchPeriodsOverdue(periodKey, grouping);
@@ -1584,12 +1585,12 @@ function buildBatchAgeBadge(periodKey: string | undefined, grouping: DateRangeGr
   if (periods < 1) return null;
   const label = periods === 1 ? '1 period overdue' : `${periods} periods overdue`;
   if (periods >= 3) {
-    return { label, color: '#b91c1c', bg: '#fee2e2', border: '#fca5a566', daysOld: days, periodsOld: periods };
+    return { label, color: '#7f1d1d', bg: '#fecaca', border: '#f8717188', daysOld: days, periodsOld: periods };
   }
   if (periods >= 2) {
-    return { label, color: '#c2410c', bg: '#ffedd5', border: '#fdba7466', daysOld: days, periodsOld: periods };
+    return { label, color: '#b91c1c', bg: '#fee2e2', border: '#fca5a577', daysOld: days, periodsOld: periods };
   }
-  return { label, color: '#a16207', bg: '#fef3c7', border: '#fcd34d66', daysOld: days, periodsOld: periods };
+  return { label, color: '#dc2626', bg: '#fef2f2', border: '#fca5a566', daysOld: days, periodsOld: periods };
 }
 
 /** True while today is still on or before the period end date (more tickets may land in this batch). */
@@ -7779,9 +7780,6 @@ export default function Invoices() {
                               const gid = getGroupId(c.group);
                               const isActive = gid === getGroupId(activeGroup);
                               const t = c.group.tickets[0];
-                              const flowTag = c.isPortal ? 'Portal' : 'Standard';
-                              const tagBg = c.isPortal ? '#ede9fe' : '#dbeafe';
-                              const tagFg = c.isPortal ? '#6d28d9' : '#1d4ed8';
                               // Overdue badge: based on the original batch period's age, so a batch
                               // that sat in submitted_approval for two periods then bounced to
                               // needs_adjustment still surfaces as overdue.
@@ -7837,13 +7835,8 @@ export default function Invoices() {
                                     fontFamily: 'inherit',
                                   }}
                                 >
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      {t?.customerName ?? '—'}
-                                    </div>
-                                    <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', backgroundColor: tagBg, color: tagFg, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-                                      {flowTag}
-                                    </span>
+                                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {t?.customerName ?? '—'}
                                   </div>
                                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {c.group.key.periodLabel ?? c.group.key.periodKey ?? ''} · {c.group.tickets.length} ticket{c.group.tickets.length === 1 ? '' : 's'}
