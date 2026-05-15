@@ -2792,13 +2792,10 @@ export default function Invoices() {
   const [uploadingInvoiceGroupId, setUploadingInvoiceGroupId] = useState<string | null>(null);
   const [markInvoicedDropOverGroupId, setMarkInvoicedDropOverGroupId] = useState<string | null>(null);
   const [markInvoicedPromptGroup, setMarkInvoicedPromptGroup] = useState<{ key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] } | null>(null);
-  /** Guide-me wizard state. `subview` toggles between the old overview cards and the new
-   *  step-by-step wizard. `activeGroupId` is the batch currently being walked through.
+  /** Guide-me wizard state. `activeGroupId` is the batch currently being walked through.
    *  `stepProgress` holds per-batch flags that aren't derivable from DB state (e.g. did
    *  the user download the merged PDF this session?). */
-  type WizardSubview = 'overview' | 'wizard';
   type WizardStepProgress = { downloadedAt?: string };
-  const [helperSubview, setHelperSubview] = useState<WizardSubview>('overview');
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
   const [wizardStepProgress, setWizardStepProgress] = useState<Record<string, WizardStepProgress>>(() => {
     try {
@@ -6597,36 +6594,6 @@ export default function Invoices() {
             const approvedAwaiting = approvedGroups;
             const portalAwaiting = portalSubmissionGroups;
 
-            const actionableCount =
-              readyStd.length + readyPortal.length + needsAdjustment.length +
-              approvedAwaiting.length + portalAwaiting.length;
-
-            const describeBatch = (g: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
-              const t0 = g.tickets[0];
-              const customer = t0?.customerName || '—';
-              const projectNum = g.key.projectNumber || '';
-              const projectName = g.key.projectName || '';
-              const project = [projectNum, projectName].filter(Boolean).join(' – ');
-              const period = g.key.periodLabel || '';
-              return { customer, project, period, ticketCount: g.tickets.length };
-            };
-
-            const cardStyle: React.CSSProperties = {
-              border: '1px solid var(--border-color)',
-              borderRadius: '10px',
-              padding: '14px 16px',
-              backgroundColor: 'var(--bg-primary)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-            };
-            const sectionStyle: React.CSSProperties = {
-              marginBottom: '24px',
-              padding: '16px',
-              borderRadius: '12px',
-              border: '1px solid var(--border-color)',
-              backgroundColor: 'var(--bg-secondary)',
-            };
             const goButtonStyle: React.CSSProperties = {
               padding: '6px 12px',
               borderRadius: '6px',
@@ -6639,220 +6606,10 @@ export default function Invoices() {
               fontFamily: 'inherit',
               whiteSpace: 'nowrap',
             };
-            const badgeStyle = (bg: string, fg: string): React.CSSProperties => ({
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '2px 8px',
-              borderRadius: '999px',
-              fontSize: '11px',
-              fontWeight: 700,
-              backgroundColor: bg,
-              color: fg,
-              letterSpacing: '0.02em',
-              textTransform: 'uppercase',
-            });
-
-            const renderBatchCard = (
-              g: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] },
-              isPortal: boolean,
-              goToTab: InvoiceTab,
-              goLabel: string,
-            ) => {
-              const d = describeBatch(g);
-              const groupId = getGroupId(g);
-              return (
-                <div key={groupId} style={cardStyle}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {d.customer}
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                        {d.project || <em style={{ color: 'var(--text-tertiary)' }}>no project</em>}
-                        {d.period && <> · {d.period}</>}
-                        {' · '}{d.ticketCount} ticket{d.ticketCount === 1 ? '' : 's'}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={badgeStyle(isPortal ? '#ede9fe' : '#dbeafe', isPortal ? '#6d28d9' : '#1d4ed8')}>
-                        {isPortal ? 'Portal Approval' : 'Standard'}
-                      </span>
-                      <button type="button" onClick={() => setActiveTab(goToTab)} style={goButtonStyle}>
-                        {goLabel} →
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            };
-
-            const renderSection = (opts: {
-              icon: string;
-              title: string;
-              steps: React.ReactNode;
-              kind: 'do' | 'wait';
-              children: React.ReactNode;
-            }) => (
-              <div style={{ ...sectionStyle, borderLeftWidth: '4px', borderLeftStyle: 'solid', borderLeftColor: opts.kind === 'do' ? '#0ea5e9' : '#94a3b8' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '18px' }} aria-hidden>{opts.icon}</span>
-                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>{opts.title}</h3>
-                  <span style={badgeStyle(opts.kind === 'do' ? '#fef3c7' : '#e5e7eb', opts.kind === 'do' ? '#92400e' : '#374151')}>
-                    {opts.kind === 'do' ? 'Your turn' : 'Waiting'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: 1.5 }}>
-                  {opts.steps}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {opts.children}
-                </div>
-              </div>
-            );
-
-            const toggleBtnStyle = (active: boolean): React.CSSProperties => ({
-              padding: '8px 14px',
-              borderRadius: '8px',
-              border: active ? '1px solid var(--accent-color, #2563eb)' : '1px solid var(--border-color)',
-              backgroundColor: active ? 'rgba(37, 99, 235, 0.10)' : 'var(--bg-primary)',
-              color: active ? 'var(--accent-color, #2563eb)' : 'var(--text-secondary)',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            });
-            const subviewToggle = (
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                <button type="button" style={toggleBtnStyle(helperSubview === 'overview')} onClick={() => setHelperSubview('overview')}>
-                  Overview
-                </button>
-                <button type="button" style={toggleBtnStyle(helperSubview === 'wizard')} onClick={() => setHelperSubview('wizard')}>
-                  Step-by-step wizard
-                </button>
-              </div>
-            );
 
             return (
               <div>
-                {subviewToggle}
-                {helperSubview === 'overview' && (<>
-                <div className="ionex-section-heading">
-                  <div className="ionex-section-heading-title-row">
-                    <h2>What to do next</h2>
-                    <span className="ionex-section-heading-meta">
-                      <strong>{actionableCount}</strong> {actionableCount === 1 ? 'batch needs' : 'batches need'} your attention
-                    </span>
-                  </div>
-                  <p>
-                    Click a batch's <strong>Go to …</strong> button to jump to the tab where you'll do the work.
-                    Each batch shows whether it's on the <strong>Standard</strong> flow (one step: mark invoiced) or the
-                    <strong> Portal Approval</strong> flow (multi-step: approval → invoice → portal).
-                  </p>
-                </div>
-
-                {actionableCount === 0 && waitingOnApproval.length === 0 && (
-                  <div className="ionex-empty">
-                    <span className="glyph" aria-hidden>✅</span>
-                    <h3 className="title">All caught up</h3>
-                    <p className="body">Nothing is waiting on you right now. Come back when more service tickets are approved.</p>
-                  </div>
-                )}
-
-                {readyStd.length > 0 && renderSection({
-                  icon: '🧾',
-                  title: `Mark as invoiced — ${readyStd.length}`,
-                  kind: 'do',
-                  steps: (
-                    <>
-                      <strong>Standard customers.</strong> For each batch below:
-                      <ol style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
-                        <li>Download the merged batch PDF from the <em>Ready</em> tab, then create the invoice in your invoicing system.</li>
-                        <li>Click <strong>Mark as invoiced</strong> on the batch (or drop the invoice PDF onto it).</li>
-                      </ol>
-                    </>
-                  ),
-                  children: readyStd.map((b) => renderBatchCard(b.group, false, 'ready', 'Go to Ready')),
-                })}
-
-                {readyPortal.length > 0 && renderSection({
-                  icon: '📨',
-                  title: `Send for approval — ${readyPortal.length}`,
-                  kind: 'do',
-                  steps: (
-                    <>
-                      <strong>Portal Approval customers.</strong> For each batch below:
-                      <ol style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
-                        <li>On the <em>Ready</em> tab, click <strong>Submit for approval</strong>. This downloads the approval-batch PDF.</li>
-                        <li>Send that PDF to the customer's approver. The batch then sits in <em>Submitted</em> until they sign it.</li>
-                        <li>The service techs handle following up on signatures — you'll see it again here when it's <em>Approved</em>.</li>
-                      </ol>
-                    </>
-                  ),
-                  children: readyPortal.map((b) => renderBatchCard(b.group, true, 'ready', 'Go to Ready')),
-                })}
-
-                {needsAdjustment.length > 0 && renderSection({
-                  icon: '⚠️',
-                  title: `Needs adjustment — ${needsAdjustment.length}`,
-                  kind: 'do',
-                  steps: (
-                    <>
-                      The approver rejected these batches. On the <em>Submitted</em> tab, open each one to read the
-                      rejection note, fix the tickets it points to, then click <strong>Resubmit</strong>.
-                    </>
-                  ),
-                  children: needsAdjustment.map((g) => renderBatchCard(g, true, 'submitted', 'Go to Submitted')),
-                })}
-
-                {approvedAwaiting.length > 0 && renderSection({
-                  icon: '💰',
-                  title: `Create invoice — ${approvedAwaiting.length}`,
-                  kind: 'do',
-                  steps: (
-                    <>
-                      <strong>Approved batches — your turn.</strong> The service techs got the signed approval back. Now:
-                      <ol style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
-                        <li>Open the batch on the <em>Approved</em> tab. The signed batch PDF is already attached.</li>
-                        <li>Create the invoice for this batch's amount in your invoicing system.</li>
-                        <li>Drag the invoice PDF onto the batch card, then click <strong>Move to Portal Submission</strong>.</li>
-                      </ol>
-                    </>
-                  ),
-                  children: approvedAwaiting.map((g) => renderBatchCard(g, true, 'approved', 'Go to Approved')),
-                })}
-
-                {portalAwaiting.length > 0 && renderSection({
-                  icon: '🌐',
-                  title: `Submit to customer portal — ${portalAwaiting.length}`,
-                  kind: 'do',
-                  steps: (
-                    <>
-                      On the <em>Portal Submission</em> tab, open the customer's invoicing portal (link is on the batch).
-                      Copy the invoice details across (invoice number, dates, line items, totals).
-                      When everything is uploaded in their portal, click <strong>Mark as invoiced</strong>. Done.
-                    </>
-                  ),
-                  children: portalAwaiting.map((g) => renderBatchCard(g, true, 'portal_submission', 'Go to Portal Submission')),
-                })}
-
-                {waitingOnApproval.length > 0 && renderSection({
-                  icon: '⏳',
-                  title: `Awaiting customer approval — ${waitingOnApproval.length}`,
-                  kind: 'wait',
-                  steps: (
-                    <>
-                      <strong>Nothing for you to do — service techs are handling this step.</strong>
-                      These batches have been sent to the customer for approval. When the techs receive the signed PDF back,
-                      they (or you) drop it onto the batch in the <em>Submitted</em> tab and it moves to <em>Approved</em>,
-                      at which point it'll show up under <strong>Create invoice</strong> above.
-                    </>
-                  ),
-                  children: waitingOnApproval.map((g) => renderBatchCard(g, true, 'submitted', 'View in Submitted')),
-                })}
-                </>)}
-
-                {helperSubview === 'wizard' && (() => {
+                {(() => {
                   // Wizard candidates: standard batches in Ready, plus Portal Approval batches
                   // at any active stage (Ready, Submitted, Approved, Portal Submission).
                   type WizardCandidate = {
@@ -7273,13 +7030,78 @@ export default function Invoices() {
                       );
                     }
                     if (isPortal && currentStep === 'submit_portal') {
+                      // Mirror Portal Submission tab: derive copy-pastable fields for entry into customer portal.
+                      const invoiceNumber = savedInvoiceMetadata?.[persistId]?.filename ?? invoiceFile?.name ?? '';
+                      const approvalCode = savedApprovalMetadata?.[persistId]?.filename ?? '';
+                      const description = activeGroup.key.projectName ?? '';
+                      const ftk = activeGroup.tickets[0];
+                      const custIdForPeriod = ftk?.customerId ?? '';
+                      const projIdForPeriod =
+                        (ftk as ServiceTicket & { recordProjectId?: string })?.recordProjectId ??
+                        ftk?.projectId ??
+                        '';
+                      const grouping = cnrlPeriodGrouping(getGroupingForTicket(custIdForPeriod, projIdForPeriod));
+                      const invoiceDate = activeGroup.key.periodKey
+                        ? getPeriodEndYmd(activeGroup.key.periodKey, grouping) ?? ''
+                        : '';
+                      const sortedTicketNums = activeGroup.tickets
+                        .map((t) => t.ticketNumber)
+                        .filter((n): n is string => !!n)
+                        .sort((a, b) => ticketNumberSortValue(a) - ticketNumberSortValue(b));
+                      const ticketPairs: string[] = [];
+                      for (let i = 0; i < sortedTicketNums.length; i += 2) {
+                        ticketPairs.push(sortedTicketNums.slice(i, i + 2).join(' - '));
+                      }
+                      const afeSet = new Set<string>();
+                      for (const t of activeGroup.tickets) {
+                        const ov = (t as ServiceTicket & { headerOverrides?: { po_afe?: string; cc?: string } }).headerOverrides;
+                        const afe = (ov?.po_afe ?? '').trim();
+                        const cc = (ov?.cc ?? '').trim();
+                        if (!afe && !cc) continue;
+                        afeSet.add([afe, cc].filter(Boolean).join(' / '));
+                      }
+                      const afeList = [...afeSet];
+
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Open the customer's invoicing portal and copy the invoice details across (invoice number, dates, line items, totals).
-                            When everything is uploaded in their portal, mark this batch as invoiced to finish.
+                            Open the customer's invoicing portal. Click any field below to copy its value, paste it into the
+                            portal. When everything is uploaded in their portal, mark this batch as invoiced.
                           </p>
-                          {summaryBlock}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+                            <PortalCopyField label="Invoice #" value={invoiceNumber} placeholder="(no invoice attached)" />
+                            <PortalCopyField label="Invoice Date" value={invoiceDate} placeholder="(no period date)" />
+                            <PortalCopyField label="Description" value={description} placeholder="(no project name)" />
+                            <PortalCopyField label="Approval Code" value={approvalCode} placeholder="(no approval attached)" />
+                          </div>
+                          <div style={{ marginBottom: '12px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                              Tickets <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--text-tertiary)' }}>(2 per field)</span>
+                            </div>
+                            {ticketPairs.length === 0 ? (
+                              <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>No ticket numbers.</div>
+                            ) : (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px' }}>
+                                {ticketPairs.map((pair, idx) => (
+                                  <PortalCopyField key={`wiz-tickets-${idx}`} label={`Tickets ${idx + 1}`} value={pair} />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ marginBottom: '14px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+                              AFE / CC
+                            </div>
+                            {afeList.length === 0 ? (
+                              <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>No AFE/CC on tickets.</div>
+                            ) : (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                                {afeList.map((afe, idx) => (
+                                  <PortalCopyField key={`wiz-afe-${idx}`} label={afeList.length > 1 ? `AFE/CC ${idx + 1}` : 'AFE/CC'} value={afe} />
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button type="button" onClick={() => setActiveTab('portal_submission')} style={goButtonStyle}>
                               Open Portal Submission tab →
@@ -7437,6 +7259,14 @@ export default function Invoices() {
                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                               {customer}{projectLabel ? ` · ${projectLabel}` : ''}{periodLabel ? ` · ${periodLabel}` : ''}
                             </div>
+                            {(() => {
+                              const approverDisplay = getApproverForGroupKey(activeGroup.key);
+                              return approverDisplay ? (
+                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                  Approver: <strong style={{ color: 'var(--text-secondary)' }}>{approverDisplay}</strong>
+                                </div>
+                              ) : null;
+                            })()}
                           </div>
                           {(() => {
                             // Deep-link button targets the most relevant tab for the current step.
