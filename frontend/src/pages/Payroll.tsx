@@ -895,7 +895,23 @@ export default function Payroll() {
     });
   }, []);
   useEffect(() => {
-    if (!reimbursementModalUserId) setExpandedProjectRows(new Set());
+    if (!reimbursementModalUserId) {
+      setExpandedProjectRows(new Set());
+      return;
+    }
+    // When the modal opens for an employee, auto-expand the Receipt-category project rows so
+    // the individual receipts are visible immediately. Other categories stay collapsed for a
+    // compact view; the user can still toggle any row manually after open.
+    const reimb = reimbursementsByUser.get(reimbursementModalUserId);
+    if (!reimb) return;
+    const next = new Set<string>();
+    for (const line of reimb.lines) {
+      if (line.category !== 'Receipt') continue;
+      const projKey = line.projectKey || '__unassigned__';
+      next.add(`${line.category}|${projKey}`);
+    }
+    setExpandedProjectRows(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reimbursementModalUserId]);
 
   // State for the receipt preview modal launched from the reimbursement breakdown.
