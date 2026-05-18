@@ -773,9 +773,12 @@ export default function Payroll() {
     queryKey: ['payrollLinkedApprovedReceipts', payrollTicketIdsForReceiptCheck.slice().sort().join(',')],
     queryFn: async () => {
       if (payrollTicketIdsForReceiptCheck.length === 0) return [];
+      // Include the file/amount fields so the reimbursement breakdown can preview the receipt
+      // that backs an "Expense Billed to Customer" / "Hotel" ticket-expense line (these are
+      // ticket rows, but the underlying receipt lives in user_expenses).
       const { data, error } = await supabase
         .from('user_expenses')
-        .select('service_ticket_id, description, status')
+        .select('id, service_ticket_id, description, status, amount, gst, expense_date, notes, receipt_url')
         .in('service_ticket_id', payrollTicketIdsForReceiptCheck);
       if (error) throw error;
       return data || [];
@@ -1064,6 +1067,39 @@ export default function Payroll() {
       }
     }
 
+    // Build lookups so an "Expense Billed to Customer" / "Hotel" ticket-expense line can find
+    // the user_expense receipt that backs it. Two ways the link is recorded:
+    //   1. ticket_expense.user_expense_id → user_expense.id (explicit link)
+    //   2. user_expense.service_ticket_id + matching description (legacy direct-apply flow)
+    const receiptById = new Map<string, any>();
+    const receiptsByTicketDesc = new Map<string, any>();
+    for (const r of payrollLinkedApprovedReceipts as any[]) {
+      if (r?.id) receiptById.set(String(r.id), r);
+      const tid = r?.service_ticket_id ? String(r.service_ticket_id) : '';
+      const desc = (r?.description ?? '').trim().toLowerCase();
+      if (tid && desc) receiptsByTicketDesc.set(`${tid}|${desc}`, r);
+    }
+    const findLinkedReceipt = (exp: any) => {
+      const linkedId = exp?.user_expense_id ? String(exp.user_expense_id) : '';
+      if (linkedId && receiptById.has(linkedId)) return receiptById.get(linkedId);
+      const tid = exp?.service_ticket_id ? String(exp.service_ticket_id) : '';
+      const desc = (exp?.description ?? '').trim().toLowerCase();
+      if (tid && desc) return receiptsByTicketDesc.get(`${tid}|${desc}`) ?? null;
+      return null;
+    };
+    const toLinePayload = (r: any): ReimbursementLine['receipt'] | undefined => {
+      if (!r) return undefined;
+      return {
+        id: String(r.id),
+        url: r.receipt_url ?? null,
+        date: r.expense_date ?? null,
+        subtotal: Number(r.amount) || 0,
+        gst: Number(r.gst) || 0,
+        status: r.status ?? null,
+        notes: r.notes ?? null,
+      };
+    };
+
     const map = new Map<string, EmployeeReimbursement>();
     const getOrCreate = (userId: string): EmployeeReimbursement => {
       if (!map.has(userId)) {
@@ -1142,6 +1178,10 @@ export default function Payroll() {
       const ticketProject = exp.service_tickets?.project;
       const projectKey = String(ticketProject?.id ?? exp.service_tickets?.project_id ?? '');
       const projectLabel = formatProjectLabel(ticketProject);
+      // For categories where the line is backed by a customer receipt (Hotel / Expense Billed
+      // to Customer), carry the receipt payload so the breakdown modal can preview/download it.
+      // Lines without a matching receipt (e.g. Mileage, Per Diem) intentionally stay non-clickable.
+      const receiptPayload = toLinePayload(findLinkedReceipt(exp));
       const entry = getOrCreate(userId);
       entry.total += amount;
       entry.lines.push({
@@ -1154,6 +1194,7 @@ export default function Payroll() {
         ticketNumber,
         projectKey,
         projectLabel,
+        receipt: receiptPayload,
       });
     }
 
@@ -2390,7 +2431,6 @@ export default function Payroll() {
               </p>
 
               {categories.map(({ category, subtotal, projects }) => {
-                const isReceipt = category === 'Receipt';
                 return (
                   <div key={category} style={{ marginBottom: '18px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid var(--border-color)' }}>
@@ -2400,10 +2440,12 @@ export default function Payroll() {
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       {projects.map((p) => {
                         const isUnassigned = p.projectKey === '__unassigned__';
-                        // For receipts, the project header still shows the subtotal so the user
-                        // can see the per-project QuickBooks line — then each receipt that rolls
-                        // into that total is listed beneath as a clickable row.
-                        if (isReceipt) {
+                        // Render clickable per-receipt rows whenever any line in this project
+                        // bucket has a receipt attached — covers the Receipt category itself
+                        // and Hotel / Expense Billed to Customer where the receipt lives on a
+                        // linked user_expense.
+                        const hasReceiptLines = p.receiptLines.length > 0;
+                        if (hasReceiptLines) {
                           return (
                             <div key={p.projectKey} style={{ marginBottom: '6px' }}>
                               <div
@@ -2443,7 +2485,10 @@ export default function Payroll() {
                                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {line.description || '(no description)'}
                                       </span>
-                                      {line.receipt?.date && (
+                                      {line.ticketNumber && (
+                                        <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· #{line.ticketNumber}</span>
+                                      )}
+                                      {!line.ticketNumber && line.receipt?.date && (
                                         <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· {line.receipt.date}</span>
                                       )}
                                     </span>
