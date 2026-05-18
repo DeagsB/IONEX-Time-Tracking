@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -881,6 +881,39 @@ export default function Payroll() {
   // State for the reimbursement breakdown modal
   const [reimbursementModalUserId, setReimbursementModalUserId] = useState<string | null>(null);
 
+  // State for the receipt preview modal launched from the reimbursement breakdown.
+  // Holds the full `ReimbursementLine.receipt` payload plus a signed URL once fetched.
+  type ReceiptPreviewState = {
+    receipt: NonNullable<ReimbursementLine['receipt']>;
+    description: string;
+    projectLabel: string;
+    signedUrl: string | null;
+    isPdf: boolean;
+    loading: boolean;
+  };
+  const [receiptPreview, setReceiptPreview] = useState<ReceiptPreviewState | null>(null);
+
+  const openReceiptPreview = useCallback(async (line: ReimbursementLine) => {
+    if (!line.receipt) return;
+    const isPdf = (line.receipt.url ?? '').toLowerCase().endsWith('.pdf');
+    setReceiptPreview({
+      receipt: line.receipt,
+      description: line.description,
+      projectLabel: line.projectLabel,
+      signedUrl: null,
+      isPdf,
+      loading: !!line.receipt.url,
+    });
+    if (!line.receipt.url) return;
+    try {
+      const url = await userExpensesService.getReceiptSignedUrl(line.receipt.url);
+      setReceiptPreview((prev) => prev && prev.receipt.id === line.receipt!.id ? { ...prev, signedUrl: url, loading: false } : prev);
+    } catch {
+      // Fall back to the raw stored path so at least the download button still works.
+      setReceiptPreview((prev) => prev && prev.receipt.id === line.receipt!.id ? { ...prev, signedUrl: line.receipt!.url, loading: false } : prev);
+    }
+  }, []);
+
   // State for expandable payroll breakdown rows
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
 
@@ -1004,6 +1037,17 @@ export default function Payroll() {
     projectKey: string;
     /** Display label for the project — falls back to "(no project)" when unassigned. */
     projectLabel: string;
+    /** When this line is backed by a `user_expenses` receipt, the receipt metadata is carried
+     *  through so the breakdown modal can preview/download the file without re-fetching. */
+    receipt?: {
+      id: string;
+      url: string | null;
+      date: string | null;
+      subtotal: number;
+      gst: number;
+      status: string | null;
+      notes: string | null;
+    };
   }
 
   interface EmployeeReimbursement {
@@ -1124,7 +1168,9 @@ export default function Payroll() {
       const userId = exp.user_id;
       if (!userId) continue;
 
-      const amount = (Number(exp.amount) || 0) + (Number(exp.gst) || 0);
+      const subtotalAmount = Number(exp.amount) || 0;
+      const gstAmount = Number(exp.gst) || 0;
+      const amount = subtotalAmount + gstAmount;
       const receiptProject = exp.service_ticket?.project;
       const projectKey = String(receiptProject?.id ?? exp.service_ticket?.project_id ?? '');
       const projectLabel = formatProjectLabel(receiptProject);
@@ -1139,6 +1185,15 @@ export default function Payroll() {
         amount,
         projectKey,
         projectLabel,
+        receipt: {
+          id: String(exp.id),
+          url: exp.receipt_url ?? null,
+          date: exp.expense_date ?? null,
+          subtotal: subtotalAmount,
+          gst: gstAmount,
+          status: exp.status ?? null,
+          notes: exp.notes ?? null,
+        },
       });
     }
 
@@ -2274,7 +2329,14 @@ export default function Payroll() {
         const empName = employeeHours.find(e => e.userId === reimbursementModalUserId)?.name || 'Employee';
         if (!reimb) return null;
 
-        type ProjectBucket = { projectKey: string; projectLabel: string; subtotal: number };
+        type ProjectBucket = {
+          projectKey: string;
+          projectLabel: string;
+          subtotal: number;
+          /** Populated only for the Receipt category — each receipt row is rendered as its own
+           *  clickable entry so the user can preview the file and copy individual amounts. */
+          receiptLines: ReimbursementLine[];
+        };
         type CategoryBucket = { category: string; subtotal: number; projects: ProjectBucket[] };
 
         const categoryMap = new Map<string, { subtotal: number; projects: Map<string, ProjectBucket> }>();
@@ -2286,9 +2348,11 @@ export default function Payroll() {
           cat.subtotal += line.amount;
           const projKey = line.projectKey || '__unassigned__';
           if (!cat.projects.has(projKey)) {
-            cat.projects.set(projKey, { projectKey: projKey, projectLabel: line.projectLabel, subtotal: 0 });
+            cat.projects.set(projKey, { projectKey: projKey, projectLabel: line.projectLabel, subtotal: 0, receiptLines: [] });
           }
-          cat.projects.get(projKey)!.subtotal += line.amount;
+          const bucket = cat.projects.get(projKey)!;
+          bucket.subtotal += line.amount;
+          if (line.receipt) bucket.receiptLines.push(line);
         }
 
         const categories: CategoryBucket[] = Array.from(categoryMap.entries()).map(([category, c]) => ({
@@ -2325,35 +2389,195 @@ export default function Payroll() {
                 Each row is one QuickBooks entry. Split across projects when a category covers more than one.
               </p>
 
-              {categories.map(({ category, subtotal, projects }) => (
-                <div key={category} style={{ marginBottom: '18px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid var(--border-color)' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#00897b', textTransform: 'uppercase' }}>{category}</h4>
-                    <span style={{ fontSize: '14px', fontWeight: 700, color: '#00897b' }}>${subtotal.toFixed(2)}</span>
+              {categories.map(({ category, subtotal, projects }) => {
+                const isReceipt = category === 'Receipt';
+                return (
+                  <div key={category} style={{ marginBottom: '18px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid var(--border-color)' }}>
+                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#00897b', textTransform: 'uppercase' }}>{category}</h4>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#00897b' }}>${subtotal.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {projects.map((p) => {
+                        const isUnassigned = p.projectKey === '__unassigned__';
+                        // For receipts, the project header still shows the subtotal so the user
+                        // can see the per-project QuickBooks line — then each receipt that rolls
+                        // into that total is listed beneath as a clickable row.
+                        if (isReceipt) {
+                          return (
+                            <div key={p.projectKey} style={{ marginBottom: '6px' }}>
+                              <div
+                                style={{
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  padding: '8px 4px', borderBottom: '1px solid var(--border-color)',
+                                  fontSize: '13px',
+                                }}
+                              >
+                                <span style={{ color: isUnassigned ? 'var(--text-tertiary)' : 'var(--text-primary)', fontStyle: isUnassigned ? 'italic' : 'normal', fontWeight: 600 }}>
+                                  {p.projectLabel}
+                                </span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>${p.subtotal.toFixed(2)}</span>
+                              </div>
+                              {p.receiptLines.map((line, idx) => {
+                                const hasFile = !!line.receipt?.url;
+                                return (
+                                  <button
+                                    key={`${line.receipt?.id ?? idx}`}
+                                    type="button"
+                                    onClick={() => openReceiptPreview(line)}
+                                    title={hasFile ? 'Open receipt details and preview' : 'Open receipt details (no file attached)'}
+                                    style={{
+                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                      width: '100%', padding: '6px 8px 6px 16px',
+                                      backgroundColor: 'transparent', border: 'none',
+                                      borderBottom: '1px solid var(--border-color)',
+                                      cursor: 'pointer', fontFamily: 'inherit', fontSize: '12px',
+                                      color: 'var(--text-secondary)', textAlign: 'left',
+                                      transition: 'background-color 0.12s',
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                  >
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                      <span aria-hidden style={{ flexShrink: 0 }}>{hasFile ? '🧾' : '📄'}</span>
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {line.description || '(no description)'}
+                                      </span>
+                                      {line.receipt?.date && (
+                                        <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· {line.receipt.date}</span>
+                                      )}
+                                    </span>
+                                    <span style={{ fontFamily: 'monospace', flexShrink: 0, marginLeft: '8px' }}>${line.amount.toFixed(2)}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div
+                            key={p.projectKey}
+                            style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              padding: '8px 4px', borderBottom: '1px solid var(--border-color)',
+                              fontSize: '13px',
+                            }}
+                          >
+                            <span style={{ color: isUnassigned ? 'var(--text-tertiary)' : 'var(--text-primary)', fontStyle: isUnassigned ? 'italic' : 'normal' }}>
+                              {p.projectLabel}
+                            </span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>${p.subtotal.toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {projects.map((p) => (
-                      <div
-                        key={p.projectKey}
-                        style={{
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          padding: '8px 4px', borderBottom: '1px solid var(--border-color)',
-                          fontSize: '13px',
-                        }}
-                      >
-                        <span style={{ color: p.projectKey === '__unassigned__' ? 'var(--text-tertiary)' : 'var(--text-primary)', fontStyle: p.projectKey === '__unassigned__' ? 'italic' : 'normal' }}>
-                          {p.projectLabel}
-                        </span>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>${p.subtotal.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '2px solid var(--border-color)' }}>
                 <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Total Reimbursement</span>
                 <span style={{ fontSize: '18px', fontWeight: 700, color: '#00897b' }}>${reimb.total.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Receipt preview modal — opens on top of the reimbursement breakdown so the user can
+       *  verify a receipt's content and download the file without leaving Payroll. Layered at
+       *  zIndex 10000 (above the reimbursement modal's 9999). */}
+      {receiptPreview && (() => {
+        const { receipt, description, projectLabel, signedUrl, isPdf, loading } = receiptPreview;
+        const hasFile = !!receipt.url;
+        const downloadHref = signedUrl ?? receipt.url ?? '';
+        return (
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={() => setReceiptPreview(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '20px', width: '92%', maxWidth: '720px', maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: '14px' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {description || '(no description)'}
+                  </h3>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    {projectLabel}{receipt.date ? ` · ${receipt.date}` : ''}{receipt.status ? ` · ${receipt.status}` : ''}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReceiptPreview(null)}
+                  style={{ background: 'none', border: 'none', fontSize: '22px', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0 4px', lineHeight: 1 }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                <div style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>Subtotal</div>
+                  <div style={{ fontSize: '15px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-primary)' }}>${receipt.subtotal.toFixed(2)}</div>
+                </div>
+                <div style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>GST</div>
+                  <div style={{ fontSize: '15px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-primary)' }}>${receipt.gst.toFixed(2)}</div>
+                </div>
+                <div style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>Total</div>
+                  <div style={{ fontSize: '15px', fontFamily: 'monospace', fontWeight: 700, color: '#00897b' }}>${(receipt.subtotal + receipt.gst).toFixed(2)}</div>
+                </div>
+              </div>
+
+              {receipt.notes && (
+                <div style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: 'var(--bg-secondary)', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Notes</div>
+                  {receipt.notes}
+                </div>
+              )}
+
+              <div style={{ borderRadius: '8px', backgroundColor: 'var(--bg-secondary)', minHeight: '320px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {!hasFile ? (
+                  <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>No receipt file attached</span>
+                ) : loading || !signedUrl ? (
+                  <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>Loading preview…</span>
+                ) : isPdf ? (
+                  <iframe src={signedUrl} title="Receipt PDF" style={{ width: '100%', height: '60vh', border: 'none', backgroundColor: 'white' }} />
+                ) : (
+                  <img src={signedUrl} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain' }} />
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                {hasFile && (
+                  <a
+                    href={downloadHref || '#'}
+                    download
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => { if (!downloadHref) e.preventDefault(); }}
+                    style={{
+                      padding: '8px 14px', borderRadius: '6px',
+                      backgroundColor: downloadHref ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+                      color: downloadHref ? 'white' : 'var(--text-tertiary)',
+                      fontWeight: 600, fontSize: '13px', textDecoration: 'none',
+                      pointerEvents: downloadHref ? 'auto' : 'none',
+                    }}
+                  >
+                    Download
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setReceiptPreview(null)}
+                  style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
