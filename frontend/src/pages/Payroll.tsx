@@ -883,6 +883,19 @@ export default function Payroll() {
 
   // State for the reimbursement breakdown modal
   const [reimbursementModalUserId, setReimbursementModalUserId] = useState<string | null>(null);
+  // Set of `${category}|${projectKey}` rows the user has expanded in the breakdown modal.
+  // Wiped whenever the modal closes so opening a different employee starts collapsed.
+  const [expandedProjectRows, setExpandedProjectRows] = useState<Set<string>>(new Set());
+  const toggleProjectRowExpanded = useCallback((key: string) => {
+    setExpandedProjectRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    if (!reimbursementModalUserId) setExpandedProjectRows(new Set());
+  }, [reimbursementModalUserId]);
 
   // State for the receipt preview modal launched from the reimbursement breakdown.
   // Holds the full `ReimbursementLine.receipt` payload plus a signed URL once fetched.
@@ -2374,9 +2387,11 @@ export default function Payroll() {
           projectKey: string;
           projectLabel: string;
           subtotal: number;
-          /** Populated only for the Receipt category — each receipt row is rendered as its own
-           *  clickable entry so the user can preview the file and copy individual amounts. */
-          receiptLines: ReimbursementLine[];
+          /** Every reimbursement line that rolls into this project's subtotal, in original
+           *  order. Surfaced in the modal when the user expands the project row so they can
+           *  audit what makes up the per-project QuickBooks line. Receipt-backed entries
+           *  remain clickable for preview/download. */
+          lines: ReimbursementLine[];
         };
         type CategoryBucket = { category: string; subtotal: number; projects: ProjectBucket[] };
 
@@ -2389,11 +2404,11 @@ export default function Payroll() {
           cat.subtotal += line.amount;
           const projKey = line.projectKey || '__unassigned__';
           if (!cat.projects.has(projKey)) {
-            cat.projects.set(projKey, { projectKey: projKey, projectLabel: line.projectLabel, subtotal: 0, receiptLines: [] });
+            cat.projects.set(projKey, { projectKey: projKey, projectLabel: line.projectLabel, subtotal: 0, lines: [] });
           }
           const bucket = cat.projects.get(projKey)!;
           bucket.subtotal += line.amount;
-          if (line.receipt) bucket.receiptLines.push(line);
+          bucket.lines.push(line);
         }
 
         const categories: CategoryBucket[] = Array.from(categoryMap.entries()).map(([category, c]) => ({
@@ -2440,78 +2455,108 @@ export default function Payroll() {
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       {projects.map((p) => {
                         const isUnassigned = p.projectKey === '__unassigned__';
-                        // Render clickable per-receipt rows whenever any line in this project
-                        // bucket has a receipt attached — covers the Receipt category itself
-                        // and Hotel / Expense Billed to Customer where the receipt lives on a
-                        // linked user_expense.
-                        const hasReceiptLines = p.receiptLines.length > 0;
-                        if (hasReceiptLines) {
-                          return (
-                            <div key={p.projectKey} style={{ marginBottom: '6px' }}>
-                              <div
-                                style={{
-                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                  padding: '8px 4px', borderBottom: '1px solid var(--border-color)',
-                                  fontSize: '13px',
-                                }}
-                              >
+                        const rowKey = `${category}|${p.projectKey}`;
+                        const isExpanded = expandedProjectRows.has(rowKey);
+                        return (
+                          <div key={p.projectKey} style={{ marginBottom: '4px' }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleProjectRowExpanded(rowKey)}
+                              aria-expanded={isExpanded}
+                              title={isExpanded ? 'Collapse line items' : 'Expand to see line items'}
+                              style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                width: '100%', padding: '8px 4px',
+                                backgroundColor: 'transparent', border: 'none',
+                                borderBottom: '1px solid var(--border-color)',
+                                cursor: 'pointer', fontFamily: 'inherit', fontSize: '13px',
+                                color: 'inherit', textAlign: 'left',
+                                transition: 'background-color 0.12s',
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                            >
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                <span aria-hidden style={{ flexShrink: 0, fontSize: '10px', color: 'var(--text-tertiary)', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}>▶</span>
                                 <span style={{ color: isUnassigned ? 'var(--text-tertiary)' : 'var(--text-primary)', fontStyle: isUnassigned ? 'italic' : 'normal', fontWeight: 600 }}>
                                   {p.projectLabel}
                                 </span>
-                                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>${p.subtotal.toFixed(2)}</span>
-                              </div>
-                              {p.receiptLines.map((line, idx) => {
-                                const hasFile = !!line.receipt?.url;
-                                return (
-                                  <button
-                                    key={`${line.receipt?.id ?? idx}`}
-                                    type="button"
-                                    onClick={() => openReceiptPreview(line)}
-                                    title={hasFile ? 'Open receipt details and preview' : 'Open receipt details (no file attached)'}
-                                    style={{
-                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                      width: '100%', padding: '6px 8px 6px 16px',
-                                      backgroundColor: 'transparent', border: 'none',
-                                      borderBottom: '1px solid var(--border-color)',
-                                      cursor: 'pointer', fontFamily: 'inherit', fontSize: '12px',
-                                      color: 'var(--text-secondary)', textAlign: 'left',
-                                      transition: 'background-color 0.12s',
-                                    }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                                  >
-                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                                      <span aria-hidden style={{ flexShrink: 0 }}>{hasFile ? '🧾' : '📄'}</span>
-                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {line.description || '(no description)'}
+                                <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', flexShrink: 0 }}>
+                                  · {p.lines.length} {p.lines.length === 1 ? 'line' : 'lines'}
+                                </span>
+                              </span>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>${p.subtotal.toFixed(2)}</span>
+                            </button>
+                            {isExpanded && (
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                {p.lines.map((line, idx) => {
+                                  const hasReceipt = !!line.receipt;
+                                  const hasFile = !!line.receipt?.url;
+                                  if (hasReceipt) {
+                                    return (
+                                      <button
+                                        key={`${line.receipt?.id ?? idx}`}
+                                        type="button"
+                                        onClick={() => openReceiptPreview(line)}
+                                        title={hasFile ? 'Open receipt details and preview' : 'Open receipt details (no file attached)'}
+                                        style={{
+                                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                          width: '100%', padding: '6px 8px 6px 22px',
+                                          backgroundColor: 'transparent', border: 'none',
+                                          borderBottom: '1px solid var(--border-color)',
+                                          cursor: 'pointer', fontFamily: 'inherit', fontSize: '12px',
+                                          color: 'var(--text-secondary)', textAlign: 'left',
+                                          transition: 'background-color 0.12s',
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                      >
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                          <span aria-hidden style={{ flexShrink: 0 }}>{hasFile ? '🧾' : '📄'}</span>
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {line.description || '(no description)'}
+                                          </span>
+                                          {line.ticketNumber && (
+                                            <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· #{line.ticketNumber}</span>
+                                          )}
+                                          {!line.ticketNumber && line.receipt?.date && (
+                                            <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· {line.receipt.date}</span>
+                                          )}
+                                        </span>
+                                        <span style={{ fontFamily: 'monospace', flexShrink: 0, marginLeft: '8px' }}>${line.amount.toFixed(2)}</span>
+                                      </button>
+                                    );
+                                  }
+                                  // Non-receipt lines: static row exposing the qty × rate × reimb%
+                                  // math so the user can spot-check a Mileage / Truck / Per Diem
+                                  // entry without leaving the modal.
+                                  const detail = `${line.quantity} × $${line.rate.toFixed(2)}${line.reimbRate !== 1 ? ` × ${(line.reimbRate * 100).toFixed(0)}%` : ''}`;
+                                  return (
+                                    <div
+                                      key={`${category}-${p.projectKey}-line-${idx}`}
+                                      style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        padding: '6px 8px 6px 22px',
+                                        borderBottom: '1px solid var(--border-color)',
+                                        fontSize: '12px', color: 'var(--text-secondary)',
+                                      }}
+                                    >
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                        <span aria-hidden style={{ flexShrink: 0 }}>•</span>
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {line.description || '(no description)'}
+                                        </span>
+                                        {line.ticketNumber && (
+                                          <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· #{line.ticketNumber}</span>
+                                        )}
+                                        <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· {detail}</span>
                                       </span>
-                                      {line.ticketNumber && (
-                                        <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· #{line.ticketNumber}</span>
-                                      )}
-                                      {!line.ticketNumber && line.receipt?.date && (
-                                        <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· {line.receipt.date}</span>
-                                      )}
-                                    </span>
-                                    <span style={{ fontFamily: 'monospace', flexShrink: 0, marginLeft: '8px' }}>${line.amount.toFixed(2)}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          );
-                        }
-                        return (
-                          <div
-                            key={p.projectKey}
-                            style={{
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                              padding: '8px 4px', borderBottom: '1px solid var(--border-color)',
-                              fontSize: '13px',
-                            }}
-                          >
-                            <span style={{ color: isUnassigned ? 'var(--text-tertiary)' : 'var(--text-primary)', fontStyle: isUnassigned ? 'italic' : 'normal' }}>
-                              {p.projectLabel}
-                            </span>
-                            <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>${p.subtotal.toFixed(2)}</span>
+                                      <span style={{ fontFamily: 'monospace', flexShrink: 0, marginLeft: '8px' }}>${line.amount.toFixed(2)}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
