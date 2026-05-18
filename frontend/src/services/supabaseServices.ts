@@ -2728,7 +2728,7 @@ export const userExpensesService = {
   async getCatchUpReceipts(expenseDateBefore: string, userId?: string) {
     let query = supabase
       .from('user_expenses')
-      .select('*')
+      .select('*, service_ticket:service_tickets(project_id, project:projects(id, name, project_number))')
       .neq('status', 'paid')
       .lt('expense_date', expenseDateBefore)
       .order('expense_date', { ascending: false });

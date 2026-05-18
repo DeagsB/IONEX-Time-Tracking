@@ -788,7 +788,7 @@ export default function Payroll() {
     queryFn: async () => {
       let query = supabase
         .from('user_expenses')
-        .select('*')
+        .select('*, service_ticket:service_tickets(project_id, project:projects(id, name, project_number))')
         .gte('expense_date', startDate)
         .lte('expense_date', endDate);
       if (!isAdmin && user?.id) {
@@ -980,6 +980,17 @@ export default function Payroll() {
     },
   });
 
+  /** Render a project row for the reimbursement breakdown modal. Prefers the project number
+   *  prefix so QuickBooks entries match the customer's coding ("12345 — Site Acme") and falls
+   *  back to the bare name (or a placeholder) when one or both fields are missing. */
+  const formatProjectLabel = (p?: { name?: string | null; project_number?: string | null } | null): string => {
+    if (!p) return '(no project)';
+    const number = (p.project_number ?? '').trim();
+    const name = (p.name ?? '').trim();
+    if (number && name) return `${number} — ${name}`;
+    return number || name || '(no project)';
+  };
+
   interface ReimbursementLine {
     category: string;
     description: string;
@@ -988,6 +999,11 @@ export default function Payroll() {
     reimbRate: number;
     amount: number;
     ticketNumber?: string;
+    /** Stable id used to group lines by project in the breakdown modal. Empty string when
+     *  the underlying receipt/ticket has no project assigned. */
+    projectKey: string;
+    /** Display label for the project — falls back to "(no project)" when unassigned. */
+    projectLabel: string;
   }
 
   interface EmployeeReimbursement {
@@ -1079,6 +1095,9 @@ export default function Payroll() {
       const amount = reimbBase * reimbRate;
       const displayQty = qty || 1;
       const displayRate = reimbBase / displayQty;
+      const ticketProject = exp.service_tickets?.project;
+      const projectKey = String(ticketProject?.id ?? exp.service_tickets?.project_id ?? '');
+      const projectLabel = formatProjectLabel(ticketProject);
       const entry = getOrCreate(userId);
       entry.total += amount;
       entry.lines.push({
@@ -1089,6 +1108,8 @@ export default function Payroll() {
         reimbRate,
         amount,
         ticketNumber,
+        projectKey,
+        projectLabel,
       });
     }
 
@@ -1104,6 +1125,9 @@ export default function Payroll() {
       if (!userId) continue;
 
       const amount = (Number(exp.amount) || 0) + (Number(exp.gst) || 0);
+      const receiptProject = exp.service_ticket?.project;
+      const projectKey = String(receiptProject?.id ?? exp.service_ticket?.project_id ?? '');
+      const projectLabel = formatProjectLabel(receiptProject);
       const entry = getOrCreate(userId);
       entry.total += amount;
       entry.lines.push({
@@ -1113,6 +1137,8 @@ export default function Payroll() {
         rate: amount,
         reimbRate: 1.00,
         amount,
+        projectKey,
+        projectLabel,
       });
     }
 
@@ -2240,19 +2266,38 @@ export default function Payroll() {
         );
       })()}
 
-      {/* Reimbursement Breakdown Modal */}
+      {/* Reimbursement Breakdown Modal — shows category subtotals split by project, so each
+       *  project gets its own copy-pastable line for QuickBooks. Per-line description / qty /
+       *  rate are intentionally not shown: the user only types the category total per project. */}
       {reimbursementModalUserId && (() => {
         const reimb = reimbursementsByUser.get(reimbursementModalUserId);
         const empName = employeeHours.find(e => e.userId === reimbursementModalUserId)?.name || 'Employee';
         if (!reimb) return null;
 
-        const grouped = new Map<string, { lines: ReimbursementLine[]; subtotal: number }>();
+        type ProjectBucket = { projectKey: string; projectLabel: string; subtotal: number };
+        type CategoryBucket = { category: string; subtotal: number; projects: ProjectBucket[] };
+
+        const categoryMap = new Map<string, { subtotal: number; projects: Map<string, ProjectBucket> }>();
         for (const line of reimb.lines) {
-          if (!grouped.has(line.category)) grouped.set(line.category, { lines: [], subtotal: 0 });
-          const g = grouped.get(line.category)!;
-          g.lines.push(line);
-          g.subtotal += line.amount;
+          if (!categoryMap.has(line.category)) {
+            categoryMap.set(line.category, { subtotal: 0, projects: new Map() });
+          }
+          const cat = categoryMap.get(line.category)!;
+          cat.subtotal += line.amount;
+          const projKey = line.projectKey || '__unassigned__';
+          if (!cat.projects.has(projKey)) {
+            cat.projects.set(projKey, { projectKey: projKey, projectLabel: line.projectLabel, subtotal: 0 });
+          }
+          cat.projects.get(projKey)!.subtotal += line.amount;
         }
+
+        const categories: CategoryBucket[] = Array.from(categoryMap.entries()).map(([category, c]) => ({
+          category,
+          subtotal: c.subtotal,
+          // Largest project first — most QuickBooks entries are dominated by one project, and
+          // putting it at the top makes the first row visually anchor each category.
+          projects: Array.from(c.projects.values()).sort((a, b) => b.subtotal - a.subtotal),
+        }));
 
         return (
           <div
@@ -2262,11 +2307,11 @@ export default function Payroll() {
           >
             <div
               className="ionex-modal-card"
-              style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px', maxWidth: '700px', width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+              style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '24px', maxWidth: '640px', width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
                   Reimbursement Breakdown — {empName}
                 </h3>
                 <button
@@ -2276,43 +2321,39 @@ export default function Payroll() {
                   &times;
                 </button>
               </div>
+              <p style={{ margin: '0 0 18px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                Each row is one QuickBooks entry. Split across projects when a category covers more than one.
+              </p>
 
-              {Array.from(grouped.entries()).map(([category, group]) => (
-                <div key={category} style={{ marginBottom: '20px' }}>
+              {categories.map(({ category, subtotal, projects }) => (
+                <div key={category} style={{ marginBottom: '18px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '4px', borderBottom: '1px solid var(--border-color)' }}>
-                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: '#00897b', textTransform: 'uppercase' }}>{category}</h4>
-                    <span style={{ fontSize: '14px', fontWeight: '700', color: '#00897b' }}>${group.subtotal.toFixed(2)}</span>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#00897b', textTransform: 'uppercase' }}>{category}</h4>
+                    <span style={{ fontSize: '14px', fontWeight: 700, color: '#00897b' }}>${subtotal.toFixed(2)}</span>
                   </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Description</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Qty</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Rate</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Reimb %</th>
-                        <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Amount</th>
-                        {category !== 'Receipt' && <th style={{ padding: '6px 8px', textAlign: 'right', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Ticket</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.lines.map((line, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                          <td style={{ padding: '6px 8px', fontSize: '13px' }}>{line.description}</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace' }}>{line.quantity}</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace' }}>${line.rate.toFixed(2)}</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace' }}>{(line.reimbRate * 100).toFixed(0)}%</td>
-                          <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '13px', fontFamily: 'monospace', fontWeight: '600' }}>${line.amount.toFixed(2)}</td>
-                          {category !== 'Receipt' && <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: '12px', color: 'var(--text-tertiary)' }}>{line.ticketNumber || '-'}</td>}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {projects.map((p) => (
+                      <div
+                        key={p.projectKey}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '8px 4px', borderBottom: '1px solid var(--border-color)',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <span style={{ color: p.projectKey === '__unassigned__' ? 'var(--text-tertiary)' : 'var(--text-primary)', fontStyle: p.projectKey === '__unassigned__' ? 'italic' : 'normal' }}>
+                          {p.projectLabel}
+                        </span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>${p.subtotal.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '2px solid var(--border-color)' }}>
-                <span style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>Total Reimbursement</span>
-                <span style={{ fontSize: '18px', fontWeight: '700', color: '#00897b' }}>${reimb.total.toFixed(2)}</span>
+                <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Total Reimbursement</span>
+                <span style={{ fontSize: '18px', fontWeight: 700, color: '#00897b' }}>${reimb.total.toFixed(2)}</span>
               </div>
             </div>
           </div>
