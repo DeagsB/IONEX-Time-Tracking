@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
+import { saveAs } from 'file-saver';
 import { ticketExpenseReimbursementBase } from '../utils/ticketExpenseReimbursement';
 import { linkedUserExpenseRedundantWithTicketExpenseLine } from '../utils/ticketExpenseReceiptMatch';
 import PayPeriodCalendar from '../components/PayPeriodCalendar';
@@ -2644,22 +2645,42 @@ export default function Payroll() {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                 {hasFile && (
-                  <a
-                    href={downloadHref || '#'}
-                    download
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => { if (!downloadHref) e.preventDefault(); }}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      // Download via fetch + saveAs so the user always gets a real file save,
+                      // never a new tab. Cross-origin signed URLs ignore the <a download>
+                      // attribute, which previously opened the receipt inline instead of
+                      // downloading it.
+                      const url = signedUrl ?? (receipt.url ? await userExpensesService.getReceiptSignedUrl(receipt.url).catch(() => receipt.url!) : null);
+                      if (!url) return;
+                      const filename = (() => {
+                        const path = receipt.url ?? '';
+                        const base = path.split(/[\\/]/).pop() || '';
+                        if (base) return base;
+                        return isPdf ? 'receipt.pdf' : 'receipt';
+                      })();
+                      try {
+                        const res = await fetch(url);
+                        const blob = await res.blob();
+                        saveAs(blob, filename);
+                      } catch {
+                        // Fallback: trigger a navigation download as best-effort.
+                        saveAs(url, filename);
+                      }
+                    }}
+                    disabled={!downloadHref && !receipt.url}
                     style={{
                       padding: '8px 14px', borderRadius: '6px',
-                      backgroundColor: downloadHref ? 'var(--primary-color)' : 'var(--bg-tertiary)',
-                      color: downloadHref ? 'white' : 'var(--text-tertiary)',
-                      fontWeight: 600, fontSize: '13px', textDecoration: 'none',
-                      pointerEvents: downloadHref ? 'auto' : 'none',
+                      backgroundColor: 'var(--primary-color)',
+                      color: 'white',
+                      fontWeight: 600, fontSize: '13px',
+                      border: 'none', cursor: 'pointer',
+                      fontFamily: 'inherit',
                     }}
                   >
                     Download
-                  </a>
+                  </button>
                 )}
                 <button
                   type="button"
