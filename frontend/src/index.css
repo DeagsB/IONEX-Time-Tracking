@@ -973,7 +973,7 @@ textarea {
   cursor: not-allowed;
 }
 
-/* Workflow batch card — for Submitted / Approved / Portal Submission renderBatch. */
+/* Workflow batch card — for Submitted / Approved renderBatch. */
 .ionex-workflow-card {
   position: relative;
   padding: 14px 16px 14px 18px;
