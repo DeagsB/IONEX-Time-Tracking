@@ -7337,21 +7337,49 @@ export default function Invoices() {
                     }
                     if (!isPortal && currentStep === 'send') {
                       const isDownloading = downloadingWithInvoiceGroupId === persistId;
+                      const attachedFilename = invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf';
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Invoice attached: <strong>{invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf'}</strong>.
-                            Download the merged invoice + service-ticket PDF and send it to the customer, then mark the batch as invoiced to finish. Picked the wrong file? Go back to step 1 to attach a different one.
+                            Download the merged invoice + service-ticket PDF and send it to the customer, then mark the batch as invoiced to finish.
                           </p>
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {/* Attached invoice + replace control, surfaced as its own row above the
+                              primary CTAs so the back-to-step-1 path is impossible to miss. */}
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                            padding: '10px 12px', marginBottom: '14px',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            border: '1px dashed var(--border-color)',
+                            borderRadius: '8px', fontSize: '13px',
+                          }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>
+                              Invoice attached: <strong style={{ color: 'var(--text-primary)' }}>{attachedFilename}</strong>
+                            </span>
                             <button
                               type="button"
-                              onClick={() => onReopen('line_items')}
-                              title="Detach the current invoice PDF and return to step 1 so you can upload a different one."
-                              style={goButtonStyle}
+                              onClick={() => {
+                                if (!window.confirm('Detach the current invoice PDF and return to step 1 so you can upload a different one?')) return;
+                                onReopen('line_items');
+                              }}
+                              title="Detach the current invoice PDF and return to step 1 to upload a different one."
+                              style={{
+                                marginLeft: 'auto',
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(245, 158, 11, 0.55)',
+                                backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                                color: '#b45309',
+                                fontFamily: 'inherit',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
                             >
-                              ← Back to step 1 (attach a different PDF)
+                              ← Back to step 1 — attach a different PDF
                             </button>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button
                               type="button"
                               onClick={onDownloadCombined}
