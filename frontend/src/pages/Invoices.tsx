@@ -7341,16 +7341,32 @@ export default function Invoices() {
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
                             Invoice attached: <strong>{invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf'}</strong>.
-                            Download the combined PDF (invoice + service tickets) and send it to the customer, then mark the batch as invoiced to finish.
+                            Download the merged invoice + service-ticket PDF and send it to the customer, then mark the batch as invoiced to finish. Picked the wrong file? Go back to step 1 to attach a different one.
                           </p>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            <button type="button" onClick={() => onReopen('line_items')} style={goButtonStyle}>
-                              ← Replace invoice PDF
+                            <button
+                              type="button"
+                              onClick={() => onReopen('line_items')}
+                              title="Detach the current invoice PDF and return to step 1 so you can upload a different one."
+                              style={goButtonStyle}
+                            >
+                              ← Back to step 1 (attach a different PDF)
                             </button>
-                            <button type="button" onClick={onDownloadCombined} disabled={isDownloading} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
-                              {isDownloading ? 'Building…' : '⬇ Download combined PDF'}
+                            <button
+                              type="button"
+                              onClick={onDownloadCombined}
+                              disabled={isDownloading}
+                              title="Build the merged invoice + service-ticket PDF for this batch."
+                              style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}
+                            >
+                              {isDownloading ? 'Building…' : '⬇ Download merged invoice + service tickets'}
                             </button>
-                            <button type="button" onClick={onMark} disabled={markInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}>
+                            <button
+                              type="button"
+                              onClick={onMark}
+                              disabled={markInvoicedMutation.isPending}
+                              style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}
+                            >
                               {markInvoicedMutation.isPending ? 'Saving…' : '✓ Mark as invoiced'}
                             </button>
                           </div>
@@ -7446,6 +7462,19 @@ export default function Invoices() {
                               Earlier rejection: <em>{note}</em>
                             </div>
                           )}
+                          {/* Re-download the service-ticket batch PDF — useful when admin lost
+                              the original copy or needs to resend to the approver while
+                              waiting on the signed copy back. */}
+                          <div style={{ marginBottom: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={onDownloadBatchPdf}
+                              title="Re-build and download the merged service-ticket batch PDF you sent the approver."
+                              style={goButtonStyle}
+                            >
+                              ⬇ Download service-ticket batch PDF
+                            </button>
+                          </div>
                           <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px' }}>
                             <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
                               Approver rejected this batch?
@@ -7517,9 +7546,10 @@ export default function Invoices() {
                               const remaining = sortedCandidates.filter((c) => getGroupId(c.group) !== groupId);
                               setWizardActiveGroupId(remaining[0] ? getGroupId(remaining[0].group) : null);
                             }}
-                            style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}
+                            title="This batch is fully invoiced — move on to the next batch in the queue."
+                            style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}
                           >
-                            Next batch →
+                            ✓ Batch complete — start next batch
                           </button>
                           <button type="button" onClick={() => setActiveTab('invoiced')} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
                             Open Invoiced tab
