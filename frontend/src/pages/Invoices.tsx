@@ -6888,8 +6888,12 @@ export default function Invoices() {
                   const acCustId = t0?.customerId ?? '';
                   const acProjId = t0?.recordProjectId ?? t0?.projectId ?? '';
                   const acPeriodGrouping = cnrlPeriodGrouping(getGroupingForTicket(acCustId, acProjId));
-                  if (activeGroup.key.periodKey && isInvoicePeriodStillAccumulating(activeGroup.key.periodKey, acPeriodGrouping)) {
-                    blockers.push({ id: 'accumulating', message: 'Period is still accumulating — more tickets may still land in this batch. Wait until the period closes or edit the period grouping.' });
+                  // Use the same is-accumulating predicate the rest of the UI uses (Pending vs Ready
+                  // split, batch indicators), which honors the admin force-ready override. Without
+                  // this, a batch marked ready early still trips the accumulating blocker here even
+                  // though it's already been promoted out of Pending.
+                  if (activeGroup.key.periodKey && isGroupAccumulating(activeGroup)) {
+                    blockers.push({ id: 'accumulating', message: 'Period is still accumulating — more tickets may still land in this batch. Wait until the period closes, mark the batch ready early from the Pending tab, or edit the period grouping.' });
                   }
                   const pendingForBatch = getPendingTicketsForGroup(activeGroup);
                   if (pendingForBatch.length > 0) {
@@ -8119,11 +8123,14 @@ export default function Invoices() {
                 firstTicket?.projectId ??
                 '';
               const periodGrouping = cnrlPeriodGrouping(getGroupingForTicket(custIdForPeriod, projIdForPeriod));
+              // Honors the admin force-ready override so a manually-promoted batch doesn't keep
+              // showing the "Period still open" inset shadow / banner on the Ready tab.
               const periodStillAccumulating =
                 !!key.periodKey &&
                 !String(key.periodKey).startsWith('pc:') &&
                 !String(key.periodKey).startsWith('prog:') &&
-                isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping);
+                isInvoicePeriodStillAccumulating(key.periodKey, periodGrouping) &&
+                !forceReadySet.has(resolvedPersistGroupId(group, invoicedMarkRows));
               const groupWorkflow = getWorkflowForCustomer(firstTicket?.customerName, key.projectNumber);
               const groupIsPortalApproval = isPortalApprovalWorkflow(groupWorkflow);
               // Per-batch border accent (Ready tab) mirrors section accent: portal approval = yellow,
