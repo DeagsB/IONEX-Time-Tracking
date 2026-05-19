@@ -10291,26 +10291,74 @@ export default function Invoices() {
                               <td className="name-cell">{label}</td>
                               <td style={{ color: 'var(--text-secondary)' }}>{p.customer?.name ?? '—'}</td>
                               <td>
-                                <select
-                                  value={p.invoice_workflow_id ?? ''}
-                                  onChange={(e) => updateWorkflowAssignmentMutation.mutate({ projectId: p.id, customerId: null, workflowId: e.target.value || null })}
-                                >
-                                  <option value="">{wfFallback}</option>
-                                  {workflowOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                  ))}
-                                </select>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span
+                                    title={p.invoice_workflow_id
+                                      ? 'Project has its own workflow override. Other projects under this customer are unaffected.'
+                                      : 'No project-level override. Falls back to the customer-level default. Changing another project does not affect this one.'}
+                                    style={{
+                                      flexShrink: 0,
+                                      fontSize: '9px',
+                                      fontWeight: 700,
+                                      letterSpacing: '0.06em',
+                                      textTransform: 'uppercase',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      backgroundColor: p.invoice_workflow_id
+                                        ? 'rgba(34, 197, 94, 0.16)'
+                                        : 'rgba(148, 163, 184, 0.18)',
+                                      color: p.invoice_workflow_id
+                                        ? '#15803d'
+                                        : 'var(--text-tertiary)',
+                                    }}
+                                  >
+                                    {p.invoice_workflow_id ? 'Override' : 'Inherited'}
+                                  </span>
+                                  <select
+                                    value={p.invoice_workflow_id ?? ''}
+                                    onChange={(e) => updateWorkflowAssignmentMutation.mutate({ projectId: p.id, customerId: null, workflowId: e.target.value || null })}
+                                  >
+                                    <option value="">{wfFallback}</option>
+                                    {workflowOptions.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
                               </td>
                               <td>
-                                <select
-                                  value={p.invoice_date_grouping ?? ''}
-                                  onChange={(e) => updatePeriodGroupingMutation.mutate({ projectId: p.id, customerId: null, value: e.target.value })}
-                                >
-                                  <option value="">{grpFallback}</option>
-                                  {groupingOptions.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                  ))}
-                                </select>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span
+                                    title={p.invoice_date_grouping
+                                      ? 'Project has its own grouping override. Other projects under this customer are unaffected.'
+                                      : 'No project-level override. Falls back to the customer-level default. Changing another project does not affect this one.'}
+                                    style={{
+                                      flexShrink: 0,
+                                      fontSize: '9px',
+                                      fontWeight: 700,
+                                      letterSpacing: '0.06em',
+                                      textTransform: 'uppercase',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      backgroundColor: p.invoice_date_grouping
+                                        ? 'rgba(34, 197, 94, 0.16)'
+                                        : 'rgba(148, 163, 184, 0.18)',
+                                      color: p.invoice_date_grouping
+                                        ? '#15803d'
+                                        : 'var(--text-tertiary)',
+                                    }}
+                                  >
+                                    {p.invoice_date_grouping ? 'Override' : 'Inherited'}
+                                  </span>
+                                  <select
+                                    value={p.invoice_date_grouping ?? ''}
+                                    onChange={(e) => updatePeriodGroupingMutation.mutate({ projectId: p.id, customerId: null, value: e.target.value })}
+                                  >
+                                    <option value="">{grpFallback}</option>
+                                    {groupingOptions.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -10943,14 +10991,43 @@ export default function Invoices() {
               border: '1px solid var(--border-color)',
             }}
           >
-            <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border-color)' }}>
-              <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Edit Invoice Period</h2>
-              <div style={{ marginTop: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                {editingPeriodModal.projectId
-                  ? `Updating project-level setting`
-                  : `Updating customer-level setting`}
-              </div>
-            </div>
+            {(() => {
+              const editProj = editingPeriodModal.projectId
+                ? projects?.find((p: { id: string; project_number?: string; name?: string; customer?: { name?: string } }) => p.id === editingPeriodModal.projectId)
+                : null;
+              const editCust = editingPeriodModal.customerId
+                ? customers?.find((c: { id: string; name?: string }) => c.id === editingPeriodModal.customerId)
+                : null;
+              const scopeLabel = editingPeriodModal.projectId
+                ? 'project-level override'
+                : 'customer-level default';
+              const targetLabel = editProj
+                ? [editProj.project_number, editProj.name].filter(Boolean).join(' – ')
+                : editCust?.name ?? '';
+              const subCustomerLabel = editProj?.customer?.name ?? '';
+              return (
+                <div style={{ padding: '20px 20px 12px', borderBottom: '1px solid var(--border-color)' }}>
+                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Edit Invoice Period</h2>
+                  <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '3px 7px', borderRadius: '4px', backgroundColor: editingPeriodModal.projectId ? 'rgba(34, 197, 94, 0.18)' : 'rgba(59, 130, 246, 0.18)', color: editingPeriodModal.projectId ? '#15803d' : '#1d4ed8' }}>
+                      {editingPeriodModal.projectId ? 'Project' : 'Customer'}
+                    </span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{targetLabel || '—'}</strong>
+                    {editingPeriodModal.projectId && subCustomerLabel && (
+                      <span style={{ color: 'var(--text-tertiary)' }}>· under {subCustomerLabel}</span>
+                    )}
+                  </div>
+                  <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                    {editingPeriodModal.projectId
+                      ? 'Affects only this project. Other projects under this customer still use the customer-level default unless they have their own override.'
+                      : `Affects every project under this customer that doesn't have its own override.`}
+                  </div>
+                  <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                    Updating {scopeLabel}.
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ padding: '16px 20px 20px', display: 'grid', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
