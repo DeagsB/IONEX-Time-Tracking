@@ -2344,6 +2344,18 @@ export const serviceTicketExpensesService = {
     return { count: ids.length, cutoff };
   },
 
+  /** Flip an explicit set of service_ticket_expenses rows to reimbursement_status='paid'.
+   *  Used by the Payroll breakdown's per-employee Mark as Paid button. */
+  async markReimbursementPaidByIds(ids: string[]): Promise<{ count: number }> {
+    if (!ids || ids.length === 0) return { count: 0 };
+    const { error } = await supabase
+      .from('service_ticket_expenses')
+      .update({ reimbursement_status: 'paid' })
+      .in('id', ids);
+    if (error) throw error;
+    return { count: ids.length };
+  },
+
   async markReimbursementPaidForPeriod(startDate: string, endDate: string): Promise<{ count: number }> {
     const endOfDay = endDate + 'T23:59:59.999Z';
     const { data: rows, error: selectError } = await supabase
@@ -2719,6 +2731,18 @@ export const userExpensesService = {
       .update({ status: 'paid' })
       .in('id', ids);
     if (updateError) throw updateError;
+    return { count: ids.length };
+  },
+
+  /** Flip an explicit set of receipts to status='paid'. Used by the Payroll reimbursement
+   *  breakdown when admin marks a specific employee's payout as paid for the period. */
+  async markPaidByIds(ids: string[]): Promise<{ count: number }> {
+    if (!ids || ids.length === 0) return { count: 0 };
+    const { error } = await supabase
+      .from('user_expenses')
+      .update({ status: 'paid' })
+      .in('id', ids);
+    if (error) throw error;
     return { count: ids.length };
   },
 

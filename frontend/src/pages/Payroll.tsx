@@ -865,22 +865,25 @@ export default function Payroll() {
   }, [linkedTicketExpensesForReceipts]);
 
   const queryClient = useQueryClient();
-  const markPaidMutation = useMutation({
-    mutationFn: async () => {
-      await userExpensesService.markPaidForPeriod(startDate, endDate);
-      await serviceTicketExpensesService.markReimbursementPaidForPeriod(startDate, endDate);
+  // Per-employee mark-as-paid for the current breakdown modal. Pays only the lines for the
+  // selected employee inside this pay period — admin has to click for each employee they
+  // actually paid out. Replaces the old behavior where navigating to a past period silently
+  // marked every employee's expenses as paid for that window.
+  const markEmployeePaidMutation = useMutation({
+    mutationFn: async ({ receiptIds, ticketExpenseIds }: { receiptIds: string[]; ticketExpenseIds: string[] }) => {
+      if (receiptIds.length > 0) await userExpensesService.markPaidByIds(receiptIds);
+      if (ticketExpenseIds.length > 0) await serviceTicketExpensesService.markReimbursementPaidByIds(ticketExpenseIds);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payrollReceiptExpenses', startDate, endDate] });
       queryClient.invalidateQueries({ queryKey: ['payrollTicketExpenses', startDate, endDate] });
+      queryClient.invalidateQueries({ queryKey: ['payrollLinkedApprovedReceipts'] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      alert('Failed to mark as paid: ' + msg);
     },
   });
-
-  useEffect(() => {
-    if (!isCurrentPeriod && startDate && endDate) {
-      markPaidMutation.mutate();
-    }
-  }, [startDate, endDate, isCurrentPeriod]);
 
   // State for the reimbursement breakdown modal
   const [reimbursementModalUserId, setReimbursementModalUserId] = useState<string | null>(null);
@@ -1070,6 +1073,12 @@ export default function Payroll() {
     projectKey: string;
     /** Display label for the project — falls back to "(no project)" when unassigned. */
     projectLabel: string;
+    /** service_ticket_expenses.id when this line was sourced from a ticket-expense row.
+     *  The Mark-as-Paid button flips `reimbursement_status` to 'paid' on these ids. */
+    ticketExpenseId?: string;
+    /** Whether the underlying row is already marked paid. Lines that are already paid are
+     *  excluded from the Mark-as-Paid action and shown with a quiet pill in the breakdown. */
+    isPaid: boolean;
     /** When this line is backed by a `user_expenses` receipt, the receipt metadata is carried
      *  through so the breakdown modal can preview/download the file without re-fetching. */
     receipt?: {
@@ -1224,6 +1233,8 @@ export default function Payroll() {
         ticketNumber,
         projectKey,
         projectLabel,
+        ticketExpenseId: String(exp.id),
+        isPaid: exp.reimbursement_status === 'paid',
         receipt: receiptPayload,
       });
     }
@@ -1259,6 +1270,7 @@ export default function Payroll() {
         amount,
         projectKey,
         projectLabel,
+        isPaid: exp.status === 'paid',
         receipt: {
           id: String(exp.id),
           url: exp.receipt_url ?? null,
@@ -2585,10 +2597,78 @@ export default function Payroll() {
                 );
               })}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '2px solid var(--border-color)' }}>
-                <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>Total Reimbursement</span>
-                <span style={{ fontSize: '18px', fontWeight: 700, color: '#00897b' }}>${reimb.total.toFixed(2)}</span>
-              </div>
+              {(() => {
+                // Mark-as-Paid CTA. Collects every unpaid line that backs this modal — both
+                // receipt user_expenses and ticket_expense rows — and flips their statuses to
+                // 'paid'. Disabled when nothing is pending; replaced with a quiet "All paid"
+                // status pill when the employee has nothing outstanding for this period.
+                const unpaidLines = reimb.lines.filter((l) => !l.isPaid);
+                const paidLines = reimb.lines.filter((l) => l.isPaid);
+                const unpaidTotal = unpaidLines.reduce((s, l) => s + l.amount, 0);
+                const unpaidReceiptIds = Array.from(new Set(
+                  unpaidLines.map((l) => l.receipt?.id).filter((id): id is string => !!id)
+                ));
+                const unpaidTicketExpenseIds = Array.from(new Set(
+                  unpaidLines
+                    .filter((l) => !l.receipt && !!l.ticketExpenseId)
+                    .map((l) => l.ticketExpenseId as string)
+                ));
+                const nothingToMark = unpaidReceiptIds.length === 0 && unpaidTicketExpenseIds.length === 0;
+                const isBusy = markEmployeePaidMutation.isPending;
+
+                const onMarkPaid = () => {
+                  if (nothingToMark) return;
+                  const summaryParts: string[] = [];
+                  if (unpaidReceiptIds.length > 0) summaryParts.push(`${unpaidReceiptIds.length} receipt${unpaidReceiptIds.length === 1 ? '' : 's'}`);
+                  if (unpaidTicketExpenseIds.length > 0) summaryParts.push(`${unpaidTicketExpenseIds.length} ticket expense${unpaidTicketExpenseIds.length === 1 ? '' : 's'}`);
+                  const proceed = window.confirm(
+                    `Mark ${summaryParts.join(' + ')} as paid for ${empName} ($${unpaidTotal.toFixed(2)})?\n\n` +
+                    'They will drop out of future Payroll views for this period and be stamped paid in the system.'
+                  );
+                  if (!proceed) return;
+                  markEmployeePaidMutation.mutate({
+                    receiptIds: unpaidReceiptIds,
+                    ticketExpenseIds: unpaidTicketExpenseIds,
+                  });
+                };
+
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '12px', borderTop: '2px solid var(--border-color)', gap: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Total Reimbursement
+                      {paidLines.length > 0 && (
+                        <span style={{ marginLeft: '10px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'rgba(59, 130, 246, 0.14)', color: '#1d4ed8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          {paidLines.length} of {reimb.lines.length} paid
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
+                      {nothingToMark ? (
+                        <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', backgroundColor: 'rgba(34, 197, 94, 0.16)', color: '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          ✓ All paid
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={onMarkPaid}
+                          disabled={isBusy}
+                          title={`Mark this employee's ${unpaidLines.length} unpaid line${unpaidLines.length === 1 ? '' : 's'} as paid for this pay period.`}
+                          style={{
+                            padding: '8px 14px', borderRadius: '6px',
+                            backgroundColor: '#15803d', color: 'white',
+                            border: 'none', fontWeight: 700, fontSize: '13px',
+                            cursor: isBusy ? 'not-allowed' : 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          {isBusy ? 'Marking…' : `✓ Mark $${unpaidTotal.toFixed(2)} as paid`}
+                        </button>
+                      )}
+                      <span style={{ fontSize: '18px', fontWeight: 700, color: '#00897b' }}>${reimb.total.toFixed(2)}</span>
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         );
