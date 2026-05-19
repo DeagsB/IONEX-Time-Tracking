@@ -1590,7 +1590,13 @@ function shortMonthDayLabel(dateStr: string | undefined | null): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodLabel?: string };
+/** splitDiscriminator: short tag appended to the natural group_id when the bucket's tickets
+ *  would otherwise collide with an existing invoiced mark row whose ticketIds are disjoint
+ *  (the "partial-month split" case: customer is monthly-grouped, an earlier subset was already
+ *  marked sent under the same periodKey, the remaining tickets re-bucket into the same key).
+ *  Set in `groupedTickets`, consumed by `getGroupId`. Persisted into snap.key so reloads
+ *  preserve the residual identity. */
+type InvoiceGroupKeyWithPeriod = InvoiceGroupKey & { periodKey?: string; periodLabel?: string; splitDiscriminator?: string };
 
 /** Same rule as pending banner on uninvoiced cards: calendar period not ended yet. */
 function uninvoicedGroupPeriodStillAccumulating(
@@ -1680,6 +1686,33 @@ function markRowCoversAllTicketsInGroup(
   });
 }
 
+/** True when the mark row shares zero tickets with the given bucket. Used to detect partial-month
+ *  splits under monthly grouping (mark holds the sent subset; remaining tickets re-bucket into the
+ *  same periodKey but the two sets don't overlap — without disambiguation they'd collide on group_id). */
+function markRowDisjointFromTickets(
+  row: InvoicedBatchMarkRow,
+  tickets: ServiceTicket[]
+): boolean {
+  if (tickets.length === 0) return false;
+  const have = ticketIdsSetFromMarkRow(row);
+  if (have.size === 0) return false;
+  return !tickets.some((t) => {
+    const rid = String((t as ServiceTicket & { recordId?: string }).recordId ?? '').trim();
+    const cid = String(t.id ?? '').trim();
+    return (rid && have.has(rid)) || (cid && have.has(cid));
+  });
+}
+
+/** Stable 8-char suffix derived from the smallest recordId / ticket id in the bucket. Used as
+ *  splitDiscriminator so residual buckets get a deterministic, ticket-set-derived group_id suffix. */
+function computeSplitDiscriminator(tickets: ServiceTicket[]): string | undefined {
+  const ids = tickets
+    .map((t) => String((t as ServiceTicket & { recordId?: string }).recordId ?? t.id ?? '').trim())
+    .filter(Boolean)
+    .sort();
+  return ids[0] ? ids[0].slice(0, 8) : undefined;
+}
+
 /**
  * DB row for this batch. Tried in priority order:
  *  1. Exact group_id match.
@@ -1734,12 +1767,13 @@ function resolvedPersistGroupId(
 
 function getGroupId(group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string {
   const key = group.key;
+  const splitSuffix = key.splitDiscriminator ? `|S${key.splitDiscriminator}` : '';
   // CNRL with period: projectId|approverCode|periodKey
   if (key.periodKey && key.approverCode && key.approverCode !== key.periodKey) {
-    return `${key.projectId ?? ''}|${key.approverCode}|${key.periodKey}`;
+    return `${key.projectId ?? ''}|${key.approverCode}|${key.periodKey}${splitSuffix}`;
   }
   // Non-CNRL (period only): projectId|periodKey
-  if (key.periodKey) return `${key.projectId}|${key.periodKey}`;
+  if (key.periodKey) return `${key.projectId}|${key.periodKey}${splitSuffix}`;
   const ids = group.tickets
     .map((t) => (t as ServiceTicket & { recordId?: string }).recordId || t.id)
     .filter(Boolean)
@@ -3107,10 +3141,19 @@ export default function Invoices() {
         const groupingRaw = getGroupingForTicket(customerIdForLabel, projectIdForLabel);
         const grouping = cnrlPeriodGrouping(groupingRaw);
         const periodLabel = getPeriodLabel(periodKeyFromKey, grouping);
+        // CNRL collision check: same logic as non-CNRL — if a mark row already owns the natural
+        // group_id and its ticket set is disjoint from this bucket, this is a residual batch.
+        const cnrlProjectId = keyObj.projectId ?? '';
+        const naturalCnrlGroupId = `${cnrlProjectId}|${keyObj.approverCode}|${periodKeyFromKey}`;
+        const collidingMark = invoicedMarkRows.find(
+          (r) => r.group_id === naturalCnrlGroupId && markRowDisjointFromTickets(r, list)
+        );
+        const splitDiscriminator = collidingMark ? computeSplitDiscriminator(list) : undefined;
         const keyWithPeriod: InvoiceGroupKeyWithPeriod = {
           ...keyObj,
           periodKey: periodKeyFromKey,
           periodLabel,
+          ...(splitDiscriminator ? { splitDiscriminator } : {}),
         };
         result.push({ key: keyWithPeriod, tickets: list });
       }
@@ -3156,8 +3199,18 @@ export default function Invoices() {
           const lbl = [first.projectNumber, first.projectName].filter(Boolean).join(' – ');
           periodLabel = lbl ? `Progress batch: ${lbl}` : 'Progress batch';
         }
+        const projectIdForKey = first.recordProjectId ?? first.projectId ?? projectIdFromKey;
+        // Collision check: an existing invoiced mark may already claim this exact periodKey
+        // (partial-month split — earlier subset was sent under the same monthly bucket). When
+        // the existing mark's tickets are disjoint from this bucket, this bucket is the
+        // residual: give it a splitDiscriminator suffix so its group_id is distinct.
+        const naturalGroupId = `${projectIdForKey}|${periodKey}`;
+        const collidingMark = invoicedMarkRows.find(
+          (r) => r.group_id === naturalGroupId && markRowDisjointFromTickets(r, list)
+        );
+        const splitDiscriminator = collidingMark ? computeSplitDiscriminator(list) : undefined;
         const keyObj: InvoiceGroupKeyWithPeriod = {
-          projectId: first.recordProjectId ?? first.projectId ?? projectIdFromKey,
+          projectId: projectIdForKey,
           projectName: first.projectName,
           projectNumber: first.projectNumber,
           approverCode: periodKey,
@@ -3168,6 +3221,7 @@ export default function Invoices() {
           other: '',
           periodKey,
           periodLabel,
+          ...(splitDiscriminator ? { splitDiscriminator } : {}),
         };
         result.push({ key: keyObj, tickets: list });
       }
@@ -3187,7 +3241,7 @@ export default function Invoices() {
     });
 
     return result;
-  }, [uninvoicedTicketsForCustomer, selectedCustomerId, isCNRL, selectedProjectId, getGroupingForTicket, isTicketCnrl]);
+  }, [uninvoicedTicketsForCustomer, selectedCustomerId, isCNRL, selectedProjectId, getGroupingForTicket, isTicketCnrl, invoicedMarkRows]);
 
   /**
    * PDF rows (invoiced_batch_invoices) used to be written before the mark; some environments may have
