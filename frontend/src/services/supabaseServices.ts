@@ -2395,6 +2395,10 @@ export const serviceTicketExpensesService = {
     unit?: string;
     needs_reimbursement?: boolean;
     reimbursement_status?: string;
+    /** Backlink to the user_expense receipt this ticket line was derived from. Set whenever a
+     *  receipt is applied to a ticket so the payroll dedup never has to fall back to description
+     *  matching to figure out the two rows represent the same charge. */
+    user_expense_id?: string | null;
   }) {
     const { data, error } = await supabase
       .from('service_ticket_expenses')
@@ -2422,6 +2426,9 @@ export const serviceTicketExpensesService = {
     needs_reimbursement?: boolean;
     reimbursement_status?: string | null;
     reimbursement_approved_at?: string | null;
+    /** Backlink to the receipt this ticket line is paid from. Setting this keeps payroll
+     *  dedup honest without falling back to description matching. */
+    user_expense_id?: string | null;
   }) {
     const payload =
       updates.expense_type !== undefined

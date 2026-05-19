@@ -1099,6 +1099,9 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
               description: exp.description,
               isAdmin,
             }),
+            // Carry the linked-receipt id through so payroll dedup never has to fall back
+            // to description matching for these ticket lines.
+            user_expense_id: exp.linkedUserExpenseId ?? null,
           });
         }
         setPendingAddExpenses([]);

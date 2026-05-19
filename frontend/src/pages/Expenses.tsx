@@ -705,7 +705,7 @@ export default function Expenses() {
     try {
       const optimized = await optimizeImage(hotelAttachFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
       const storagePath = await userExpensesService.uploadReceipt(optimized);
-      await userExpensesService.create({
+      const createdReceipt = await userExpensesService.create({
         description: hotelAttachForm.description.trim(),
         amount: amt,
         expense_date:
@@ -724,6 +724,9 @@ export default function Expenses() {
         rate: clientBilled,
         actual_cost: expTotal,
         needs_reimbursement: true,
+        // Backlink the freshly-created receipt to the hotel ticket-expense line so payroll
+        // dedup never reimburses both sides of the same charge.
+        user_expense_id: createdReceipt?.id ?? null,
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
@@ -909,7 +912,7 @@ export default function Expenses() {
       for (const line of splitEffectiveAllocation.lines) {
         const desc = String(line.row.description || 'Hotel').trim();
         const markup = Math.round((line.billed - line.cost) * 100) / 100;
-        await userExpensesService.create({
+        const createdReceipt = await userExpensesService.create({
           description: desc,
           amount: line.amount,
           expense_date: expenseDate,
@@ -929,6 +932,9 @@ export default function Expenses() {
           needs_reimbursement: true,
           reimbursement_status: 'pending',
           reimbursement_approved_at: new Date().toISOString(),
+          // Link the freshly-created receipt to the hotel ticket-expense so payroll dedup
+          // doesn't reimburse both sides of the same charge across pay-period boundaries.
+          user_expense_id: createdReceipt?.id ?? null,
         });
       }
 
@@ -1963,6 +1969,9 @@ export default function Expenses() {
         unit: '',
         needs_reimbursement: true,
         reimbursement_status: 'pending',
+        // Backlink so payroll dedup catches this pair without falling back to description
+        // matching (the missing link is what caused the Chase Gibbon double-reimbursement).
+        user_expense_id: applyExpenseId,
       });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
