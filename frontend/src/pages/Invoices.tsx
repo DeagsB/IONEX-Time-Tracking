@@ -7549,7 +7549,7 @@ export default function Invoices() {
                             title="This batch is fully invoiced — move on to the next batch in the queue."
                             style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}
                           >
-                            ✓ Batch complete — start next batch
+                            ✓ Mark batch as complete
                           </button>
                           <button type="button" onClick={() => setActiveTab('invoiced')} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
                             Open Invoiced tab
