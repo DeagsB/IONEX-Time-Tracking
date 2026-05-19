@@ -2621,6 +2621,7 @@ export const userExpensesService = {
     markup_amount: number | null;
     quantity: number;
     status: 'pending' | 'approved' | 'rejected' | 'paid';
+    not_reimbursable: boolean;
   }>) {
     const payload = { ...updates };
     if (updates.status === 'approved') {

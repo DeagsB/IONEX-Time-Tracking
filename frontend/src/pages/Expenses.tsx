@@ -1077,6 +1077,58 @@ export default function Expenses() {
     },
   });
 
+  // Admin toggle: flag a receipt as not eligible for employee reimbursement. Drops it from
+  // payroll + the employee's My Expenses table, but the row stays so admin can still apply
+  // it to a service ticket (e.g. company paid for the gas, still bill the customer).
+  const setNotReimbursableMutation = useMutation({
+    mutationFn: async ({ id, value }: { id: string; value: boolean }) => {
+      return userExpensesService.update(id, { not_reimbursable: value });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      alert('Failed to update reimbursement flag: ' + msg);
+    },
+  });
+
+  // Admin-side delete prompt — same destructive confirm + cache pop as the employee flow
+  // (requestDeleteExpense), but reachable from the approval table row for any employee.
+  const requestAdminDeleteReceipt = (exp: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const desc = (exp.description || 'Expense').trim();
+    const short = desc.length > 60 ? `${desc.slice(0, 60)}…` : desc || 'this expense';
+    const amount = Number(exp.amount) || 0;
+    const owner = exp._employeeName || exp.users?.email || 'this employee';
+    const proceed = window.confirm(
+      `Delete "${short}"${amount > 0 ? ` ($${amount.toFixed(2)})` : ''} from ${owner}'s expenses?\n\n` +
+      'This permanently removes the receipt. If you only want to drop reimbursement but keep it for ticket billing, use "Not Reimbursable" instead.'
+    );
+    if (!proceed) return;
+    if (editingExpense?.id === exp.id) {
+      setEditingExpense(null);
+      setEditReceiptPreviewUrl(null);
+    }
+    removeExpenseFromCache(exp.id);
+    deleteExpenseMutation.mutate(exp.id);
+  };
+
+  const handleToggleNotReimbursable = (exp: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !exp.not_reimbursable;
+    const owner = exp._employeeName || exp.users?.email || 'this employee';
+    if (next) {
+      const proceed = window.confirm(
+        `Mark this receipt as Not Reimbursable for ${owner}?\n\n` +
+        'It will be removed from their expense table and skipped in payroll, but stays available to Apply-to-Ticket so the cost is still billed to the customer.'
+      );
+      if (!proceed) return;
+    }
+    setNotReimbursableMutation.mutate({ id: String(exp.id), value: next });
+  };
+
   const removeExpenseFromCache = (id: string) => {
     queryClient.setQueryData(['userExpenses'], (old: any[] | undefined) => (old || []).filter((e) => e.id !== id));
   };
@@ -1324,10 +1376,13 @@ export default function Expenses() {
     return { amount, gst, count: adminFilteredExpenses.length, byType };
   }, [adminFilteredExpenses]);
 
-  // Expense table: admin sees own only; non-admin sees own only (filtered for defense in depth)
+  // Expense table: admin sees own only; non-admin sees own only (filtered for defense in depth).
+  // Receipts admin has marked `not_reimbursable` drop out of this table — they're no longer
+  // the employee's reimbursable expense, they just sit in the system for Apply-to-Ticket /
+  // admin auditing in the approval section below.
   const myExpenses = useMemo(() => {
-    if (!user?.id) return expenses;
-    return expenses.filter((e: any) => e.user_id === user.id);
+    if (!user?.id) return expenses.filter((e: any) => !e.not_reimbursable);
+    return expenses.filter((e: any) => e.user_id === user.id && !e.not_reimbursable);
   }, [expenses, user?.id]);
 
   const myExpensesGroupedByDate = useMemo(() => {
@@ -4427,7 +4482,23 @@ export default function Expenses() {
                       </td>
                       <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--text-tertiary)' }}>—</td>
                       <td style={{ padding: '10px 14px', fontSize: '13px' }}>
-                        <div style={{ fontWeight: '500' }}>{exp.description}</div>
+                        <div style={{ fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          {exp.description}
+                          {source === 'receipt' && exp.not_reimbursable === true && (
+                            <span
+                              style={{
+                                fontSize: '10px', fontWeight: 700,
+                                padding: '2px 6px', borderRadius: '999px',
+                                backgroundColor: 'rgba(99, 102, 241, 0.14)', color: '#4338ca',
+                                border: '1px solid rgba(99, 102, 241, 0.45)',
+                                letterSpacing: '0.04em', textTransform: 'uppercase',
+                              }}
+                              title="Admin removed this receipt from the employee's reimbursement. Available for Apply-to-Ticket."
+                            >
+                              Not Reimbursable
+                            </span>
+                          )}
+                        </div>
                         {source === 'receipt' && (() => {
                           const part = sharedReceiptMeta.get(String(exp.id));
                           if (!part) return null;
@@ -4510,6 +4581,59 @@ export default function Expenses() {
                             Mark Unpaid
                           </button>
                         )}
+                        {source === 'receipt' && (() => {
+                          // Not-Reimbursable toggle. When set, the receipt drops out of payroll
+                          // and the employee's own table, but stays in the system so admin can
+                          // still Apply-to-Ticket below and bill it to the customer.
+                          const isNot = exp.not_reimbursable === true;
+                          const isBusy = setNotReimbursableMutation.isPending && setNotReimbursableMutation.variables?.id === String(exp.id);
+                          return (
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={(e) => handleToggleNotReimbursable(exp, e)}
+                              title={isNot
+                                ? 'Restore this receipt so it counts toward employee reimbursement again.'
+                                : 'Remove this receipt from the employee’s reimbursement (e.g. company paid). Stays available for Apply-to-Ticket.'}
+                              style={{
+                                marginLeft: '6px',
+                                padding: '3px 8px',
+                                backgroundColor: isNot ? 'rgba(99, 102, 241, 0.14)' : 'rgba(124, 58, 237, 0.10)',
+                                color: isNot ? '#4338ca' : '#6d28d9',
+                                border: `1px solid ${isNot ? 'rgba(99, 102, 241, 0.45)' : 'rgba(124, 58, 237, 0.35)'}`,
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: isBusy ? 'not-allowed' : 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {isBusy ? '…' : isNot ? '↺ Restore' : 'Not Reimbursable'}
+                            </button>
+                          );
+                        })()}
+                        {source === 'receipt' && (
+                          <button
+                            type="button"
+                            disabled={deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id}
+                            onClick={(e) => requestAdminDeleteReceipt(exp, e)}
+                            title="Delete this receipt from the employee’s expenses (cannot be undone)."
+                            style={{
+                              marginLeft: '6px',
+                              padding: '3px 8px',
+                              backgroundColor: 'rgba(239, 68, 68, 0.10)',
+                              color: '#dc2626',
+                              border: '1px solid rgba(239, 68, 68, 0.35)',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: (deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id) ? 'not-allowed' : 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {(deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id) ? 'Deleting…' : 'Delete'}
+                          </button>
+                        )}
                         {source === 'ticket' && (() => {
                           // Receipt-required types (Hotel, Other) flag a "Receipt pending" badge when
                           // they're reimbursable but no receipt is attached (no actual_cost AND no
@@ -4576,7 +4700,10 @@ export default function Expenses() {
                         {source === 'receipt' && (() => {
                           // Non-billable receipts (e.g. internal tools, supplies kept for shop)
                           // never get linked to a service-ticket expense — hide all link UI.
-                          if (!exp.is_billable) return null;
+                          // Exception: receipts admin has flagged not_reimbursable — admin took
+                          // them off employee reimbursement specifically so they can be billed
+                          // to a customer ticket, so keep the link UI even when is_billable=false.
+                          if (!exp.is_billable && !exp.not_reimbursable) return null;
                           const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
                           const hasLinks = linkedRows.length > 0;
                           // A receipt is "applied" if either: it was directly assigned to a ticket

@@ -1236,6 +1236,9 @@ export default function Payroll() {
     for (const exp of receiptExpensesForReimbursements as any[]) {
       if (receiptIdsCoveredByTicketLink.has(String(exp.id))) continue;
       if (linkedUserExpenseRedundantWithTicketExpenseLine(exp, ticketExpenses as any[])) continue;
+      // Admin explicitly marked this receipt as not reimbursable (e.g. company paid).
+      // It stays in user_expenses so it can be Applied-to-Ticket, but payroll skips it.
+      if (exp.not_reimbursable === true) continue;
       const userId = exp.user_id;
       if (!userId) continue;
 
