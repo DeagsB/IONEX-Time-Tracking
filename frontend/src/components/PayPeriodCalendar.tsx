@@ -1,4 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  formatYmd,
+  parseYmdAtNoon,
+  payPeriodBoundsForDate as periodBoundsForDate,
+  payPeriodIndexFor as periodIndexFor,
+  payPeriodStartForIndex as periodStartForIndex,
+} from '../utils/payPeriod';
 
 /**
  * Pay-period-aware calendar popup. Shades alternating 14-day pay-period stripes
@@ -7,35 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
  * date the rest of the payroll system uses.
  */
 
-const REFERENCE_START = new Date(2026, 0, 19); // Jan 19, 2026 — Mon, anchor for all 14-day stripes
-const PERIOD_LENGTH = 14;
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
-const formatYmd = (d: Date): string => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-};
-
-const parseYmd = (s: string): Date => new Date(s + 'T12:00:00');
-
-/** 0-based pay period index containing this date (negative for before reference). */
-const periodIndexFor = (d: Date): number => {
-  const days = Math.floor((d.getTime() - REFERENCE_START.getTime()) / MS_PER_DAY);
-  return days >= 0 ? Math.floor(days / PERIOD_LENGTH) : Math.ceil(days / PERIOD_LENGTH) - 1;
-};
-
-const periodStartForIndex = (idx: number): Date => {
-  return new Date(REFERENCE_START.getTime() + idx * PERIOD_LENGTH * MS_PER_DAY);
-};
-
-const periodBoundsForDate = (d: Date): { start: Date; end: Date; index: number } => {
-  const idx = periodIndexFor(d);
-  const start = periodStartForIndex(idx);
-  const end = new Date(start.getTime() + (PERIOD_LENGTH - 1) * MS_PER_DAY);
-  return { start, end, index: idx };
-};
+const parseYmd = (s: string): Date => parseYmdAtNoon(s);
 
 const sameDay = (a: Date, b: Date): boolean =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();

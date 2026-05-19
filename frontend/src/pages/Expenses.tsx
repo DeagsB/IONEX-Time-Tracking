@@ -9,6 +9,11 @@ import { allocateProportionalCents } from '../utils/allocateProportionalCents';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { extractReceiptAutoFill } from '../utils/receiptAutoFill';
+import {
+  payPeriodBoundsForYmd,
+  formatPayPeriodRangeLabel,
+  payPeriodBoundsForDate,
+} from '../utils/payPeriod';
 import ServiceTickets from './ServiceTickets';
 
 function normalizeExpenseTableDateKey(raw: string): string {
@@ -336,6 +341,13 @@ export default function Expenses() {
   const [collapsedAdminExpenseDateKeys, setCollapsedAdminExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const hasSeededMyExpenseDateCollapse = useRef(false);
   const hasSeededAdminExpenseDateCollapse = useRef(false);
+  // Pay-period collapse state — keyed by period index ("0", "-1", "12"…). Pay periods sit
+  // above the per-day groups so the user lands on the current 14-day window first, with
+  // older periods folded away. Persisted alongside (not in place of) the date-group state.
+  const [collapsedMyExpensePeriodKeys, setCollapsedMyExpensePeriodKeys] = useState<Set<string>>(() => new Set());
+  const [collapsedAdminExpensePeriodKeys, setCollapsedAdminExpensePeriodKeys] = useState<Set<string>>(() => new Set());
+  const hasSeededMyExpensePeriodCollapse = useRef(false);
+  const hasSeededAdminExpensePeriodCollapse = useRef(false);
   const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
 
   // Admin employee overview (like Service Tickets)
@@ -1361,6 +1373,147 @@ export default function Expenses() {
     }
     return groups;
   }, [adminFilteredExpenses]);
+
+  /** Roll the date-grouped lists up by 14-day pay period. Each period carries totals
+   *  (subtotal, GST, total, line count) so the period header can show what the operator
+   *  would key into payroll for that window. The pay-period anchor matches the Payroll
+   *  page so windows align with what each employee is actually paid for. */
+  type PayPeriodGroup = {
+    /** Stable key — the period index as a string. */
+    periodKey: string;
+    periodIndex: number;
+    /** "Apr 6 – Apr 19, 2026" */
+    periodLabel: string;
+    periodStartYmd: string;
+    periodEndYmd: string;
+    isCurrent: boolean;
+    isFuture: boolean;
+    dateGroups: { dateKey: string; items: any[] }[];
+    totals: { amount: number; gst: number; total: number; count: number };
+  };
+
+  const todayPeriodIndex = useMemo(() => {
+    const t = new Date();
+    t.setHours(0, 0, 0, 0);
+    return payPeriodBoundsForDate(t).index;
+  }, []);
+
+  const groupDateGroupsByPayPeriod = (dateGroups: { dateKey: string; items: any[] }[], dateAccessor: (exp: any) => string): PayPeriodGroup[] => {
+    if (dateGroups.length === 0) return [];
+    const byIndex = new Map<number, PayPeriodGroup>();
+    for (const grp of dateGroups) {
+      // Use the first item's date (date groups are homogeneous on date key) to find the
+      // period bounds. Fall back to today's period when the date is missing so orphan
+      // entries still appear somewhere.
+      const sample = grp.items[0];
+      const rawDate = sample ? String(dateAccessor(sample) || '').trim() : '';
+      let periodIndex: number;
+      let startYmd: string;
+      let endYmd: string;
+      if (rawDate) {
+        const b = payPeriodBoundsForYmd(rawDate);
+        periodIndex = b.index;
+        startYmd = b.startYmd;
+        endYmd = b.endYmd;
+      } else {
+        // No-date orphans → bucket them with the current period rather than spawn a
+        // separate header that's hard to scan past.
+        periodIndex = todayPeriodIndex;
+        const b = payPeriodBoundsForYmd(new Date().toISOString().split('T')[0]);
+        startYmd = b.startYmd;
+        endYmd = b.endYmd;
+      }
+      if (!byIndex.has(periodIndex)) {
+        const b = payPeriodBoundsForYmd(startYmd);
+        byIndex.set(periodIndex, {
+          periodKey: String(periodIndex),
+          periodIndex,
+          periodLabel: formatPayPeriodRangeLabel(b.start, b.end),
+          periodStartYmd: startYmd,
+          periodEndYmd: endYmd,
+          isCurrent: periodIndex === todayPeriodIndex,
+          isFuture: periodIndex > todayPeriodIndex,
+          dateGroups: [],
+          totals: { amount: 0, gst: 0, total: 0, count: 0 },
+        });
+      }
+      const period = byIndex.get(periodIndex)!;
+      period.dateGroups.push(grp);
+      for (const exp of grp.items) {
+        const amt = parseFloat(String(exp.amount ?? exp._amount ?? 0)) || 0;
+        const gst = parseFloat(String(exp.gst ?? exp._gst ?? 0)) || 0;
+        period.totals.amount += amt;
+        period.totals.gst += gst;
+        period.totals.total += amt + gst;
+        period.totals.count += 1;
+      }
+    }
+    return Array.from(byIndex.values()).sort((a, b) => b.periodIndex - a.periodIndex);
+  };
+
+  const myExpensesGroupedByPayPeriod = useMemo(
+    () => groupDateGroupsByPayPeriod(myExpensesGroupedByDate, (e) => e.expense_date),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [myExpensesGroupedByDate, todayPeriodIndex]
+  );
+
+  const adminFilteredExpensesGroupedByPayPeriod = useMemo(
+    () => groupDateGroupsByPayPeriod(adminFilteredExpensesGroupedByDate, (e) => e._date || e.expense_date),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [adminFilteredExpensesGroupedByDate, todayPeriodIndex]
+  );
+
+  const toggleMyExpensePeriodGroup = (periodKey: string) => {
+    setCollapsedMyExpensePeriodKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(periodKey)) next.delete(periodKey);
+      else next.add(periodKey);
+      return next;
+    });
+  };
+  const toggleAdminExpensePeriodGroup = (periodKey: string) => {
+    setCollapsedAdminExpensePeriodKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(periodKey)) next.delete(periodKey);
+      else next.add(periodKey);
+      return next;
+    });
+  };
+
+  // On first load, collapse every pay period except the current one so the page opens to
+  // "what you're working on right now". Re-seeds when the underlying data changes shape.
+  useEffect(() => {
+    if (myExpensesGroupedByPayPeriod.length === 0) {
+      hasSeededMyExpensePeriodCollapse.current = false;
+      setCollapsedMyExpensePeriodKeys(new Set());
+      return;
+    }
+    if (hasSeededMyExpensePeriodCollapse.current) return;
+    hasSeededMyExpensePeriodCollapse.current = true;
+    const collapsed = myExpensesGroupedByPayPeriod
+      .filter((p) => !p.isCurrent)
+      .map((p) => p.periodKey);
+    setCollapsedMyExpensePeriodKeys(new Set(collapsed));
+  }, [myExpensesGroupedByPayPeriod]);
+
+  useEffect(() => {
+    hasSeededAdminExpensePeriodCollapse.current = false;
+    setCollapsedAdminExpensePeriodKeys(new Set());
+  }, [adminStatusFilter]);
+
+  useEffect(() => {
+    if (adminFilteredExpensesGroupedByPayPeriod.length === 0) {
+      hasSeededAdminExpensePeriodCollapse.current = false;
+      setCollapsedAdminExpensePeriodKeys(new Set());
+      return;
+    }
+    if (hasSeededAdminExpensePeriodCollapse.current) return;
+    hasSeededAdminExpensePeriodCollapse.current = true;
+    const collapsed = adminFilteredExpensesGroupedByPayPeriod
+      .filter((p) => !p.isCurrent)
+      .map((p) => p.periodKey);
+    setCollapsedAdminExpensePeriodKeys(new Set(collapsed));
+  }, [adminFilteredExpensesGroupedByPayPeriod]);
 
   const toggleMyExpenseDateGroup = (dateKey: string) => {
     setCollapsedMyExpenseDateKeys((prev) => {
@@ -3527,7 +3680,50 @@ export default function Expenses() {
                   </td>
                 </tr>
               ) : (
-                myExpensesGroupedByDate.map(({ dateKey, items }) => {
+                myExpensesGroupedByPayPeriod.map((period) => {
+                  const periodCollapsed = collapsedMyExpensePeriodKeys.has(period.periodKey);
+                  return (
+                    <Fragment key={`period-${period.periodKey}`}>
+                      {/* Pay-period header: anchors the date subgroups beneath it. The teal accent +
+                          eyebrow label distinguishes this from the per-day grey header. Totals
+                          line up the way they'd be keyed into payroll for the window. */}
+                      <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.10)', borderBottom: '2px solid rgba(20, 184, 166, 0.45)' }}>
+                        <td colSpan={8} style={{ padding: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => toggleMyExpensePeriodGroup(period.periodKey)}
+                            aria-expanded={!periodCollapsed}
+                            style={{
+                              width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+                              padding: '12px 16px', border: 'none', background: 'transparent',
+                              cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                            }}
+                          >
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
+                              {periodCollapsed ? '▶' : '▼'}
+                            </span>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
+                              Pay Period
+                            </span>
+                            <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              {period.periodLabel}
+                            </span>
+                            {period.isCurrent && (
+                              <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'rgba(34, 197, 94, 0.18)', color: '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Current</span>
+                            )}
+                            {period.isFuture && (
+                              <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Upcoming</span>
+                            )}
+                            <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'baseline', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                              <span><strong style={{ color: 'var(--text-primary)' }}>{period.totals.count}</strong> {period.totals.count === 1 ? 'expense' : 'expenses'}</span>
+                              <span>Subtotal <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>${period.totals.amount.toFixed(2)}</strong></span>
+                              <span>GST <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>${period.totals.gst.toFixed(2)}</strong></span>
+                              <span>Total <strong style={{ fontFamily: 'monospace', color: '#0f766e' }}>${period.totals.total.toFixed(2)}</strong></span>
+                            </span>
+                          </button>
+                        </td>
+                      </tr>
+                      {!periodCollapsed && period.dateGroups.map(({ dateKey, items }) => {
                   const collapsed = collapsedMyExpenseDateKeys.has(dateKey);
                   const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(items);
                   const receiptGroupTotals = sharedReceiptGroupTotalsInOrder(items, sharedReceiptMeta);
@@ -3544,7 +3740,7 @@ export default function Expenses() {
                               display: 'flex',
                               alignItems: 'center',
                               gap: '10px',
-                              padding: '10px 16px',
+                              padding: '10px 16px 10px 32px',
                               border: 'none',
                               background: 'transparent',
                               cursor: 'pointer',
@@ -3743,6 +3939,9 @@ export default function Expenses() {
                           );
                           return summaryTr ? [summaryTr, expenseTr] : [expenseTr];
                         })}
+                    </Fragment>
+                  );
+                })}
                     </Fragment>
                   );
                 })
@@ -4020,7 +4219,47 @@ export default function Expenses() {
                     </td>
                   </tr>
                 ) : (
-                  adminFilteredExpensesGroupedByDate.map(({ dateKey, items }) => {
+                  adminFilteredExpensesGroupedByPayPeriod.map((period) => {
+                    const periodCollapsed = collapsedAdminExpensePeriodKeys.has(period.periodKey);
+                    return (
+                      <Fragment key={`admin-period-${period.periodKey}`}>
+                        <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.10)', borderBottom: '2px solid rgba(20, 184, 166, 0.45)' }}>
+                          <td colSpan={9} style={{ padding: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleAdminExpensePeriodGroup(period.periodKey)}
+                              aria-expanded={!periodCollapsed}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '12px 16px', border: 'none', background: 'transparent',
+                                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', flexWrap: 'wrap',
+                              }}
+                            >
+                              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
+                                {periodCollapsed ? '▶' : '▼'}
+                              </span>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
+                                Pay Period
+                              </span>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {period.periodLabel}
+                              </span>
+                              {period.isCurrent && (
+                                <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'rgba(34, 197, 94, 0.18)', color: '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Current</span>
+                              )}
+                              {period.isFuture && (
+                                <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Upcoming</span>
+                              )}
+                              <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'baseline', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                <span><strong style={{ color: 'var(--text-primary)' }}>{period.totals.count}</strong> {period.totals.count === 1 ? 'item' : 'items'}</span>
+                                <span>Subtotal <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>${period.totals.amount.toFixed(2)}</strong></span>
+                                <span>GST <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>${period.totals.gst.toFixed(2)}</strong></span>
+                                <span>Total <strong style={{ fontFamily: 'monospace', color: '#0f766e' }}>${period.totals.total.toFixed(2)}</strong></span>
+                              </span>
+                            </button>
+                          </td>
+                        </tr>
+                        {!periodCollapsed && period.dateGroups.map(({ dateKey, items }) => {
                     const collapsed = collapsedAdminExpenseDateKeys.has(dateKey);
                     const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(items);
                     const receiptGroupTotals = sharedReceiptGroupTotalsInOrder(items, sharedReceiptMeta);
@@ -4059,7 +4298,7 @@ export default function Expenses() {
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '10px',
-                                padding: '8px 14px',
+                                padding: '8px 14px 8px 32px',
                                 border: 'none',
                                 background: 'transparent',
                                 cursor: 'pointer',
@@ -4470,6 +4709,9 @@ export default function Expenses() {
                     linkedTr,
                   ].filter(Boolean) as JSX.Element[];
                 })}
+                      </Fragment>
+                    );
+                  })}
                       </Fragment>
                     );
                   })
