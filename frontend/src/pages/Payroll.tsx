@@ -841,19 +841,45 @@ export default function Payroll() {
     [receiptExpensesForReimbursements]
   );
 
+  /** Ticket ids the in-scope receipts attach to (when set). Used to find ticket-expense
+   *  rows that represent the same charge as the receipt but live on a ticket dated outside
+   *  the current payroll window. Without this, a receipt dated Apr 14 + its ticket-expense
+   *  dated Apr 12 reimburse on two separate periods (Chase Gibbon's O-Ring / Oil Pump bug). */
+  const payrollReceiptTicketIds = useMemo(
+    () => [...new Set(
+      (receiptExpensesForReimbursements as any[])
+        .map((r) => r.service_ticket_id)
+        .filter((tid): tid is string => !!tid)
+        .map((tid) => String(tid))
+    )],
+    [receiptExpensesForReimbursements]
+  );
+
   const { data: linkedTicketExpensesForReceipts = [] } = useQuery({
-    queryKey: ['payrollLinkedTicketExpensesForReceipts', payrollReceiptIds.slice().sort().join(',')],
+    queryKey: [
+      'payrollLinkedTicketExpensesForReceipts',
+      payrollReceiptIds.slice().sort().join(','),
+      payrollReceiptTicketIds.slice().sort().join(','),
+    ],
     queryFn: async () => {
-      if (payrollReceiptIds.length === 0) return [];
+      if (payrollReceiptIds.length === 0 && payrollReceiptTicketIds.length === 0) return [];
+      // Two link paths to the same underlying charge:
+      //   (a) ste.user_expense_id IN payrollReceiptIds  — explicit link (Apply-to-Ticket flow)
+      //   (b) ste.service_ticket_id IN payrollReceiptTicketIds — same ticket as a receipt,
+      //       falls back to description matching in linkedUserExpenseRedundantWithTicketExpenseLine.
+      // Fetch both in one .or() so the dedup sees every candidate regardless of which path applies.
+      const filters: string[] = [];
+      if (payrollReceiptIds.length > 0) filters.push(`user_expense_id.in.(${payrollReceiptIds.join(',')})`);
+      if (payrollReceiptTicketIds.length > 0) filters.push(`service_ticket_id.in.(${payrollReceiptTicketIds.join(',')})`);
       const { data, error } = await supabase
         .from('service_ticket_expenses')
-        .select('user_expense_id, needs_reimbursement')
-        .in('user_expense_id', payrollReceiptIds)
+        .select('id, service_ticket_id, user_expense_id, description, needs_reimbursement')
+        .or(filters.join(','))
         .eq('needs_reimbursement', true);
       if (error) throw error;
       return data || [];
     },
-    enabled: payrollReceiptIds.length > 0,
+    enabled: payrollReceiptIds.length > 0 || payrollReceiptTicketIds.length > 0,
   });
 
   const receiptIdsCoveredByTicketLink = useMemo(() => {
@@ -1244,9 +1270,16 @@ export default function Payroll() {
     // legacy direct-apply (matched by description on this period's ticket lines),
     // or via the new user_expense_id link (matched against ANY period's ticket
     // lines so a receipt linked to past-period tickets isn't paid again here).
+    // Cross-period dedup: combine the current period's ticket-expenses with the wider
+    // set fetched by user_expense_id / service_ticket_id link so a receipt dated in
+    // one period and its matching ticket-expense dated in another still dedupe.
+    const widenedTicketExpensesForDedup = [
+      ...(ticketExpenses as any[]),
+      ...(linkedTicketExpensesForReceipts as any[]),
+    ];
     for (const exp of receiptExpensesForReimbursements as any[]) {
       if (receiptIdsCoveredByTicketLink.has(String(exp.id))) continue;
-      if (linkedUserExpenseRedundantWithTicketExpenseLine(exp, ticketExpenses as any[])) continue;
+      if (linkedUserExpenseRedundantWithTicketExpenseLine(exp, widenedTicketExpensesForDedup)) continue;
       // Admin explicitly marked this receipt as not reimbursable (e.g. company paid).
       // It stays in user_expenses so it can be Applied-to-Ticket, but payroll skips it.
       if (exp.not_reimbursable === true) continue;
@@ -1284,7 +1317,7 @@ export default function Payroll() {
     }
 
     return map;
-  }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink]);
+  }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink, linkedTicketExpensesForReceipts]);
 
   const grandTotalReimbursements = useMemo(() => {
     const employeeIds = new Set(displayedEmployeeHours.map((e) => e.userId));
