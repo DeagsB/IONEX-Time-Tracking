@@ -14,6 +14,7 @@ import {
   ticketExpenseHasPayrollEligibleLinkedReceipt,
 } from '../utils/ticketExpensePayrollEligibility';
 import { startOfWeekMonday } from '../utils/localMondayWeek';
+import { useBackdropClose } from '../hooks/useBackdropClose';
 
 interface TimeEntry {
   id: string;
@@ -913,6 +914,7 @@ export default function Payroll() {
 
   // State for the reimbursement breakdown modal
   const [reimbursementModalUserId, setReimbursementModalUserId] = useState<string | null>(null);
+  const reimbursementBackdropClose = useBackdropClose(() => setReimbursementModalUserId(null));
   // Set of `${category}|${projectKey}` rows the user has expanded in the breakdown modal.
   // Wiped whenever the modal closes so opening a different employee starts collapsed.
   const [expandedProjectRows, setExpandedProjectRows] = useState<Set<string>>(new Set());
@@ -954,6 +956,7 @@ export default function Payroll() {
     loading: boolean;
   };
   const [receiptPreview, setReceiptPreview] = useState<ReceiptPreviewState | null>(null);
+  const receiptPreviewBackdropClose = useBackdropClose(() => setReceiptPreview(null));
 
   const openReceiptPreview = useCallback(async (line: ReimbursementLine) => {
     if (!line.receipt) return;
@@ -2488,7 +2491,7 @@ export default function Payroll() {
           <div
             className="ionex-modal-backdrop"
             style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
-            onClick={() => setReimbursementModalUserId(null)}
+            {...reimbursementBackdropClose}
           >
             <div
               className="ionex-modal-card"
@@ -2717,7 +2720,7 @@ export default function Payroll() {
         return (
           <div
             style={{ position: 'fixed', inset: 0, zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            onClick={() => setReceiptPreview(null)}
+            {...receiptPreviewBackdropClose}
           >
             <div
               onClick={(e) => e.stopPropagation()}

@@ -9,6 +9,7 @@ import { allocateProportionalCents } from '../utils/allocateProportionalCents';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { extractReceiptAutoFill } from '../utils/receiptAutoFill';
+import { useBackdropClose } from '../hooks/useBackdropClose';
 import {
   payPeriodBoundsForYmd,
   formatPayPeriodRangeLabel,
@@ -318,6 +319,9 @@ export default function Expenses() {
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
   const [viewingReceiptIsPdf, setViewingReceiptIsPdf] = useState(false);
   const [loadingReceiptId, setLoadingReceiptId] = useState<string | null>(null);
+  // Drag-aware backdrop close: only dismisses when the click actually starts on the backdrop,
+  // so drag-selecting text or images inside the preview and releasing outside doesn't close it.
+  const viewingReceiptBackdropClose = useBackdropClose(() => setViewingReceiptUrl(null));
 
   // Admin approval
   const [adminStatusFilter, setAdminStatusFilter] = useState<'unpaid' | 'paid' | 'all'>('unpaid');
@@ -5093,7 +5097,7 @@ export default function Expenses() {
         <div style={{
           position: 'fixed', inset: 0, zIndex: 10004, backgroundColor: 'rgba(0,0,0,0.8)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setViewingReceiptUrl(null)}>
+        }} {...viewingReceiptBackdropClose}>
           <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', width: viewingReceiptIsPdf ? '80vw' : 'auto', height: viewingReceiptIsPdf ? '90vh' : 'auto', maxWidth: '90vw', maxHeight: '90vh' }}>
             <button
               onClick={() => setViewingReceiptUrl(null)}
