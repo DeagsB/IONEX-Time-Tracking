@@ -3386,6 +3386,39 @@ export const CROSS_WORKFLOW_STATUS_ALIASES: Record<string, string[]> = {
   sent: ['submitted_portal'],
 };
 
+/**
+ * Admin overrides that promote a still-accumulating invoice batch into the Ready /
+ * Needs-Approval flow before its billing period closes. Backed by `invoice_force_ready`.
+ */
+export const invoiceForceReadyService = {
+  async getAllGroupIds(): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('invoice_force_ready')
+      .select('group_id');
+    if (error) throw error;
+    return (data || []).map((r: any) => String(r.group_id));
+  },
+
+  async markReady(groupId: string): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from('invoice_force_ready')
+      .upsert(
+        { group_id: groupId, forced_by: user?.id ?? null, forced_at: new Date().toISOString() },
+        { onConflict: 'group_id' }
+      );
+    if (error) throw error;
+  },
+
+  async unmarkReady(groupId: string): Promise<void> {
+    const { error } = await supabase
+      .from('invoice_force_ready')
+      .delete()
+      .eq('group_id', groupId);
+    if (error) throw error;
+  },
+};
+
 export const invoicedBatchMarksService = {
   async getAll(): Promise<InvoicedBatchMarkRow[]> {
     const { data, error } = await supabase

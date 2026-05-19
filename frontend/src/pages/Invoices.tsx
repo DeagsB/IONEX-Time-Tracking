@@ -14,6 +14,7 @@ import {
   invoicedBatchApprovalsService,
   invoicedBatchCustomerTimesheetsService,
   invoicedBatchMarksService,
+  invoiceForceReadyService,
   type InvoicedBatchMarkRow,
   invoiceFilenameForDownload,
   invoiceWorkflowsService,
@@ -4698,10 +4699,37 @@ export default function Invoices() {
     };
   }, [dragState, finalizeDrop]);
 
+  /** Admin overrides: batches an admin has explicitly marked "ready early" while their
+   *  period is still accumulating. Stored server-side (invoice_force_ready) and keyed by
+   *  the canonical persist groupId so it survives once the batch eventually gets marked. */
+  const { data: forceReadyGroupIds = [] } = useQuery({
+    queryKey: ['invoiceForceReadyGroupIds'],
+    queryFn: () => invoiceForceReadyService.getAllGroupIds(),
+  });
+  const forceReadySet = useMemo(
+    () => new Set((forceReadyGroupIds as string[]).map(String)),
+    [forceReadyGroupIds]
+  );
+
+  const markGroupReadyMutation = useMutation({
+    mutationFn: async (groupId: string) => invoiceForceReadyService.markReady(groupId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoiceForceReadyGroupIds'] }),
+    onError: (err) => setExportError(describeError(err, 'Could not mark this batch ready.')),
+  });
+  const unmarkGroupReadyMutation = useMutation({
+    mutationFn: async (groupId: string) => invoiceForceReadyService.unmarkReady(groupId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['invoiceForceReadyGroupIds'] }),
+    onError: (err) => setExportError(describeError(err, 'Could not undo the ready mark.')),
+  });
+
   /** A group is "accumulating" when its period is still open (more tickets expected) — these belong on Pending.
-   *  Closed periods (or project-completion / progress batches) belong on Ready. */
+   *  Closed periods (or project-completion / progress batches) belong on Ready. Admin overrides via
+   *  invoice_force_ready flip an accumulating batch into Ready early. */
   const isGroupAccumulating = useCallback(
     (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
+      // Admin override wins regardless of period state.
+      const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+      if (forceReadySet.has(persistId)) return false;
       const firstTicket = group.tickets[0];
       const custIdForPeriod = firstTicket?.customerId ?? '';
       const projIdForPeriod =
@@ -4716,7 +4744,7 @@ export default function Invoices() {
         isInvoicePeriodStillAccumulating(group.key.periodKey, periodGrouping)
       );
     },
-    [getGroupingForTicket]
+    [getGroupingForTicket, forceReadySet, invoicedMarkRows]
   );
 
   const pendingAccumulatingGroups = useMemo(
@@ -8137,35 +8165,121 @@ export default function Invoices() {
                       added through {periodAccumulationHintLabel(key.periodLabel)} — this batch is not complete for final
                       invoicing.
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const proj = projIdForPeriod ? projects?.find((p: { id: string; invoice_date_grouping?: string }) => p.id === projIdForPeriod) : null;
-                        const cust = !projIdForPeriod ? customers?.find((c: { id: string; invoice_date_grouping?: string }) => c.id === custIdForPeriod) : null;
-                        setEditingPeriodModal({
-                          projectId: projIdForPeriod || null,
-                          customerId: projIdForPeriod ? null : (custIdForPeriod || null),
-                          value: proj?.invoice_date_grouping ?? cust?.invoice_date_grouping ?? '',
-                        });
-                      }}
-                      style={{
-                        flexShrink: 0,
-                        alignSelf: 'center',
-                        padding: '4px 10px',
-                        backgroundColor: 'var(--bg-tertiary)',
-                        color: 'var(--text-secondary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Edit Period
-                    </button>
+                    <div style={{ display: 'inline-flex', gap: '6px', flexShrink: 0, alignSelf: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
+                          if (!window.confirm('Mark this batch as ready for invoicing now? It will move to the Ready tab even though its billing period is still open. Use this only when no more service tickets are expected for the period.')) return;
+                          markGroupReadyMutation.mutate(persistId);
+                        }}
+                        disabled={markGroupReadyMutation.isPending}
+                        title="Promote this batch to Ready (or Needs Approval for portal-flow customers) before its period closes. Stops new tickets from being lumped into this batch automatically — use when you're sure none are coming."
+                        style={{
+                          padding: '4px 10px',
+                          backgroundColor: 'rgba(34, 197, 94, 0.14)',
+                          color: '#15803d',
+                          border: '1px solid rgba(34, 197, 94, 0.45)',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: markGroupReadyMutation.isPending ? 'not-allowed' : 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {markGroupReadyMutation.isPending ? 'Marking…' : '✓ Mark ready for this period'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const proj = projIdForPeriod ? projects?.find((p: { id: string; invoice_date_grouping?: string }) => p.id === projIdForPeriod) : null;
+                          const cust = !projIdForPeriod ? customers?.find((c: { id: string; invoice_date_grouping?: string }) => c.id === custIdForPeriod) : null;
+                          setEditingPeriodModal({
+                            projectId: projIdForPeriod || null,
+                            customerId: projIdForPeriod ? null : (custIdForPeriod || null),
+                            value: proj?.invoice_date_grouping ?? cust?.invoice_date_grouping ?? '',
+                          });
+                        }}
+                        style={{
+                          padding: '4px 10px',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Edit Period
+                      </button>
+                    </div>
                   </div>
                 )}
+                {(() => {
+                  // Force-ready pill — shown on a Ready/Needs-Approval card when admin promoted
+                  // it early. Gives a clear undo path back to Pending if it was a mistake.
+                  const persistIdForForce = resolvedPersistGroupId(group, invoicedMarkRows);
+                  if (periodStillAccumulating) return null;
+                  if (!forceReadySet.has(persistIdForForce)) return null;
+                  return (
+                    <div
+                      style={{
+                        marginBottom: '12px',
+                        padding: '8px 12px',
+                        backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                        border: '1px solid rgba(34, 197, 94, 0.35)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: '10px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: '10px', fontWeight: 700,
+                          letterSpacing: '0.06em', textTransform: 'uppercase',
+                          padding: '3px 8px', borderRadius: '4px',
+                          backgroundColor: 'rgba(34, 197, 94, 0.18)',
+                          color: '#15803d',
+                        }}
+                      >
+                        Marked ready early
+                      </span>
+                      <span style={{ flex: '1 1 180px', minWidth: 0 }}>
+                        Admin promoted this batch out of Pending before its billing period closed. Any tickets added to the period later will form a follow-up batch.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm('Send this batch back to Pending? It will resume waiting for the billing period to close.')) return;
+                          unmarkGroupReadyMutation.mutate(persistIdForForce);
+                        }}
+                        disabled={unmarkGroupReadyMutation.isPending}
+                        title="Undo the early-ready mark and return this batch to Pending."
+                        style={{
+                          flexShrink: 0,
+                          padding: '4px 10px',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: unmarkGroupReadyMutation.isPending ? 'not-allowed' : 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        ↺ Send back to Pending
+                      </button>
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const pendingForBatch = getPendingTicketsForGroup(group);
                   if (pendingForBatch.length === 0) return null;
