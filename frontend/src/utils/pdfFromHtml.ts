@@ -291,7 +291,13 @@ export async function downloadPdfFromHtml(
 
         <!-- Customer Info (Right) -->
         <div style="flex: 1.2; border: 1px solid #000;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 8pt; table-layout: fixed;">
+            <colgroup>
+              <col style="width: 100px;" />
+              <col />
+              <col style="width: 50px;" />
+              <col />
+            </colgroup>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 100px;">Customer Name</td>
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-weight: bold;">${ticket.customerInfo.name}</td>
@@ -969,7 +975,13 @@ function buildBatchSummaryPdfHtml(
           </table>
         </div>
         <div style="flex: 1.2; border: 1px solid #000;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 8pt; table-layout: fixed;">
+            <colgroup>
+              <col style="width: 100px;" />
+              <col />
+              <col style="width: 50px;" />
+              <col />
+            </colgroup>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 100px;">Customer Name</td>
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-weight: bold;">${ticket.customerInfo.name}</td>
@@ -1313,7 +1325,13 @@ function buildPdfHtml(
 
         <!-- Customer Info (Right) -->
         <div style="flex: 1.2; border: 1px solid #000;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 8pt;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 8pt; table-layout: fixed;">
+            <colgroup>
+              <col style="width: 100px;" />
+              <col />
+              <col style="width: 50px;" />
+              <col />
+            </colgroup>
             <tr>
               <td style="padding: 2px 4px; border-bottom: 1px solid #ccc; width: 100px;">Customer Name</td>
               <td colspan="3" style="padding: 2px 4px; border-bottom: 1px solid #ccc; font-weight: bold;">${ticket.customerInfo.name}</td>
