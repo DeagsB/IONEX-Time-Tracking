@@ -7566,12 +7566,52 @@ export default function Invoices() {
                       );
                     }
                     // currentStep === 'done'
+                    const doneInvoiceFilename = invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? null;
+                    const isUnmarking = unmarkInvoicedMutation.isPending && unmarkInvoicedMutation.variables === persistId;
                     return (
                       <div>
                         <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
                           🎉 Batch finished. Pick the next one or jump to the Invoiced tab to review.
                         </p>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        {/* Surface what's attached + give an escape hatch back to step 1.
+                            Critical for the case where the user marked the batch invoiced too
+                            early and needs to swap the PDF or re-do the flow. */}
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                          padding: '10px 12px', marginBottom: '14px',
+                          backgroundColor: 'var(--bg-tertiary)',
+                          border: '1px dashed var(--border-color)',
+                          borderRadius: '8px', fontSize: '13px',
+                        }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            {doneInvoiceFilename
+                              ? <>Invoice attached: <strong style={{ color: 'var(--text-primary)' }}>{doneInvoiceFilename}</strong></>
+                              : <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No invoice PDF on file for this batch.</span>}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={isUnmarking}
+                            onClick={() => handleUnmarkAsInvoiced(persistId)}
+                            title="Reopen this batch — unmarks it as invoiced, deletes the attached PDF, and rewinds the wizard to step 1 so you can re-attach a different invoice."
+                            style={{
+                              marginLeft: 'auto',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid rgba(245, 158, 11, 0.55)',
+                              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                              color: '#b45309',
+                              fontFamily: 'inherit',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              cursor: isUnmarking ? 'wait' : 'pointer',
+                              whiteSpace: 'nowrap',
+                              opacity: isUnmarking ? 0.6 : 1,
+                            }}
+                          >
+                            {isUnmarking ? 'Reopening…' : '↻ Unmark batch & re-attach'}
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                           <button
                             type="button"
                             onClick={() => {
@@ -7583,6 +7623,17 @@ export default function Invoices() {
                           >
                             ✓ Mark batch as complete
                           </button>
+                          {!isPortal && doneInvoiceFilename && (
+                            <button
+                              type="button"
+                              onClick={onDownloadCombined}
+                              disabled={downloadingWithInvoiceGroupId === persistId}
+                              title="Re-download the merged invoice + service-ticket PDF for this batch."
+                              style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}
+                            >
+                              {downloadingWithInvoiceGroupId === persistId ? 'Building…' : '⬇ Re-download merged PDF'}
+                            </button>
+                          )}
                           <button type="button" onClick={() => setActiveTab('invoiced')} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}>
                             Open Invoiced tab
                           </button>
@@ -7902,8 +7953,10 @@ export default function Invoices() {
                       <div style={{ padding: '20px', backgroundColor: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-                              Step {Math.min(currentIdx + 1, STEP_DEFS.length)} of {STEP_DEFS.length}
+                            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: currentStep === 'done' ? '#15803d' : 'var(--text-tertiary)' }}>
+                              {currentStep === 'done'
+                                ? '✓ Complete'
+                                : `Step ${Math.min(currentIdx + 1, STEP_DEFS.length)} of ${STEP_DEFS.length}`}
                             </div>
                             <h3 style={{ margin: '4px 0 2px', fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
                               {currentStep === 'done' ? 'Done' : STEP_DEFS.find((s) => s.id === currentStep)?.label}
