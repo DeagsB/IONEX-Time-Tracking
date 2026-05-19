@@ -350,24 +350,15 @@ export default function Expenses() {
   const hasSeededAdminExpensePeriodCollapse = useRef(false);
   const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
 
-  // Admin employee overview (like Service Tickets)
-  const [showExpenseEmployeeOverview, setShowExpenseEmployeeOverview] = useState(true);
-  const [expandedExpenseEmployeeId, setExpandedExpenseEmployeeId] = useState<string | null>(null);
-  const [expandedExpenseStatusSections, setExpandedExpenseStatusSections] = useState<Record<string, Set<string>>>({});
-  /** Selected rows in Employee Overview for batch actions. Key format: "<source>-<id>". */
-  const [overviewSelectedKeys, setOverviewSelectedKeys] = useState<Set<string>>(new Set());
-  const [overviewBatchBusy, setOverviewBatchBusy] = useState(false);
-
-  const toggleExpenseStatusSection = (empId: string, key: string) => {
-    setExpandedExpenseStatusSections(prev => {
-      const next = { ...prev };
-      const set = new Set(next[empId] || []);
-      if (set.has(key)) set.delete(key);
-      else set.add(key);
-      next[empId] = set;
-      return next;
-    });
-  };
+  /** Selected rows in the admin expense approval table for batch actions.
+   *  Key format: "<source>-<id>" where source is "receipt" | "ticket". */
+  const [selectedExpenseKeys, setSelectedExpenseKeys] = useState<Set<string>>(new Set());
+  const [batchActionBusy, setBatchActionBusy] = useState(false);
+  // Clearing selection when filters change keeps bulk actions honest — the user shouldn't be
+  // able to keep rows "selected" that are no longer visible after switching filters.
+  useEffect(() => {
+    setSelectedExpenseKeys(new Set());
+  }, [adminStatusFilter, adminEmployeeFilter, adminTypeFilter, adminDateStart, adminDateEnd]);
 
   // Edit receipt
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -396,14 +387,13 @@ export default function Expenses() {
   // sweep just stops adding new ones silently. Manual "Mark Paid" actions in the
   // Employee Overview still work as before.
 
-  // Dashboard action items: open Employee Overview and set tab from URL params
+  // Dashboard action items: switch admin status filter via URL params. The old `overview=open`
+  // hint pointed at the standalone Employee Overview that was folded back into the main table;
+  // it now just falls through to "unpaid" filtering, which is where the actionable work lives.
   useEffect(() => {
     const overview = searchParams.get('overview');
     const tab = searchParams.get('tab');
-    if (overview === 'open') {
-      setShowExpenseEmployeeOverview(true);
-    }
-    if (tab === 'pending' || tab === 'unpaid') {
+    if (overview === 'open' || tab === 'pending' || tab === 'unpaid') {
       setAdminStatusFilter('unpaid');
     }
     if (overview || tab) {
@@ -1208,10 +1198,10 @@ export default function Expenses() {
 
   /**
    * Batch flip status for many selected rows at once. Receipts hit user_expenses.status,
-   * ticket expenses hit service_ticket_expenses.reimbursement_status. Used by the
-   * Employee Overview bulk-action bar.
+   * ticket expenses hit service_ticket_expenses.reimbursement_status. Used by the admin
+   * approval table's bulk-action bar.
    */
-  const handleOverviewBatchStatusChange = async (
+  const handleAdminBatchStatusChange = async (
     rows: Array<{ id: string; source: 'receipt' | 'ticket' }>,
     newStatus: 'pending' | 'paid'
   ) => {
@@ -1222,7 +1212,7 @@ export default function Expenses() {
     const verb = newStatus === 'paid' ? 'paid' : 'unpaid';
     const proceed = window.confirm(`Mark ${rows.length} expense${rows.length === 1 ? '' : 's'} as ${verb}?`);
     if (!proceed) return;
-    setOverviewBatchBusy(true);
+    setBatchActionBusy(true);
     try {
       await Promise.all(
         rows.map((r) =>
@@ -1234,11 +1224,64 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
       queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
-      setOverviewSelectedKeys(new Set());
+      setSelectedExpenseKeys(new Set());
     } catch (err: any) {
       alert('Failed to update some rows: ' + (err?.message || 'Unknown error'));
     } finally {
-      setOverviewBatchBusy(false);
+      setBatchActionBusy(false);
+    }
+  };
+
+  /** Bulk admin actions on selected receipts: mark not_reimbursable (or restore) and delete. */
+  const handleAdminBatchSetNotReimbursable = async (
+    receiptIds: string[],
+    value: boolean
+  ) => {
+    if (receiptIds.length === 0) return;
+    if (value) {
+      const proceed = window.confirm(
+        `Mark ${receiptIds.length} receipt${receiptIds.length === 1 ? '' : 's'} as Not Reimbursable?\n\n` +
+        'They drop out of payroll and the employees\' expense tables, but remain available for Apply-to-Ticket.'
+      );
+      if (!proceed) return;
+    }
+    setBatchActionBusy(true);
+    try {
+      await Promise.all(receiptIds.map((id) => userExpensesService.update(id, { not_reimbursable: value })));
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      setSelectedExpenseKeys(new Set());
+    } catch (err: any) {
+      alert('Failed to update some rows: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setBatchActionBusy(false);
+    }
+  };
+
+  const handleAdminBatchDeleteReceipts = async (receiptIds: string[]) => {
+    if (receiptIds.length === 0) return;
+    const proceed = window.confirm(
+      `Delete ${receiptIds.length} receipt${receiptIds.length === 1 ? '' : 's'} permanently?\n\n` +
+      'If you only want to drop reimbursement but keep them for ticket billing, use Not Reimbursable instead.'
+    );
+    if (!proceed) return;
+    setBatchActionBusy(true);
+    try {
+      // Pop optimistic from cache so the table updates immediately, then run deletes serially
+      // to keep the error messaging accurate (Promise.all would hide individual failures).
+      for (const id of receiptIds) {
+        removeExpenseFromCache(id);
+      }
+      for (const id of receiptIds) {
+        await userExpensesService.delete(id);
+      }
+      queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+      queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
+      setSelectedExpenseKeys(new Set());
+    } catch (err: any) {
+      alert('Failed to delete some receipts: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setBatchActionBusy(false);
     }
   };
 
@@ -1643,19 +1686,6 @@ export default function Expenses() {
       return a.name.localeCompare(b.name);
     });
   }, [isAdmin, mergedAdminExpenses, employees]);
-
-  // Expenses for expanded employee in overview (grouped by status)
-  const expandedExpenseEmployeeByStatus = useMemo(() => {
-    const empty = { unpaid: [] as any[], paid: [] as any[] };
-    if (!expandedExpenseEmployeeId || !isAdmin) return empty;
-    const pool = mergedAdminExpenses.filter((e: any) => e._userId === expandedExpenseEmployeeId);
-    const grouped = { unpaid: [] as any[], paid: [] as any[] };
-    for (const e of pool) {
-      if (e._status === 'paid') grouped.paid.push(e);
-      else grouped.unpaid.push(e);
-    }
-    return grouped;
-  }, [expandedExpenseEmployeeId, isAdmin, mergedAdminExpenses]);
 
   const handleFileDrop = (file: File) => {
     setReceiptFile(file);
@@ -3039,289 +3069,6 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* Admin: Employee Overview (like Service Tickets) */}
-      {isAdmin && expenseEmployeeSummary.length > 0 && (
-        <div style={{ marginBottom: '24px' }}>
-          <button
-            onClick={() => setShowExpenseEmployeeOverview(!showExpenseEmployeeOverview)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: 'var(--text-primary)',
-              padding: '8px 0',
-            }}
-          >
-            <span style={{
-              display: 'inline-block',
-              transition: 'transform 0.2s ease',
-              transform: showExpenseEmployeeOverview ? 'rotate(90deg)' : 'rotate(0deg)',
-              fontSize: '12px',
-            }}>&#9654;</span>
-            Employee Overview
-            <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontWeight: '400' }}>
-              ({expenseEmployeeSummary.length} employee{expenseEmployeeSummary.length !== 1 ? 's' : ''})
-            </span>
-            {(() => {
-              const totalUnpaid = expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0);
-              if (totalUnpaid === 0) return null;
-              return (
-                <span style={{
-                  marginLeft: '4px',
-                  padding: '2px 8px',
-                  borderRadius: '10px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  backgroundColor: '#ff9800',
-                  color: 'white',
-                }}>{totalUnpaid} unpaid</span>
-              );
-            })()}
-          </button>
-
-          {showExpenseEmployeeOverview && (
-            <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
-                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#ff9800', textTransform: 'uppercase', width: '100px' }}>Unpaid</th>
-                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#3b82f6', textTransform: 'uppercase', width: '100px' }}>Paid</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenseEmployeeSummary.map((emp) => {
-                    const isExpanded = expandedExpenseEmployeeId === emp.userId;
-                    return (
-                      <Fragment key={emp.userId}>
-                        <tr
-                          onClick={() => setExpandedExpenseEmployeeId(isExpanded ? null : emp.userId)}
-                          style={{
-                            borderBottom: '1px solid var(--border-color)',
-                            cursor: 'pointer',
-                            backgroundColor: isExpanded ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
-                            transition: 'background-color 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'; }}
-                          onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.backgroundColor = 'transparent'; }}
-                        >
-                          <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
-                            <span style={{
-                              display: 'inline-block',
-                              marginRight: '8px',
-                              fontSize: '10px',
-                              color: 'var(--text-tertiary)',
-                              transition: 'transform 0.2s ease',
-                              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                            }}>&#9654;</span>
-                            {emp.name}
-                          </td>
-                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
-                            <span style={{ color: emp.unpaid > 0 ? '#ff9800' : 'var(--text-tertiary)', fontWeight: emp.unpaid > 0 ? '700' : '400' }}>{emp.unpaid}</span>
-                          </td>
-                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace' }}>
-                            <span style={{ color: emp.paid > 0 ? '#3b82f6' : 'var(--text-tertiary)' }}>{emp.paid}</span>
-                          </td>
-                        </tr>
-                        {isExpanded && (() => {
-                          const allItems = [...expandedExpenseEmployeeByStatus.unpaid, ...expandedExpenseEmployeeByStatus.paid] as any[];
-                          const selectedRowsForEmp = allItems
-                            .filter((it) => overviewSelectedKeys.has(`${it._source}-${it.id}`))
-                            .map((it) => ({ id: String(it.id), source: it._source as 'receipt' | 'ticket', status: it._status as 'paid' | 'unpaid' }));
-                          const selectedAmount = allItems
-                            .filter((it) => overviewSelectedKeys.has(`${it._source}-${it.id}`))
-                            .reduce((s, it) => s + (Number(it._amount) || 0), 0);
-                          return (
-                          <tr>
-                            <td colSpan={3} style={{ padding: '0' }}>
-                              <div style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-color)', padding: '4px 0' }}>
-                                {/* Batch action bar — shows when any rows in this employee are selected. */}
-                                {selectedRowsForEmp.length > 0 && (
-                                  <div style={{ padding: '8px 16px 8px 32px', display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'rgba(33, 150, 243, 0.06)', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                      {selectedRowsForEmp.length} selected · ${selectedAmount.toFixed(2)}
-                                    </span>
-                                    {selectedRowsForEmp.some((r) => r.status === 'unpaid') && (
-                                      <button
-                                        type="button"
-                                        disabled={overviewBatchBusy}
-                                        onClick={() => handleOverviewBatchStatusChange(selectedRowsForEmp.filter((r) => r.status === 'unpaid').map(({ id, source }) => ({ id, source })), 'paid')}
-                                        style={{ padding: '4px 10px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: overviewBatchBusy ? 'not-allowed' : 'pointer' }}
-                                      >
-                                        {overviewBatchBusy ? 'Working…' : 'Mark Paid'}
-                                      </button>
-                                    )}
-                                    {selectedRowsForEmp.some((r) => r.status === 'paid') && (
-                                      <button
-                                        type="button"
-                                        disabled={overviewBatchBusy}
-                                        onClick={() => handleOverviewBatchStatusChange(selectedRowsForEmp.filter((r) => r.status === 'paid').map(({ id, source }) => ({ id, source })), 'pending')}
-                                        style={{ padding: '4px 10px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: overviewBatchBusy ? 'not-allowed' : 'pointer' }}
-                                      >
-                                        {overviewBatchBusy ? 'Working…' : 'Mark Unpaid'}
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => setOverviewSelectedKeys(new Set())}
-                                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', color: 'var(--text-secondary)', textDecoration: 'underline' }}
-                                    >
-                                      Clear selection
-                                    </button>
-                                  </div>
-                                )}
-                                {([
-                                  { key: 'unpaid', label: 'Unpaid', color: '#ff9800', items: expandedExpenseEmployeeByStatus.unpaid },
-                                  { key: 'paid', label: 'Paid', color: '#3b82f6', items: expandedExpenseEmployeeByStatus.paid },
-                                ] as const).map(section => {
-                                  const sectionOpen = expandedExpenseStatusSections[emp.userId]?.has(section.key) || false;
-                                  const sectionKeys = section.items.map((it: any) => `${it._source}-${it.id}`);
-                                  const allSelected = sectionKeys.length > 0 && sectionKeys.every((k) => overviewSelectedKeys.has(k));
-                                  const anySelected = sectionKeys.some((k) => overviewSelectedKeys.has(k));
-                                  return (
-                                    <div key={section.key}>
-                                      <div
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '8px',
-                                          width: '100%',
-                                          padding: '8px 16px 8px 16px',
-                                        }}
-                                      >
-                                        {section.items.length > 0 && (
-                                          <input
-                                            type="checkbox"
-                                            checked={allSelected}
-                                            ref={(el) => { if (el) el.indeterminate = !allSelected && anySelected; }}
-                                            onClick={(e) => e.stopPropagation()}
-                                            onChange={(e) => {
-                                              setOverviewSelectedKeys((prev) => {
-                                                const next = new Set(prev);
-                                                if (e.target.checked) sectionKeys.forEach((k) => next.add(k));
-                                                else sectionKeys.forEach((k) => next.delete(k));
-                                                return next;
-                                              });
-                                            }}
-                                            style={{ marginLeft: '8px' }}
-                                            title={allSelected ? `Deselect all ${section.label.toLowerCase()}` : `Select all ${section.label.toLowerCase()}`}
-                                          />
-                                        )}
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); toggleExpenseStatusSection(emp.userId, section.key); }}
-                                          style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                            flex: 1,
-                                            padding: 0,
-                                            background: 'none',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            fontSize: '13px',
-                                            fontWeight: '600',
-                                            color: section.color,
-                                            textAlign: 'left',
-                                          }}
-                                        >
-                                          <span style={{
-                                            display: 'inline-block',
-                                            fontSize: '9px',
-                                            transition: 'transform 0.2s ease',
-                                            transform: sectionOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                                          }}>&#9654;</span>
-                                          {section.label}
-                                          <span style={{
-                                            padding: '1px 7px',
-                                            borderRadius: '8px',
-                                            fontSize: '11px',
-                                            fontWeight: '700',
-                                            backgroundColor: section.items.length > 0 ? `${section.color}18` : 'transparent',
-                                            color: section.items.length > 0 ? section.color : 'var(--text-tertiary)',
-                                          }}>{section.items.length}</span>
-                                        </button>
-                                      </div>
-                                      {sectionOpen && section.items.length > 0 && (
-                                        <div style={{ paddingBottom: '4px' }}>
-                                          {section.items.map((exp: any) => {
-                                            const key = `${exp._source}-${exp.id}`;
-                                            const isChecked = overviewSelectedKeys.has(key);
-                                            return (
-                                              <div
-                                                key={key}
-                                                style={{
-                                                  padding: '8px 16px 8px 36px',
-                                                  fontSize: '13px',
-                                                  color: 'var(--text-secondary)',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  gap: '10px',
-                                                  borderBottom: '1px solid var(--border-color)',
-                                                  backgroundColor: isChecked ? 'rgba(33, 150, 243, 0.06)' : undefined,
-                                                }}
-                                              >
-                                                <input
-                                                  type="checkbox"
-                                                  checked={isChecked}
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  onChange={(e) => {
-                                                    setOverviewSelectedKeys((prev) => {
-                                                      const next = new Set(prev);
-                                                      if (e.target.checked) next.add(key);
-                                                      else next.delete(key);
-                                                      return next;
-                                                    });
-                                                  }}
-                                                />
-                                                <span
-                                                  role={exp._source === 'receipt' ? 'button' : undefined}
-                                                  tabIndex={exp._source === 'receipt' ? 0 : undefined}
-                                                  onClick={exp._source === 'receipt' ? () => handleStartEdit(exp) : undefined}
-                                                  onKeyDown={exp._source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
-                                                  style={{ flex: 1, cursor: exp._source === 'receipt' ? 'pointer' : 'default' }}
-                                                >
-                                                  {exp.description} {exp._ticketNumber ? `(${exp._ticketNumber})` : ''}
-                                                </span>
-                                                <span style={{ fontWeight: '600' }}>${exp._amount.toFixed(2)}</span>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </td>
-                          </tr>
-                          );
-                        })()}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ borderTop: '2px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', fontWeight: '700' }}>
-                    <td style={{ padding: '14px 16px', fontSize: '13px', color: 'var(--text-secondary)' }}>Total</td>
-                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#ff9800' }}>
-                      {expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0)}
-                    </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: '14px', fontFamily: 'monospace', color: '#3b82f6' }}>
-                      {expenseEmployeeSummary.reduce((s, e) => s + e.paid, 0)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Drag and Drop Zone */}
       <input
         type="file"
@@ -4009,9 +3756,85 @@ export default function Expenses() {
       {/* Admin: Expense Approval Section */}
       {isAdmin && (
         <div style={{ marginTop: '40px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '16px' }}>
-            Expense Management
-          </h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+              Expense Management
+            </h2>
+            {/* Headline totals — surface what matters at a glance without making admins
+                open a separate Employee Overview panel. */}
+            {(() => {
+              const totalUnpaid = expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0);
+              const totalPaid = expenseEmployeeSummary.reduce((s, e) => s + e.paid, 0);
+              const employeeCount = expenseEmployeeSummary.length;
+              return (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span><strong style={{ color: 'var(--text-primary)' }}>{employeeCount}</strong> {employeeCount === 1 ? 'employee' : 'employees'}</span>
+                  <span><strong style={{ color: '#ff9800' }}>{totalUnpaid}</strong> unpaid</span>
+                  <span><strong style={{ color: '#3b82f6' }}>{totalPaid}</strong> paid</span>
+                </span>
+              );
+            })()}
+          </div>
+
+          {/* Per-employee chip strip — the old standalone Employee Overview folded into a
+              one-line filter. Click an employee to scope the table to them, click again or
+              "All" to clear. Sorted: anyone with unpaid items first, descending by count. */}
+          {expenseEmployeeSummary.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setAdminEmployeeFilter('all')}
+                style={{
+                  padding: '5px 12px', borderRadius: '999px',
+                  border: adminEmployeeFilter === 'all' ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
+                  backgroundColor: adminEmployeeFilter === 'all' ? 'rgba(33, 150, 243, 0.10)' : 'var(--bg-secondary)',
+                  color: adminEmployeeFilter === 'all' ? 'var(--primary-color)' : 'var(--text-secondary)',
+                  fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                All employees
+              </button>
+              {expenseEmployeeSummary.map((emp) => {
+                const isActive = adminEmployeeFilter === emp.userId;
+                const hasUnpaid = emp.unpaid > 0;
+                return (
+                  <button
+                    key={emp.userId}
+                    type="button"
+                    onClick={() => setAdminEmployeeFilter(isActive ? 'all' : emp.userId)}
+                    title={`${emp.unpaid} unpaid · ${emp.paid} paid`}
+                    style={{
+                      padding: '5px 10px 5px 12px', borderRadius: '999px',
+                      border: isActive
+                        ? '1px solid var(--primary-color)'
+                        : `1px solid ${hasUnpaid ? 'rgba(255, 152, 0, 0.45)' : 'var(--border-color)'}`,
+                      backgroundColor: isActive
+                        ? 'rgba(33, 150, 243, 0.10)'
+                        : (hasUnpaid ? 'rgba(255, 152, 0, 0.08)' : 'var(--bg-secondary)'),
+                      color: isActive
+                        ? 'var(--primary-color)'
+                        : (hasUnpaid ? 'var(--text-primary)' : 'var(--text-secondary)'),
+                      fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    }}
+                  >
+                    {emp.name}
+                    {hasUnpaid && (
+                      <span style={{
+                        padding: '0 6px', borderRadius: '999px',
+                        backgroundColor: '#ff9800', color: 'white',
+                        fontSize: '11px', fontWeight: 700,
+                        minWidth: '18px', height: '16px',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      }}>{emp.unpaid}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Status tabs (primary) + active-filter chips + Filters popover. */}
           {(() => {
@@ -4037,12 +3860,9 @@ export default function Expenses() {
               })(),
             ];
             const activePreset = presets.find((p) => p.start === adminDateStart && p.end === adminDateEnd) || null;
-            const activeEmpName =
-              adminEmployeeFilter !== 'all'
-                ? adminEmployeeOptions.find((e) => e.id === adminEmployeeFilter)?.name || null
-                : null;
+            // Employee filter is rendered as its own chip strip above this row; only
+            // Type + Date count toward the "Filters" gear badge here.
             const activeFilterCount =
-              (adminEmployeeFilter !== 'all' ? 1 : 0) +
               (adminTypeFilter !== 'all' ? 1 : 0) +
               ((adminDateStart || adminDateEnd) ? 1 : 0);
             const fmtDate = (s: string) =>
@@ -4092,12 +3912,6 @@ export default function Expenses() {
                 </div>
 
                 {/* Active filter chips. */}
-                {activeEmpName && (
-                  <span style={chipStyle}>
-                    {activeEmpName}
-                    <button type="button" onClick={() => setAdminEmployeeFilter('all')} style={chipXStyle} aria-label="Remove employee filter">×</button>
-                  </span>
-                )}
                 {adminTypeFilter !== 'all' && (
                   <span style={chipStyle}>
                     {adminTypeFilter}
@@ -4151,20 +3965,8 @@ export default function Expenses() {
                         display: 'flex', flexDirection: 'column', gap: '12px',
                       }}
                     >
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Employee</label>
-                        <select
-                          value={adminEmployeeFilter}
-                          onChange={(e) => setAdminEmployeeFilter(e.target.value)}
-                          style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-                        >
-                          <option value="all">All employees</option>
-                          {adminEmployeeOptions.map((emp) => (
-                            <option key={emp.id} value={emp.id}>{emp.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
+                      {/* Employee selection lives in the chip strip above the table now;
+                          only Type + Date range stay in this popover. */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Type</label>
                         <select
@@ -4222,7 +4024,7 @@ export default function Expenses() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
                         <button
                           type="button"
-                          onClick={() => { setAdminEmployeeFilter('all'); setAdminTypeFilter('all'); setAdminDateStart(''); setAdminDateEnd(''); }}
+                          onClick={() => { setAdminTypeFilter('all'); setAdminDateStart(''); setAdminDateEnd(''); }}
                           disabled={activeFilterCount === 0}
                           style={{
                             padding: '5px 10px', borderRadius: '6px', border: 'none',
@@ -4250,11 +4052,127 @@ export default function Expenses() {
             );
           })()}
 
+          {/* Bulk action bar — appears as soon as any rows are selected. Surfaces the
+              actions the user used to need inside the (now-removed) Employee Overview drawer
+              plus the new admin actions on receipts (Not Reimbursable / Delete). */}
+          {(() => {
+            const selectedRows = adminFilteredExpenses.filter((e: any) => selectedExpenseKeys.has(`${e._source}-${e.id}`));
+            if (selectedRows.length === 0) return null;
+            const unpaidRows = selectedRows.filter((r: any) => r._status === 'unpaid');
+            const paidRows = selectedRows.filter((r: any) => r._status === 'paid');
+            const receiptRows = selectedRows.filter((r: any) => r._source === 'receipt');
+            const receiptsToFlag = receiptRows.filter((r: any) => r.not_reimbursable !== true).map((r: any) => String(r.id));
+            const receiptsToUnflag = receiptRows.filter((r: any) => r.not_reimbursable === true).map((r: any) => String(r.id));
+            const receiptIds = receiptRows.map((r: any) => String(r.id));
+            const selectedAmount = selectedRows.reduce((s: number, r: any) => s + (Number(r._amount) || 0), 0);
+            const toStatusPayload = (rows: any[]) => rows.map((r: any) => ({ id: String(r.id), source: r._source as 'receipt' | 'ticket' }));
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                padding: '10px 14px', marginBottom: '12px',
+                borderRadius: '8px', backgroundColor: 'rgba(33, 150, 243, 0.08)',
+                border: '1px solid rgba(33, 150, 243, 0.35)',
+              }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {selectedRows.length} selected
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                  ${selectedAmount.toFixed(2)}
+                </span>
+                <span style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)' }} aria-hidden />
+                {unpaidRows.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchActionBusy}
+                    onClick={() => handleAdminBatchStatusChange(toStatusPayload(unpaidRows), 'paid')}
+                    style={{ padding: '5px 10px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
+                  >
+                    Mark {unpaidRows.length} Paid
+                  </button>
+                )}
+                {paidRows.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchActionBusy}
+                    onClick={() => handleAdminBatchStatusChange(toStatusPayload(paidRows), 'pending')}
+                    style={{ padding: '5px 10px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
+                  >
+                    Mark {paidRows.length} Unpaid
+                  </button>
+                )}
+                {receiptsToFlag.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchActionBusy}
+                    onClick={() => handleAdminBatchSetNotReimbursable(receiptsToFlag, true)}
+                    title="Drop these receipts from employee reimbursement; keep them for Apply-to-Ticket."
+                    style={{ padding: '5px 10px', backgroundColor: 'rgba(124, 58, 237, 0.10)', color: '#6d28d9', border: '1px solid rgba(124, 58, 237, 0.35)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
+                  >
+                    Not Reimbursable ({receiptsToFlag.length})
+                  </button>
+                )}
+                {receiptsToUnflag.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchActionBusy}
+                    onClick={() => handleAdminBatchSetNotReimbursable(receiptsToUnflag, false)}
+                    title="Re-include these receipts in employee reimbursement."
+                    style={{ padding: '5px 10px', backgroundColor: 'rgba(99, 102, 241, 0.14)', color: '#4338ca', border: '1px solid rgba(99, 102, 241, 0.45)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
+                  >
+                    ↺ Restore ({receiptsToUnflag.length})
+                  </button>
+                )}
+                {receiptIds.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={batchActionBusy}
+                    onClick={() => handleAdminBatchDeleteReceipts(receiptIds)}
+                    title="Delete the selected receipts permanently."
+                    style={{ padding: '5px 10px', backgroundColor: 'rgba(239, 68, 68, 0.10)', color: '#dc2626', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
+                  >
+                    Delete {receiptIds.length}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedExpenseKeys(new Set())}
+                  style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)', textDecoration: 'underline' }}
+                >
+                  Clear selection
+                </button>
+              </div>
+            );
+          })()}
+
           <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
             <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1150px' }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                  <th style={{ padding: '10px 8px 10px 14px', textAlign: 'left', width: '32px' }}>
+                    {(() => {
+                      const allKeys = adminFilteredExpenses.map((e: any) => `${e._source}-${e.id}`);
+                      const allSelected = allKeys.length > 0 && allKeys.every((k) => selectedExpenseKeys.has(k));
+                      const anySelected = allKeys.some((k) => selectedExpenseKeys.has(k));
+                      return (
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          ref={(el) => { if (el) el.indeterminate = !allSelected && anySelected; }}
+                          onChange={(e) => {
+                            setSelectedExpenseKeys((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) for (const k of allKeys) next.add(k);
+                              else for (const k of allKeys) next.delete(k);
+                              return next;
+                            });
+                          }}
+                          title="Select all visible expenses"
+                          style={{ cursor: 'pointer' }}
+                        />
+                      );
+                    })()}
+                  </th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Date</th>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Description</th>
@@ -4269,7 +4187,7 @@ export default function Expenses() {
               <tbody>
                 {adminFilteredExpenses.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
+                    <td colSpan={10} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
                       No {adminStatusFilter === 'all' ? '' : adminStatusFilter} expenses found.
                     </td>
                   </tr>
@@ -4279,7 +4197,7 @@ export default function Expenses() {
                     return (
                       <Fragment key={`admin-period-${period.periodKey}`}>
                         <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.10)', borderBottom: '2px solid rgba(20, 184, 166, 0.45)' }}>
-                          <td colSpan={9} style={{ padding: 0 }}>
+                          <td colSpan={10} style={{ padding: 0 }}>
                             <button
                               type="button"
                               onClick={() => toggleAdminExpensePeriodGroup(period.periodKey)}
@@ -4343,7 +4261,7 @@ export default function Expenses() {
                     return (
                       <Fragment key={dateKey}>
                         <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
-                          <td colSpan={9} style={{ padding: 0 }}>
+                          <td colSpan={10} style={{ padding: 0 }}>
                             <button
                               type="button"
                               onClick={() => toggleAdminExpenseDateGroup(dateKey)}
@@ -4464,18 +4382,37 @@ export default function Expenses() {
                       </td>
                     </tr>
                   ) : null;
+                  const selectionKey = `${source}-${exp.id}`;
+                  const isSelected = selectedExpenseKeys.has(selectionKey);
                   const expenseTr = (
                     <tr
                       key={`${source}-${exp.id}`}
                       style={{
                         borderBottom: '1px solid var(--border-color)',
                         cursor: source === 'receipt' ? 'pointer' : undefined,
+                        backgroundColor: isSelected ? 'rgba(33, 150, 243, 0.06)' : undefined,
                       }}
                       onClick={source === 'receipt' ? () => handleStartEdit(exp) : undefined}
                       role={source === 'receipt' ? 'button' : undefined}
                       tabIndex={source === 'receipt' ? 0 : undefined}
                       onKeyDown={source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
                     >
+                      <td style={{ padding: '10px 8px 10px 14px', textAlign: 'left', width: '32px' }} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            setSelectedExpenseKeys((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(selectionKey);
+                              else next.delete(selectionKey);
+                              return next;
+                            });
+                          }}
+                          style={{ cursor: 'pointer' }}
+                          aria-label="Select expense"
+                        />
+                      </td>
                       <td style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '500' }}>
                         {exp._employeeName || '-'}
                         {source === 'ticket' && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Ticket Expense</div>}
@@ -4773,7 +4710,7 @@ export default function Expenses() {
                     if (linkedRows.length > 0) {
                       linkedTr = (
                         <tr key={`${source}-${exp.id}-linked`} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(34, 197, 94, 0.04)' }}>
-                          <td colSpan={9} style={{ padding: '10px 16px 12px 42px' }}>
+                          <td colSpan={10} style={{ padding: '10px 16px 12px 42px' }}>
                             <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#15803d', marginBottom: '6px' }}>
                               Receipt is linked to {linkedRows.length} ticket expense{linkedRows.length === 1 ? '' : 's'}
                             </div>
@@ -4847,7 +4784,7 @@ export default function Expenses() {
               {adminFilteredExpenses.length > 0 && (
                 <tfoot>
                   <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
-                    <td colSpan={2} style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <td colSpan={3} style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                       Totals ({adminFilteredTotals.count} {adminFilteredTotals.count === 1 ? 'item' : 'items'})
                     </td>
                     <td style={{ padding: '12px 14px', fontSize: '12px', color: 'var(--text-secondary)' }}>
