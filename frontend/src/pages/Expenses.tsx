@@ -2080,8 +2080,8 @@ export default function Expenses() {
               {!pendingReceiptCollapsed && (
               <p style={{ margin: '8px 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
                 {isAdmin
-                  ? "All reimbursable ticket charges across employees that don't have a receipt attached yet. Filter by employee, then submit a receipt or link an existing one."
-                  : "Reimbursable charges you've added to service tickets that don't have a receipt attached yet. Select one or more, then upload the actual receipt to attach it. The receipt amount may differ from what was billed to the client — the company absorbs the difference."}
+                  ? "All reimbursable ticket charges across employees with no receipt and no inline reimbursement amount set. Filter by employee, then submit a receipt or link an existing one. (Lines where the employee entered the reimbursement amount directly on the ticket don't appear here.)"
+                  : "Reimbursable charges you've added to service tickets that still need an amount. Two ways to clear a line: select it and upload the receipt, or open the ticket, Edit the line, and enter the amount in the blue \"Your reimbursement amount\" box."}
               </p>
               )}
               {!pendingReceiptCollapsed && (<>

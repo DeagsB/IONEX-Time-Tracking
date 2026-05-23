@@ -6688,7 +6688,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 {editingExpense.expense_type === 'Hotel' && (
                                   <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
                                     {editingExpense.needs_reimbursement && !editingExpense.id
-                                      ? 'What the client is charged on this ticket. When you attach the actual receipt, markup is calculated as this amount minus receipt total (including GST).'
+                                      ? 'What the client is charged on this ticket. Enter your reimbursement below (or attach a receipt and we calculate markup as billed minus receipt total).'
                                       : 'Hotel lines bill as 1 × this amount (quantity is fixed at 1).'}
                                   </div>
                                 )}
@@ -6702,7 +6702,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                       <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
                                         Per-unit rate billed to client. Line total = qty × this rate
                                         {q > 1 && r > 0 ? <> (<strong style={{ color: 'var(--text-primary)' }}>${sub.toFixed(2)}</strong>)</> : null}.
-                                        When you attach the receipt later, markup auto-fills as this minus receipt total.
+                                        Enter your reimbursement below (or attach a receipt to auto-fill cost and markup).
                                       </div>
                                     );
                                   })()}
@@ -6738,11 +6738,11 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 {editingExpense.expense_type === 'Travel'
                                   ? 'Needs reimbursement (personal vehicle)'
                                   : editingExpense.expense_type === 'Hotel'
-                                    ? 'Needs reimbursement (attach receipt now or after final hotel bill)'
+                                    ? 'Needs reimbursement (enter the amount below or attach a receipt)'
                                     : editingExpense.expense_type === 'Equipment'
                                       ? 'Needs reimbursement'
                                       : editingExpense.expense_type === 'Expenses'
-                                        ? 'Needs reimbursement (attach receipt now or add the line and attach later)'
+                                        ? 'Needs reimbursement (enter the amount below or attach a receipt)'
                                         : 'Needs reimbursement'}
                               </label>
                             </div>
@@ -6757,9 +6757,39 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               const billed =
                                 (Number(editingExpense.quantity) || (editingExpense.expense_type === 'Hotel' ? 1 : 0)) *
                                 (Number(editingExpense.rate) || 0);
+                              const ac = Number(editingExpense.actual_cost) || 0;
+                              const isHotel = editingExpense.expense_type === 'Hotel';
                               return (
-                                <div style={{ marginBottom: '12px' }}>
-                                  <label style={labelStyle}>Reimbursement amount ($) — optional</label>
+                                <div
+                                  style={{
+                                    marginBottom: '12px',
+                                    padding: '12px 14px',
+                                    borderRadius: '8px',
+                                    border: '1px solid rgba(33, 150, 243, 0.35)',
+                                    backgroundColor: 'rgba(33, 150, 243, 0.07)',
+                                  }}
+                                >
+                                  <label
+                                    style={{
+                                      ...labelStyle,
+                                      color: 'var(--text-primary)',
+                                      fontWeight: '600',
+                                      marginBottom: '4px',
+                                      display: 'block',
+                                    }}
+                                  >
+                                    Your reimbursement amount ($)
+                                  </label>
+                                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '8px' }}>
+                                    {isHotel
+                                      ? 'What you actually paid for the hotel (≤ the amount billed to the client). This is what you get reimbursed.'
+                                      : 'What you actually paid out-of-pocket (≤ the amount billed to the client). This is what you get reimbursed.'}
+                                    {billed > 0 ? (
+                                      <>
+                                        {' '}Cap: <strong style={{ color: 'var(--text-primary)' }}>${billed.toFixed(2)}</strong>.
+                                      </>
+                                    ) : null}
+                                  </div>
                                   <input
                                     type="number"
                                     step="0.01"
@@ -6780,14 +6810,20 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                           parsed != null && !isNaN(parsed) ? parsed : undefined,
                                       });
                                     }}
-                                    placeholder="Leave blank to reimburse the billed amount"
+                                    placeholder={billed > 0 ? `e.g. ${billed.toFixed(2)}` : 'e.g. 180.00'}
                                   />
-                                  <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                                    Employee out-of-pocket amount that flows to payroll. Must be ≤ amount billed
-                                    {billed > 0 ? (
-                                      <> (<strong style={{ color: 'var(--text-primary)' }}>${billed.toFixed(2)}</strong>)</>
-                                    ) : null}
-                                    . Leave blank to reimburse the billed amount. Attaching a receipt below overwrites this with the receipt total.
+                                  <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
+                                    {ac > 0 ? (
+                                      <>
+                                        ✓ You&apos;ll be reimbursed <strong style={{ color: '#1976d2' }}>${ac.toFixed(2)}</strong> on payroll — no receipt required.
+                                        Attach one below as backup if you want.
+                                      </>
+                                    ) : (
+                                      <>
+                                        Leave blank if you want to attach a receipt instead (the receipt sets this automatically),
+                                        or if the reimbursement equals the full billed amount.
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -6804,8 +6840,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   }}
                                 >
                                   {editingExpense.expense_type === 'Expenses'
-                                    ? 'Optional: attach receipt now (sets actual cost & markup) — or use Add and attach later'
-                                    : 'Optional: attach receipt now — or use Add, then "Attach receipt" on the line when your final bill arrives'}
+                                    ? 'Or attach a receipt (auto-fills the reimbursement amount and markup)'
+                                    : 'Or attach a receipt now — also fine to Add now and use "Attach receipt" on the line once you have the final bill'}
                                 </label>
                                 <input
                                   type="file"
@@ -7289,7 +7325,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                             }}
                           >
                             <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>
-                              Receipt pending — attach when you have the hotel bill (amount can differ from client line).
+                              Receipt pending — attach the bill, or click Edit and enter your reimbursement amount directly.
                             </span>
                             <button
                               type="button"
