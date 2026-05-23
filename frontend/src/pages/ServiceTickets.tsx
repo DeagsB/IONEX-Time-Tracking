@@ -1115,6 +1115,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         // there read from this query — invalidate so new/removed lines show without reload.
         queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
         queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+        queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+        queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
       }
       setIsTicketEdited(false);
       justSavedRef.current = true;
@@ -2498,6 +2500,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
         queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
         queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
+        queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+        queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
       }
     },
   });
@@ -2510,6 +2514,9 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         loadExpenses(currentTicketRecordId);
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
         queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
+        queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
+        queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
+        queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
       }
     },
   });
@@ -3212,12 +3219,15 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       const idStr = String(expense.id ?? '');
       const linkedUe = (expense as { linkedUserExpenseId?: string }).linkedUserExpenseId;
       const dbLinkedUe = (expense as { user_expense_id?: string | null }).user_expense_id;
+      const inlineActualCostSet =
+        (Number((expense as { actual_cost?: number | null }).actual_cost) || 0) > 0;
       if (
         expense.needs_reimbursement &&
         (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses') &&
         !idStr.startsWith('receipt-') &&
         !linkedUe &&
         !dbLinkedUe &&
+        !inlineActualCostSet &&
         !ticketExpenseLineHasAttachedReceipt(expense.description, attachedReceipts)
       ) {
         n += 1;
@@ -6737,6 +6747,51 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               </label>
                             </div>
                           )}
+                          {editingExpense.needs_reimbursement &&
+                            (editingExpense.expense_type === 'Hotel' ||
+                              editingExpense.expense_type === 'Expenses') &&
+                            !(
+                              (editingExpense as { user_expense_id?: string | null }).user_expense_id ||
+                              (editingExpense as { linkedUserExpenseId?: string }).linkedUserExpenseId
+                            ) && (() => {
+                              const billed =
+                                (Number(editingExpense.quantity) || (editingExpense.expense_type === 'Hotel' ? 1 : 0)) *
+                                (Number(editingExpense.rate) || 0);
+                              return (
+                                <div style={{ marginBottom: '12px' }}>
+                                  <label style={labelStyle}>Reimbursement amount ($) — optional</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    style={inputStyle}
+                                    value={editingExpense.actual_cost ?? ''}
+                                    onChange={(e) => {
+                                      setTicketExpenseFormIssues((prev) => {
+                                        const next = { ...prev };
+                                        delete next.save;
+                                        return next;
+                                      });
+                                      const raw = e.target.value;
+                                      const parsed = raw === '' ? undefined : parseFloat(raw);
+                                      setEditingExpense({
+                                        ...editingExpense,
+                                        actual_cost:
+                                          parsed != null && !isNaN(parsed) ? parsed : undefined,
+                                      });
+                                    }}
+                                    placeholder="Leave blank to reimburse the billed amount"
+                                  />
+                                  <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                                    Employee out-of-pocket amount that flows to payroll. Must be ≤ amount billed
+                                    {billed > 0 ? (
+                                      <> (<strong style={{ color: 'var(--text-primary)' }}>${billed.toFixed(2)}</strong>)</>
+                                    ) : null}
+                                    . Leave blank to reimburse the billed amount. Attaching a receipt below overwrites this with the receipt total.
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           {!editingExpense.id &&
                             editingExpense.needs_reimbursement &&
                             (editingExpense.expense_type === 'Hotel' ||
@@ -6872,6 +6927,25 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                     });
                                     return;
                                   }
+                                  if (
+                                    editingExpense.expense_type === 'Hotel' ||
+                                    editingExpense.expense_type === 'Expenses'
+                                  ) {
+                                    const qtyForBill =
+                                      editingExpense.expense_type === 'Hotel'
+                                        ? 1
+                                        : (Number(editingExpense.quantity) || 0) > 0
+                                          ? Number(editingExpense.quantity)
+                                          : 1;
+                                    const billed = qtyForBill * (Number(editingExpense.rate) || 0);
+                                    const ac = Number(editingExpense.actual_cost) || 0;
+                                    if (ac > 0 && ac > billed + 0.005) {
+                                      setTicketExpenseFormIssues({
+                                        save: `Reimbursement amount ($${ac.toFixed(2)}) must be less than or equal to the amount billed ($${billed.toFixed(2)}). To bill more or less than the receipt, attach the receipt and let the modal compute markup.`,
+                                      });
+                                      return;
+                                    }
+                                  }
                                   clearTicketExpenseFormIssues();
                                   try {
                                     const isHotelFixed = editingExpense.expense_type === 'Hotel';
@@ -6909,6 +6983,26 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                     setTicketExpenseFormIssues({ save: message });
                                   }
                                   return;
+                                }
+                                if (
+                                  editingExpense.needs_reimbursement &&
+                                  (editingExpense.expense_type === 'Hotel' ||
+                                    editingExpense.expense_type === 'Expenses')
+                                ) {
+                                  const qtyForBill =
+                                    editingExpense.expense_type === 'Hotel'
+                                      ? 1
+                                      : (Number(editingExpense.quantity) || 0) > 0
+                                        ? Number(editingExpense.quantity)
+                                        : 1;
+                                  const billed = qtyForBill * (Number(editingExpense.rate) || 0);
+                                  const ac = Number(editingExpense.actual_cost) || 0;
+                                  if (ac > 0 && ac > billed + 0.005) {
+                                    setTicketExpenseFormIssues({
+                                      save: `Reimbursement amount ($${ac.toFixed(2)}) must be less than or equal to the amount billed ($${billed.toFixed(2)}). To bill more or less than the receipt, attach the receipt and let the modal compute markup.`,
+                                    });
+                                    return;
+                                  }
                                 }
                                 try {
                                   const isHotelRow = editingExpense.expense_type === 'Hotel';
@@ -6990,6 +7084,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                         const idStr = String(expense.id ?? '');
                         const linkedUe = (expense as { linkedUserExpenseId?: string }).linkedUserExpenseId;
                         const dbLinkedUe = (expense as { user_expense_id?: string | null }).user_expense_id;
+                        const inlineActualCostSet = (Number((expense as { actual_cost?: number | null }).actual_cost) || 0) > 0;
                         const showDeferredReceiptAttach =
                           (!effectiveLockedForEditing || allowDeferredReceiptAttachWhenLocked) &&
                           expense.needs_reimbursement &&
@@ -6997,6 +7092,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                           !idStr.startsWith('receipt-') &&
                           !linkedUe &&
                           !dbLinkedUe &&
+                          !inlineActualCostSet &&
                           !ticketExpenseLineHasAttachedReceipt(expense.description, attachedReceipts);
                         const showReceiptAttached =
                           !!dbLinkedUe &&
@@ -7053,6 +7149,25 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   title="Receipt attached for reimbursement"
                                 >
                                   ✓ Receipt attached
+                                </span>
+                              )}
+                              {!showReceiptAttached && inlineActualCostSet && expense.needs_reimbursement &&
+                                (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses') && (
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: '700',
+                                    textTransform: 'none',
+                                    letterSpacing: '0.02em',
+                                    color: '#1976d2',
+                                    backgroundColor: 'rgba(33, 150, 243, 0.12)',
+                                    border: '1px solid rgba(33, 150, 243, 0.4)',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                  }}
+                                  title={`Reimbursement amount $${(Number((expense as { actual_cost?: number | null }).actual_cost) || 0).toFixed(2)} set inline — no receipt required for payroll. Attach a receipt later to add backup.`}
+                                >
+                                  Reimbursement: ${(Number((expense as { actual_cost?: number | null }).actual_cost) || 0).toFixed(2)}
                                 </span>
                               )}
                             </span>

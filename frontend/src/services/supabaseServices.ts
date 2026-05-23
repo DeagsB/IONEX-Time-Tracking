@@ -2104,9 +2104,12 @@ export const serviceTicketExpensesService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
+    // Skip lines where an inline reimbursement amount (actual_cost) is already set —
+    // they don't need a receipt to flow to payroll (matches Payroll.tsx eligibility gate).
     return (data || []).filter(
       (r: any) =>
         !r.service_tickets?.is_discarded &&
+        !((Number(r.actual_cost) || 0) > 0) &&
         String(r.service_tickets?.user_id ?? '') === String(userId)
     );
   },
@@ -2178,7 +2181,13 @@ export const serviceTicketExpensesService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return (data || []).filter((r: any) => !r.service_tickets?.is_discarded);
+    // Skip lines where an inline reimbursement amount (actual_cost) is already set —
+    // they don't need a receipt to flow to payroll (matches Payroll.tsx eligibility gate).
+    return (data || []).filter(
+      (r: any) =>
+        !r.service_tickets?.is_discarded &&
+        !((Number(r.actual_cost) || 0) > 0)
+    );
   },
 
   /**
@@ -2219,9 +2228,12 @@ export const serviceTicketExpensesService = {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
+    // Skip lines where an inline reimbursement amount (actual_cost) is already set —
+    // they don't need a receipt to flow to payroll (matches Payroll.tsx eligibility gate).
     return (data || []).filter(
       (r: any) =>
         !r.service_tickets?.is_discarded &&
+        !((Number(r.actual_cost) || 0) > 0) &&
         String(r.service_tickets?.user_id ?? '') === String(userId)
     );
   },
