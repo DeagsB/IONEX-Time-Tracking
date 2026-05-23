@@ -266,6 +266,28 @@ export default function Expenses() {
   const { isDemoMode } = useDemoMode();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Top-level tab: "Receipt expenses" (action-required) vs. "Auto-reimbursed" (view-only).
+  // Persisted across reloads so the user lands where they last were. URL params already
+  // claim `?tab=` for the admin status filter (see effect below), so this only uses
+  // localStorage to avoid collision.
+  const [activeExpensesTab, setActiveExpensesTab] = useState<'receipts' | 'auto'>(() => {
+    try {
+      const v = localStorage.getItem('ionex-expenses-tab');
+      return v === 'auto' ? 'auto' : 'receipts';
+    } catch { return 'receipts'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('ionex-expenses-tab', activeExpensesTab); } catch {}
+  }, [activeExpensesTab]);
+  // Brief inline notice surfaced when switching to the Auto tab cancels an in-progress
+  // receipt link. Auto-clears after 4 seconds.
+  const [tabSwitchNotice, setTabSwitchNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!tabSwitchNotice) return;
+    const t = setTimeout(() => setTabSwitchNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [tabSwitchNotice]);
+
   // Receipt drag-and-drop + split view state
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
@@ -352,6 +374,12 @@ export default function Expenses() {
   const [collapsedAdminExpensePeriodKeys, setCollapsedAdminExpensePeriodKeys] = useState<Set<string>>(() => new Set());
   const hasSeededMyExpensePeriodCollapse = useRef(false);
   const hasSeededAdminExpensePeriodCollapse = useRef(false);
+  // Auto-reimbursed tab uses a parallel set of collapse state so toggles there
+  // don't bleed back into the Receipts-tab grouping (and vice versa).
+  const [collapsedAutoExpensePeriodKeys, setCollapsedAutoExpensePeriodKeys] = useState<Set<string>>(() => new Set());
+  const hasSeededAutoExpensePeriodCollapse = useRef(false);
+  // Admin-only employee filter inside the Auto tab. Mirrors the Awaiting Receipts dropdown.
+  const [autoEmployeeFilter, setAutoEmployeeFilter] = useState<string>('all');
   const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(null);
 
   /** Selected rows in the admin expense approval table for batch actions.
@@ -1402,6 +1430,12 @@ export default function Expenses() {
   }, [mergedAdminExpensesForApproval]);
 
   const adminFilteredExpenses = mergedAdminExpensesForApproval.filter((exp: any) => {
+    // On the Receipts tab, drop auto-reimbursed types (Travel/Subsistence/Equipment) —
+    // they live in the Auto-reimbursed tab.
+    if (activeExpensesTab === 'receipts') {
+      const t = expenseTypeOf(exp);
+      if (!(t === 'Receipt' || t === 'Hotel' || t === 'Expenses')) return false;
+    }
     if (adminStatusFilter !== 'all' && exp._status !== adminStatusFilter) return false;
     if (adminEmployeeFilter !== 'all' && String(exp._userId ?? '') !== adminEmployeeFilter) return false;
     if (adminTypeFilter !== 'all' && expenseTypeOf(exp) !== adminTypeFilter) return false;
@@ -1570,6 +1604,106 @@ export default function Expenses() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [adminFilteredExpensesGroupedByDate, todayPeriodIndex]
   );
+
+  // ---- Auto-reimbursed tab: source rows ------------------------------------------------
+  // Both queries (`pendingReceiptLines` for employees, `ticketReimbExpenses` for admins)
+  // are already loaded for the Receipts tab. We just filter them to the auto-pay types.
+  const AUTO_REIMB_TYPES = useMemo(() => new Set(['Travel', 'Subsistence', 'Equipment']), []);
+
+  const autoReimbursedRows = useMemo(() => {
+    const arr = isAdmin ? (ticketReimbExpenses as any[]) : (pendingReceiptLines as any[]);
+    const rows = arr.filter((r) => {
+      if (!AUTO_REIMB_TYPES.has(String(r.expense_type || ''))) return false;
+      // Admin query (getNeedsReimbursement) doesn't strip inline-cost rows; do it here
+      // so the auto view stays "no employee action" — anything with actual_cost set is
+      // an explicit override and not really auto-paid.
+      if ((Number(r.actual_cost) || 0) > 0) return false;
+      if (r.service_tickets?.is_discarded) return false;
+      if (isAdmin && autoEmployeeFilter !== 'all') {
+        const ownerId = String(r.service_tickets?.user_id ?? '');
+        if (ownerId !== autoEmployeeFilter) return false;
+      }
+      return true;
+    });
+    // Decorate with the same _date/_userId/_amount shape used by groupDateGroupsByPayPeriod
+    // so we don't need a parallel grouping closure. Auto rows have no `amount`/`gst` —
+    // line total is quantity * rate, and these types don't carry GST in the payroll flow.
+    return rows.map((r: any) => ({
+      ...r,
+      _date: r.service_tickets?.date || r.created_at?.split('T')[0] || '',
+      _userId: r.service_tickets?.user_id,
+      _amount: (Number(r.quantity) || 0) * (Number(r.rate) || 0),
+      _gst: 0,
+    }));
+  }, [isAdmin, ticketReimbExpenses, pendingReceiptLines, AUTO_REIMB_TYPES, autoEmployeeFilter]);
+
+  const autoEmployeeOptions = useMemo(() => {
+    if (!isAdmin) return [] as { id: string; name: string }[];
+    const map = new Map<string, string>();
+    for (const r of (ticketReimbExpenses as any[])) {
+      if (!AUTO_REIMB_TYPES.has(String(r.expense_type || ''))) continue;
+      const id = String(r.service_tickets?.user_id ?? '');
+      if (!id || map.has(id)) continue;
+      const emp = employees?.find((e: any) => e.user_id === id);
+      const name = emp?.user ? `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim() || emp.user.email || 'Unknown' : 'Unknown';
+      map.set(id, name);
+    }
+    return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [isAdmin, ticketReimbExpenses, employees, AUTO_REIMB_TYPES]);
+
+  const autoReimbursedGroupedByDate = useMemo(() => {
+    const sorted = [...autoReimbursedRows].sort((a, b) => {
+      const ka = normalizeExpenseTableDateKey(String(a._date || ''));
+      const kb = normalizeExpenseTableDateKey(String(b._date || ''));
+      if (ka !== kb) return kb.localeCompare(ka);
+      return String(b.created_at || b.id || '').localeCompare(String(a.created_at || a.id || ''));
+    });
+    const groups: { dateKey: string; items: any[] }[] = [];
+    let lastKey = '';
+    for (const r of sorted) {
+      const k = normalizeExpenseTableDateKey(String(r._date || ''));
+      if (k !== lastKey) {
+        groups.push({ dateKey: k, items: [] });
+        lastKey = k;
+      }
+      groups[groups.length - 1].items.push(r);
+    }
+    return groups;
+  }, [autoReimbursedRows]);
+
+  const autoReimbursedGroupedByPayPeriod = useMemo(
+    () => groupDateGroupsByPayPeriod(autoReimbursedGroupedByDate, (e) => e._date),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [autoReimbursedGroupedByDate, todayPeriodIndex]
+  );
+
+  const toggleAutoExpensePeriodGroup = (periodKey: string) => {
+    setCollapsedAutoExpensePeriodKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(periodKey)) next.delete(periodKey);
+      else next.add(periodKey);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (autoReimbursedGroupedByPayPeriod.length === 0) {
+      hasSeededAutoExpensePeriodCollapse.current = false;
+      setCollapsedAutoExpensePeriodKeys(new Set());
+      return;
+    }
+    if (hasSeededAutoExpensePeriodCollapse.current) return;
+    hasSeededAutoExpensePeriodCollapse.current = true;
+    const collapsed = autoReimbursedGroupedByPayPeriod
+      .filter((p) => !p.isCurrent)
+      .map((p) => p.periodKey);
+    setCollapsedAutoExpensePeriodKeys(new Set(collapsed));
+  }, [autoReimbursedGroupedByPayPeriod]);
+
+  useEffect(() => {
+    hasSeededAutoExpensePeriodCollapse.current = false;
+    setCollapsedAutoExpensePeriodKeys(new Set());
+  }, [autoEmployeeFilter]);
 
   const toggleMyExpensePeriodGroup = (periodKey: string) => {
     setCollapsedMyExpensePeriodKeys((prev) => {
@@ -2051,7 +2185,58 @@ export default function Expenses() {
         Internal Expenses & Receipts
       </h1>
 
-      {pendingReceiptLinesGated.length > 0 && (
+      {/* Top-level view tabs: Receipt expenses (action-required) vs. Auto-reimbursed
+          (informational, no buttons). Same rail look as Invoices for consistency.
+          The ::before "Workflow" eyebrow is shared across the app — accepted here. */}
+      <div className="ionex-tabs-rail" role="tablist" aria-label="Expenses view">
+        {([
+          { id: 'receipts' as const, label: 'Receipt expenses', count: pendingReceiptLinesView.length },
+          { id: 'auto' as const, label: 'Auto-reimbursed', count: autoReimbursedRows.length },
+        ]).map((tab) => {
+          const isActive = activeExpensesTab === tab.id;
+          const classes = ['ionex-tab-chip'];
+          if (isActive) classes.push('is-active');
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => {
+                // Switching to Auto while a receipt-link is in progress would unmount
+                // the form mid-edit. Cancel cleanly + surface a brief notice.
+                if (tab.id === 'auto' && linkingTicketExpenseIds.length > 0) {
+                  cancelReceiptLinking();
+                  setTabSwitchNotice('In-progress receipt link cancelled.');
+                }
+                setActiveExpensesTab(tab.id);
+              }}
+              className={classes.join(' ')}
+            >
+              <span>{tab.label}</span>
+              <span className={`ionex-tab-count${tab.count === 0 ? ' is-zero' : ''}`}>{tab.count}</span>
+            </button>
+          );
+        })}
+      </div>
+      {tabSwitchNotice && (
+        <div
+          role="status"
+          style={{
+            marginBottom: '16px',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            backgroundColor: 'rgba(245, 158, 11, 0.10)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            color: '#92400e',
+            fontSize: '13px',
+          }}
+        >
+          {tabSwitchNotice}
+        </div>
+      )}
+
+      {activeExpensesTab === 'receipts' && pendingReceiptLinesGated.length > 0 && (
         <div
           style={{
             marginBottom: '24px',
@@ -2086,7 +2271,7 @@ export default function Expenses() {
               )}
               {!pendingReceiptCollapsed && (<>
               <p style={{ margin: '8px 0 0', fontSize: '12px', color: 'var(--text-primary)', lineHeight: 1.45, maxWidth: '720px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(0, 137, 123, 0.08)', border: '1px solid rgba(0, 137, 123, 0.3)' }}>
-                <strong style={{ color: '#00897b' }}>Reimbursement note:</strong> as soon as a receipt is attached, this expense is included on the next payroll for reimbursement to the employee. Lines that don't need a receipt (Mileage, Truck Hours, Per Diem, basic Equipment) are reimbursed automatically on the next payroll once flagged needs-reimbursement.
+                <strong style={{ color: '#00897b' }}>Reimbursement note:</strong> as soon as a receipt is attached, this expense is included on the next payroll for reimbursement to the employee. Auto-reimbursed items (Mileage, Truck Hours, Per Diem, basic Equipment) live in the Auto-reimbursed tab — they're paid on the next payroll automatically.
               </p>
               {isAdmin && pendingReceiptContractorSuppressedCount > 0 && (
                 <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45, maxWidth: '720px', padding: '6px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-tertiary)', border: '1px dashed var(--border-color)' }}>
@@ -3082,7 +3267,8 @@ export default function Expenses() {
         </div>
       )}
 
-      {/* Drag and Drop Zone */}
+      {/* Drag and Drop Zone — Receipts tab only. */}
+      {activeExpensesTab === 'receipts' && (<>
       <input
         type="file"
         accept="image/*,.pdf"
@@ -3468,9 +3654,10 @@ export default function Expenses() {
           </div>
         </div>
       )}
+      </>)}
 
-      {/* Expenses Table */}
-      {isLoading ? (
+      {/* Expenses Table — Receipts tab only. */}
+      {activeExpensesTab === 'receipts' && (isLoading ? (
         <div style={{ color: 'var(--text-tertiary)', padding: '24px', textAlign: 'center' }}>Loading expenses...</div>
       ) : (
         <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
@@ -3764,10 +3951,10 @@ export default function Expenses() {
             </tbody>
           </table>
         </div>
-      )}
+      ))}
 
-      {/* Admin: Expense Approval Section */}
-      {isAdmin && (
+      {/* Admin: Expense Approval Section — Receipts tab only. */}
+      {activeExpensesTab === 'receipts' && isAdmin && (
         <div style={{ marginTop: '40px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
             <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
@@ -4826,6 +5013,190 @@ export default function Expenses() {
             </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Auto-reimbursed tab content (view-only — no buttons, no edits). */}
+      {activeExpensesTab === 'auto' && (
+        <div>
+          <div style={{ marginBottom: '8px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              Auto-reimbursed (no action needed)
+            </h2>
+            <p style={{ margin: '6px 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
+              These items are paid on your next payroll once the ticket is approved. No receipt required.
+            </p>
+          </div>
+
+          {isAdmin && autoEmployeeOptions.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Employee</label>
+              <select
+                value={autoEmployeeFilter}
+                onChange={(e) => setAutoEmployeeFilter(e.target.value)}
+                style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+              >
+                <option value="all">All employees</option>
+                {autoEmployeeOptions.map((emp) => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {autoReimbursedRows.length === 0 ? (
+            <div style={{
+              padding: '24px',
+              borderRadius: '10px',
+              border: '1px dashed var(--border-color)',
+              backgroundColor: 'var(--bg-tertiary)',
+              color: 'var(--text-tertiary)',
+              fontSize: '14px',
+              textAlign: 'center',
+              marginTop: '12px',
+            }}>
+              No auto-reimbursed items in this period.
+            </div>
+          ) : (
+            <div style={{ marginTop: '12px', backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '12px 16px' }}>Date</th>
+                    {isAdmin && <th style={{ padding: '12px 16px' }}>Employee</th>}
+                    <th style={{ padding: '12px 16px' }}>Ticket</th>
+                    <th style={{ padding: '12px 16px' }}>Category</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Qty</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Rate</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Total</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {autoReimbursedGroupedByPayPeriod.map((period) => {
+                    const periodCollapsed = collapsedAutoExpensePeriodKeys.has(period.periodKey);
+                    const colCount = isAdmin ? 8 : 7;
+                    return (
+                      <Fragment key={`auto-period-${period.periodKey}`}>
+                        <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.10)', borderBottom: '2px solid rgba(20, 184, 166, 0.45)' }}>
+                          <td colSpan={colCount} style={{ padding: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleAutoExpensePeriodGroup(period.periodKey)}
+                              aria-expanded={!periodCollapsed}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '12px 16px', border: 'none', background: 'transparent',
+                                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                              }}
+                            >
+                              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
+                                {periodCollapsed ? '▶' : '▼'}
+                              </span>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
+                                Pay Period
+                              </span>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {period.periodLabel}
+                              </span>
+                              {period.isCurrent && (
+                                <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'rgba(34, 197, 94, 0.18)', color: '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Current</span>
+                              )}
+                              {period.isFuture && (
+                                <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Upcoming</span>
+                              )}
+                              <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'baseline', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                <span><strong style={{ color: 'var(--text-primary)' }}>{period.totals.count}</strong> {period.totals.count === 1 ? 'item' : 'items'}</span>
+                                <span>Total <strong style={{ fontFamily: 'monospace', color: '#0f766e' }}>${period.totals.total.toFixed(2)}</strong></span>
+                              </span>
+                            </button>
+                          </td>
+                        </tr>
+                        {!periodCollapsed && period.dateGroups.map(({ dateKey, items }) => (
+                          <Fragment key={`auto-date-${period.periodKey}-${dateKey}`}>
+                            <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                              <td colSpan={colCount} style={{ padding: '8px 16px 8px 32px', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {formatExpenseGroupDateLabel(dateKey)}
+                                <span style={{ marginLeft: '8px', fontSize: '12px', fontWeight: 500, color: 'var(--text-tertiary)' }}>
+                                  ({items.length} {items.length === 1 ? 'item' : 'items'})
+                                </span>
+                              </td>
+                            </tr>
+                            {items.map((row: any) => {
+                              const tn = row.service_tickets?.ticket_number || '—';
+                              const hasTicketNumber = !!row.service_tickets?.ticket_number;
+                              const qty = Number(row.quantity) || 0;
+                              const rate = Number(row.rate) || 0;
+                              const total = qty * rate;
+                              const status = String(row.reimbursement_status || 'pending');
+                              const isPaid = status === 'paid';
+                              const category = expenseTypeOf(row);
+                              const u = row.service_tickets?.user;
+                              const empName = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown' : 'Unknown';
+                              return (
+                                <tr key={`auto-row-${row.id}`} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                  <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>{row._date || '—'}</td>
+                                  {isAdmin && (
+                                    <td style={{ padding: '10px 16px', color: 'var(--text-primary)', fontWeight: 600 }}>{empName}</td>
+                                  )}
+                                  <td style={{ padding: '10px 16px', fontFamily: hasTicketNumber ? 'monospace' : 'inherit' }}>
+                                    {row.service_ticket_id ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingTicketRecordId(String(row.service_ticket_id))}
+                                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: hasTicketNumber ? 'var(--primary-color)' : 'var(--text-tertiary)', fontWeight: 600, fontFamily: hasTicketNumber ? 'monospace' : 'inherit', fontSize: 'inherit', textDecoration: 'underline', fontStyle: hasTicketNumber ? 'normal' : 'italic' }}
+                                        title="Open service ticket"
+                                      >
+                                        {tn}
+                                      </button>
+                                    ) : (
+                                      <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{tn}</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                                    {category}
+                                    {row.description ? (
+                                      <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 400, marginTop: '2px' }}>
+                                        {row.description}
+                                      </span>
+                                    ) : null}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace' }}>
+                                    {qty}{row.unit ? ` ${row.unit}` : ''}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace' }}>
+                                    ${rate.toFixed(2)}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
+                                    ${total.toFixed(2)}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                                    <span style={{
+                                      display: 'inline-block',
+                                      padding: '2px 10px',
+                                      borderRadius: '999px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      letterSpacing: '0.04em',
+                                      textTransform: 'uppercase',
+                                      backgroundColor: isPaid ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                      color: isPaid ? '#15803d' : '#92400e',
+                                    }}>
+                                      {isPaid ? 'Paid' : 'Queued'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </Fragment>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
