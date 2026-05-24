@@ -2065,7 +2065,8 @@ export const serviceTicketExpensesService = {
       .select(`
         *,
         service_tickets (
-          id, user_id, date, ticket_number
+          id, user_id, date, ticket_number,
+          user:users!service_tickets_user_id_fkey(id, first_name, last_name, email)
         )
       `)
       .eq('needs_reimbursement', true)
