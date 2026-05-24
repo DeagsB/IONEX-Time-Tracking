@@ -6844,8 +6844,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                       lineHeight: 1.5,
                                     }}
                                   >
-                                    <strong style={{ color: 'var(--text-primary)' }}>Multi-night stay?</strong>{' '}
-                                    Upload the full receipt on the <strong>Expenses page</strong> and bulk-link it to every ticket-expense line that needs it in one go.
+                                    <strong style={{ color: 'var(--text-primary)' }}>Multi-night stay across tickets?</strong>{' '}
+                                    Skip this drop zone, click <strong>Add line</strong>, then go to <strong>Expenses → Awaiting Receipts</strong>, tick every hotel line, and use <strong>Split one hotel bill across N nights</strong>. The bill uploads once and splits the cost proportionally so each ticket / project gets its share.
                                   </div>
                                 )}
                               </div>
@@ -7240,7 +7240,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   }}
                                 >
                                   <strong>Hotel covers multiple tickets?</strong>{' '}
-                                  Upload it once on the <strong>Expenses page</strong> → open the receipt → <strong>Link</strong>, and pick every ticket line awaiting it. Saves attaching each one separately.
+                                  Go to <strong>Expenses → Awaiting Receipts</strong>, tick every hotel line that shares this bill, and click <strong>Split one hotel bill across N nights</strong>. Uploads the bill once and splits the cost proportionally — each ticket / project gets its share.
                                 </div>
                               )}
                             </div>
