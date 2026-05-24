@@ -1975,7 +1975,10 @@ export default function Expenses() {
           quantity: '1',
           rate: totalBilled.toFixed(2),
           gst: '',
-          is_billable: false,
+          // Receipt is being linked to ticket expense lines that already carry their
+          // own billing — mark billed so the receipt reads correctly downstream and
+          // hide the per-line toggle in the form.
+          is_billable: true,
         },
       ],
     });
@@ -3562,24 +3565,42 @@ export default function Expenses() {
                     placeholder="0.00"
                     style={{ ...inputStyle, margin: 0 }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, is_billable: !li.is_billable } : li) })}
-                    style={{
-                      padding: '6px 0',
-                      borderRadius: '20px',
-                      border: `1px solid ${item.is_billable ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                      backgroundColor: item.is_billable ? 'var(--primary-color)' : 'transparent',
-                      color: item.is_billable ? 'white' : 'var(--text-tertiary)',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      letterSpacing: '0.03em',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {item.is_billable ? '✓ Billable' : 'Billable'}
-                  </button>
+                  {linkingTicketExpenseIds.length > 0 ? (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '6px 0',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        letterSpacing: '0.03em',
+                        color: '#15803d',
+                      }}
+                      title="Billed via the linked ticket expense line(s) above — no toggle needed."
+                    >
+                      ✓ Billed
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setReceiptForm({ ...receiptForm, lineItems: receiptForm.lineItems.map((li, i) => i === idx ? { ...li, is_billable: !li.is_billable } : li) })}
+                      style={{
+                        padding: '6px 0',
+                        borderRadius: '20px',
+                        border: `1px solid ${item.is_billable ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                        backgroundColor: item.is_billable ? 'var(--primary-color)' : 'transparent',
+                        color: item.is_billable ? 'white' : 'var(--text-tertiary)',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        letterSpacing: '0.03em',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {item.is_billable ? '✓ Billable' : 'Billable'}
+                    </button>
+                  )}
                   {receiptForm.lineItems.length > 1 ? (
                     <button
                       type="button"
