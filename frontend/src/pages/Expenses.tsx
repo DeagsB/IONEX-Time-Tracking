@@ -482,6 +482,7 @@ export default function Expenses() {
   const [pendingReceiptTypeFilter, setPendingReceiptTypeFilter] = useState<string>('all');
   const [pendingReceiptDescFilter, setPendingReceiptDescFilter] = useState<string>('');
   const [pendingReceiptCollapsed, setPendingReceiptCollapsed] = useState<boolean>(true);
+  const [expenseManagementCollapsed, setExpenseManagementCollapsed] = useState<boolean>(true);
 
   /**
    * Only expense types that genuinely require a receipt before payroll reimbursement.
@@ -3677,9 +3678,10 @@ export default function Expenses() {
       )}
       </>)}
 
-      {/* Expenses Table — Receipts tab only. Hidden for admins because every row also
-          appears in the Expense Management table below, making this block a duplicate. */}
-      {activeExpensesTab === 'receipts' && !isAdmin && (isLoading ? (
+      {/* Expenses Table — Receipts tab only. Admins also see it; the broader
+          User Expense Management section below is collapsed by default, so this
+          per-user ledger is no longer a noisy duplicate. */}
+      {activeExpensesTab === 'receipts' && (isLoading ? (
         <div style={{ color: 'var(--text-tertiary)', padding: '24px', textAlign: 'center' }}>Loading expenses...</div>
       ) : (
         <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
@@ -3975,15 +3977,45 @@ export default function Expenses() {
         </div>
       ))}
 
-      {/* Admin: Expense Approval Section — Receipts tab only. */}
+      {/* Admin: Expense Approval Section — Receipts tab only. Collapsed by default. */}
       {activeExpensesTab === 'receipts' && isAdmin && (
         <div style={{ marginTop: '40px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-            <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-              Expense Management
-            </h2>
-            {/* Headline totals — surface what matters at a glance without making admins
-                open a separate Employee Overview panel. */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: expenseManagementCollapsed ? 0 : '12px' }}>
+            <button
+              type="button"
+              onClick={() => setExpenseManagementCollapsed((v) => !v)}
+              aria-expanded={!expenseManagementCollapsed}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '10px',
+                fontFamily: 'inherit',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--text-secondary)',
+                  transition: 'transform 0.15s',
+                  transform: expenseManagementCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+                  display: 'inline-block',
+                  width: '12px',
+                }}
+                aria-hidden
+              >
+                ▶
+              </span>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                User Expense Management
+              </h2>
+            </button>
+            {/* Headline totals stay visible even when collapsed so admins can see the
+                queue at a glance without expanding. */}
             {(() => {
               const totalUnpaid = expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0);
               const totalPaid = expenseEmployeeSummary.reduce((s, e) => s + e.paid, 0);
@@ -3998,6 +4030,7 @@ export default function Expenses() {
             })()}
           </div>
 
+          {!expenseManagementCollapsed && (<>
           {/* Per-employee chip strip — the old standalone Employee Overview folded into a
               one-line filter. Click an employee to scope the table to them, click again or
               "All" to clear. Sorted: anyone with unpaid items first, descending by count. */}
@@ -5035,6 +5068,7 @@ export default function Expenses() {
             </table>
             </div>
           </div>
+          </>)}
         </div>
       )}
 
