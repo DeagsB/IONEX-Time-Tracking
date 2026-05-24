@@ -6833,6 +6833,21 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 <div style={{ fontSize: '18px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>↑</div>
                                 <div><strong style={{ color: 'var(--text-secondary)' }}>Drop receipt here</strong> or click to choose</div>
                                 <div style={{ marginTop: '2px', fontSize: '11px' }}>Or skip — Add the line now and attach later from the row</div>
+                                {isHotel && (
+                                  <div
+                                    style={{
+                                      marginTop: '8px',
+                                      paddingTop: '8px',
+                                      borderTop: '1px dashed color-mix(in srgb, var(--text-tertiary) 50%, transparent)',
+                                      fontSize: '11px',
+                                      color: 'var(--text-secondary)',
+                                      lineHeight: 1.5,
+                                    }}
+                                  >
+                                    <strong style={{ color: 'var(--text-primary)' }}>Multi-night stay?</strong>{' '}
+                                    Upload the full receipt on the <strong>Expenses page</strong> and bulk-link it to every ticket-expense line that needs it in one go.
+                                  </div>
+                                )}
                               </div>
                               {ticketExpenseFormIssues.receipt && (
                                 <div className="ionex-expense-field-help" style={{ color: 'var(--error-color)' }}>
@@ -7206,11 +7221,28 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                           </div>
                           )}
                           {showDeferredReceiptAttach && (
-                            <div className="ionex-expense-card-pending-action">
-                              <span>Attach the bill to set your reimbursement amount and markup.</span>
-                              <button type="button" onClick={() => openAttachReceiptForDeferredLine(expense)}>
-                                Attach receipt
-                              </button>
+                            <div className="ionex-expense-card-pending-action" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                                <span>Attach the bill to set your reimbursement amount and markup.</span>
+                                <button type="button" onClick={() => openAttachReceiptForDeferredLine(expense)}>
+                                  Attach receipt
+                                </button>
+                              </div>
+                              {expense.expense_type === 'Hotel' && (
+                                <div
+                                  style={{
+                                    marginTop: '8px',
+                                    paddingTop: '8px',
+                                    borderTop: '1px dashed color-mix(in srgb, var(--warning-color) 35%, transparent)',
+                                    fontSize: '11px',
+                                    lineHeight: 1.5,
+                                    color: 'color-mix(in srgb, var(--warning-color) 70%, var(--text-secondary))',
+                                  }}
+                                >
+                                  <strong>Hotel covers multiple tickets?</strong>{' '}
+                                  Upload it once on the <strong>Expenses page</strong> → open the receipt → <strong>Link</strong>, and pick every ticket line awaiting it. Saves attaching each one separately.
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
