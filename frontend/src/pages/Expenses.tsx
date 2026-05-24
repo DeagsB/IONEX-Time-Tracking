@@ -3999,10 +3999,10 @@ export default function Expenses() {
           {/* Single inline filter rail — no popover, no separate chip strip. Status / Employee
               / Type / Date / Clear are all visible at once so the admin sees what's filtering
               the table without clicking through. */}
-          <div className="ionex-filter-rail" style={{ marginBottom: '12px' }}>
-            <div className="ionex-filter-cell" style={{ flex: '0 1 auto' }}>
+          <div className="ionex-filter-rail" style={{ marginBottom: '12px', alignItems: 'flex-end' }}>
+            <div className="ionex-filter-cell" style={{ flex: '0 0 auto', minWidth: 0 }}>
               <span className="ionex-filter-cell-label">Status</span>
-              <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
+              <div style={{ display: 'flex', gap: '4px' }}>
                 {(['unpaid', 'paid', 'all'] as const).map((status) => {
                   const count = status === 'all'
                     ? mergedAdminExpensesForApproval.length
@@ -4013,7 +4013,7 @@ export default function Expenses() {
                       type="button"
                       onClick={() => setAdminStatusFilter(status)}
                       className={`ionex-tab-chip${adminStatusFilter === status ? ' is-active' : ''}`}
-                      style={{ padding: '5px 11px', textTransform: 'capitalize' }}
+                      style={{ padding: '6px 12px', textTransform: 'capitalize' }}
                     >
                       {status}
                       <span className={`ionex-tab-count${count === 0 ? ' is-zero' : ''}`}>{count}</span>
@@ -4022,7 +4022,7 @@ export default function Expenses() {
                 })}
               </div>
             </div>
-            <div className="ionex-filter-cell">
+            <div className="ionex-filter-cell" style={{ flex: '1 1 240px', minWidth: '200px' }}>
               <label className="ionex-filter-cell-label" htmlFor="uem-employee-filter">Employee</label>
               <div className="ionex-employee-select-wrap">
                 <select
@@ -4046,7 +4046,7 @@ export default function Expenses() {
                 })()}
               </div>
             </div>
-            <div className="ionex-filter-cell">
+            <div className="ionex-filter-cell" style={{ flex: '0 1 180px', minWidth: '150px' }}>
               <label className="ionex-filter-cell-label" htmlFor="uem-type-filter">Type</label>
               <select
                 id="uem-type-filter"
@@ -4060,23 +4060,23 @@ export default function Expenses() {
                 ))}
               </select>
             </div>
-            <div className="ionex-filter-cell" style={{ flex: '1 1 220px' }}>
+            <div className="ionex-filter-cell" style={{ flex: '1 1 300px', minWidth: '260px' }}>
               <span className="ionex-filter-cell-label">Date range</span>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px' }}>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <input
                   type="date"
                   value={adminDateStart}
                   onChange={(e) => setAdminDateStart(e.target.value)}
                   className="ionex-field-input"
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, minWidth: 0 }}
                 />
-                <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>→</span>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', flexShrink: 0 }}>→</span>
                 <input
                   type="date"
                   value={adminDateEnd}
                   onChange={(e) => setAdminDateEnd(e.target.value)}
                   className="ionex-field-input"
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, minWidth: 0 }}
                 />
               </div>
             </div>
