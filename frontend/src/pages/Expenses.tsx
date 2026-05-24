@@ -1411,6 +1411,23 @@ export default function Expenses() {
     return t;
   };
 
+  /**
+   * Hide hotel ticket-expense rows from the admin User Expense Management
+   * list — the employee's uploaded receipt is the artifact admin should
+   * see/act on for hotels, not the ticket-line placeholder. Once the
+   * receipt is uploaded it appears in `user_expenses` and shows as
+   * `_source === 'receipt'`. Missing-receipt awareness for hotel ticket
+   * lines lives on the ServiceTickets page (Suggested Billable Receipts +
+   * the per-ticket receipt-attach modal), so this hide doesn't lose any
+   * admin signal.
+   */
+  const isHiddenHotelTicketPlaceholder = (exp: any): boolean => {
+    if (!exp || exp._source !== 'ticket') return false;
+    const t = String(exp.expense_type || '').toLowerCase();
+    const desc = String(exp.description || '').toLowerCase();
+    return t === 'hotel' || desc.includes('hotel');
+  };
+
   const adminTypeOptions = useMemo(() => {
     const set = new Set<string>();
     for (const e of mergedAdminExpensesForApproval as any[]) set.add(expenseTypeOf(e));
@@ -1424,6 +1441,7 @@ export default function Expenses() {
       const t = expenseTypeOf(exp);
       if (!(t === 'Receipt' || t === 'Hotel' || t === 'Expenses')) return false;
     }
+    if (isHiddenHotelTicketPlaceholder(exp)) return false;
     if (adminStatusFilter !== 'all' && exp._status !== adminStatusFilter) return false;
     if (adminEmployeeFilter !== 'all' && String(exp._userId ?? '') !== adminEmployeeFilter) return false;
     if (adminTypeFilter !== 'all' && expenseTypeOf(exp) !== adminTypeFilter) return false;
@@ -1768,11 +1786,14 @@ export default function Expenses() {
     setCollapsedMyExpenseDateKeys(new Set(collapsedKeys));
   }, [myExpensesGroupedByDate]);
 
-  // Admin employee overview: per-employee counts (unpaid, paid)
+  // Admin employee overview: per-employee counts (unpaid, paid). Excludes
+  // hidden hotel ticket placeholders so the badges match what's visible
+  // in the User Expense Management table.
   const expenseEmployeeSummary = useMemo(() => {
     if (!isAdmin || !employees?.length) return [];
     const map = new Map<string, { userId: string; name: string; unpaid: number; paid: number }>();
     for (const e of mergedAdminExpenses) {
+      if (isHiddenHotelTicketPlaceholder(e)) continue;
       const uid = e._userId;
       if (!uid) continue;
       if (!map.has(uid)) {
@@ -4004,9 +4025,10 @@ export default function Expenses() {
               <span className="ionex-filter-cell-label">Status</span>
               <div style={{ display: 'flex', gap: '4px' }}>
                 {(['unpaid', 'paid', 'all'] as const).map((status) => {
+                  const visible = mergedAdminExpensesForApproval.filter((e: any) => !isHiddenHotelTicketPlaceholder(e));
                   const count = status === 'all'
-                    ? mergedAdminExpensesForApproval.length
-                    : mergedAdminExpensesForApproval.filter((e: any) => e._status === status).length;
+                    ? visible.length
+                    : visible.filter((e: any) => e._status === status).length;
                   return (
                     <button
                       key={status}
