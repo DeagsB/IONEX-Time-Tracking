@@ -5934,11 +5934,11 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                   'Travel' | 'Subsistence' | 'Hotel' | 'Equipment' | 'Expenses',
                   { label: string; glyph: string; accent: string; sub: string }
                 > = {
-                  Travel:      { label: 'Mileage',     glyph: '⛟', accent: '#3b82f6', sub: 'Vehicle / truck hours' },
-                  Subsistence: { label: 'Per diem',    glyph: '☕', accent: '#10b981', sub: 'Always paid via payroll' },
-                  Hotel:       { label: 'Hotel',       glyph: '⌂', accent: '#a855f7', sub: 'Lodging (needs receipt)' },
-                  Equipment:   { label: 'Equipment',   glyph: '◫', accent: '#f59e0b', sub: 'Laptop / basic gear'   },
-                  Expenses:    { label: 'Other',       glyph: '◇', accent: '#ef4444', sub: 'Parts, materials, etc.' },
+                  Travel:      { label: 'Mileage',     glyph: '🚗', accent: '#3b82f6', sub: 'Vehicle / truck hours' },
+                  Subsistence: { label: 'Per diem',    glyph: '🍽️', accent: '#10b981', sub: 'Always paid via payroll' },
+                  Hotel:       { label: 'Hotel',       glyph: '🏨', accent: '#a855f7', sub: 'Lodging (needs receipt)' },
+                  Equipment:   { label: 'Equipment',   glyph: '💻', accent: '#f59e0b', sub: 'Laptop / basic gear'   },
+                  Expenses:    { label: 'Other',       glyph: '🔧', accent: '#ef4444', sub: 'Parts, materials, etc.' },
                 };
                 const isServiceRowDirty = (i: number): boolean => {
                   const init = initialServiceRowsRef.current;
