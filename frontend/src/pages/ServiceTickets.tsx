@@ -5935,7 +5935,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                   { label: string; glyph: string; accent: string; sub: string }
                 > = {
                   Travel:      { label: 'Mileage',     glyph: '⛟', accent: '#3b82f6', sub: 'Vehicle / truck hours' },
-                  Subsistence: { label: 'Per diem',    glyph: '☕', accent: '#10b981', sub: 'Daily meal allowance'  },
+                  Subsistence: { label: 'Per diem',    glyph: '☕', accent: '#10b981', sub: 'Always paid via payroll' },
                   Hotel:       { label: 'Hotel',       glyph: '⌂', accent: '#a855f7', sub: 'Lodging (needs receipt)' },
                   Equipment:   { label: 'Equipment',   glyph: '◫', accent: '#f59e0b', sub: 'Laptop / basic gear'   },
                   Expenses:    { label: 'Other',       glyph: '◇', accent: '#ef4444', sub: 'Parts, materials, etc.' },
@@ -6803,16 +6803,16 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                             <div className="ionex-expense-preview-text">
                               Bills client{' '}
                               <strong>${(billed || 0).toFixed(2)}</strong>
-                              {isReimburseLine && et === 'Travel' && (
+                              {isSubsistence && (
+                                <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll (per diem is always paid out)</>
+                              )}
+                              {!isSubsistence && isReimburseLine && (et === 'Travel' || et === 'Equipment') && (
                                 <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll</>
                               )}
-                              {isReimburseLine && et === 'Equipment' && (
-                                <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll</>
-                              )}
-                              {isReimburseLine && (isHotel || isOther) && (
+                              {!isSubsistence && isReimburseLine && (isHotel || isOther) && (
                                 <> · Reimbursement = receipt total</>
                               )}
-                              {!isReimburseLine && (
+                              {!isSubsistence && !isReimburseLine && (
                                 <> · No reimbursement</>
                               )}
                             </div>
