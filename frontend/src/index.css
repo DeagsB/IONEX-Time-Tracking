@@ -3316,3 +3316,466 @@ textarea {
   cursor: not-allowed;
 }
 
+/* ============================================================
+   User Expense Management — admin receipt approval panel
+   (Expenses.tsx "User Expense Management" section).
+   Pay-period grouped cards with a flat row table inside, one
+   sticky filter rail, sticky bulk-action bar on selection, and
+   a unified status-pill vocabulary that replaces 36+ hardcoded
+   Material RGBA literals in the receipts panel.
+   ============================================================ */
+
+/* Status pill — one shape, semantic-coloured modifiers --------- */
+.ionex-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid var(--status-pill-border, var(--border-color));
+  background-color: var(--status-pill-bg, var(--bg-tertiary));
+  color: var(--status-pill-color, var(--text-secondary));
+}
+.ionex-status-pill.is-paid {
+  --status-pill-color: var(--success-color);
+  --status-pill-bg: color-mix(in srgb, var(--success-color) 12%, transparent);
+  --status-pill-border: color-mix(in srgb, var(--success-color) 35%, transparent);
+}
+.ionex-status-pill.is-unpaid {
+  --status-pill-color: var(--warning-color);
+  --status-pill-bg: color-mix(in srgb, var(--warning-color) 12%, transparent);
+  --status-pill-border: color-mix(in srgb, var(--warning-color) 38%, transparent);
+}
+.ionex-status-pill.is-pending {
+  --status-pill-color: var(--warning-color);
+  --status-pill-bg: color-mix(in srgb, var(--warning-color) 16%, transparent);
+  --status-pill-border: color-mix(in srgb, var(--warning-color) 45%, transparent);
+}
+.ionex-status-pill.is-applied {
+  --status-pill-color: var(--success-color);
+  --status-pill-bg: color-mix(in srgb, var(--success-color) 12%, transparent);
+  --status-pill-border: color-mix(in srgb, var(--success-color) 35%, transparent);
+}
+.ionex-status-pill.is-not-reimb {
+  --status-pill-color: var(--primary-color);
+  --status-pill-bg: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  --status-pill-border: color-mix(in srgb, var(--primary-color) 35%, transparent);
+}
+.ionex-status-pill.is-contractor {
+  --status-pill-color: var(--text-secondary);
+  --status-pill-bg: var(--bg-tertiary);
+  --status-pill-border: var(--border-color);
+}
+.ionex-status-pill.is-billable {
+  --status-pill-color: var(--primary-color);
+  --status-pill-bg: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  --status-pill-border: color-mix(in srgb, var(--primary-color) 30%, transparent);
+}
+.ionex-status-pill.is-shared {
+  --status-pill-color: var(--text-secondary);
+  --status-pill-bg: color-mix(in srgb, var(--primary-color) 6%, var(--bg-tertiary));
+  --status-pill-border: color-mix(in srgb, var(--primary-color) 22%, transparent);
+}
+.ionex-status-pill.is-period-current {
+  --status-pill-color: var(--success-color);
+  --status-pill-bg: color-mix(in srgb, var(--success-color) 14%, transparent);
+  --status-pill-border: color-mix(in srgb, var(--success-color) 40%, transparent);
+}
+.ionex-status-pill.is-period-future {
+  --status-pill-color: var(--text-secondary);
+  --status-pill-bg: var(--bg-tertiary);
+  --status-pill-border: var(--border-color);
+}
+
+/* Compact icon actions on each row ---------------------------- */
+.ionex-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ionex-row-action-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  transition: border-color 0.12s ease, color 0.12s ease, background-color 0.12s ease;
+}
+.ionex-row-action-icon:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
+  color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+.ionex-row-action-icon.is-primary {
+  color: var(--primary-color);
+  border-color: color-mix(in srgb, var(--primary-color) 38%, transparent);
+  background-color: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+.ionex-row-action-icon.is-primary:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--primary-color) 16%, transparent);
+  border-color: var(--primary-color);
+}
+.ionex-row-action-icon.is-success {
+  color: var(--success-color);
+  border-color: color-mix(in srgb, var(--success-color) 38%, transparent);
+  background-color: color-mix(in srgb, var(--success-color) 10%, transparent);
+}
+.ionex-row-action-icon.is-success:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--success-color) 18%, transparent);
+  border-color: var(--success-color);
+}
+.ionex-row-action-icon.is-warning {
+  color: var(--warning-color);
+  border-color: color-mix(in srgb, var(--warning-color) 38%, transparent);
+  background-color: color-mix(in srgb, var(--warning-color) 10%, transparent);
+}
+.ionex-row-action-icon.is-warning:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--warning-color) 18%, transparent);
+  border-color: var(--warning-color);
+}
+.ionex-row-action-icon.is-danger {
+  color: var(--error-color);
+  border-color: color-mix(in srgb, var(--error-color) 35%, transparent);
+  background-color: color-mix(in srgb, var(--error-color) 10%, transparent);
+}
+.ionex-row-action-icon.is-danger:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--error-color) 18%, transparent);
+  border-color: var(--error-color);
+}
+.ionex-row-action-icon:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Sticky bulk-action bar -------------------------------------- */
+.ionex-bulk-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background-color: color-mix(in srgb, var(--primary-color) 8%, var(--bg-primary));
+  border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: saturate(180%) blur(6px);
+}
+.ionex-bulk-bar-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+.ionex-bulk-bar-count strong {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.ionex-bulk-bar-divider {
+  width: 1px;
+  height: 20px;
+  background-color: color-mix(in srgb, var(--primary-color) 22%, var(--border-color));
+}
+.ionex-bulk-bar-clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+.ionex-bulk-bar-clear:hover {
+  color: var(--primary-color);
+}
+
+/* Pay-period accordion card ----------------------------------- */
+.ionex-period-card {
+  position: relative;
+  margin-bottom: 14px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.ionex-period-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(
+    to bottom,
+    var(--primary-color),
+    color-mix(in srgb, var(--primary-color) 40%, transparent)
+  );
+}
+.ionex-period-card.is-future::before {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--text-tertiary) 60%, transparent),
+    color-mix(in srgb, var(--text-tertiary) 30%, transparent)
+  );
+}
+.ionex-period-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 12px 16px 12px 22px;
+  background-color: color-mix(in srgb, var(--primary-color) 4%, var(--bg-secondary));
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background-color 0.12s ease;
+}
+.ionex-period-card-header:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 8%, var(--bg-secondary));
+}
+.ionex-period-card.is-collapsed .ionex-period-card-header {
+  border-bottom: none;
+}
+.ionex-period-card-chevron {
+  width: 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.ionex-period-card-eyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.ionex-period-card-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+.ionex-period-card-meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ionex-period-card-meta strong {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+.ionex-period-card-meta .is-grand {
+  color: var(--primary-color);
+}
+.ionex-period-card.is-collapsed .ionex-period-card-body { display: none; }
+
+/* Flat row table inside a period card -------------------------- */
+.ionex-expense-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.ionex-expense-table thead tr {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+.ionex-expense-table th {
+  padding: 9px 12px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  text-align: left;
+  white-space: nowrap;
+}
+.ionex-expense-table th.is-numeric { text-align: right; }
+.ionex-expense-table th.is-center  { text-align: center; }
+.ionex-expense-table th.is-checkbox { width: 32px; padding-left: 18px; }
+.ionex-expense-table td {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: top;
+}
+.ionex-expense-table td.is-numeric {
+  text-align: right;
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+.ionex-expense-table td.is-center { text-align: center; }
+.ionex-expense-table td.is-actions {
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 14px;
+}
+.ionex-expense-table-row.is-selectable { cursor: pointer; }
+.ionex-expense-table-row.is-selectable:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 5%, transparent);
+}
+.ionex-expense-table-row.is-selected {
+  background-color: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+.ionex-expense-table-row.is-summary td {
+  background-color: color-mix(in srgb, var(--primary-color) 5%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--primary-color) 22%, var(--border-color));
+  font-size: 11px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--primary-color) 85%, var(--text-primary));
+}
+.ionex-expense-table-row.is-linked-detail td {
+  background-color: color-mix(in srgb, var(--success-color) 5%, transparent);
+  border-bottom: 1px solid var(--border-color);
+}
+.ionex-expense-table-row.is-empty td {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-style: italic;
+}
+.ionex-expense-table-desc-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ionex-expense-table-desc-meta .desc {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ionex-expense-table-subline {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+}
+.ionex-expense-table-subline.is-note { color: var(--text-secondary); }
+.ionex-expense-table-link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--primary-color);
+  text-decoration: underline;
+}
+.ionex-expense-table-link-button.is-strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+.ionex-expense-table-amount {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.ionex-expense-table-amount-gst {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* Linked detail (expanded "Linked" sub-list) ------------------ */
+.ionex-linked-detail {
+  padding: 12px 16px 14px 36px;
+  background-color: color-mix(in srgb, var(--success-color) 4%, transparent);
+}
+.ionex-linked-detail-eyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--success-color);
+  margin-bottom: 6px;
+}
+.ionex-linked-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ionex-linked-detail-table th {
+  padding: 4px 8px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+.ionex-linked-detail-table th.is-numeric,
+.ionex-linked-detail-table td.is-numeric { text-align: right; }
+.ionex-linked-detail-table td {
+  padding: 6px 8px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+.ionex-linked-detail-table td.is-mono {
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+.ionex-linked-detail-table tr:last-child td { border-bottom: none; }
+
+/* Employee select with unpaid badge on the trigger --------------- */
+.ionex-employee-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+}
+.ionex-employee-select-wrap select { width: 100%; }
+.ionex-employee-select-wrap .unpaid-pill {
+  position: absolute;
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 999px;
+  background-color: var(--warning-color);
+  color: var(--bg-primary);
+  line-height: 1.4;
+}
+

@@ -352,21 +352,8 @@ export default function Expenses() {
   const [adminDateEnd, setAdminDateEnd] = useState<string>('');
   /** Type filter values: 'all' | 'Receipt' (standalone receipts) | one of the ticket expense_type strings. */
   const [adminTypeFilter, setAdminTypeFilter] = useState<string>('all');
-  const [adminFiltersOpen, setAdminFiltersOpen] = useState(false);
-  const adminFiltersAnchorRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!adminFiltersOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (!adminFiltersAnchorRef.current) return;
-      if (!adminFiltersAnchorRef.current.contains(e.target as Node)) setAdminFiltersOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [adminFiltersOpen]);
   const [collapsedMyExpenseDateKeys, setCollapsedMyExpenseDateKeys] = useState<Set<string>>(() => new Set());
-  const [collapsedAdminExpenseDateKeys, setCollapsedAdminExpenseDateKeys] = useState<Set<string>>(() => new Set());
   const hasSeededMyExpenseDateCollapse = useRef(false);
-  const hasSeededAdminExpenseDateCollapse = useRef(false);
   // Pay-period collapse state — keyed by period index ("0", "-1", "12"…). Pay periods sit
   // above the per-day groups so the user lands on the current 14-day window first, with
   // older periods folded away. Persisted alongside (not in place of) the date-group state.
@@ -1767,15 +1754,6 @@ export default function Expenses() {
     });
   };
 
-  const toggleAdminExpenseDateGroup = (dateKey: string) => {
-    setCollapsedAdminExpenseDateKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(dateKey)) next.delete(dateKey);
-      else next.add(dateKey);
-      return next;
-    });
-  };
-
   useEffect(() => {
     if (myExpensesGroupedByDate.length === 0) {
       hasSeededMyExpenseDateCollapse.current = false;
@@ -1789,25 +1767,6 @@ export default function Expenses() {
       .map((g) => g.dateKey);
     setCollapsedMyExpenseDateKeys(new Set(collapsedKeys));
   }, [myExpensesGroupedByDate]);
-
-  useEffect(() => {
-    hasSeededAdminExpenseDateCollapse.current = false;
-    setCollapsedAdminExpenseDateKeys(new Set());
-  }, [adminStatusFilter]);
-
-  useEffect(() => {
-    if (adminFilteredExpensesGroupedByDate.length === 0) {
-      hasSeededAdminExpenseDateCollapse.current = false;
-      setCollapsedAdminExpenseDateKeys(new Set());
-      return;
-    }
-    if (hasSeededAdminExpenseDateCollapse.current) return;
-    hasSeededAdminExpenseDateCollapse.current = true;
-    const collapsedKeys = adminFilteredExpensesGroupedByDate
-      .filter((g) => g.items.length > 0 && g.items.every((exp: any) => exp._status === 'paid'))
-      .map((g) => g.dateKey);
-    setCollapsedAdminExpenseDateKeys(new Set(collapsedKeys));
-  }, [adminFilteredExpensesGroupedByDate]);
 
   // Admin employee overview: per-employee counts (unpaid, paid)
   const expenseEmployeeSummary = useMemo(() => {
@@ -3980,7 +3939,7 @@ export default function Expenses() {
       {/* Admin: Expense Approval Section — Receipts tab only. Collapsed by default. */}
       {activeExpensesTab === 'receipts' && isAdmin && (
         <div style={{ marginTop: '40px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: expenseManagementCollapsed ? 0 : '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: expenseManagementCollapsed ? 0 : '14px' }}>
             <button
               type="button"
               onClick={() => setExpenseManagementCollapsed((v) => !v)}
@@ -4010,7 +3969,7 @@ export default function Expenses() {
               >
                 ▶
               </span>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+              <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
                 User Expense Management
               </h2>
             </button>
@@ -4021,295 +3980,137 @@ export default function Expenses() {
               const totalPaid = expenseEmployeeSummary.reduce((s, e) => s + e.paid, 0);
               const employeeCount = expenseEmployeeSummary.length;
               return (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  <span><strong style={{ color: 'var(--text-primary)' }}>{employeeCount}</strong> {employeeCount === 1 ? 'employee' : 'employees'}</span>
-                  <span><strong style={{ color: '#ff9800' }}>{totalUnpaid}</strong> unpaid</span>
-                  <span><strong style={{ color: '#3b82f6' }}>{totalPaid}</strong> paid</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
+                  <span className="ionex-status-pill" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}>
+                    {employeeCount} {employeeCount === 1 ? 'employee' : 'employees'}
+                  </span>
+                  {totalUnpaid > 0 && (
+                    <span className="ionex-status-pill is-unpaid">{totalUnpaid} unpaid</span>
+                  )}
+                  {totalPaid > 0 && (
+                    <span className="ionex-status-pill is-paid">{totalPaid} paid</span>
+                  )}
                 </span>
               );
             })()}
           </div>
 
           {!expenseManagementCollapsed && (<>
-          {/* Per-employee chip strip — the old standalone Employee Overview folded into a
-              one-line filter. Click an employee to scope the table to them, click again or
-              "All" to clear. Sorted: anyone with unpaid items first, descending by count. */}
-          {expenseEmployeeSummary.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', marginBottom: '12px' }}>
-              <button
-                type="button"
-                onClick={() => setAdminEmployeeFilter('all')}
-                style={{
-                  padding: '5px 12px', borderRadius: '999px',
-                  border: adminEmployeeFilter === 'all' ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
-                  backgroundColor: adminEmployeeFilter === 'all' ? 'rgba(33, 150, 243, 0.10)' : 'var(--bg-secondary)',
-                  color: adminEmployeeFilter === 'all' ? 'var(--primary-color)' : 'var(--text-secondary)',
-                  fontSize: '12px', fontWeight: 700, cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                All employees
-              </button>
-              {expenseEmployeeSummary.map((emp) => {
-                const isActive = adminEmployeeFilter === emp.userId;
-                const hasUnpaid = emp.unpaid > 0;
-                return (
-                  <button
-                    key={emp.userId}
-                    type="button"
-                    onClick={() => setAdminEmployeeFilter(isActive ? 'all' : emp.userId)}
-                    title={`${emp.unpaid} unpaid · ${emp.paid} paid`}
-                    style={{
-                      padding: '5px 10px 5px 12px', borderRadius: '999px',
-                      border: isActive
-                        ? '1px solid var(--primary-color)'
-                        : `1px solid ${hasUnpaid ? 'rgba(255, 152, 0, 0.45)' : 'var(--border-color)'}`,
-                      backgroundColor: isActive
-                        ? 'rgba(33, 150, 243, 0.10)'
-                        : (hasUnpaid ? 'rgba(255, 152, 0, 0.08)' : 'var(--bg-secondary)'),
-                      color: isActive
-                        ? 'var(--primary-color)'
-                        : (hasUnpaid ? 'var(--text-primary)' : 'var(--text-secondary)'),
-                      fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      display: 'inline-flex', alignItems: 'center', gap: '6px',
-                    }}
-                  >
-                    {emp.name}
-                    {hasUnpaid && (
-                      <span style={{
-                        padding: '0 6px', borderRadius: '999px',
-                        backgroundColor: '#ff9800', color: 'white',
-                        fontSize: '11px', fontWeight: 700,
-                        minWidth: '18px', height: '16px',
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      }}>{emp.unpaid}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Status tabs (primary) + active-filter chips + Filters popover. */}
-          {(() => {
-            const today = new Date();
-            const ymd = (d: Date) => d.toISOString().split('T')[0];
-            const presets: Array<{ label: string; start: string; end: string }> = [
-              (() => {
-                const d = new Date(today); d.setDate(d.getDate() - 6);
-                return { label: '7d', start: ymd(d), end: ymd(today) };
-              })(),
-              (() => {
-                const d = new Date(today); d.setDate(d.getDate() - 29);
-                return { label: '30d', start: ymd(d), end: ymd(today) };
-              })(),
-              (() => {
-                const start = new Date(today.getFullYear(), today.getMonth(), 1);
-                return { label: 'This month', start: ymd(start), end: ymd(today) };
-              })(),
-              (() => {
-                const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                const end = new Date(today.getFullYear(), today.getMonth(), 0);
-                return { label: 'Last month', start: ymd(start), end: ymd(end) };
-              })(),
-            ];
-            const activePreset = presets.find((p) => p.start === adminDateStart && p.end === adminDateEnd) || null;
-            // Employee filter is rendered as its own chip strip above this row; only
-            // Type + Date count toward the "Filters" gear badge here.
-            const activeFilterCount =
-              (adminTypeFilter !== 'all' ? 1 : 0) +
-              ((adminDateStart || adminDateEnd) ? 1 : 0);
-            const fmtDate = (s: string) =>
-              s ? new Date(`${s}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '…';
-            const dateChipLabel =
-              activePreset
-                ? activePreset.label
-                : (adminDateStart || adminDateEnd)
-                  ? `${fmtDate(adminDateStart)} → ${fmtDate(adminDateEnd)}`
-                  : null;
-
-            const chipStyle: React.CSSProperties = {
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '4px 8px 4px 10px', borderRadius: '999px',
-              backgroundColor: 'rgba(33, 150, 243, 0.10)',
-              color: 'var(--primary-color)', fontSize: '12px', fontWeight: 600,
-              border: '1px solid rgba(33, 150, 243, 0.25)',
-            };
-            const chipXStyle: React.CSSProperties = {
-              border: 'none', background: 'transparent', color: 'inherit',
-              cursor: 'pointer', fontSize: '14px', lineHeight: 1, padding: 0,
-              opacity: 0.7,
-            };
-
-            return (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {(['unpaid', 'paid', 'all'] as const).map((status) => (
+          {/* Single inline filter rail — no popover, no separate chip strip. Status / Employee
+              / Type / Date / Clear are all visible at once so the admin sees what's filtering
+              the table without clicking through. */}
+          <div className="ionex-filter-rail" style={{ marginBottom: '12px' }}>
+            <div className="ionex-filter-cell" style={{ flex: '0 1 auto' }}>
+              <span className="ionex-filter-cell-label">Status</span>
+              <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
+                {(['unpaid', 'paid', 'all'] as const).map((status) => {
+                  const count = status === 'all'
+                    ? mergedAdminExpensesForApproval.length
+                    : mergedAdminExpensesForApproval.filter((e: any) => e._status === status).length;
+                  return (
                     <button
                       key={status}
+                      type="button"
                       onClick={() => setAdminStatusFilter(status)}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: '6px',
-                        border: adminStatusFilter === status ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
-                        backgroundColor: adminStatusFilter === status ? 'rgba(33, 150, 243, 0.1)' : 'transparent',
-                        color: adminStatusFilter === status ? 'var(--primary-color)' : 'var(--text-secondary)',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        cursor: 'pointer',
-                        textTransform: 'capitalize',
-                      }}
+                      className={`ionex-tab-chip${adminStatusFilter === status ? ' is-active' : ''}`}
+                      style={{ padding: '5px 11px', textTransform: 'capitalize' }}
                     >
-                      {status}{status !== 'all' ? ` (${mergedAdminExpensesForApproval.filter((e: any) => e._status === status).length})` : ` (${mergedAdminExpensesForApproval.length})`}
+                      {status}
+                      <span className={`ionex-tab-count${count === 0 ? ' is-zero' : ''}`}>{count}</span>
                     </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="ionex-filter-cell">
+              <label className="ionex-filter-cell-label" htmlFor="uem-employee-filter">Employee</label>
+              <div className="ionex-employee-select-wrap">
+                <select
+                  id="uem-employee-filter"
+                  value={adminEmployeeFilter}
+                  onChange={(e) => setAdminEmployeeFilter(e.target.value)}
+                  className="ionex-field-input"
+                  style={{ paddingRight: adminEmployeeFilter === 'all' ? '32px' : '52px' }}
+                >
+                  <option value="all">All employees</option>
+                  {expenseEmployeeSummary.map((emp) => (
+                    <option key={emp.userId} value={emp.userId}>
+                      {emp.name}{emp.unpaid > 0 ? ` — ${emp.unpaid} unpaid` : ''}
+                    </option>
                   ))}
-                </div>
-
-                {/* Active filter chips. */}
-                {adminTypeFilter !== 'all' && (
-                  <span style={chipStyle}>
-                    {adminTypeFilter}
-                    <button type="button" onClick={() => setAdminTypeFilter('all')} style={chipXStyle} aria-label="Remove type filter">×</button>
-                  </span>
-                )}
-                {dateChipLabel && (
-                  <span style={chipStyle}>
-                    {dateChipLabel}
-                    <button type="button" onClick={() => { setAdminDateStart(''); setAdminDateEnd(''); }} style={chipXStyle} aria-label="Remove date filter">×</button>
-                  </span>
-                )}
-
-                <div ref={adminFiltersAnchorRef} style={{ position: 'relative', marginLeft: 'auto' }}>
+                </select>
+                {adminEmployeeFilter !== 'all' && (() => {
+                  const sel = expenseEmployeeSummary.find((e) => e.userId === adminEmployeeFilter);
+                  if (!sel || sel.unpaid <= 0) return null;
+                  return <span className="unpaid-pill">{sel.unpaid}</span>;
+                })()}
+              </div>
+            </div>
+            <div className="ionex-filter-cell">
+              <label className="ionex-filter-cell-label" htmlFor="uem-type-filter">Type</label>
+              <select
+                id="uem-type-filter"
+                value={adminTypeFilter}
+                onChange={(e) => setAdminTypeFilter(e.target.value)}
+                className="ionex-field-input"
+              >
+                <option value="all">All types</option>
+                {adminTypeOptions.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div className="ionex-filter-cell" style={{ flex: '1 1 220px' }}>
+              <span className="ionex-filter-cell-label">Date range</span>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px' }}>
+                <input
+                  type="date"
+                  value={adminDateStart}
+                  onChange={(e) => setAdminDateStart(e.target.value)}
+                  className="ionex-field-input"
+                  style={{ flex: 1 }}
+                />
+                <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>→</span>
+                <input
+                  type="date"
+                  value={adminDateEnd}
+                  onChange={(e) => setAdminDateEnd(e.target.value)}
+                  className="ionex-field-input"
+                  style={{ flex: 1 }}
+                />
+              </div>
+            </div>
+            {(() => {
+              const anyActive =
+                adminStatusFilter !== 'unpaid' ||
+                adminEmployeeFilter !== 'all' ||
+                adminTypeFilter !== 'all' ||
+                !!adminDateStart ||
+                !!adminDateEnd;
+              return (
+                <div className="ionex-filter-cell-action">
                   <button
                     type="button"
-                    onClick={() => setAdminFiltersOpen((v) => !v)}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '6px',
-                      padding: '6px 12px', borderRadius: '6px',
-                      border: activeFilterCount > 0 ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
-                      backgroundColor: activeFilterCount > 0 ? 'rgba(33, 150, 243, 0.08)' : 'var(--bg-secondary)',
-                      color: activeFilterCount > 0 ? 'var(--primary-color)' : 'var(--text-secondary)',
-                      fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                    onClick={() => {
+                      setAdminStatusFilter('unpaid');
+                      setAdminEmployeeFilter('all');
+                      setAdminTypeFilter('all');
+                      setAdminDateStart('');
+                      setAdminDateEnd('');
                     }}
-                    aria-expanded={adminFiltersOpen}
+                    disabled={!anyActive}
+                    className="ionex-report-action"
+                    style={{ opacity: anyActive ? 1 : 0.55 }}
                   >
-                    <span aria-hidden>⚙</span>
-                    Filters
-                    {activeFilterCount > 0 && (
-                      <span style={{
-                        minWidth: '18px', padding: '0 6px', height: '18px',
-                        borderRadius: '999px', backgroundColor: 'var(--primary-color)',
-                        color: 'white', fontSize: '11px', fontWeight: 700,
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      }}>{activeFilterCount}</span>
-                    )}
-                    <span aria-hidden style={{ fontSize: '10px', opacity: 0.7 }}>{adminFiltersOpen ? '▲' : '▼'}</span>
+                    Reset filters
                   </button>
-
-                  {adminFiltersOpen && (
-                    <div
-                      role="dialog"
-                      style={{
-                        position: 'absolute', top: 'calc(100% + 6px)', right: 0,
-                        zIndex: 50, width: 'min(420px, 90vw)',
-                        backgroundColor: 'var(--bg-primary)',
-                        border: '1px solid var(--border-color)', borderRadius: '8px',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-                        padding: '14px',
-                        display: 'flex', flexDirection: 'column', gap: '12px',
-                      }}
-                    >
-                      {/* Employee selection lives in the chip strip above the table now;
-                          only Type + Date range stay in this popover. */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Type</label>
-                        <select
-                          value={adminTypeFilter}
-                          onChange={(e) => setAdminTypeFilter(e.target.value)}
-                          style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-                        >
-                          <option value="all">All types</option>
-                          {adminTypeOptions.map((t) => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Date range</label>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {presets.map((p) => {
-                            const isActive = activePreset?.label === p.label;
-                            return (
-                              <button
-                                key={p.label}
-                                type="button"
-                                onClick={() => { setAdminDateStart(p.start); setAdminDateEnd(p.end); }}
-                                style={{
-                                  padding: '5px 10px', borderRadius: '6px',
-                                  border: isActive ? '1px solid var(--primary-color)' : '1px solid var(--border-color)',
-                                  backgroundColor: isActive ? 'rgba(33, 150, 243, 0.10)' : 'var(--bg-secondary)',
-                                  color: isActive ? 'var(--primary-color)' : 'var(--text-secondary)',
-                                  fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                                }}
-                              >
-                                {p.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                          <input
-                            type="date"
-                            value={adminDateStart}
-                            onChange={(e) => setAdminDateStart(e.target.value)}
-                            style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-                          />
-                          <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>→</span>
-                          <input
-                            type="date"
-                            value={adminDateEnd}
-                            onChange={(e) => setAdminDateEnd(e.target.value)}
-                            style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
-                        <button
-                          type="button"
-                          onClick={() => { setAdminTypeFilter('all'); setAdminDateStart(''); setAdminDateEnd(''); }}
-                          disabled={activeFilterCount === 0}
-                          style={{
-                            padding: '5px 10px', borderRadius: '6px', border: 'none',
-                            background: 'transparent',
-                            color: activeFilterCount === 0 ? 'var(--text-tertiary)' : 'var(--text-secondary)',
-                            fontSize: '12px',
-                            cursor: activeFilterCount === 0 ? 'not-allowed' : 'pointer',
-                            textDecoration: activeFilterCount === 0 ? 'none' : 'underline',
-                          }}
-                        >
-                          Clear all
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAdminFiltersOpen(false)}
-                          style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
-                        >
-                          Done
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
+          </div>
 
-          {/* Bulk action bar — appears as soon as any rows are selected. Surfaces the
-              actions the user used to need inside the (now-removed) Employee Overview drawer
-              plus the new admin actions on receipts (Not Reimbursable / Delete). */}
+          {/* Sticky bulk-action bar — pins to the top of the panel scroll area while
+              there's a selection, so the admin doesn't have to scroll back to act on it. */}
           {(() => {
             const selectedRows = adminFilteredExpenses.filter((e: any) => selectedExpenseKeys.has(`${e._source}-${e.id}`));
             if (selectedRows.length === 0) return null;
@@ -4322,57 +4123,50 @@ export default function Expenses() {
             const selectedAmount = selectedRows.reduce((s: number, r: any) => s + (Number(r._amount) || 0), 0);
             const toStatusPayload = (rows: any[]) => rows.map((r: any) => ({ id: String(r.id), source: r._source as 'receipt' | 'ticket' }));
             return (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                padding: '10px 14px', marginBottom: '12px',
-                borderRadius: '8px', backgroundColor: 'rgba(33, 150, 243, 0.08)',
-                border: '1px solid rgba(33, 150, 243, 0.35)',
-              }}>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {selectedRows.length} selected
+              <div className="ionex-bulk-bar" role="region" aria-label="Bulk actions">
+                <span className="ionex-bulk-bar-count">
+                  <strong>{selectedRows.length}</strong> selected
+                  <span style={{ fontFamily: 'SF Mono, monospace', color: 'var(--text-tertiary)' }}>${selectedAmount.toFixed(2)}</span>
                 </span>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-                  ${selectedAmount.toFixed(2)}
-                </span>
-                <span style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)' }} aria-hidden />
+                <span className="ionex-bulk-bar-divider" aria-hidden />
                 {unpaidRows.length > 0 && (
                   <button
                     type="button"
+                    className="ionex-row-action-icon is-success"
                     disabled={batchActionBusy}
                     onClick={() => handleAdminBatchStatusChange(toStatusPayload(unpaidRows), 'paid')}
-                    style={{ padding: '5px 10px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.4)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
                   >
-                    Mark {unpaidRows.length} Paid
+                    Mark {unpaidRows.length} paid
                   </button>
                 )}
                 {paidRows.length > 0 && (
                   <button
                     type="button"
+                    className="ionex-row-action-icon is-warning"
                     disabled={batchActionBusy}
                     onClick={() => handleAdminBatchStatusChange(toStatusPayload(paidRows), 'pending')}
-                    style={{ padding: '5px 10px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.4)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
                   >
-                    Mark {paidRows.length} Unpaid
+                    Mark {paidRows.length} unpaid
                   </button>
                 )}
                 {receiptsToFlag.length > 0 && (
                   <button
                     type="button"
+                    className="ionex-row-action-icon is-primary"
                     disabled={batchActionBusy}
                     onClick={() => handleAdminBatchSetNotReimbursable(receiptsToFlag, true)}
                     title="Drop these receipts from employee reimbursement; keep them for Apply-to-Ticket."
-                    style={{ padding: '5px 10px', backgroundColor: 'rgba(124, 58, 237, 0.10)', color: '#6d28d9', border: '1px solid rgba(124, 58, 237, 0.35)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
                   >
-                    Not Reimbursable ({receiptsToFlag.length})
+                    Not reimbursable ({receiptsToFlag.length})
                   </button>
                 )}
                 {receiptsToUnflag.length > 0 && (
                   <button
                     type="button"
+                    className="ionex-row-action-icon is-primary"
                     disabled={batchActionBusy}
                     onClick={() => handleAdminBatchSetNotReimbursable(receiptsToUnflag, false)}
                     title="Re-include these receipts in employee reimbursement."
-                    style={{ padding: '5px 10px', backgroundColor: 'rgba(99, 102, 241, 0.14)', color: '#4338ca', border: '1px solid rgba(99, 102, 241, 0.45)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
                   >
                     ↺ Restore ({receiptsToUnflag.length})
                   </button>
@@ -4380,18 +4174,18 @@ export default function Expenses() {
                 {receiptIds.length > 0 && (
                   <button
                     type="button"
+                    className="ionex-row-action-icon is-danger"
                     disabled={batchActionBusy}
                     onClick={() => handleAdminBatchDeleteReceipts(receiptIds)}
                     title="Delete the selected receipts permanently."
-                    style={{ padding: '5px 10px', backgroundColor: 'rgba(239, 68, 68, 0.10)', color: '#dc2626', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '4px', fontSize: '12px', fontWeight: 600, cursor: batchActionBusy ? 'not-allowed' : 'pointer' }}
                   >
                     Delete {receiptIds.length}
                   </button>
                 )}
                 <button
                   type="button"
+                  className="ionex-bulk-bar-clear"
                   onClick={() => setSelectedExpenseKeys(new Set())}
-                  style={{ marginLeft: 'auto', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)', textDecoration: 'underline' }}
                 >
                   Clear selection
                 </button>
@@ -4399,675 +4193,484 @@ export default function Expenses() {
             );
           })()}
 
-          <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1150px' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
-                  <th style={{ padding: '10px 8px 10px 14px', textAlign: 'left', width: '32px' }}>
-                    {(() => {
-                      const allKeys = adminFilteredExpenses.map((e: any) => `${e._source}-${e.id}`);
-                      const allSelected = allKeys.length > 0 && allKeys.every((k) => selectedExpenseKeys.has(k));
-                      const anySelected = allKeys.some((k) => selectedExpenseKeys.has(k));
-                      return (
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          ref={(el) => { if (el) el.indeterminate = !allSelected && anySelected; }}
-                          onChange={(e) => {
-                            setSelectedExpenseKeys((prev) => {
-                              const next = new Set(prev);
-                              if (e.target.checked) for (const k of allKeys) next.add(k);
-                              else for (const k of allKeys) next.delete(k);
-                              return next;
-                            });
-                          }}
-                          title="Select all visible expenses"
-                          style={{ cursor: 'pointer' }}
-                        />
-                      );
-                    })()}
-                  </th>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Employee</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Date</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Description</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Amount</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>GST</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Billable</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Status</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Ticket</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '600', fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {adminFilteredExpenses.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                      No {adminStatusFilter === 'all' ? '' : adminStatusFilter} expenses found.
-                    </td>
-                  </tr>
-                ) : (
-                  adminFilteredExpensesGroupedByPayPeriod.map((period) => {
-                    const periodCollapsed = collapsedAdminExpensePeriodKeys.has(period.periodKey);
-                    return (
-                      <Fragment key={`admin-period-${period.periodKey}`}>
-                        <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.10)', borderBottom: '2px solid rgba(20, 184, 166, 0.45)' }}>
-                          <td colSpan={10} style={{ padding: 0 }}>
-                            <button
-                              type="button"
-                              onClick={() => toggleAdminExpensePeriodGroup(period.periodKey)}
-                              aria-expanded={!periodCollapsed}
-                              style={{
-                                width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
-                                padding: '12px 16px', border: 'none', background: 'transparent',
-                                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', flexWrap: 'wrap',
-                              }}
-                            >
-                              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
-                                {periodCollapsed ? '▶' : '▼'}
-                              </span>
-                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
-                                Pay Period
-                              </span>
-                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                {period.periodLabel}
-                              </span>
-                              {period.isCurrent && (
-                                <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'rgba(34, 197, 94, 0.18)', color: '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Current</span>
-                              )}
-                              {period.isFuture && (
-                                <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Upcoming</span>
-                              )}
-                              <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'baseline', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                                <span><strong style={{ color: 'var(--text-primary)' }}>{period.totals.count}</strong> {period.totals.count === 1 ? 'item' : 'items'}</span>
-                                <span>Subtotal <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>${period.totals.amount.toFixed(2)}</strong></span>
-                                <span>GST <strong style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>${period.totals.gst.toFixed(2)}</strong></span>
-                                <span>Total <strong style={{ fontFamily: 'monospace', color: '#0f766e' }}>${period.totals.total.toFixed(2)}</strong></span>
-                              </span>
-                            </button>
-                          </td>
-                        </tr>
-                        {!periodCollapsed && period.dateGroups.map(({ dateKey, items }) => {
-                    const collapsed = collapsedAdminExpenseDateKeys.has(dateKey);
-                    const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(items);
-                    const receiptGroupTotals = sharedReceiptGroupTotalsInOrder(items, sharedReceiptMeta);
-                    // Per-group summary: total $ + GST + paid/unpaid + receipt-pending count + per-employee.
-                    let groupAmount = 0;
-                    let groupGst = 0;
-                    let paidCount = 0;
-                    let unpaidCount = 0;
-                    let receiptPendingCount = 0;
-                    const empSet = new Set<string>();
-                    for (const it of items as any[]) {
-                      groupAmount += Number(it._amount) || 0;
-                      if (it._source === 'receipt') groupGst += parseFloat(String(it.gst || 0)) || 0;
-                      if (it._status === 'paid') paidCount += 1; else unpaidCount += 1;
-                      if (it._employeeName) empSet.add(String(it._employeeName));
-                      if (it._source === 'ticket' && it.needs_reimbursement) {
-                        const t = String(it.expense_type || '').toLowerCase();
-                        const desc = String(it.description || '').toLowerCase();
-                        const needsR = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
-                        const hasR = (Number(it.actual_cost) || 0) > 0 || !!it.user_expense_id;
-                        const ownerId = String(it.service_tickets?.user_id ?? it._userId ?? '');
-                        const isContractor = ownerId ? !!contractorByUserId.get(ownerId) : false;
-                        if (needsR && !hasR && !isContractor) receiptPendingCount += 1;
-                      }
-                    }
-                    return (
-                      <Fragment key={dateKey}>
-                        <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
-                          <td colSpan={10} style={{ padding: 0 }}>
-                            <button
-                              type="button"
-                              onClick={() => toggleAdminExpenseDateGroup(dateKey)}
-                              aria-expanded={!collapsed}
-                              style={{
-                                width: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                padding: '8px 14px 8px 32px',
-                                border: 'none',
-                                background: 'transparent',
-                                cursor: 'pointer',
-                                textAlign: 'left',
-                                fontSize: '13px',
-                                fontWeight: '600',
-                                color: 'var(--text-primary)',
-                                fontFamily: 'inherit',
-                                flexWrap: 'wrap',
-                              }}
-                            >
-                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
-                                {collapsed ? '▶' : '▼'}
-                              </span>
-                              <span>{formatExpenseGroupDateLabel(dateKey)}</span>
-                              <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-tertiary)' }}>
-                                ({items.length} {items.length === 1 ? 'item' : 'items'})
-                              </span>
-                              <span style={{ marginLeft: 'auto', display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', fontSize: '12px', fontWeight: 500 }}>
-                                <span>
-                                  <span style={{ color: 'var(--text-tertiary)' }}>Total: </span>
-                                  <strong style={{ color: 'var(--text-primary)' }}>${groupAmount.toFixed(2)}</strong>
-                                </span>
-                                {groupGst > 0 && (
-                                  <span style={{ color: 'var(--text-tertiary)' }}>GST <strong style={{ color: 'var(--text-secondary)' }}>${groupGst.toFixed(2)}</strong></span>
-                                )}
-                                {paidCount > 0 && (
-                                  <span style={{ padding: '1px 6px', borderRadius: '8px', backgroundColor: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', fontSize: '11px' }}>
-                                    {paidCount} paid
-                                  </span>
-                                )}
-                                {unpaidCount > 0 && (
-                                  <span style={{ padding: '1px 6px', borderRadius: '8px', backgroundColor: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b', fontSize: '11px' }}>
-                                    {unpaidCount} unpaid
-                                  </span>
-                                )}
-                                {/* Only show summary chip when collapsed; when expanded the per-row
-                                    "Receipt pending" badge already conveys the same info per line. */}
-                                {receiptPendingCount > 0 && collapsed && (
-                                  <span style={{ padding: '1px 6px', borderRadius: '8px', backgroundColor: 'rgba(255, 152, 0, 0.18)', color: '#e65100', border: '1px solid rgba(255, 152, 0, 0.45)', fontSize: '11px' }}>
-                                    📎 {receiptPendingCount} receipt pending
-                                  </span>
-                                )}
-                                {empSet.size > 1 && (
-                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>{empSet.size} employees</span>
-                                )}
-                              </span>
-                            </button>
-                          </td>
-                        </tr>
-                        {!collapsed &&
-                          items.flatMap((exp: any, rowIdx: number) => {
-                  const isUpdating = updatingExpenseId === exp.id;
-                  const status = exp._status;
-                  const source = exp._source;
-                  const u = (exp.receipt_url && String(exp.receipt_url).trim()) || '';
-                  const isFirstOfSharedReceipt =
-                    u &&
-                    sharedReceiptMeta.has(String(exp.id)) &&
-                    !items.slice(0, rowIdx).some(
-                      (x: any) =>
-                        (x.receipt_url && String(x.receipt_url).trim()) === u &&
-                        sharedReceiptMeta.has(String(x.id))
-                    );
-                  const groupRow =
-                    isFirstOfSharedReceipt &&
-                    receiptGroupTotals.find((g) => g.url === u);
-                  const summaryTr = groupRow ? (
-                    <tr
-                      key={`admin-receipt-total-${dateKey}-${exp.id}`}
-                      style={{
-                        backgroundColor: 'rgba(124, 58, 237, 0.07)',
-                        borderBottom: '1px solid var(--border-color)',
-                      }}
-                      aria-label="Receipt total for split lines"
-                    >
-                      <td colSpan={3} style={{ padding: '6px 14px', fontSize: '11px', color: '#4c1d95', lineHeight: 1.45 }}>
-                        <span style={{ fontWeight: 700 }}>Receipt total</span>
-                        <span style={{ fontWeight: 500, color: 'var(--text-secondary)', marginLeft: '8px' }}>
-                          {groupRow.lineCount} lines · Subtotal ${groupRow.amountSum.toFixed(2)} · GST $
-                          {groupRow.gstSum.toFixed(2)} · Total ${groupRow.combinedTotal.toFixed(2)}
-                        </span>
-                      </td>
-                      <td
-                        style={{
-                          padding: '6px 14px',
-                          textAlign: 'right',
-                          fontWeight: 700,
-                          fontSize: '12px',
-                          color: '#4c1d95',
-                        }}
-                      >
-                        ${groupRow.amountSum.toFixed(2)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '6px 14px',
-                          textAlign: 'right',
-                          fontWeight: 700,
-                          fontSize: '12px',
-                          color: '#4c1d95',
-                        }}
-                      >
-                        ${groupRow.gstSum.toFixed(2)}
-                      </td>
-                      <td colSpan={4} style={{ padding: '6px 14px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                        —
-                      </td>
-                    </tr>
-                  ) : null;
-                  const selectionKey = `${source}-${exp.id}`;
-                  const isSelected = selectedExpenseKeys.has(selectionKey);
-                  const expenseTr = (
-                    <tr
-                      key={`${source}-${exp.id}`}
-                      style={{
-                        borderBottom: '1px solid var(--border-color)',
-                        cursor: source === 'receipt' ? 'pointer' : undefined,
-                        backgroundColor: isSelected ? 'rgba(33, 150, 243, 0.06)' : undefined,
-                      }}
-                      onClick={source === 'receipt' ? () => handleStartEdit(exp) : undefined}
-                      role={source === 'receipt' ? 'button' : undefined}
-                      tabIndex={source === 'receipt' ? 0 : undefined}
-                      onKeyDown={source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
-                    >
-                      <td style={{ padding: '10px 8px 10px 14px', textAlign: 'left', width: '32px' }} onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            setSelectedExpenseKeys((prev) => {
-                              const next = new Set(prev);
-                              if (e.target.checked) next.add(selectionKey);
-                              else next.delete(selectionKey);
-                              return next;
-                            });
-                          }}
-                          style={{ cursor: 'pointer' }}
-                          aria-label="Select expense"
-                        />
-                      </td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '500' }}>
-                        {exp._employeeName || '-'}
-                        {source === 'ticket' && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Ticket Expense</div>}
-                      </td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px', color: 'var(--text-tertiary)' }}>—</td>
-                      <td style={{ padding: '10px 14px', fontSize: '13px' }}>
-                        <div style={{ fontWeight: '500', display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          {exp.description}
-                          {source === 'receipt' && exp.not_reimbursable === true && (
-                            <span
-                              style={{
-                                fontSize: '10px', fontWeight: 700,
-                                padding: '2px 6px', borderRadius: '999px',
-                                backgroundColor: 'rgba(99, 102, 241, 0.14)', color: '#4338ca',
-                                border: '1px solid rgba(99, 102, 241, 0.45)',
-                                letterSpacing: '0.04em', textTransform: 'uppercase',
-                              }}
-                              title="Admin removed this receipt from the employee's reimbursement. Available for Apply-to-Ticket."
-                            >
-                              Not Reimbursable
-                            </span>
-                          )}
-                        </div>
-                        {source === 'receipt' && (() => {
-                          const part = sharedReceiptMeta.get(String(exp.id));
-                          if (!part) return null;
-                          return (
-                            <div
-                              style={{
-                                fontSize: '10px',
-                                fontWeight: '600',
-                                color: '#5b21b6',
-                                marginTop: '4px',
-                                padding: '2px 6px',
-                                borderRadius: '5px',
-                                backgroundColor: 'rgba(124, 58, 237, 0.1)',
-                                display: 'inline-block',
-                                maxWidth: '100%',
-                                lineHeight: 1.35,
-                              }}
-                            >
-                              {`Same receipt · $${part.combinedTotal.toFixed(2)} combined · line ${part.index} of ${part.total}`}
-                            </div>
-                          );
-                        })()}
-                        {source === 'receipt' && exp.receipt_url && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
-                            style={{ fontSize: '11px', color: 'var(--primary-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '2px' }}
-                          >
-                            {loadingReceiptId === exp.id ? 'Loading...' : 'View Receipt'}
-                          </button>
-                        )}
-                        {source === 'ticket' && exp.expense_type && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{exp.expense_type}{exp.unit ? ` (${exp.quantity} ${exp.unit})` : ''}</div>
-                        )}
-                        {exp.notes && <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>Note: {exp.notes}</div>}
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: '500', fontSize: '13px' }}>${exp._amount.toFixed(2)}</td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: '13px', color: 'var(--text-tertiary)' }}>{source === 'receipt' ? `$${parseFloat(exp.gst || 0).toFixed(2)}` : '-'}</td>
-                      <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '12px' }}>
-                        {source === 'receipt' ? (exp.is_billable ? <span style={{ color: '#2196F3', fontWeight: '600' }}>Yes</span> : <span style={{ color: 'var(--text-tertiary)' }}>No</span>) : <span style={{ color: 'var(--text-tertiary)' }}>-</span>}
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '600',
-                          backgroundColor: status === 'paid' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                          color: status === 'paid' ? '#3b82f6' : '#f59e0b',
-                        }}>
-                          {status === 'paid' ? 'Paid' : 'Unpaid'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '12px' }}>
-                        {exp._ticketNumber && exp.service_ticket_id ? (
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setViewingTicketRecordId(String(exp.service_ticket_id)); }}
-                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-color)', fontWeight: 600, fontFamily: 'inherit', fontSize: 'inherit', textDecoration: 'underline' }}
-                            title="Open service ticket"
-                          >
-                            {exp._ticketNumber}
-                          </button>
-                        ) : (
-                          exp._ticketNumber || '-'
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                        {status === 'unpaid' && (
-                          <button
-                            disabled={isUpdating}
-                            onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'paid', source, exp); }}
-                            style={{ padding: '3px 8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
-                          >
-                            Mark Paid
-                          </button>
-                        )}
-                        {status === 'paid' && (
-                          <button
-                            disabled={isUpdating}
-                            onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'pending', source); }}
-                            style={{ padding: '3px 8px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: isUpdating ? 'not-allowed' : 'pointer' }}
-                          >
-                            Mark Unpaid
-                          </button>
-                        )}
-                        {source === 'receipt' && (() => {
-                          // Not-Reimbursable toggle. When set, the receipt drops out of payroll
-                          // and the employee's own table, but stays in the system so admin can
-                          // still Apply-to-Ticket below and bill it to the customer.
-                          const isNot = exp.not_reimbursable === true;
-                          const isBusy = setNotReimbursableMutation.isPending && setNotReimbursableMutation.variables?.id === String(exp.id);
-                          return (
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={(e) => handleToggleNotReimbursable(exp, e)}
-                              title={isNot
-                                ? 'Restore this receipt so it counts toward employee reimbursement again.'
-                                : 'Remove this receipt from the employee’s reimbursement (e.g. company paid). Stays available for Apply-to-Ticket.'}
-                              style={{
-                                marginLeft: '6px',
-                                padding: '3px 8px',
-                                backgroundColor: isNot ? 'rgba(99, 102, 241, 0.14)' : 'rgba(124, 58, 237, 0.10)',
-                                color: isNot ? '#4338ca' : '#6d28d9',
-                                border: `1px solid ${isNot ? 'rgba(99, 102, 241, 0.45)' : 'rgba(124, 58, 237, 0.35)'}`,
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: isBusy ? 'not-allowed' : 'pointer',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {isBusy ? '…' : isNot ? '↺ Restore' : 'Not Reimbursable'}
-                            </button>
-                          );
-                        })()}
-                        {source === 'receipt' && (
-                          <button
-                            type="button"
-                            disabled={deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id}
-                            onClick={(e) => requestAdminDeleteReceipt(exp, e)}
-                            title="Delete this receipt from the employee’s expenses (cannot be undone)."
-                            style={{
-                              marginLeft: '6px',
-                              padding: '3px 8px',
-                              backgroundColor: 'rgba(239, 68, 68, 0.10)',
-                              color: '#dc2626',
-                              border: '1px solid rgba(239, 68, 68, 0.35)',
-                              borderRadius: '4px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: (deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id) ? 'not-allowed' : 'pointer',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {(deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id) ? 'Deleting…' : 'Delete'}
-                          </button>
-                        )}
-                        {source === 'ticket' && (() => {
-                          // Receipt-required types (Hotel, Other) flag a "Receipt pending" badge when
-                          // they're reimbursable but no receipt is attached (no actual_cost AND no
-                          // user_expense_id). Click opens the service ticket so admin can attach.
-                          // Contractors invoice us for expenses → never need a receipt → show
-                          // a neutral "Contractor" pill instead.
-                          if (!exp.needs_reimbursement) return null;
-                          const t = String(exp.expense_type || '').toLowerCase();
-                          const desc = String(exp.description || '').toLowerCase();
-                          const needsReceipt = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
-                          if (!needsReceipt) return null;
-                          const ownerId = String(exp.service_tickets?.user_id ?? exp._userId ?? '');
-                          const isContractor = ownerId ? !!contractorByUserId.get(ownerId) : false;
-                          if (isContractor) {
-                            return (
-                              <span
-                                style={{
-                                  marginLeft: '6px',
-                                  padding: '3px 8px',
-                                  backgroundColor: 'rgba(99, 102, 241, 0.12)',
-                                  color: '#4f46e5',
-                                  border: '1px solid rgba(99, 102, 241, 0.35)',
-                                  borderRadius: '4px',
-                                  fontSize: '11px',
-                                  fontWeight: 600,
-                                  whiteSpace: 'nowrap',
-                                }}
-                                title="Contractor — invoices us for expenses, no receipt required"
+          {adminFilteredExpenses.length === 0 ? (
+            <div className="ionex-empty">
+              <div className="title">No {adminStatusFilter === 'all' ? '' : adminStatusFilter} expenses match your filters</div>
+              <div className="body">
+                Try a different status, employee, type, or date range — or click <strong>Reset filters</strong> above.
+              </div>
+            </div>
+          ) : (
+            adminFilteredExpensesGroupedByPayPeriod.map((period) => {
+              const periodCollapsed = collapsedAdminExpensePeriodKeys.has(period.periodKey);
+              const flatItems: any[] = period.dateGroups.flatMap((g) => g.items);
+              const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(flatItems);
+              const receiptGroupTotals = sharedReceiptGroupTotalsInOrder(flatItems, sharedReceiptMeta);
+              const periodKeys = flatItems.map((e: any) => `${e._source}-${e.id}`);
+              const periodAllSelected = periodKeys.length > 0 && periodKeys.every((k) => selectedExpenseKeys.has(k));
+              const periodAnySelected = periodKeys.some((k) => selectedExpenseKeys.has(k));
+              const toggleAllInPeriod = (checked: boolean) => {
+                setSelectedExpenseKeys((prev) => {
+                  const next = new Set(prev);
+                  if (checked) for (const k of periodKeys) next.add(k);
+                  else for (const k of periodKeys) next.delete(k);
+                  return next;
+                });
+              };
+              const periodModifier = period.isCurrent ? '' : period.isFuture ? ' is-future' : '';
+              return (
+                <div
+                  key={`admin-period-${period.periodKey}`}
+                  className={`ionex-period-card${periodCollapsed ? ' is-collapsed' : ''}${periodModifier}`}
+                >
+                  <button
+                    type="button"
+                    className="ionex-period-card-header"
+                    onClick={() => toggleAdminExpensePeriodGroup(period.periodKey)}
+                    aria-expanded={!periodCollapsed}
+                  >
+                    <span className="ionex-period-card-chevron" style={{ transform: periodCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }} aria-hidden>▶</span>
+                    <span className="ionex-period-card-eyebrow">Pay period</span>
+                    <span className="ionex-period-card-title">{period.periodLabel}</span>
+                    {period.isCurrent && <span className="ionex-status-pill is-period-current">Current</span>}
+                    {period.isFuture && <span className="ionex-status-pill is-period-future">Upcoming</span>}
+                    <span className="ionex-period-card-meta">
+                      <span><strong>{period.totals.count}</strong> {period.totals.count === 1 ? 'item' : 'items'}</span>
+                      <span>Subtotal <strong>${period.totals.amount.toFixed(2)}</strong></span>
+                      {period.totals.gst > 0 && (
+                        <span>GST <strong>${period.totals.gst.toFixed(2)}</strong></span>
+                      )}
+                      <span>Total <strong className="is-grand">${period.totals.total.toFixed(2)}</strong></span>
+                    </span>
+                  </button>
+                  <div className="ionex-period-card-body">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="ionex-expense-table" style={{ minWidth: '900px' }}>
+                        <thead>
+                          <tr>
+                            <th className="is-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={periodAllSelected}
+                                ref={(el) => { if (el) el.indeterminate = !periodAllSelected && periodAnySelected; }}
+                                onChange={(e) => toggleAllInPeriod(e.target.checked)}
+                                title="Select all in this pay period"
+                                style={{ cursor: 'pointer' }}
+                              />
+                            </th>
+                            <th>Employee</th>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th className="is-numeric">Amount</th>
+                            <th className="is-center">Ticket</th>
+                            <th className="is-numeric">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {flatItems.flatMap((exp: any, rowIdx: number) => {
+                            const isUpdating = updatingExpenseId === exp.id;
+                            const status = exp._status;
+                            const source = exp._source;
+                            const u = (exp.receipt_url && String(exp.receipt_url).trim()) || '';
+                            const isFirstOfSharedReceipt =
+                              u &&
+                              sharedReceiptMeta.has(String(exp.id)) &&
+                              !flatItems.slice(0, rowIdx).some(
+                                (x: any) =>
+                                  (x.receipt_url && String(x.receipt_url).trim()) === u &&
+                                  sharedReceiptMeta.has(String(x.id))
+                              );
+                            const groupRow =
+                              isFirstOfSharedReceipt &&
+                              receiptGroupTotals.find((g) => g.url === u);
+                            const summaryTr = groupRow ? (
+                              <tr
+                                key={`admin-receipt-total-${period.periodKey}-${exp.id}`}
+                                className="ionex-expense-table-row is-summary"
+                                aria-label="Receipt total for split lines"
                               >
-                                Contractor
-                              </span>
-                            );
-                          }
-                          const hasReceipt =
-                            (Number(exp.actual_cost) || 0) > 0 || !!exp.user_expense_id;
-                          if (hasReceipt) return null;
-                          return (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (exp.service_ticket_id) {
-                                  setViewingTicketRecordId(String(exp.service_ticket_id));
-                                }
-                              }}
-                              style={{
-                                marginLeft: '6px',
-                                padding: '3px 8px',
-                                backgroundColor: 'rgba(255, 152, 0, 0.18)',
-                                color: '#e65100',
-                                border: '1px solid rgba(255, 152, 0, 0.45)',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                              }}
-                              title="Receipt not attached yet — click to open ticket and attach"
-                            >
-                              📎 Receipt pending
-                            </button>
-                          );
-                        })()}
-                        {source === 'receipt' && (() => {
-                          // Non-billable receipts (e.g. internal tools, supplies kept for shop)
-                          // never get linked to a service-ticket expense — hide all link UI.
-                          // Exception: receipts admin has flagged not_reimbursable — admin took
-                          // them off employee reimbursement specifically so they can be billed
-                          // to a customer ticket, so keep the link UI even when is_billable=false.
-                          if (!exp.is_billable && !exp.not_reimbursable) return null;
-                          const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
-                          const hasLinks = linkedRows.length > 0;
-                          // A receipt is "applied" if either: it was directly assigned to a ticket
-                          // (service_ticket_id) via the Apply-to-Ticket flow, OR a service_ticket_expense
-                          // row points back to it via user_expense_id (the new linking flow).
-                          const directTicketNumber = exp.service_tickets?.ticket_number || null;
-                          const isDirectApplied = !!exp.service_ticket_id;
-                          const isExpanded = expandedLinkedReceiptId === String(exp.id);
-                          if (isDirectApplied && !hasLinks) {
-                            // Already applied via the legacy Apply-to-Ticket flow — show a badge instead of Link.
-                            return (
-                              <span
-                                style={{ marginLeft: '6px', padding: '3px 8px', backgroundColor: 'rgba(34, 197, 94, 0.12)', color: '#15803d', border: '1px solid rgba(34, 197, 94, 0.4)', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}
-                                title={`Applied to ticket ${directTicketNumber ?? ''}`}
+                                <td colSpan={4}>
+                                  Receipt total — {groupRow.lineCount} lines · Subtotal ${groupRow.amountSum.toFixed(2)} · GST ${groupRow.gstSum.toFixed(2)} · Total ${groupRow.combinedTotal.toFixed(2)}
+                                </td>
+                                <td className="is-numeric">
+                                  ${groupRow.amountSum.toFixed(2)}
+                                </td>
+                                <td colSpan={2} />
+                              </tr>
+                            ) : null;
+                            const selectionKey = `${source}-${exp.id}`;
+                            const isSelected = selectedExpenseKeys.has(selectionKey);
+                            const dateKeyRow = normalizeExpenseTableDateKey(String(exp._date || ''));
+                            const sharedPart = source === 'receipt' ? sharedReceiptMeta.get(String(exp.id)) : null;
+                            const expenseTr = (
+                              <tr
+                                key={`${source}-${exp.id}`}
+                                className={`ionex-expense-table-row${source === 'receipt' ? ' is-selectable' : ''}${isSelected ? ' is-selected' : ''}`}
+                                onClick={source === 'receipt' ? () => handleStartEdit(exp) : undefined}
+                                role={source === 'receipt' ? 'button' : undefined}
+                                tabIndex={source === 'receipt' ? 0 : undefined}
+                                onKeyDown={source === 'receipt' ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleStartEdit(exp); } } : undefined}
                               >
-                                ✓ Applied{directTicketNumber ? ` to ${directTicketNumber}` : ''}
-                              </span>
-                            );
-                          }
-                          return (
-                            <>
-                              {hasLinks && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedLinkedReceiptId(isExpanded ? null : String(exp.id));
-                                  }}
-                                  style={{
-                                    marginLeft: '6px',
-                                    padding: '3px 8px',
-                                    backgroundColor: 'rgba(34, 197, 94, 0.12)',
-                                    color: '#15803d',
-                                    border: '1px solid rgba(34, 197, 94, 0.4)',
-                                    borderRadius: '4px',
-                                    fontSize: '11px',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                  }}
-                                  title="View / unlink the ticket expenses this receipt covers"
-                                >
-                                  ✓ Linked ({linkedRows.length}) {isExpanded ? '▴' : '▾'}
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setLinkReceiptModal({ receipt: exp });
-                                  setLinkReceiptSelectedIds(new Set());
-                                  setLinkReceiptError(null);
-                                }}
-                                style={{ marginLeft: '6px', padding: '3px 8px', backgroundColor: 'rgba(0, 137, 123, 0.1)', color: '#00897b', border: '1px solid rgba(0, 137, 123, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                                title={hasLinks ? 'Link to additional ticket expenses' : 'Link this receipt to ticket expenses awaiting it'}
-                              >
-                                {hasLinks ? '+ Link more' : 'Link'}
-                              </button>
-                            </>
-                          );
-                        })()}
-                      </td>
-                    </tr>
-                  );
-                  // When admin expands a linked receipt, show its linked ticket expenses + per-row Unlink.
-                  let linkedTr: JSX.Element | null = null;
-                  if (source === 'receipt' && expandedLinkedReceiptId === String(exp.id)) {
-                    const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
-                    if (linkedRows.length > 0) {
-                      linkedTr = (
-                        <tr key={`${source}-${exp.id}-linked`} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(34, 197, 94, 0.04)' }}>
-                          <td colSpan={10} style={{ padding: '10px 16px 12px 42px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#15803d', marginBottom: '6px' }}>
-                              Receipt is linked to {linkedRows.length} ticket expense{linkedRows.length === 1 ? '' : 's'}
-                            </div>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                              <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '10px', textTransform: 'uppercase' }}>
-                                  <th style={{ padding: '4px 6px' }}>Type</th>
-                                  <th style={{ padding: '4px 6px' }}>Description</th>
-                                  <th style={{ padding: '4px 6px' }}>Ticket</th>
-                                  <th style={{ padding: '4px 6px' }}>Date</th>
-                                  <th style={{ padding: '4px 6px', textAlign: 'right' }}>Billed</th>
-                                  <th style={{ padding: '4px 6px', textAlign: 'right' }}>Action</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {linkedRows.map((lr: any) => {
-                                  const billed = (Number(lr.quantity) || 0) * (Number(lr.rate) || 0);
-                                  const tn = lr.service_tickets?.ticket_number || '—';
-                                  const dt = lr.service_tickets?.date || '—';
-                                  return (
-                                    <tr key={String(lr.id)} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                      <td style={{ padding: '6px', fontWeight: 600 }}>{lr.expense_type || '—'}</td>
-                                      <td style={{ padding: '6px', color: 'var(--text-secondary)' }}>{lr.description || '—'}</td>
-                                      <td style={{ padding: '6px', fontFamily: 'monospace' }}>
-                                        {lr.service_ticket_id ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => setViewingTicketRecordId(String(lr.service_ticket_id))}
-                                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--primary-color)', fontWeight: 600, fontFamily: 'monospace', fontSize: 'inherit', textDecoration: 'underline' }}
-                                          >
-                                            {tn}
-                                          </button>
-                                        ) : tn}
-                                      </td>
-                                      <td style={{ padding: '6px', color: 'var(--text-secondary)' }}>{dt}</td>
-                                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 600 }}>${billed.toFixed(2)}</td>
-                                      <td style={{ padding: '6px', textAlign: 'right' }}>
+                                <td onClick={(e) => e.stopPropagation()} style={{ paddingLeft: '18px', width: '32px' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      setSelectedExpenseKeys((prev) => {
+                                        const next = new Set(prev);
+                                        if (e.target.checked) next.add(selectionKey);
+                                        else next.delete(selectionKey);
+                                        return next;
+                                      });
+                                    }}
+                                    style={{ cursor: 'pointer' }}
+                                    aria-label="Select expense"
+                                  />
+                                </td>
+                                <td>
+                                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{exp._employeeName || '—'}</span>
+                                  {source === 'ticket' && (
+                                    <span className="ionex-expense-table-subline">Ticket expense</span>
+                                  )}
+                                </td>
+                                <td style={{ whiteSpace: 'nowrap' }}>
+                                  {dateKeyRow ? formatExpenseGroupDateLabel(dateKeyRow) : '—'}
+                                </td>
+                                <td>
+                                  <div className="ionex-expense-table-desc-meta">
+                                    <span className="desc">{exp.description}</span>
+                                    <span className={`ionex-status-pill ${status === 'paid' ? 'is-paid' : 'is-unpaid'}`}>
+                                      {status === 'paid' ? 'Paid' : 'Unpaid'}
+                                    </span>
+                                    {source === 'receipt' && exp.not_reimbursable === true && (
+                                      <span
+                                        className="ionex-status-pill is-not-reimb"
+                                        title="Admin removed this receipt from the employee's reimbursement. Available for Apply-to-Ticket."
+                                      >
+                                        Not reimbursable
+                                      </span>
+                                    )}
+                                    {source === 'receipt' && exp.is_billable === false && exp.not_reimbursable !== true && (
+                                      <span className="ionex-status-pill" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-tertiary)' }}>
+                                        Not billable
+                                      </span>
+                                    )}
+                                    {sharedPart && (
+                                      <span
+                                        className="ionex-status-pill is-shared"
+                                        title="This receipt was split into multiple lines for this employee."
+                                      >
+                                        Same receipt · ${sharedPart.combinedTotal.toFixed(2)} · {sharedPart.index}/{sharedPart.total}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {source === 'receipt' && exp.receipt_url && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
+                                      className="ionex-expense-table-link-button"
+                                      style={{ marginTop: '4px' }}
+                                    >
+                                      {loadingReceiptId === exp.id ? 'Loading…' : 'View receipt'}
+                                    </button>
+                                  )}
+                                  {source === 'ticket' && exp.expense_type && (
+                                    <span className="ionex-expense-table-subline">
+                                      {exp.expense_type}{exp.unit ? ` (${exp.quantity} ${exp.unit})` : ''}
+                                    </span>
+                                  )}
+                                  {exp.notes && (
+                                    <span className="ionex-expense-table-subline is-note">Note: {exp.notes}</span>
+                                  )}
+                                </td>
+                                <td className="is-numeric">
+                                  <span className="ionex-expense-table-amount">${exp._amount.toFixed(2)}</span>
+                                  {source === 'receipt' && parseFloat(exp.gst || 0) > 0 && (
+                                    <span className="ionex-expense-table-amount-gst">+ GST ${parseFloat(exp.gst || 0).toFixed(2)}</span>
+                                  )}
+                                </td>
+                                <td className="is-center" style={{ whiteSpace: 'nowrap' }}>
+                                  {exp._ticketNumber && exp.service_ticket_id ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); setViewingTicketRecordId(String(exp.service_ticket_id)); }}
+                                      className="ionex-expense-table-link-button is-strong"
+                                      title="Open service ticket"
+                                    >
+                                      {exp._ticketNumber}
+                                    </button>
+                                  ) : (
+                                    <span style={{ color: 'var(--text-tertiary)' }}>{exp._ticketNumber || '—'}</span>
+                                  )}
+                                </td>
+                                <td className="is-actions" onClick={(e) => e.stopPropagation()}>
+                                  <div className="ionex-row-actions">
+                                    {status === 'unpaid' && (
+                                      <button
+                                        type="button"
+                                        className="ionex-row-action-icon is-success"
+                                        disabled={isUpdating}
+                                        onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'paid', source, exp); }}
+                                      >
+                                        Mark paid
+                                      </button>
+                                    )}
+                                    {status === 'paid' && (
+                                      <button
+                                        type="button"
+                                        className="ionex-row-action-icon is-warning"
+                                        disabled={isUpdating}
+                                        onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'pending', source); }}
+                                      >
+                                        Mark unpaid
+                                      </button>
+                                    )}
+                                    {source === 'receipt' && (() => {
+                                      const isNot = exp.not_reimbursable === true;
+                                      const isBusy = setNotReimbursableMutation.isPending && setNotReimbursableMutation.variables?.id === String(exp.id);
+                                      return (
                                         <button
                                           type="button"
-                                          disabled={unlinkingTicketExpenseId === String(lr.id)}
-                                          onClick={() => handleUnlinkTicketExpense(String(lr.id))}
-                                          style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: 600, cursor: unlinkingTicketExpenseId === String(lr.id) ? 'not-allowed' : 'pointer' }}
+                                          className="ionex-row-action-icon is-primary"
+                                          disabled={isBusy}
+                                          onClick={(e) => handleToggleNotReimbursable(exp, e)}
+                                          title={isNot
+                                            ? 'Restore this receipt so it counts toward employee reimbursement again.'
+                                            : "Remove this receipt from the employee's reimbursement (e.g. company paid). Stays available for Apply-to-Ticket."}
                                         >
-                                          {unlinkingTicketExpenseId === String(lr.id) ? 'Unlinking…' : 'Unlink'}
+                                          {isBusy ? '…' : isNot ? '↺ Restore' : 'Not reimbursable'}
                                         </button>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </td>
-                        </tr>
-                      );
-                    }
-                  }
-                  return [
-                    summaryTr,
-                    expenseTr,
-                    linkedTr,
-                  ].filter(Boolean) as JSX.Element[];
-                })}
-                      </Fragment>
-                    );
-                  })}
-                      </Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-              {adminFilteredExpenses.length > 0 && (
-                <tfoot>
-                  <tr style={{ backgroundColor: 'var(--bg-secondary)', borderTop: '2px solid var(--border-color)' }}>
-                    <td colSpan={3} style={{ padding: '12px 14px', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Totals ({adminFilteredTotals.count} {adminFilteredTotals.count === 1 ? 'item' : 'items'})
-                    </td>
-                    <td style={{ padding: '12px 14px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      {Object.keys(adminFilteredTotals.byType).length > 1 && (
-                        <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '8px' }}>
-                          {Object.entries(adminFilteredTotals.byType)
-                            .sort((a, b) => b[1].amount - a[1].amount)
-                            .map(([t, v]) => (
-                              <span key={t} style={{ whiteSpace: 'nowrap' }}>
-                                <strong style={{ color: 'var(--text-primary)' }}>{t}:</strong> ${v.amount.toFixed(2)} ({v.count})
-                              </span>
-                            ))}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>
-                      ${adminFilteredTotals.amount.toFixed(2)}
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 600, fontSize: '13px', color: 'var(--text-secondary)' }}>
-                      {adminFilteredTotals.gst > 0 ? `$${adminFilteredTotals.gst.toFixed(2)}` : '—'}
-                    </td>
-                    <td colSpan={4} />
-                  </tr>
-                </tfoot>
+                                      );
+                                    })()}
+                                    {source === 'receipt' && (() => {
+                                      const isBusy = deleteExpenseMutation.isPending && deleteExpenseMutation.variables === exp.id;
+                                      return (
+                                        <button
+                                          type="button"
+                                          className="ionex-row-action-icon is-danger"
+                                          disabled={isBusy}
+                                          onClick={(e) => requestAdminDeleteReceipt(exp, e)}
+                                          title="Delete this receipt from the employee's expenses (cannot be undone)."
+                                        >
+                                          {isBusy ? 'Deleting…' : 'Delete'}
+                                        </button>
+                                      );
+                                    })()}
+                                    {source === 'ticket' && (() => {
+                                      if (!exp.needs_reimbursement) return null;
+                                      const t = String(exp.expense_type || '').toLowerCase();
+                                      const desc = String(exp.description || '').toLowerCase();
+                                      const needsReceipt = t === 'hotel' || t === 'expenses' || desc.includes('hotel');
+                                      if (!needsReceipt) return null;
+                                      const ownerId = String(exp.service_tickets?.user_id ?? exp._userId ?? '');
+                                      const isContractor = ownerId ? !!contractorByUserId.get(ownerId) : false;
+                                      if (isContractor) {
+                                        return (
+                                          <span
+                                            className="ionex-status-pill is-contractor"
+                                            title="Contractor — invoices us for expenses, no receipt required"
+                                          >
+                                            Contractor
+                                          </span>
+                                        );
+                                      }
+                                      const hasReceipt = (Number(exp.actual_cost) || 0) > 0 || !!exp.user_expense_id;
+                                      if (hasReceipt) return null;
+                                      return (
+                                        <button
+                                          type="button"
+                                          className="ionex-row-action-icon is-warning"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (exp.service_ticket_id) {
+                                              setViewingTicketRecordId(String(exp.service_ticket_id));
+                                            }
+                                          }}
+                                          title="Receipt not attached yet — click to open ticket and attach"
+                                        >
+                                          📎 Receipt pending
+                                        </button>
+                                      );
+                                    })()}
+                                    {source === 'receipt' && (() => {
+                                      if (!exp.is_billable && !exp.not_reimbursable) return null;
+                                      const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
+                                      const hasLinks = linkedRows.length > 0;
+                                      const directTicketNumber = exp.service_tickets?.ticket_number || null;
+                                      const isDirectApplied = !!exp.service_ticket_id;
+                                      const isExpanded = expandedLinkedReceiptId === String(exp.id);
+                                      if (isDirectApplied && !hasLinks) {
+                                        return (
+                                          <span
+                                            className="ionex-status-pill is-applied"
+                                            title={`Applied to ticket ${directTicketNumber ?? ''}`}
+                                          >
+                                            ✓ Applied{directTicketNumber ? ` · ${directTicketNumber}` : ''}
+                                          </span>
+                                        );
+                                      }
+                                      return (
+                                        <>
+                                          {hasLinks && (
+                                            <button
+                                              type="button"
+                                              className="ionex-row-action-icon is-success"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setExpandedLinkedReceiptId(isExpanded ? null : String(exp.id));
+                                              }}
+                                              title="View / unlink the ticket expenses this receipt covers"
+                                            >
+                                              ✓ Linked ({linkedRows.length}) {isExpanded ? '▴' : '▾'}
+                                            </button>
+                                          )}
+                                          <button
+                                            type="button"
+                                            className="ionex-row-action-icon is-primary"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setLinkReceiptModal({ receipt: exp });
+                                              setLinkReceiptSelectedIds(new Set());
+                                              setLinkReceiptError(null);
+                                            }}
+                                            title={hasLinks ? 'Link to additional ticket expenses' : 'Link this receipt to ticket expenses awaiting it'}
+                                          >
+                                            {hasLinks ? '+ Link more' : 'Link'}
+                                          </button>
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                            let linkedTr: JSX.Element | null = null;
+                            if (source === 'receipt' && expandedLinkedReceiptId === String(exp.id)) {
+                              const linkedRows = linkedByReceiptId.get(String(exp.id)) || [];
+                              if (linkedRows.length > 0) {
+                                linkedTr = (
+                                  <tr
+                                    key={`${source}-${exp.id}-linked`}
+                                    className="ionex-expense-table-row is-linked-detail"
+                                  >
+                                    <td colSpan={7} style={{ padding: 0 }}>
+                                      <div className="ionex-linked-detail">
+                                        <div className="ionex-linked-detail-eyebrow">
+                                          Receipt is linked to {linkedRows.length} ticket expense{linkedRows.length === 1 ? '' : 's'}
+                                        </div>
+                                        <table className="ionex-linked-detail-table">
+                                          <thead>
+                                            <tr>
+                                              <th>Type</th>
+                                              <th>Description</th>
+                                              <th>Ticket</th>
+                                              <th>Date</th>
+                                              <th className="is-numeric">Billed</th>
+                                              <th className="is-numeric">Action</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {linkedRows.map((lr: any) => {
+                                              const billed = (Number(lr.quantity) || 0) * (Number(lr.rate) || 0);
+                                              const tn = lr.service_tickets?.ticket_number || '—';
+                                              const dt = lr.service_tickets?.date || '—';
+                                              return (
+                                                <tr key={String(lr.id)}>
+                                                  <td style={{ fontWeight: 600 }}>{lr.expense_type || '—'}</td>
+                                                  <td style={{ color: 'var(--text-secondary)' }}>{lr.description || '—'}</td>
+                                                  <td className="is-mono">
+                                                    {lr.service_ticket_id ? (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => setViewingTicketRecordId(String(lr.service_ticket_id))}
+                                                        className="ionex-expense-table-link-button is-strong"
+                                                        style={{ fontFamily: 'inherit' }}
+                                                      >
+                                                        {tn}
+                                                      </button>
+                                                    ) : tn}
+                                                  </td>
+                                                  <td style={{ color: 'var(--text-secondary)' }}>{dt}</td>
+                                                  <td className="is-numeric" style={{ fontWeight: 600 }}>${billed.toFixed(2)}</td>
+                                                  <td className="is-numeric">
+                                                    <button
+                                                      type="button"
+                                                      className="ionex-row-action-icon is-danger"
+                                                      disabled={unlinkingTicketExpenseId === String(lr.id)}
+                                                      onClick={() => handleUnlinkTicketExpense(String(lr.id))}
+                                                    >
+                                                      {unlinkingTicketExpenseId === String(lr.id) ? 'Unlinking…' : 'Unlink'}
+                                                    </button>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                            }
+                            return [summaryTr, expenseTr, linkedTr].filter(Boolean) as JSX.Element[];
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          {/* Filtered totals strip — at the foot of the panel so the admin sees
+              the total amount of whatever the filter rail above has chosen. */}
+          {adminFilteredExpenses.length > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '14px',
+                marginTop: '10px',
+                padding: '14px 18px',
+                borderRadius: '10px',
+                backgroundColor: 'color-mix(in srgb, var(--primary-color) 5%, var(--bg-secondary))',
+                border: '1px solid color-mix(in srgb, var(--primary-color) 22%, var(--border-color))',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  letterSpacing: '0.18em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                Filtered totals · {adminFilteredTotals.count} {adminFilteredTotals.count === 1 ? 'item' : 'items'}
+              </span>
+              {Object.keys(adminFilteredTotals.byType).length > 1 && (
+                <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '14px', fontSize: '11px', color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                  {Object.entries(adminFilteredTotals.byType)
+                    .sort((a, b) => b[1].amount - a[1].amount)
+                    .map(([t, v]) => (
+                      <span key={t} style={{ whiteSpace: 'nowrap' }}>
+                        <strong style={{ color: 'var(--text-secondary)' }}>{t}</strong> ${v.amount.toFixed(2)} ({v.count})
+                      </span>
+                    ))}
+                </span>
               )}
-            </table>
+              <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '14px', fontSize: '13px', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                {adminFilteredTotals.gst > 0 && (
+                  <span>GST <strong style={{ fontFamily: 'SF Mono, monospace', color: 'var(--text-primary)' }}>${adminFilteredTotals.gst.toFixed(2)}</strong></span>
+                )}
+                <span style={{ fontSize: '16px' }}>
+                  Total <strong style={{ fontFamily: 'SF Mono, monospace', color: 'var(--primary-color)', fontWeight: 800 }}>${adminFilteredTotals.amount.toFixed(2)}</strong>
+                </span>
+              </span>
             </div>
-          </div>
+          )}
           </>)}
         </div>
       )}
