@@ -3656,8 +3656,9 @@ export default function Expenses() {
       )}
       </>)}
 
-      {/* Expenses Table — Receipts tab only. */}
-      {activeExpensesTab === 'receipts' && (isLoading ? (
+      {/* Expenses Table — Receipts tab only. Hidden for admins because every row also
+          appears in the Expense Management table below, making this block a duplicate. */}
+      {activeExpensesTab === 'receipts' && !isAdmin && (isLoading ? (
         <div style={{ color: 'var(--text-tertiary)', padding: '24px', textAlign: 'center' }}>Loading expenses...</div>
       ) : (
         <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
