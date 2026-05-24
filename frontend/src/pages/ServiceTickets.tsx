@@ -6798,25 +6798,37 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                             </div>
                           )}
                           {/* Live preview strip — bills client $X · reimburses $Y */}
-                          <div className="ionex-expense-preview">
-                            <div className="ionex-expense-preview-text">
-                              Bills client{' '}
-                              <strong>${(billed || 0).toFixed(2)}</strong>
-                              {isSubsistence && (
-                                <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll (per diem is always paid out)</>
-                              )}
-                              {!isSubsistence && isReimburseLine && (et === 'Travel' || et === 'Equipment') && (
-                                <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll</>
-                              )}
-                              {!isSubsistence && isReimburseLine && (isHotel || isOther) && (
-                                <> · Reimbursement = receipt total</>
-                              )}
-                              {!isSubsistence && !isReimburseLine && (
-                                <> · No reimbursement</>
-                              )}
-                            </div>
-                            <div className="ionex-expense-preview-total">${(billed || 0).toFixed(2)}</div>
-                          </div>
+                          {(() => {
+                            // Default reimbursement multipliers (Payroll.tsx applies the employee's
+                            // own override if set; these are the fallbacks used when no override exists).
+                            // Mileage 90% · Per Diem 100% · Equipment 100% · Hotel/Other 100% of receipt.
+                            const mileageDefault = 0.9;
+                            const projectedMileage = (billed || 0) * mileageDefault;
+                            return (
+                              <div className="ionex-expense-preview">
+                                <div className="ionex-expense-preview-text">
+                                  Bills client{' '}
+                                  <strong>${(billed || 0).toFixed(2)}</strong>
+                                  {isSubsistence && (
+                                    <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll <span style={{ color: 'var(--text-tertiary)' }}>(per diem · 100 % default)</span></>
+                                  )}
+                                  {!isSubsistence && isReimburseLine && et === 'Travel' && (
+                                    <> · Reimburses you about <strong>${projectedMileage.toFixed(2)}</strong> via payroll <span style={{ color: 'var(--text-tertiary)' }}>(mileage · 90 % default — uses your rate)</span></>
+                                  )}
+                                  {!isSubsistence && isReimburseLine && et === 'Equipment' && (
+                                    <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll <span style={{ color: 'var(--text-tertiary)' }}>(equipment · 100 %)</span></>
+                                  )}
+                                  {!isSubsistence && isReimburseLine && (isHotel || isOther) && (
+                                    <> · Reimbursement = <strong>receipt total</strong> <span style={{ color: 'var(--text-tertiary)' }}>(100 % default — uses your rate)</span></>
+                                  )}
+                                  {!isSubsistence && !isReimburseLine && (
+                                    <> · No reimbursement</>
+                                  )}
+                                </div>
+                                <div className="ionex-expense-preview-total">${(billed || 0).toFixed(2)}</div>
+                              </div>
+                            );
+                          })()}
                           <div className="ionex-expense-form-actions">
                             <button
                               type="button"
