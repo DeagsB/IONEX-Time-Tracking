@@ -549,6 +549,12 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
   } | null>(null);
   const [lumpAllocatedCost, setLumpAllocatedCost] = useState('');
   const [lumpBillToClient, setLumpBillToClient] = useState('');
+  // Nights calculator: divides the receipt total across N nights and
+  // pre-fills the allocated/bill fields with `applied / total` of it.
+  // Defaults 1/1 = no division (existing behavior). Reset whenever the
+  // modal opens, cancels, or backdrop-closes.
+  const [lumpTotalNights, setLumpTotalNights] = useState('1');
+  const [lumpAppliedNights, setLumpAppliedNights] = useState('1');
   const [lumpApplySaving, setLumpApplySaving] = useState(false);
 
   /** Inline validation for the ticket expense add/edit form (replaces blocking alerts). */
@@ -3196,6 +3202,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       setSuggestedLumpModal(null);
       setLumpAllocatedCost('');
       setLumpBillToClient('');
+      setLumpTotalNights('1');
+      setLumpAppliedNights('1');
       queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
       queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
@@ -6504,6 +6512,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   });
                                   setLumpAllocatedCost(g.receiptTotal.toFixed(2));
                                   setLumpBillToClient(g.receiptTotal.toFixed(2));
+                                  setLumpTotalNights('1');
+                                  setLumpAppliedNights('1');
                                 }}
                               >
                                 + Add to ticket
@@ -9232,6 +9242,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
               setSuggestedLumpModal(null);
               setLumpAllocatedCost('');
               setLumpBillToClient('');
+              setLumpTotalNights('1');
+              setLumpAppliedNights('1');
             }
           }}
         >
@@ -9241,7 +9253,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
               backgroundColor: 'var(--bg-primary)',
               borderRadius: '12px',
               width: '90%',
-              maxWidth: '420px',
+              maxWidth: '440px',
               padding: '24px',
               boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
             }}
@@ -9261,6 +9273,108 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                 </span>
               )}
             </p>
+            {(() => {
+              const totalN = Math.max(1, parseInt(lumpTotalNights, 10) || 1);
+              const appliedN = Math.max(1, Math.min(totalN, parseInt(lumpAppliedNights, 10) || 1));
+              const share = Math.round((suggestedLumpModal.receiptTotal * appliedN / totalN) * 100) / 100;
+              const remainder = Math.round((suggestedLumpModal.receiptTotal - share) * 100) / 100;
+              const desc = String(suggestedLumpModal.displayDescription || '').toLowerCase();
+              const looksHotel = /hotel|inn|motel|lodge|suites|resort/.test(desc);
+              const applyShare = (nextTotal: string, nextApplied: string) => {
+                const t = Math.max(1, parseInt(nextTotal, 10) || 1);
+                const a = Math.max(1, Math.min(t, parseInt(nextApplied, 10) || 1));
+                const s = Math.round((suggestedLumpModal.receiptTotal * a / t) * 100) / 100;
+                setLumpAllocatedCost(s.toFixed(2));
+                setLumpBillToClient(s.toFixed(2));
+              };
+              return (
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    marginBottom: '14px',
+                    borderRadius: '8px',
+                    border: '1px solid color-mix(in srgb, var(--primary-color) 30%, transparent)',
+                    backgroundColor: 'color-mix(in srgb, var(--primary-color) 6%, var(--bg-secondary))',
+                  }}
+                >
+                  <div style={{ fontSize: '11px', fontWeight: '800', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--primary-color)', marginBottom: '6px' }}>
+                    Nights calculator
+                  </div>
+                  {looksHotel && (
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: '8px' }}>
+                      Hotel receipts often span multiple nights — set how many nights this receipt covers, then how many apply to this ticket.
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+                        Nights on receipt
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={lumpTotalNights}
+                        disabled={lumpApplySaving}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setLumpTotalNights(v);
+                          applyShare(v, lumpAppliedNights);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-primary)',
+                          color: 'var(--text-primary)',
+                          fontSize: '14px',
+                          boxSizing: 'border-box',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '10px', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+                        Apply to this ticket
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        max={totalN}
+                        value={lumpAppliedNights}
+                        disabled={lumpApplySaving}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setLumpAppliedNights(v);
+                          applyShare(lumpTotalNights, v);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-primary)',
+                          color: 'var(--text-primary)',
+                          fontSize: '14px',
+                          boxSizing: 'border-box',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, fontVariantNumeric: 'tabular-nums' }}>
+                    Allocates <strong style={{ color: 'var(--text-primary)' }}>${share.toFixed(2)}</strong> to this ticket
+                    {remainder > 0.005 ? (
+                      <> · <strong style={{ color: 'var(--warning-color)' }}>${remainder.toFixed(2)}</strong> stays in suggested receipts</>
+                    ) : (
+                      <> · whole receipt</>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>
@@ -9311,7 +9425,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
               <div
                 style={{
                   padding: '10px 12px',
-                  backgroundColor: 'rgba(33, 150, 243, 0.08)',
+                  backgroundColor: 'color-mix(in srgb, var(--primary-color) 8%, var(--bg-secondary))',
+                  border: '1px solid color-mix(in srgb, var(--primary-color) 25%, transparent)',
                   borderRadius: '6px',
                   fontSize: '13px',
                   color: 'var(--text-primary)',
@@ -9337,6 +9452,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                   setSuggestedLumpModal(null);
                   setLumpAllocatedCost('');
                   setLumpBillToClient('');
+                  setLumpTotalNights('1');
+                  setLumpAppliedNights('1');
                 }}
                 style={{
                   padding: '8px 16px',
