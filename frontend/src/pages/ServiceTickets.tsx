@@ -6515,7 +6515,6 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
 
                       {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length === 0 && pendingAddExpenses.length === 0 && !editingExpense && (
                         <div className="ionex-expense-empty">
-                          <div className="ionex-expense-empty-glyph">◇</div>
                           <div className="ionex-expense-empty-title">No expenses on this ticket yet</div>
                           <div className="ionex-expense-empty-body">
                             Add mileage, per diem, hotel, equipment, or any other billable expense.
