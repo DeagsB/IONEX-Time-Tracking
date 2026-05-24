@@ -5239,12 +5239,59 @@ export default function Expenses() {
             >
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border-color)' }}>
                 <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
-                  Link receipt to ticket expenses
+                  Attach this receipt to ticket expenses
                 </h2>
                 <div style={{ marginTop: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
                   <strong style={{ color: 'var(--text-primary)' }}>{receipt.description || 'Receipt'}</strong>
                   {' '}· {receipt._employeeName || ''}
                   {' '}· Receipt total: <strong style={{ color: 'var(--text-primary)' }}>${receiptAmount.toFixed(2)}</strong>
+                </div>
+                {/* One-to-many call-out so it's unmistakable that every line ticked
+                    below receives the SAME receipt — not a separate copy each. */}
+                <div
+                  style={{
+                    marginTop: '12px',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: 'color-mix(in srgb, var(--primary-color) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--primary-color) 30%, transparent)',
+                    fontSize: '12px',
+                    color: 'var(--text-secondary)',
+                    lineHeight: 1.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                  }}
+                  aria-live="polite"
+                >
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '50%',
+                      backgroundColor: 'color-mix(in srgb, var(--primary-color) 14%, var(--bg-primary))',
+                      color: 'var(--primary-color)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '13px',
+                      fontWeight: 800,
+                    }}
+                    aria-hidden
+                  >
+                    1
+                  </span>
+                  <span style={{ flex: 1 }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>One receipt → many tickets.</strong>{' '}
+                    {linkReceiptSelectedIds.size === 0 ? (
+                      <>Tick any number of lines below. The <em>same</em> receipt will be attached to every line you select — useful for a hotel that covers multiple nights / tickets.</>
+                    ) : linkReceiptSelectedIds.size === 1 ? (
+                      <>This receipt will be attached to <strong style={{ color: 'var(--primary-color)' }}>1 ticket line</strong>. Select more lines below to attach the same receipt to all of them.</>
+                    ) : (
+                      <>This receipt will be attached to <strong style={{ color: 'var(--primary-color)' }}>all {linkReceiptSelectedIds.size} selected ticket lines</strong> in one go.</>
+                    )}
+                  </span>
                 </div>
                 {linkReceiptSuggested.size > 0 && (
                   <div
@@ -5375,21 +5422,45 @@ export default function Expenses() {
               </div>
               {linkReceiptSelectedIds.size > 0 && (() => {
                 const diff = receiptAmount - selectedBilledTotal;
+                const diffColor =
+                  Math.abs(diff) < 0.005
+                    ? 'var(--text-tertiary)'
+                    : diff > 0
+                      ? 'var(--success-color)'
+                      : 'var(--warning-color)';
                 return (
-                  <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-color)', backgroundColor: 'rgba(33, 150, 243, 0.05)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', fontSize: '12px' }}>
+                  <div
+                    style={{
+                      padding: '14px 20px',
+                      borderTop: '1px solid var(--border-color)',
+                      backgroundColor: 'color-mix(in srgb, var(--primary-color) 4%, var(--bg-secondary))',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr auto 1fr auto 1fr',
+                      alignItems: 'center',
+                      gap: '12px',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
                     <div>
-                      <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Selected (billed)</div>
-                      <div style={{ fontSize: '14px', fontWeight: 700 }}>${selectedBilledTotal.toFixed(2)}</div>
+                      <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.16em' }}>Receipt</div>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>${receiptAmount.toFixed(2)}</div>
+                    </div>
+                    <div aria-hidden style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                      <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: 700, lineHeight: 1 }}>→</span>
+                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>attached to</span>
                     </div>
                     <div>
-                      <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Receipt</div>
-                      <div style={{ fontSize: '14px', fontWeight: 700 }}>${receiptAmount.toFixed(2)}</div>
+                      <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.16em' }}>
+                        {linkReceiptSelectedIds.size} ticket line{linkReceiptSelectedIds.size === 1 ? '' : 's'} (billed)
+                      </div>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>${selectedBilledTotal.toFixed(2)}</div>
+                    </div>
+                    <div aria-hidden style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                      <span style={{ fontSize: '18px', color: 'var(--text-tertiary)', fontWeight: 700, lineHeight: 1 }}>Δ</span>
                     </div>
                     <div>
-                      <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Difference</div>
-                      <div
-                        style={{ fontSize: '14px', fontWeight: 700, color: Math.abs(diff) < 0.005 ? 'var(--text-tertiary)' : diff > 0 ? '#15803d' : '#b45309' }}
-                      >
+                      <div style={{ fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.16em' }}>Difference</div>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: diffColor }}>
                         {diff >= 0 ? '+' : ''}${diff.toFixed(2)}
                       </div>
                     </div>
@@ -5411,8 +5482,12 @@ export default function Expenses() {
                   style={{ padding: '8px 16px', backgroundColor: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: isLinkingReceipt ? 'not-allowed' : 'pointer', opacity: isLinkingReceipt ? 0.7 : 1 }}
                 >
                   {isLinkingReceipt
-                    ? 'Linking…'
-                    : `Link ${linkReceiptSelectedIds.size} ticket expense${linkReceiptSelectedIds.size === 1 ? '' : 's'}`}
+                    ? 'Attaching…'
+                    : linkReceiptSelectedIds.size === 0
+                      ? 'Select tickets to attach'
+                      : linkReceiptSelectedIds.size === 1
+                        ? 'Attach this receipt to 1 ticket'
+                        : `Attach this receipt to all ${linkReceiptSelectedIds.size} tickets`}
                 </button>
               </div>
             </div>
