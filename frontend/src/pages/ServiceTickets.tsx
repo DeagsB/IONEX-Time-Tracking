@@ -709,15 +709,12 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
     { serviceTicketExpenseId?: string; pendingTempId?: string } | null
   >(null);
 
-  /** Hotel receipt flow: markup = amount billed on ticket line − receipt total (incl. GST). */
-  const hotelReceiptAutoInfo = useMemo(() => {
+  /** Hotel receipt flow: the ticket line's billed amount, used for the reference panel and the markup pre-fill. */
+  const hotelTicketLineBilled = useMemo(() => {
     const p = pendingReimbursementExpense;
-    if (!p || p.expense_type !== 'Hotel') return { active: false as const };
-    const clientBilled = (Number(p.quantity) || 1) * (Number(p.rate) || 0);
-    const expTotal = (parseFloat(receiptForm.amount) || 0) + (parseFloat(receiptForm.gst) || 0);
-    const markup = Math.round((clientBilled - expTotal) * 100) / 100;
-    return { active: true as const, clientBilled, expTotal, markup };
-  }, [pendingReimbursementExpense, receiptForm.amount, receiptForm.gst]);
+    if (!p || p.expense_type !== 'Hotel') return 0;
+    return (Number(p.quantity) || 1) * (Number(p.rate) || 0);
+  }, [pendingReimbursementExpense]);
 
   /** Hotel/Other + reimbursement: optional in-form receipt drop opens the modal. Travel, Equipment, and Hotel + reimbursement: Add saves the ticket line; Hotel can attach receipt later. */
   const inFormReimbursementReceiptInputRef = useRef<HTMLInputElement>(null);
@@ -784,13 +781,19 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         unit: editingExpense.unit?.trim() || undefined,
       });
       const prefillAmount = et === 'Hotel' || et === 'Expenses' ? '' : amt > 0 ? String(amt) : '';
+      // Hotel: default markup mode to "Bill" pre-filled with the ticket line's billed amount
+      // (matches auto-markup behaviour); user can tweak the bill or switch to % to override.
+      const prefillMarkup =
+        et === 'Hotel' && amt > 0
+          ? { markupType: 'bill' as const, markupValue: amt.toFixed(2) }
+          : { markupType: 'percent' as const, markupValue: '' };
       setReceiptForm({
         description: editingExpense.description.trim(),
         amount: prefillAmount,
         gst: '',
         expense_date: new Date().toISOString().split('T')[0],
-        markupType: 'percent',
-        markupValue: '',
+        markupType: prefillMarkup.markupType,
+        markupValue: prefillMarkup.markupValue,
         is_billable: true,
       });
       setReceiptAutofillNote(null);
@@ -2563,13 +2566,20 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       } else {
         setAttachReceiptContext(null);
       }
+      // Hotel: default markup mode to "Bill" pre-filled with the ticket line's billed amount
+      // (preserves the prior auto-markup behaviour); user can change the bill or switch to %.
+      const billedAmt = (Number(expense.quantity) || 1) * (Number(expense.rate) || 0);
+      const prefillMarkup =
+        !isOther && billedAmt > 0
+          ? { markupType: 'bill' as const, markupValue: billedAmt.toFixed(2) }
+          : { markupType: 'percent' as const, markupValue: '' };
       setReceiptForm({
         description: expense.description,
         amount: '',
         gst: '',
         expense_date: new Date().toISOString().split('T')[0],
-        markupType: 'percent',
-        markupValue: '',
+        markupType: prefillMarkup.markupType,
+        markupValue: prefillMarkup.markupValue,
         is_billable: true,
       });
       setReceiptAutofillNote(null);
@@ -7469,16 +7479,47 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                       <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
                         {attachReceiptContext
                           ? pendingReimbursementExpense?.expense_type === 'Hotel'
-                            ? 'Attach receipt — hotel (auto markup)'
-                            : 'Attach receipt to this ticket line'
+                            ? 'Attach hotel receipt to ticket line'
+                            : 'Attach receipt to ticket line'
                           : pendingReimbursementExpense
                             ? pendingReimbursementExpense.expense_type === 'Expenses'
-                              ? 'Other expense — receipt, cost and markup'
+                              ? 'New "Other" expense from receipt'
                               : pendingReimbursementExpense.expense_type === 'Hotel'
-                                ? 'Hotel — receipt and auto markup'
-                                : 'Upload Receipt for Reimbursement'
-                            : 'New Receipt Expense'}
+                                ? 'New hotel line from receipt'
+                                : 'Upload receipt for reimbursement'
+                            : 'New receipt expense'}
                       </h3>
+                      {(pendingReimbursementExpense || attachReceiptContext) && (
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: '-8px' }}>
+                          {(() => {
+                            const isHotel = pendingReimbursementExpense?.expense_type === 'Hotel';
+                            const isOther = pendingReimbursementExpense?.expense_type === 'Expenses';
+                            const canSplit = isOther && !attachReceiptContext;
+                            return (
+                              <>
+                                <div>
+                                  Enter the <strong>receipt total</strong> (Amount + GST) — that&apos;s what you&apos;ll be reimbursed.
+                                  Then choose how much to bill the client using the <strong>Markup</strong> control:
+                                  toggle <strong>%</strong> to add a percentage on top of the receipt, or <strong>Bill</strong>
+                                  {' '}to enter the flat amount to charge the client. The difference is your markup.
+                                </div>
+                                {isHotel && (
+                                  <div style={{ marginTop: '4px' }}>
+                                    Pre-filled to <strong>Bill</strong> mode at the ticket line&apos;s billed amount so the line is unchanged
+                                    by default; adjust to tweak the markup.
+                                  </div>
+                                )}
+                                {canSplit && (
+                                  <div style={{ marginTop: '4px' }}>
+                                    Receipt covers multiple ticket items (parts + labour, etc.)? Use <strong>Split into lines</strong>
+                                    {' '}below to create one ticket line per item from the same receipt.
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
                       {receiptUploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{receiptUploadError}</div>}
                       {receiptAutofillBusy && (
                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reading receipt…</div>
@@ -7629,48 +7670,32 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                           </>
                         );
                       })()}
-                      {hotelReceiptAutoInfo.active && (
+                      {pendingReimbursementExpense?.expense_type === 'Hotel' && hotelTicketLineBilled <= 0 && (
                         <div
                           style={{
                             padding: '10px 12px',
-                            backgroundColor: 'rgba(33, 150, 243, 0.08)',
+                            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                            border: '1px solid rgba(245, 158, 11, 0.35)',
                             borderRadius: '6px',
                             fontSize: '13px',
                             lineHeight: 1.45,
-                            color: 'var(--text-primary)',
+                            color: '#f59e0b',
                           }}
                         >
-                          <div style={{ fontWeight: '600', marginBottom: '4px' }}>Billed to client (ticket line)</div>
-                          {hotelReceiptAutoInfo.clientBilled > 0 ? (
-                            <div>${hotelReceiptAutoInfo.clientBilled.toFixed(2)} — unchanged when you save; markup fills the gap to the receipt.</div>
-                          ) : (
-                            <div style={{ color: '#f59e0b' }}>
-                              This line has no billed amount yet. Cancel, edit the hotel line with an amount billed to the client, then attach the receipt again.
-                            </div>
-                          )}
+                          This line has no billed amount yet. Cancel, edit the hotel line with an amount billed to the client, then attach the receipt again.
                         </div>
                       )}
-                      {hotelReceiptAutoInfo.active ? (
-                        <div>
-                          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Markup (automatic)</label>
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', lineHeight: 1.4 }}>
-                            Billed to client minus receipt subtotal and GST. Negative if the receipt is higher than what you billed.
-                          </div>
-                          {hotelReceiptAutoInfo.clientBilled > 0 && (
-                            <div style={{ padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
-                              <span style={{ color: 'var(--text-secondary)' }}>Auto markup: </span>
-                              <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>${hotelReceiptAutoInfo.markup.toFixed(2)}</span>
-                              <span style={{ marginLeft: '10px', color: 'var(--text-secondary)' }}>Receipt total: </span>
-                              <span style={{ fontWeight: '600' }}>${hotelReceiptAutoInfo.expTotal.toFixed(2)}</span>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        splitLineItems.length === 0 && (
+                      {splitLineItems.length === 0 && (
                           <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>
                               {receiptForm.markupType === 'bill' ? 'Bill to client ($)' : 'Markup (%)'}
                             </label>
+                            {pendingReimbursementExpense?.expense_type === 'Hotel' && hotelTicketLineBilled > 0 && (
+                              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px', lineHeight: 1.4 }}>
+                                Ticket line currently bills <strong style={{ color: 'var(--text-primary)' }}>${hotelTicketLineBilled.toFixed(2)}</strong> to the client.
+                                Pre-filled to match — change to tweak the markup.
+                              </div>
+                            )}
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                               <input
                                 type="number"
@@ -7714,7 +7739,6 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               return null;
                             })()}
                           </div>
-                        )
                       )}
                       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
                         <button onClick={() => {
@@ -7849,31 +7873,25 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               const amt = parseFloat(receiptForm.amount);
                               const gst = parseFloat(receiptForm.gst) || 0;
                               const expTotal = amt + gst;
-                              const useHotelAutoMarkup = pendingAtSave?.expense_type === 'Hotel';
+                              const markupVal = parseFloat(receiptForm.markupValue) || 0;
                               let markup: number;
                               let totalWithMarkup: number;
-                              if (useHotelAutoMarkup && pendingAtSave) {
-                                const clientBilled =
-                                  (Number(pendingAtSave.quantity) || 1) * (Number(pendingAtSave.rate) || 0);
-                                if (!(clientBilled > 0)) {
+                              if (receiptForm.markupType === 'bill') {
+                                if (!(markupVal > 0)) {
                                   setReceiptUploadError(
-                                    'This hotel line has no amount billed to the client. Edit the ticket line first, then attach the receipt again.'
+                                    'Enter the amount to bill the client (or switch to % markup).'
                                   );
                                   setIsUploadingReceipt(false);
                                   return;
                                 }
-                                markup = Math.round((clientBilled - expTotal) * 100) / 100;
-                                totalWithMarkup = clientBilled;
+                                totalWithMarkup = markupVal;
+                                markup = markupVal - expTotal;
                               } else {
-                                const markupVal = parseFloat(receiptForm.markupValue) || 0;
-                                if (receiptForm.markupType === 'bill') {
-                                  totalWithMarkup = markupVal;
-                                  markup = markupVal - expTotal;
-                                } else {
-                                  markup = (expTotal * markupVal) / 100;
-                                  totalWithMarkup = expTotal + markup;
-                                }
+                                markup = (expTotal * markupVal) / 100;
+                                totalWithMarkup = expTotal + markup;
                               }
+                              markup = Math.round(markup * 100) / 100;
+                              totalWithMarkup = Math.round(totalWithMarkup * 100) / 100;
                               let storagePath: string | undefined;
                               if (receiptFile) {
                                 const optimized = await optimizeImage(receiptFile, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
@@ -7889,7 +7907,12 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 gst: parseFloat(receiptForm.gst) || 0,
                                 is_billable: true,
                                 service_ticket_id: currentTicketRecordId || undefined,
-                                markup_amount: useHotelAutoMarkup ? markup : Math.abs(markup) >= 0.005 ? Math.round(markup * 100) / 100 : undefined,
+                                markup_amount:
+                                  pendingAtSave?.expense_type === 'Hotel'
+                                    ? markup
+                                    : Math.abs(markup) >= 0.005
+                                      ? markup
+                                      : undefined,
                                 status: isAdmin ? 'approved' : 'pending',
                               });
                               if (currentTicketRecordId && createdReceipt?.id) {
