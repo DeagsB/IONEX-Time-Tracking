@@ -2511,6 +2511,11 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
         queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
         queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
+        // Reverse-link (service_ticket_expenses.user_expense_id) may have changed —
+        // refresh so a receipt that just got attached/detached stops/starts
+        // appearing in the Suggested Billable Receipts rail.
+        queryClient.invalidateQueries({ queryKey: ['linkedTicketExpenses'] });
+        queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       }
     },
   });
@@ -2526,6 +2531,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         queryClient.invalidateQueries({ queryKey: ['hotelTicketLinesNeedingReceipt'] });
         queryClient.invalidateQueries({ queryKey: ['pendingReceiptLines'] });
         queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+        queryClient.invalidateQueries({ queryKey: ['linkedTicketExpenses'] });
+        queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       }
     },
   });
@@ -2537,6 +2544,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         loadExpenses(currentTicketRecordId);
         queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
         queryClient.invalidateQueries({ queryKey: ['invoiceExpensesByRecordId'] });
+        queryClient.invalidateQueries({ queryKey: ['linkedTicketExpenses'] });
+        queryClient.invalidateQueries({ queryKey: ['unappliedBillableReceipts'] });
       }
     },
   });
@@ -3053,6 +3062,27 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
     enabled: !!selectedTicketId && !!ticketOwnerUserId,
   });
 
+  // Receipts can be "linked" two ways: directly via user_expenses.service_ticket_id
+  // (which getUnappliedBillable already filters out), OR reverse-linked via
+  // service_ticket_expenses.user_expense_id pointing back at the receipt — set by
+  // the receipt-attach modal and the Expenses-page split wizard. The latter is
+  // invisible to the unappliedBillable query, so we must exclude it client-side
+  // (same approach as Expenses.tsx). Otherwise an already-attached receipt keeps
+  // appearing in the Suggested Billable Receipts rail on every ticket the owner has.
+  const { data: linkedTicketExpenses = [] } = useQuery({
+    queryKey: ['linkedTicketExpenses'],
+    queryFn: () => serviceTicketExpensesService.getLinkedTicketExpenses(),
+    enabled: !!selectedTicketId && !!ticketOwnerUserId,
+  });
+  const reverseLinkedReceiptIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of linkedTicketExpenses as any[]) {
+      const id = String(r?.user_expense_id || '');
+      if (id) set.add(id);
+    }
+    return set;
+  }, [linkedTicketExpenses]);
+
   const groupedUnappliedBillableReceipts = useMemo(() => {
     type G = {
       key: string;
@@ -3066,6 +3096,10 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
     };
     const map = new Map<string, G>();
     for (const r of unappliedBillableReceipts as any[]) {
+      // Skip rows that are already attached to a ticket-expense line via the
+      // reverse FK (service_ticket_expenses.user_expense_id) — see the comment
+      // on reverseLinkedReceiptIds above.
+      if (reverseLinkedReceiptIds.has(String(r.id))) continue;
       const url = (r.receipt_url && String(r.receipt_url).trim()) || '';
       const key = url || `id:${r.id}`;
       const amt = parseFloat(r.amount) || 0;
@@ -3098,7 +3132,7 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       }
     }
     return Array.from(map.values()).sort((a, b) => b.sortDate.localeCompare(a.sortDate));
-  }, [unappliedBillableReceipts]);
+  }, [unappliedBillableReceipts, reverseLinkedReceiptIds]);
 
   const applySuggestedLumpToTicket = useCallback(async () => {
     if (!suggestedLumpModal || !currentTicketRecordId) return;
