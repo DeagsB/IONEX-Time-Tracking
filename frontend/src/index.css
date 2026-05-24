@@ -2390,3 +2390,929 @@ textarea {
   pointer-events: none;
 }
 
+/* ============================================================
+   Service ticket expenses — guided expense flow
+   Used by the Expenses section of ServiceTickets.tsx:
+   the section wrapper, the segmented type picker, the per-type
+   form, the expense card rows, the receipt-attach modal steps,
+   and the live money strip preview. Color accents per expense
+   type are exposed via --expense-accent so cards and chips
+   stay visually linked. All values come from the existing IONEX
+   theme tokens so dark/light theming carries through.
+   ============================================================ */
+
+.ionex-expense-section {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 18px 20px 20px;
+  margin-bottom: 16px;
+}
+.ionex-expense-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.ionex-expense-section-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--primary-color);
+}
+.ionex-expense-section-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.ionex-expense-section-meta strong {
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+.ionex-expense-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 40%, transparent);
+  background-color: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--primary-color);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+.ionex-expense-add-button:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 18%, transparent);
+  border-color: var(--primary-color);
+}
+.ionex-expense-add-button:active { transform: translateY(1px); }
+.ionex-expense-add-button::before {
+  content: '+';
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Empty state */
+.ionex-expense-empty {
+  padding: 22px 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: 10px;
+  background-color: color-mix(in srgb, var(--bg-tertiary) 50%, transparent);
+  text-align: center;
+}
+.ionex-expense-empty-glyph {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+.ionex-expense-empty-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+.ionex-expense-empty-body {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+}
+
+/* Expense list rows ----------------------------------------------------- */
+.ionex-expense-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px 12px 18px;
+  margin-bottom: 8px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.ionex-expense-card::before {
+  content: '';
+  position: absolute;
+  inset: 8px auto 8px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background-color: var(--expense-accent, var(--text-tertiary));
+}
+.ionex-expense-card:hover {
+  border-color: color-mix(in srgb, var(--expense-accent, var(--primary-color)) 35%, var(--border-color));
+}
+.ionex-expense-card.is-pending {
+  border-color: color-mix(in srgb, var(--warning-color) 40%, var(--border-color));
+  background-color: color-mix(in srgb, var(--warning-color) 4%, var(--bg-primary));
+}
+.ionex-expense-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ionex-expense-card-row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ionex-expense-card-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--expense-accent, var(--text-secondary));
+  background-color: color-mix(in srgb, var(--expense-accent, var(--text-secondary)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--expense-accent, var(--text-secondary)) 30%, transparent);
+  border-radius: 4px;
+  white-space: nowrap;
+  line-height: 1.55;
+}
+.ionex-expense-card-type-glyph {
+  font-size: 11px;
+  line-height: 1;
+}
+.ionex-expense-card-desc {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ionex-expense-card-desc-unit {
+  color: var(--text-tertiary);
+  font-weight: 500;
+  margin-left: 6px;
+  font-size: 12px;
+}
+.ionex-expense-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  line-height: 1.6;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ionex-expense-card-status.is-attached {
+  color: var(--success-color);
+  background-color: color-mix(in srgb, var(--success-color) 12%, transparent);
+}
+.ionex-expense-card-status.is-pending {
+  color: var(--warning-color);
+  background-color: color-mix(in srgb, var(--warning-color) 12%, transparent);
+}
+.ionex-expense-card-status.is-info {
+  color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 10%, transparent);
+}
+.ionex-expense-card-math {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+.ionex-expense-card-math-qty {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+.ionex-expense-card-math-op {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.ionex-expense-card-math-rate {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ionex-expense-card-math-eq {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 0 2px;
+}
+.ionex-expense-card-math-total {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.ionex-expense-card-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0.55;
+  transition: opacity 0.12s ease;
+}
+.ionex-expense-card:hover .ionex-expense-card-actions { opacity: 1; }
+.ionex-expense-card-icon-button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  transition: border-color 0.12s ease, color 0.12s ease, background-color 0.12s ease;
+}
+.ionex-expense-card-icon-button:hover {
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
+  color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+.ionex-expense-card-icon-button.is-danger:hover {
+  border-color: color-mix(in srgb, var(--error-color) 55%, var(--border-color));
+  color: var(--error-color);
+  background-color: color-mix(in srgb, var(--error-color) 8%, transparent);
+}
+.ionex-expense-card-pending-action {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  background-color: color-mix(in srgb, var(--warning-color) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--warning-color) 50%, transparent);
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--warning-color) 80%, var(--text-secondary));
+}
+.ionex-expense-card-pending-action button {
+  padding: 5px 12px;
+  background-color: var(--warning-color);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-transform: uppercase;
+  font-family: inherit;
+}
+.ionex-expense-card-pending-action button:hover {
+  background-color: color-mix(in srgb, var(--warning-color) 85%, black);
+}
+
+@media (max-width: 720px) {
+  .ionex-expense-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .ionex-expense-card-math { grid-column: 1 / -1; justify-content: flex-end; }
+  .ionex-expense-card-actions { grid-column: 2; }
+}
+
+/* Total strip under the list */
+.ionex-expense-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 12px 16px;
+  background-color: color-mix(in srgb, var(--primary-color) 6%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--primary-color) 28%, transparent);
+  border-radius: 10px;
+}
+.ionex-expense-total-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.ionex-expense-total-value {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary-color);
+  letter-spacing: -0.012em;
+}
+
+/* Editor form -------------------------------------------------- */
+.ionex-expense-form {
+  position: relative;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.ionex-expense-form::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+  opacity: 0.6;
+}
+.ionex-expense-form-eyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+.ionex-expense-form-eyebrow strong {
+  color: var(--primary-color);
+  letter-spacing: 0.16em;
+}
+
+/* Type picker — segmented chips replacing the <select> */
+.ionex-typechip-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.ionex-typechip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
+  position: relative;
+}
+.ionex-typechip:hover {
+  border-color: color-mix(in srgb, var(--expense-accent, var(--primary-color)) 45%, var(--border-color));
+  color: var(--text-primary);
+}
+.ionex-typechip:active { transform: translateY(1px); }
+.ionex-typechip.is-active {
+  border-color: var(--expense-accent, var(--primary-color));
+  background-color: color-mix(in srgb, var(--expense-accent, var(--primary-color)) 12%, var(--bg-primary));
+  color: var(--expense-accent, var(--text-primary));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--expense-accent, var(--primary-color)) 25%, transparent);
+}
+.ionex-typechip-glyph {
+  font-size: 16px;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.ionex-typechip-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.ionex-typechip-sub {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.02em;
+}
+.ionex-typechip.is-active .ionex-typechip-sub { color: color-mix(in srgb, var(--expense-accent, var(--text-tertiary)) 75%, var(--text-secondary)); }
+
+/* Field grid (label + control pairs) */
+.ionex-expense-fieldgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.ionex-expense-fieldgrid.is-single { grid-template-columns: 1fr; }
+.ionex-expense-field-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+.ionex-expense-field-input {
+  width: 100%;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  box-sizing: border-box;
+}
+.ionex-expense-field-input:focus {
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 14%, transparent);
+}
+.ionex-expense-field-input.is-error {
+  border-color: var(--error-color);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--error-color) 22%, transparent);
+}
+.ionex-expense-field-help {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+}
+.ionex-expense-field-help strong { color: var(--text-secondary); font-weight: 600; }
+
+/* Reimbursement segmented control */
+.ionex-reimb-toggle {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  background-color: var(--bg-secondary);
+}
+.ionex-reimb-toggle button {
+  flex: 1;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+  text-align: left;
+}
+.ionex-reimb-toggle button + button { border-left: 1px solid var(--border-color); }
+.ionex-reimb-toggle button:hover:not(.is-active) {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.ionex-reimb-toggle button.is-active {
+  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--bg-primary));
+  color: var(--primary-color);
+}
+.ionex-reimb-toggle-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+.ionex-reimb-toggle button.is-active .ionex-reimb-toggle-sub {
+  color: color-mix(in srgb, var(--primary-color) 70%, var(--text-secondary));
+}
+
+/* Live preview strip — bottom of the form */
+.ionex-expense-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  font-variant-numeric: tabular-nums;
+}
+.ionex-expense-preview-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+.ionex-expense-preview-text strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.ionex-expense-preview-total {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--primary-color);
+}
+
+/* Inline error banner */
+.ionex-expense-error {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background-color: color-mix(in srgb, var(--error-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--error-color) 40%, transparent);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--error-color);
+  line-height: 1.4;
+}
+
+/* Footer actions */
+.ionex-expense-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.ionex-expense-form-actions button {
+  padding: 9px 18px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+}
+.ionex-expense-form-actions .is-secondary {
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+.ionex-expense-form-actions .is-secondary:hover {
+  border-color: color-mix(in srgb, var(--text-secondary) 60%, var(--border-color));
+  color: var(--text-primary);
+}
+.ionex-expense-form-actions .is-primary {
+  background-color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  color: white;
+}
+.ionex-expense-form-actions .is-primary:hover {
+  background-color: var(--primary-hover, color-mix(in srgb, var(--primary-color) 85%, black));
+}
+.ionex-expense-form-actions button:active { transform: translateY(1px); }
+
+/* Suggested receipts rail */
+.ionex-suggest-rail {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  background-color: color-mix(in srgb, var(--primary-color) 6%, var(--bg-tertiary));
+  border: 1px solid color-mix(in srgb, var(--primary-color) 28%, transparent);
+  border-radius: 10px;
+}
+.ionex-suggest-rail-eyebrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--primary-color);
+  margin-bottom: 8px;
+}
+.ionex-suggest-rail-eyebrow-meta {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  font-weight: 500;
+  text-transform: none;
+}
+.ionex-suggest-rail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px dashed color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+.ionex-suggest-rail-row:first-of-type { border-top: none; }
+.ionex-suggest-rail-row-meta {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.ionex-suggest-rail-row-amount {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+  font-size: 12px;
+}
+.ionex-suggest-rail-button {
+  padding: 5px 11px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary-color);
+  background-color: var(--bg-primary);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.ionex-suggest-rail-button:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 12%, var(--bg-primary));
+  border-color: var(--primary-color);
+}
+
+/* Attached receipts panel */
+.ionex-attached-receipts {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+.ionex-attached-receipts-eyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+}
+.ionex-attached-receipt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  margin-bottom: 4px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.ionex-attached-receipt-meta { min-width: 0; flex: 1; }
+.ionex-attached-receipt-desc { color: var(--text-primary); font-weight: 600; }
+.ionex-attached-receipt-amount {
+  color: var(--text-secondary);
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.ionex-attached-receipt-gst {
+  color: var(--text-tertiary);
+  margin-left: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ionex-attached-receipt-warn {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--warning-color);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ionex-attached-receipt-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.ionex-attached-receipt-button {
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+  background-color: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  color: var(--primary-color);
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+.ionex-attached-receipt-button:hover {
+  border-color: var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+.ionex-attached-receipt-button.is-danger {
+  border-color: color-mix(in srgb, var(--error-color) 35%, transparent);
+  background-color: color-mix(in srgb, var(--error-color) 10%, transparent);
+  color: var(--error-color);
+}
+.ionex-attached-receipt-button.is-danger:hover {
+  border-color: var(--error-color);
+  background-color: color-mix(in srgb, var(--error-color) 18%, transparent);
+}
+
+/* Receipt modal — numbered step blocks ------------------------ */
+.ionex-formstep {
+  position: relative;
+  padding: 14px 16px 14px 48px;
+  margin-bottom: 12px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.ionex-formstep::before {
+  content: attr(data-step);
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--bg-tertiary));
+  color: var(--primary-color);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+.ionex-formstep-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.ionex-formstep-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.ionex-formstep-sub strong { color: var(--text-secondary); font-weight: 600; }
+.ionex-formstep-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+/* Markup control inside step 2 */
+.ionex-markup-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ionex-markup-control input {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.ionex-markup-control input:focus {
+  border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 14%, transparent);
+}
+.ionex-markup-toggle {
+  display: inline-flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.ionex-markup-toggle button {
+  padding: 9px 14px;
+  background-color: var(--bg-primary);
+  color: var(--text-secondary);
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.ionex-markup-toggle button + button { border-left: 1px solid var(--border-color); }
+.ionex-markup-toggle button.is-active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+/* Money strip — receipt + markup + billed live preview */
+.ionex-money-strip {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.ionex-money-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ionex-money-cell-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.ionex-money-cell-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--money-cell-color, var(--text-primary));
+  letter-spacing: -0.01em;
+}
+.ionex-money-cell.is-cost { --money-cell-color: var(--text-primary); }
+.ionex-money-cell.is-markup { --money-cell-color: var(--primary-color); }
+.ionex-money-cell.is-markup.is-negative { --money-cell-color: var(--warning-color); }
+.ionex-money-cell.is-bill { --money-cell-color: var(--success-color); }
+.ionex-money-op {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+@media (max-width: 540px) {
+  .ionex-money-strip { grid-template-columns: 1fr; gap: 6px; }
+  .ionex-money-op { display: none; }
+}
+
+/* Modal description paragraph under the title */
+.ionex-modal-intro {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 4px 0 14px;
+}
+.ionex-modal-intro strong { color: var(--text-primary); font-weight: 700; }
+
+/* Split-line toggle pill */
+.ionex-split-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 11px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 38%, transparent);
+  background-color: var(--bg-primary);
+  color: var(--primary-color);
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.ionex-split-toggle:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 12%, var(--bg-primary));
+  border-color: var(--primary-color);
+}
+
+/* Modal action footer */
+.ionex-receipt-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 14px;
+}
+.ionex-receipt-modal-actions button {
+  flex: 1;
+  padding: 11px 16px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.ionex-receipt-modal-actions .is-cancel {
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+.ionex-receipt-modal-actions .is-cancel:hover {
+  border-color: color-mix(in srgb, var(--text-secondary) 50%, var(--border-color));
+  color: var(--text-primary);
+}
+.ionex-receipt-modal-actions .is-save {
+  background-color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  color: white;
+}
+.ionex-receipt-modal-actions .is-save:hover:not(:disabled) {
+  background-color: var(--primary-hover, color-mix(in srgb, var(--primary-color) 85%, black));
+}
+.ionex-receipt-modal-actions .is-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+

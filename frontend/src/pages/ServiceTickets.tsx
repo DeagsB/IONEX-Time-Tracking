@@ -5928,6 +5928,18 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                   if (!editableTicket || !initialEditableTicketRef.current) return false;
                   return normStr(editableTicket[field]) !== normStr(initialEditableTicketRef.current[field]);
                 };
+                // Visual metadata for the expense type chips and per-type accents on list rows.
+                // glyph = unicode/emoji; accent = used as left bar + chip border; sub = one-line meaning
+                const EXPENSE_TYPE_META: Record<
+                  'Travel' | 'Subsistence' | 'Hotel' | 'Equipment' | 'Expenses',
+                  { label: string; glyph: string; accent: string; sub: string }
+                > = {
+                  Travel:      { label: 'Mileage',     glyph: '⛟', accent: '#3b82f6', sub: 'Vehicle / truck hours' },
+                  Subsistence: { label: 'Per diem',    glyph: '☕', accent: '#10b981', sub: 'Daily meal allowance'  },
+                  Hotel:       { label: 'Hotel',       glyph: '⌂', accent: '#a855f7', sub: 'Lodging (needs receipt)' },
+                  Equipment:   { label: 'Equipment',   glyph: '◫', accent: '#f59e0b', sub: 'Laptop / basic gear'   },
+                  Expenses:    { label: 'Other',       glyph: '◇', accent: '#ef4444', sub: 'Parts, materials, etc.' },
+                };
                 const isServiceRowDirty = (i: number): boolean => {
                   const init = initialServiceRowsRef.current;
                   if (!init || i >= serviceRows.length) return false;
@@ -6425,56 +6437,64 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
             </div>
 
             {/* Expenses Section */}
-                    <div style={sectionStyle}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={sectionTitleStyle}>Expenses</h3>
-                        {currentTicketRecordId && !effectiveLockedForEditing && (
-                          <button
-                            onClick={() => {
-                              clearTicketExpenseFormIssues();
-                              setEditingExpense({
-                                expense_type: 'Travel',
-                                description: 'Mileage',
-                                quantity: 1,
-                                rate: 1,
-                                unit: 'km',
-                                needs_reimbursement: false,
-                              });
-                            }}
-                            style={{
-                              padding: '6px 12px',
-                              backgroundColor: 'var(--primary-color)',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            + Add Expense
-                          </button>
-                        )}
-                      </div>
-                      
+                    <div className="ionex-expense-section">
+                      {(() => {
+                        const visibleExpenseCount =
+                          expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length +
+                          pendingAddExpenses.length;
+                        return (
+                          <div className="ionex-expense-section-head">
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
+                              <h3 className="ionex-expense-section-title">Expenses</h3>
+                              {visibleExpenseCount > 0 && (
+                                <span className="ionex-expense-section-meta">
+                                  <strong>{visibleExpenseCount}</strong> {visibleExpenseCount === 1 ? 'line' : 'lines'}
+                                </span>
+                              )}
+                            </div>
+                            {currentTicketRecordId && !effectiveLockedForEditing && !editingExpense && (
+                              <button
+                                type="button"
+                                className="ionex-expense-add-button"
+                                onClick={() => {
+                                  clearTicketExpenseFormIssues();
+                                  setEditingExpense({
+                                    expense_type: 'Travel',
+                                    description: 'Mileage',
+                                    quantity: 1,
+                                    rate: 1,
+                                    unit: 'km',
+                                    needs_reimbursement: false,
+                                  });
+                                }}
+                              >
+                                Add expense
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Suggested billable receipts from Expenses page */}
                       {(!effectiveLockedForEditing || allowDeferredReceiptAttachWhenLocked) && groupedUnappliedBillableReceipts.length > 0 && (
-                        <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: 'rgba(33, 150, 243, 0.06)', border: '1px solid rgba(33, 150, 243, 0.2)', borderRadius: '6px' }}>
-                          <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(33, 150, 243, 0.8)', marginBottom: '8px' }}>Suggested Billable Receipts</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '8px', lineHeight: 1.4 }}>
-                            Rows that share the same receipt file are shown as one total. Use <strong>Add to Ticket</strong> to choose how much of that receipt applies as cost on this ticket; markup is billed minus cost.
+                        <div className="ionex-suggest-rail">
+                          <div className="ionex-suggest-rail-eyebrow">
+                            <span>Suggested billable receipts</span>
+                            <span className="ionex-suggest-rail-eyebrow-meta">
+                              {groupedUnappliedBillableReceipts.length} ready to apply · markup = billed − cost
+                            </span>
                           </div>
                           {groupedUnappliedBillableReceipts.map((g) => (
-                            <div key={g.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(33, 150, 243, 0.1)' }}>
+                            <div key={g.key} className="ionex-suggest-rail-row">
                               <div>
-                                <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '500' }}>{g.displayDescription}</span>
-                                <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
-                                  ${g.receiptTotal.toFixed(2)}
-                                  {g.totalGst > 0 ? ' (incl. GST)' : ''}
+                                <span className="ionex-suggest-rail-row-meta">{g.displayDescription}</span>
+                                <span className="ionex-suggest-rail-row-amount">
+                                  ${g.receiptTotal.toFixed(2)}{g.totalGst > 0 ? ' (incl. GST)' : ''}
                                 </span>
                               </div>
                               <button
                                 type="button"
+                                className="ionex-suggest-rail-button"
                                 onClick={() => {
                                   setSuggestedLumpModal({
                                     rows: g.rows,
@@ -6485,9 +6505,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   setLumpAllocatedCost(g.receiptTotal.toFixed(2));
                                   setLumpBillToClient(g.receiptTotal.toFixed(2));
                                 }}
-                                style={{ padding: '4px 10px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                               >
-                                + Add to Ticket
+                                + Add to ticket
                               </button>
                             </div>
                           ))}
@@ -6495,92 +6514,123 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                       )}
 
                       {expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))).length === 0 && pendingAddExpenses.length === 0 && !editingExpense && (
-                        <p style={{ color: 'var(--text-tertiary)', fontSize: '13px', margin: 0 }}>
-                          No expenses added yet.
-                        </p>
+                        <div className="ionex-expense-empty">
+                          <div className="ionex-expense-empty-glyph">◇</div>
+                          <div className="ionex-expense-empty-title">No expenses on this ticket yet</div>
+                          <div className="ionex-expense-empty-body">
+                            Add mileage, per diem, hotel, equipment, or any other billable expense.
+                          </div>
+                        </div>
                       )}
 
-                      {editingExpense && currentTicketRecordId && (
-                        <div style={{
-                          backgroundColor: 'rgba(255, 152, 0, 0.08)',
-                          border: '1px solid rgba(255, 152, 0, 0.35)',
-                          borderRadius: '6px',
-                          padding: '12px',
-                          marginBottom: '12px',
-                        }}>
+                      {editingExpense && currentTicketRecordId && (() => {
+                        const et = editingExpense.expense_type;
+                        const typeMeta = EXPENSE_TYPE_META[et];
+                        const isHotel = et === 'Hotel';
+                        const isOther = et === 'Expenses';
+                        const isSubsistence = et === 'Subsistence';
+                        const reimburseEligible = !isSubsistence && !editingExpense.id;
+                        const isReimburseLine = editingExpense.needs_reimbursement ?? false;
+                        const requiresReceipt = isReimburseLine && (isHotel || isOther);
+                        const quantityForBill = isHotel ? 1 : (Number(editingExpense.quantity) || 0);
+                        const billed = quantityForBill * (Number(editingExpense.rate) || 0);
+                        const switchExpenseType = (selectedType: 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment') => {
+                          clearTicketExpenseFormIssues();
+                          let defaults = { unit: '', description: '', quantity: 1, rate: 0 };
+                          if (selectedType === 'Travel') {
+                            defaults = { unit: 'km', description: 'Mileage', quantity: 1, rate: 1 };
+                          } else if (selectedType === 'Subsistence') {
+                            defaults = { unit: 'Day', description: 'Per Diem', quantity: 1, rate: 60 };
+                          } else if (selectedType === 'Hotel') {
+                            defaults = { unit: '', description: 'Hotel', quantity: 1, rate: 0 };
+                          } else if (selectedType === 'Equipment') {
+                            defaults = { unit: 'hr', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
+                          } else if (selectedType === 'Expenses') {
+                            defaults = { unit: '', description: '', quantity: 0, rate: 0 };
+                          }
+                          setEditingExpense({
+                            ...editingExpense,
+                            expense_type: selectedType,
+                            unit: defaults.unit,
+                            description: defaults.description,
+                            quantity: defaults.quantity,
+                            rate: defaults.rate,
+                            needs_reimbursement:
+                              selectedType === 'Travel' || selectedType === 'Hotel'
+                                ? false
+                                : selectedType === 'Subsistence'
+                                  ? false
+                                  : editingExpense.needs_reimbursement,
+                          });
+                        };
+                        return (
+                        <div
+                          className="ionex-expense-form"
+                          style={{ ['--expense-accent' as string]: typeMeta.accent }}
+                        >
+                          <div className="ionex-expense-form-eyebrow">
+                            {editingExpense.id ? <>Edit line · <strong>{typeMeta.label}</strong></> : <>New expense · <strong>{typeMeta.label}</strong></>}
+                          </div>
                           {(ticketExpenseFormIssues.ticketRecord || ticketExpenseFormIssues.save) && (
-                            <div style={expenseIssueBannerStyle} role="alert">
+                            <div className="ionex-expense-error" role="alert">
                               {ticketExpenseFormIssues.ticketRecord ?? ticketExpenseFormIssues.save}
                             </div>
                           )}
-                          <div
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: editingExpense.expense_type === 'Hotel' ? '1fr' : 'repeat(2, 1fr)',
-                              gap: '12px',
-                              marginBottom: '12px',
-                            }}
-                          >
-                            <div>
-                              <label style={labelStyle}>Type</label>
-                              <select
-                                style={{
-                                  ...inputStyle,
-                                  backgroundColor: 'var(--bg-tertiary)',
-                                  color: 'var(--text-primary)',
-                                  cursor: 'pointer',
-                                }}
-                                value={editingExpense.expense_type}
-                                onChange={(e) => {
-                                  clearTicketExpenseFormIssues();
-                                  const selectedType = e.target.value as 'Travel' | 'Subsistence' | 'Hotel' | 'Expenses' | 'Equipment';
-                                  // Auto-fill default values based on type
-                                  let defaults = { unit: '', description: '', quantity: 1, rate: 0 };
-                                  
-                                  // Map display types to database types and set defaults
-                                  if (selectedType === 'Travel') {
-                                    // Mileage
-                                    defaults = { unit: 'km', description: 'Mileage', quantity: 1, rate: 1 };
-                                  } else if (selectedType === 'Subsistence') {
-                                    // Per Diem
-                                    defaults = { unit: 'Day', description: 'Per Diem', quantity: 1, rate: 60 };
-                                  } else if (selectedType === 'Hotel') {
-                                    defaults = { unit: '', description: 'Hotel', quantity: 1, rate: 0 };
-                                  } else if (selectedType === 'Equipment') {
-                                    defaults = { unit: 'hr', description: 'Laptop/Basic Equipment', quantity: 1, rate: 10 };
-                                  } else if (selectedType === 'Expenses') {
-                                    // Other - all empty
-                                    defaults = { unit: '', description: '', quantity: 0, rate: 0 };
-                                  }
-                                  
-                                  setEditingExpense({
-                                    ...editingExpense,
-                                    expense_type: selectedType,
-                                    unit: defaults.unit,
-                                    description: defaults.description,
-                                    quantity: defaults.quantity,
-                                    rate: defaults.rate,
-                                    needs_reimbursement:
-                                      selectedType === 'Travel' || selectedType === 'Hotel'
-                                        ? false
-                                        : selectedType === 'Subsistence'
-                                          ? false
-                                          : editingExpense.needs_reimbursement,
-                                  });
-                                }}
-                              >
-                                <option value="Travel">Mileage/Truck Hours</option>
-                                <option value="Subsistence">Per Diem</option>
-                                <option value="Hotel">Hotel</option>
-                                <option value="Equipment">Laptop/Basic Equipment</option>
-                                <option value="Expenses">Other</option>
-                              </select>
+                          {!editingExpense.id && (
+                            <div className="ionex-typechip-rail" role="radiogroup" aria-label="Expense type">
+                              {(['Travel', 'Subsistence', 'Hotel', 'Equipment', 'Expenses'] as const).map((type) => {
+                                const meta = EXPENSE_TYPE_META[type];
+                                const active = et === type;
+                                return (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={active}
+                                    className={`ionex-typechip${active ? ' is-active' : ''}`}
+                                    style={{ ['--expense-accent' as string]: meta.accent }}
+                                    onClick={() => switchExpenseType(type)}
+                                  >
+                                    <span className="ionex-typechip-glyph">{meta.glyph}</span>
+                                    <span className="ionex-typechip-label">{meta.label}</span>
+                                    <span className="ionex-typechip-sub">{meta.sub}</span>
+                                  </button>
+                                );
+                              })}
                             </div>
-                            {editingExpense.expense_type !== 'Hotel' && (
+                          )}
+                          <div className="ionex-expense-fieldgrid is-single">
+                            <div>
+                              <label className="ionex-expense-field-label" style={ticketExpenseFormIssues.description ? { color: 'var(--error-color)' } : undefined}>
+                                Description
+                              </label>
+                              <input
+                                className={`ionex-expense-field-input${ticketExpenseFormIssues.description ? ' is-error' : ''}`}
+                                value={editingExpense.description}
+                                onChange={(e) => {
+                                  setTicketExpenseFormIssues((prev) => {
+                                    const next = { ...prev };
+                                    delete next.description;
+                                    delete next.save;
+                                    return next;
+                                  });
+                                  setEditingExpense({ ...editingExpense, description: e.target.value });
+                                }}
+                                placeholder={isOther ? 'e.g., Parts, supplies, materials, subcontractor' : 'e.g., Mileage, Per diem, Laptop rental'}
+                              />
+                              {ticketExpenseFormIssues.description && (
+                                <div className="ionex-expense-field-help" style={{ color: 'var(--error-color)' }}>
+                                  {ticketExpenseFormIssues.description}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="ionex-expense-fieldgrid">
+                            {!isHotel && (
                               <div>
-                                <label style={labelStyle}>{getExpenseUnitFieldLabels(editingExpense.expense_type).label}</label>
+                                <label className="ionex-expense-field-label">{getExpenseUnitFieldLabels(et).label}</label>
                                 <input
-                                  style={inputStyle}
+                                  className="ionex-expense-field-input"
                                   value={editingExpense.unit || ''}
                                   onChange={(e) => {
                                     setTicketExpenseFormIssues((prev) => {
@@ -6590,100 +6640,19 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                     });
                                     setEditingExpense({ ...editingExpense, unit: e.target.value });
                                   }}
-                                  placeholder={getExpenseUnitFieldLabels(editingExpense.expense_type).placeholder}
+                                  placeholder={getExpenseUnitFieldLabels(et).placeholder}
                                 />
                               </div>
                             )}
-                          </div>
-                          <div style={{ marginBottom: '12px' }}>
-                            <label
-                              style={{
-                                ...labelStyle,
-                                ...(ticketExpenseFormIssues.description ? { color: '#ef5350' } : {}),
-                              }}
-                            >
-                              Description
-                            </label>
-                            <input
-                              style={{
-                                ...inputStyle,
-                                ...(ticketExpenseFormIssues.description ? expenseFieldErrorOutline : {}),
-                              }}
-                              value={editingExpense.description}
-                              onChange={(e) => {
-                                setTicketExpenseFormIssues((prev) => {
-                                  const next = { ...prev };
-                                  delete next.description;
-                                  delete next.save;
-                                  return next;
-                                });
-                                setEditingExpense({ ...editingExpense, description: e.target.value });
-                              }}
-                              placeholder={
-                                editingExpense.expense_type === 'Expenses'
-                                  ? 'e.g., Parts, supplies, materials, subcontractor'
-                                  : 'e.g., Mileage, Per diem, Laptop rental'
-                              }
-                            />
-                            {ticketExpenseFormIssues.description && (
-                              <div style={{ marginTop: '6px', fontSize: '12px', color: '#ef5350', lineHeight: 1.35 }}>
-                                {ticketExpenseFormIssues.description}
-                              </div>
-                            )}
-                            {!editingExpense.id &&
-                              editingExpense.expense_type === 'Expenses' &&
-                              editingExpense.needs_reimbursement && (
-                              <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                                Enter the amount billed to the client. Drop the receipt below to set your reimbursement amount and markup, or use Add and attach the receipt later from the line ("Attach receipt").
-                              </div>
-                            )}
-                          </div>
-                          {(
-                            <div
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns:
-                                  editingExpense.expense_type === 'Hotel'
-                                    ? '1fr'
-                                    : '1fr 1fr',
-                                gap: '12px',
-                                marginBottom: '12px',
-                              }}
-                            >
-                              {editingExpense.expense_type !== 'Hotel' && (
-                                <div>
-                                  <label style={labelStyle}>Quantity</label>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    style={inputStyle}
-                                    value={editingExpense.quantity || ''}
-                                    onChange={(e) => {
-                                      setTicketExpenseFormIssues((prev) => {
-                                        const next = { ...prev };
-                                        delete next.save;
-                                        return next;
-                                      });
-                                      const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                      setEditingExpense({ ...editingExpense, quantity: isNaN(val) ? 0 : val });
-                                    }}
-                                    placeholder={editingExpense.expense_type === 'Expenses' && editingExpense.needs_reimbursement && !editingExpense.id ? '1' : '0.00'}
-                                  />
-                                </div>
-                              )}
+                            {!isHotel && (
                               <div>
-                                <label style={labelStyle}>
-                                  {editingExpense.expense_type === 'Hotel'
-                                    ? 'Amount billed to client ($)'
-                                    : 'Billed Rate ($)'}
-                                </label>
+                                <label className="ionex-expense-field-label">Quantity</label>
                                 <input
                                   type="number"
                                   step="0.01"
                                   min="0"
-                                  style={inputStyle}
-                                  value={editingExpense.rate || ''}
+                                  className="ionex-expense-field-input"
+                                  value={editingExpense.quantity || ''}
                                   onChange={(e) => {
                                     setTicketExpenseFormIssues((prev) => {
                                       const next = { ...prev };
@@ -6691,173 +6660,178 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                       return next;
                                     });
                                     const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                    setEditingExpense({ ...editingExpense, rate: isNaN(val) ? 0 : val });
+                                    setEditingExpense({ ...editingExpense, quantity: isNaN(val) ? 0 : val });
                                   }}
-                                  placeholder="0.00"
+                                  placeholder={isOther && isReimburseLine && !editingExpense.id ? '1' : '0.00'}
                                 />
-                                {editingExpense.expense_type === 'Hotel' && (
-                                  <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-                                    {editingExpense.needs_reimbursement && !editingExpense.id
-                                      ? 'What the client is charged on this ticket. Attach a receipt below to set your reimbursement amount; markup is calculated as billed minus receipt total.'
-                                      : 'Hotel lines bill as 1 × this amount (quantity is fixed at 1).'}
-                                  </div>
-                                )}
-                                {editingExpense.expense_type === 'Expenses' &&
-                                  editingExpense.needs_reimbursement &&
-                                  !editingExpense.id && (() => {
-                                    const q = Number(editingExpense.quantity) || 1;
-                                    const r = Number(editingExpense.rate) || 0;
-                                    const sub = Math.round(q * r * 100) / 100;
-                                    return (
-                                      <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-                                        Per-unit rate billed to client. Line total = qty × this rate
-                                        {q > 1 && r > 0 ? <> (<strong style={{ color: 'var(--text-primary)' }}>${sub.toFixed(2)}</strong>)</> : null}.
-                                        Attach a receipt below to auto-fill cost and markup.
-                                      </div>
-                                    );
-                                  })()}
                               </div>
-                            </div>
-                          )}
-                          {/* Per Diem: always reimbursable in reports (no checkbox). Reimbursement flag + receipt UI only when adding a line; editing saved rows keeps existing flag on Update. */}
-                          {editingExpense.expense_type !== 'Subsistence' && !editingExpense.id && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                            )}
+                            <div>
+                              <label className="ionex-expense-field-label">{isHotel ? 'Amount billed to client ($)' : 'Billed rate ($)'}</label>
                               <input
-                                type="checkbox"
-                                id="needs-reimbursement-ticket-expense"
-                                checked={editingExpense.needs_reimbursement || false}
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                className="ionex-expense-field-input"
+                                value={editingExpense.rate || ''}
                                 onChange={(e) => {
-                                  const checked = e.target.checked;
                                   setTicketExpenseFormIssues((prev) => {
                                     const next = { ...prev };
                                     delete next.save;
-                                    if (!checked) delete next.receipt;
+                                    return next;
+                                  });
+                                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                  setEditingExpense({ ...editingExpense, rate: isNaN(val) ? 0 : val });
+                                }}
+                                placeholder="0.00"
+                              />
+                            </div>
+                          </div>
+                          {reimburseEligible && (
+                            <div className="ionex-reimb-toggle" role="radiogroup" aria-label="Reimbursement">
+                              <button
+                                type="button"
+                                role="radio"
+                                aria-checked={!isReimburseLine}
+                                className={!isReimburseLine ? 'is-active' : ''}
+                                onClick={() => {
+                                  setTicketExpenseFormIssues((prev) => {
+                                    const next = { ...prev };
+                                    delete next.save;
+                                    delete next.receipt;
+                                    return next;
+                                  });
+                                  setEditingExpense({ ...editingExpense, needs_reimbursement: false });
+                                }}
+                              >
+                                Bill to client only
+                                <span className="ionex-reimb-toggle-sub">Charges the client — no payout to you</span>
+                              </button>
+                              <button
+                                type="button"
+                                role="radio"
+                                aria-checked={isReimburseLine}
+                                className={isReimburseLine ? 'is-active' : ''}
+                                onClick={() => {
+                                  setTicketExpenseFormIssues((prev) => {
+                                    const next = { ...prev };
+                                    delete next.save;
                                     return next;
                                   });
                                   setEditingExpense({
                                     ...editingExpense,
-                                    needs_reimbursement: checked,
-                                    ...(checked &&
-                                    editingExpense.expense_type === 'Expenses'
-                                      ? { quantity: 1 }
-                                      : {}),
+                                    needs_reimbursement: true,
+                                    ...(isOther ? { quantity: 1 } : {}),
                                   });
                                 }}
-                              />
-                              <label htmlFor="needs-reimbursement-ticket-expense" style={{ fontSize: '13px', color: 'var(--text-primary)', cursor: 'pointer' }}>
-                                {editingExpense.expense_type === 'Travel'
-                                  ? 'Needs reimbursement (personal vehicle)'
-                                  : editingExpense.expense_type === 'Hotel'
-                                    ? 'Needs reimbursement (attach a receipt)'
-                                    : editingExpense.expense_type === 'Equipment'
-                                      ? 'Needs reimbursement'
-                                      : editingExpense.expense_type === 'Expenses'
-                                        ? 'Needs reimbursement (attach a receipt)'
-                                        : 'Needs reimbursement'}
-                              </label>
+                              >
+                                Needs reimbursement
+                                <span className="ionex-reimb-toggle-sub">
+                                  {et === 'Travel' ? 'Personal vehicle — paid via payroll'
+                                    : isHotel ? 'Attach the hotel receipt'
+                                    : isOther ? 'Attach the receipt'
+                                    : 'Paid back to you via payroll'}
+                                </span>
+                              </button>
                             </div>
                           )}
-                          {!editingExpense.id &&
-                            editingExpense.needs_reimbursement &&
-                            (editingExpense.expense_type === 'Hotel' ||
-                              editingExpense.expense_type === 'Expenses') && (
-                              <div style={{ marginBottom: '12px' }}>
-                                <label
-                                  style={{
-                                    ...labelStyle,
-                                    ...(ticketExpenseFormIssues.receipt ? { color: '#ef5350' } : {}),
-                                  }}
-                                >
-                                  {editingExpense.expense_type === 'Expenses'
-                                    ? 'Attach receipt (sets the reimbursement amount and markup) — or Add now and attach later from the line'
-                                    : 'Attach receipt now — or Add now and use "Attach receipt" on the line once you have the final bill'}
-                                </label>
-                                <input
-                                  type="file"
-                                  accept="image/*,.pdf"
-                                  ref={inFormReimbursementReceiptInputRef}
-                                  style={{ display: 'none' }}
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    e.target.value = '';
-                                    if (!file) return;
-                                    openReimbursementReceiptModalFromExpenseForm(file);
-                                  }}
-                                />
-                                <div
-                                  onDragOver={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    e.currentTarget.style.borderColor = 'var(--primary-color)';
-                                  }}
-                                  onDragLeave={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    e.currentTarget.style.borderColor = ticketExpenseFormIssues.receipt
-                                      ? '#ef5350'
-                                      : 'var(--border-color)';
-                                  }}
-                                  onDrop={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    e.currentTarget.style.borderColor = ticketExpenseFormIssues.receipt
-                                      ? '#ef5350'
-                                      : 'var(--border-color)';
-                                    const file = e.dataTransfer.files?.[0];
-                                    if (!file) return;
-                                    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
-                                      e.currentTarget.style.borderColor = '#ef5350';
-                                      setTicketExpenseFormIssues({
-                                        receipt: 'Please drop an image or PDF file.',
-                                      });
-                                      return;
-                                    }
-                                    openReimbursementReceiptModalFromExpenseForm(file);
-                                  }}
-                                  onClick={() => inFormReimbursementReceiptInputRef.current?.click()}
-                                  style={{
-                                    padding: '12px',
-                                    borderRadius: '6px',
-                                    border: ticketExpenseFormIssues.receipt
-                                      ? '2px dashed #ef5350'
-                                      : '2px dashed var(--border-color)',
-                                    backgroundColor: ticketExpenseFormIssues.receipt
-                                      ? 'rgba(239, 83, 80, 0.08)'
-                                      : 'var(--bg-tertiary)',
-                                    fontSize: '12px',
-                                    color: ticketExpenseFormIssues.receipt ? '#ef5350' : 'var(--text-tertiary)',
-                                    textAlign: 'center',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Drop receipt here or click to choose (optional — you can also Add the line and attach later)
-                                </div>
-                                {ticketExpenseFormIssues.receipt && (
-                                  <div style={{ marginTop: '6px', fontSize: '12px', color: '#ef5350', lineHeight: 1.35 }}>
-                                    {ticketExpenseFormIssues.receipt}
-                                  </div>
-                                )}
+                          {requiresReceipt && !editingExpense.id && (
+                            <div style={{ marginBottom: '14px' }}>
+                              <label className="ionex-expense-field-label" style={ticketExpenseFormIssues.receipt ? { color: 'var(--error-color)' } : undefined}>
+                                Attach receipt (optional now, required for payout)
+                              </label>
+                              <input
+                                type="file"
+                                accept="image/*,.pdf"
+                                ref={inFormReimbursementReceiptInputRef}
+                                style={{ display: 'none' }}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (!file) return;
+                                  openReimbursementReceiptModalFromExpenseForm(file);
+                                }}
+                              />
+                              <div
+                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = 'var(--primary-color)'; }}
+                                onDragLeave={(e) => {
+                                  e.preventDefault(); e.stopPropagation();
+                                  e.currentTarget.style.borderColor = ticketExpenseFormIssues.receipt ? 'var(--error-color)' : 'var(--border-color)';
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault(); e.stopPropagation();
+                                  e.currentTarget.style.borderColor = ticketExpenseFormIssues.receipt ? 'var(--error-color)' : 'var(--border-color)';
+                                  const file = e.dataTransfer.files?.[0];
+                                  if (!file) return;
+                                  if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+                                    e.currentTarget.style.borderColor = 'var(--error-color)';
+                                    setTicketExpenseFormIssues({ receipt: 'Please drop an image or PDF file.' });
+                                    return;
+                                  }
+                                  openReimbursementReceiptModalFromExpenseForm(file);
+                                }}
+                                onClick={() => inFormReimbursementReceiptInputRef.current?.click()}
+                                style={{
+                                  padding: '14px',
+                                  borderRadius: '8px',
+                                  border: ticketExpenseFormIssues.receipt
+                                    ? '2px dashed var(--error-color)'
+                                    : '2px dashed var(--border-color)',
+                                  backgroundColor: ticketExpenseFormIssues.receipt
+                                    ? 'color-mix(in srgb, var(--error-color) 8%, transparent)'
+                                    : 'var(--bg-secondary)',
+                                  fontSize: '12px',
+                                  color: ticketExpenseFormIssues.receipt ? 'var(--error-color)' : 'var(--text-tertiary)',
+                                  textAlign: 'center',
+                                  cursor: 'pointer',
+                                  lineHeight: 1.5,
+                                }}
+                              >
+                                <div style={{ fontSize: '18px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>↑</div>
+                                <div><strong style={{ color: 'var(--text-secondary)' }}>Drop receipt here</strong> or click to choose</div>
+                                <div style={{ marginTop: '2px', fontSize: '11px' }}>Or skip — Add the line now and attach later from the row</div>
                               </div>
-                            )}
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              {ticketExpenseFormIssues.receipt && (
+                                <div className="ionex-expense-field-help" style={{ color: 'var(--error-color)' }}>
+                                  {ticketExpenseFormIssues.receipt}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Live preview strip — bills client $X · reimburses $Y */}
+                          <div className="ionex-expense-preview">
+                            <div className="ionex-expense-preview-text">
+                              Bills client{' '}
+                              <strong>${(billed || 0).toFixed(2)}</strong>
+                              {isReimburseLine && et === 'Travel' && (
+                                <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll</>
+                              )}
+                              {isReimburseLine && et === 'Equipment' && (
+                                <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll</>
+                              )}
+                              {isReimburseLine && (isHotel || isOther) && (
+                                <> · Reimbursement = receipt total</>
+                              )}
+                              {!isReimburseLine && (
+                                <> · No reimbursement</>
+                              )}
+                            </div>
+                            <div className="ionex-expense-preview-total">${(billed || 0).toFixed(2)}</div>
+                          </div>
+                          <div className="ionex-expense-form-actions">
                             <button
+                              type="button"
+                              className="is-secondary"
                               onClick={() => {
                                 clearTicketExpenseFormIssues();
                                 setEditingExpense(null);
-                              }}
-                              style={{
-                                padding: '6px 12px',
-                                backgroundColor: 'transparent',
-                                color: 'var(--text-secondary)',
-                                border: '1px solid var(--border-color)',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                cursor: 'pointer',
                               }}
                             >
                               Cancel
                             </button>
                             <button
+                              type="button"
+                              className="is-primary"
                               onClick={async () => {
                                 if (!editingExpense.description.trim()) {
                                   setTicketExpenseFormIssues({
@@ -7028,22 +7002,13 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   setTicketExpenseFormIssues({ save: message });
                                 }
                               }}
-                              style={{
-                                padding: '6px 12px',
-                                backgroundColor: 'var(--primary-color)',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                              }}
                             >
-                              {editingExpense.id ? 'Update' : 'Add'}
+                              {editingExpense.id ? 'Update line' : 'Add line'}
                             </button>
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
 
                       {[...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))), ...pendingAddExpenses.map((e) => ({ ...e, id: e.tempId }))].map((expense) => {
                         const idStr = String(expense.id ?? '');
@@ -7063,96 +7028,60 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                           !!dbLinkedUe &&
                           expense.needs_reimbursement &&
                           (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses');
+                        const meta = EXPENSE_TYPE_META[expense.expense_type as keyof typeof EXPENSE_TYPE_META]
+                          ?? { label: serviceTicketExpenseTypeLabel(expense.expense_type), glyph: '◇', accent: 'var(--text-tertiary)', sub: '' };
+                        const lineTotal = expense.quantity * expense.rate;
                         return (
                         <Fragment key={expense.id ?? expense.description + expense.expense_type}>
                         <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr auto',
-                            gap: '12px',
-                            alignItems: 'center',
-                            padding: '10px',
-                            backgroundColor: 'var(--bg-tertiary)',
-                            borderRadius: '6px',
-                            marginBottom: showDeferredReceiptAttach ? '0' : '8px',
-                            fontSize: '13px',
-                          }}
+                          className={`ionex-expense-card${showDeferredReceiptAttach ? ' is-pending' : ''}`}
+                          style={{ ['--expense-accent' as string]: meta.accent }}
                         >
-                          <div>
-                            <span style={{ color: 'var(--primary-color)', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              {serviceTicketExpenseTypeLabel(expense.expense_type)}
-                              {showDeferredReceiptAttach && (
-                                <span
-                                  style={{
-                                    fontSize: '10px',
-                                    fontWeight: '700',
-                                    textTransform: 'none',
-                                    letterSpacing: '0.02em',
-                                    color: '#e65100',
-                                    backgroundColor: 'rgba(255, 152, 0, 0.18)',
-                                    border: '1px solid rgba(255, 152, 0, 0.45)',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                  }}
-                                >
-                                  Receipt pending
+                          <div className="ionex-expense-card-body">
+                            <div className="ionex-expense-card-row1">
+                              <span className="ionex-expense-card-type">
+                                <span className="ionex-expense-card-type-glyph">{meta.glyph}</span>
+                                {meta.label}
+                              </span>
+                              {showReceiptAttached && (
+                                <span className="ionex-expense-card-status is-attached" title="Receipt attached for reimbursement">
+                                  ✓ Receipt attached
                                 </span>
                               )}
-                              {showReceiptAttached && (
-                                <span
-                                  style={{
-                                    fontSize: '10px',
-                                    fontWeight: '700',
-                                    textTransform: 'none',
-                                    letterSpacing: '0.02em',
-                                    color: '#15803d',
-                                    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-                                    border: '1px solid rgba(34, 197, 94, 0.4)',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                  }}
-                                  title="Receipt attached for reimbursement"
-                                >
-                                  ✓ Receipt attached
+                              {showDeferredReceiptAttach && (
+                                <span className="ionex-expense-card-status is-pending">
+                                  Awaiting receipt
                                 </span>
                               )}
                               {!showReceiptAttached && inlineActualCostSet && expense.needs_reimbursement &&
                                 (expense.expense_type === 'Hotel' || expense.expense_type === 'Expenses') && (
                                 <span
-                                  style={{
-                                    fontSize: '10px',
-                                    fontWeight: '700',
-                                    textTransform: 'none',
-                                    letterSpacing: '0.02em',
-                                    color: '#1976d2',
-                                    backgroundColor: 'rgba(33, 150, 243, 0.12)',
-                                    border: '1px solid rgba(33, 150, 243, 0.4)',
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                  }}
+                                  className="ionex-expense-card-status is-info"
                                   title={`Reimbursement amount $${(Number((expense as { actual_cost?: number | null }).actual_cost) || 0).toFixed(2)} set inline — no receipt required for payroll. Attach a receipt later to add backup.`}
                                 >
-                                  Reimbursement: ${(Number((expense as { actual_cost?: number | null }).actual_cost) || 0).toFixed(2)}
+                                  Reimburse ${(Number((expense as { actual_cost?: number | null }).actual_cost) || 0).toFixed(2)}
                                 </span>
                               )}
-                            </span>
-                            <div style={{ color: 'var(--text-primary)', marginTop: '2px' }}>
+                            </div>
+                            <div className="ionex-expense-card-desc" title={expense.description}>
                               {expense.description}
-                              {expense.unit && <span style={{ color: 'var(--text-tertiary)', marginLeft: '4px' }}>({expense.unit})</span>}
+                              {expense.unit && <span className="ionex-expense-card-desc-unit">({expense.unit})</span>}
                             </div>
                           </div>
-                          <div style={{ textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>
-                            {expense.quantity.toFixed(2)}
-                          </div>
-                          <div style={{ textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>
-                            @ ${expense.rate.toFixed(2)}
-                          </div>
-                          <div style={{ textAlign: 'right', color: 'var(--text-primary)', fontWeight: '700' }}>
-                            ${(expense.quantity * expense.rate).toFixed(2)}
+                          <div className="ionex-expense-card-math">
+                            <span className="ionex-expense-card-math-qty">{expense.quantity.toFixed(2)}</span>
+                            <span className="ionex-expense-card-math-op">×</span>
+                            <span className="ionex-expense-card-math-rate">${expense.rate.toFixed(2)}</span>
+                            <span className="ionex-expense-card-math-eq">=</span>
+                            <span className="ionex-expense-card-math-total">${lineTotal.toFixed(2)}</span>
                           </div>
                           {!effectiveLockedForEditing && (
-                          <div style={{ display: 'flex', gap: '6px' }}>
+                          <div className="ionex-expense-card-actions">
                             <button
+                              type="button"
+                              className="ionex-expense-card-icon-button"
+                              title="Edit line"
+                              aria-label="Edit line"
                               onClick={() => {
                                 clearTicketExpenseFormIssues();
                                 if (expense.id?.startsWith('pending-')) {
@@ -7170,19 +7099,14 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   setEditingExpense({ ...expense });
                                 }
                               }}
-                              style={{
-                                padding: '4px 8px',
-                                backgroundColor: 'transparent',
-                                color: 'var(--text-secondary)',
-                                border: '1px solid var(--border-color)',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                cursor: 'pointer',
-                              }}
                             >
-                              Edit
+                              ✎
                             </button>
                             <button
+                              type="button"
+                              className="ionex-expense-card-icon-button is-danger"
+                              title="If this line has a receipt, Save removes the receipt and turns off reimbursement but keeps the line. Otherwise the line is removed."
+                              aria-label="Delete line"
                               onClick={async () => {
                                 if (expense.id?.startsWith('pending-') || expense.id?.startsWith('receipt-')) {
                                   const row = pendingAddExpenses.find((e) => e.tempId === expense.id);
@@ -7221,76 +7145,28 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   setPendingDeleteExpenseIds((prev) => new Set(prev).add(delId));
                                 }
                               }}
-                              style={{
-                                padding: '4px 8px',
-                                backgroundColor: 'transparent',
-                                color: '#ef5350',
-                                border: '1px solid rgba(239, 83, 80, 0.3)',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                cursor: 'pointer',
-                              }}
-                              title="If this line has a receipt, Save removes the receipt and turns off reimbursement but keeps the line. Otherwise the line is removed."
                             >
-                              Delete
+                              ×
                             </button>
                           </div>
                           )}
+                          {showDeferredReceiptAttach && (
+                            <div className="ionex-expense-card-pending-action">
+                              <span>Attach the bill to set your reimbursement amount and markup.</span>
+                              <button type="button" onClick={() => openAttachReceiptForDeferredLine(expense)}>
+                                Attach receipt
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        {showDeferredReceiptAttach && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              flexWrap: 'wrap',
-                              gap: '8px',
-                              padding: '8px 10px',
-                              marginBottom: '8px',
-                              backgroundColor: 'rgba(255, 152, 0, 0.1)',
-                              border: '1px solid rgba(255, 152, 0, 0.35)',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                            }}
-                          >
-                            <span style={{ color: 'var(--text-secondary)', fontWeight: '600' }}>
-                              Receipt pending — attach the bill, or click Edit and enter your reimbursement amount directly.
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => openAttachReceiptForDeferredLine(expense)}
-                              style={{
-                                padding: '4px 10px',
-                                backgroundColor: 'var(--primary-color)',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              Attach receipt
-                            </button>
-                          </div>
-                        )}
                         </Fragment>
                         );
                       })}
 
                       {([...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))), ...pendingAddExpenses].length > 0) && (
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            paddingTop: '12px',
-                            borderTop: '1px solid var(--border-color)',
-                            marginTop: '8px',
-                          }}
-                        >
-                          <span style={{ fontSize: '15px', color: 'var(--text-primary)', fontWeight: '700' }}>TOTAL EXPENSES:</span>
-                          <span style={{ fontSize: '18px', color: 'var(--primary-color)', fontWeight: '700' }}>
+                        <div className="ionex-expense-total">
+                          <span className="ionex-expense-total-label">Total expenses</span>
+                          <span className="ionex-expense-total-value">
                             ${[...expenses.filter((e) => !(e.id && pendingDeleteExpenseIds.has(e.id))), ...pendingAddExpenses].reduce((sum, e) => sum + (e.quantity * e.rate), 0).toFixed(2)}
                           </span>
                         </div>
@@ -7303,63 +7179,65 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               ...pendingAddExpenses,
                             ];
                             return (
-                            <div style={{ marginTop: '12px' }}>
-                              <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', marginBottom: '6px' }}>Attached Receipts</div>
+                            <div className="ionex-attached-receipts">
+                              <div className="ionex-attached-receipts-eyebrow">Attached receipts</div>
                               {attachedReceipts.length === 0 ? (
-                                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
+                                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
                                   {deferredReceiptPendingCount > 0 && allowDeferredReceiptAttachWhenLocked ? (
                                     <>
-                                      <span style={{ color: '#ff9800', fontWeight: '600' }}>Receipt pending</span> for{' '}
-                                      {deferredReceiptPendingCount === 1 ? 'a line' : `${deferredReceiptPendingCount} lines`} above.
-                                      Use <strong>Attach receipt</strong> on the highlighted row (or suggested billable receipts / Expenses page).
+                                      <span style={{ color: 'var(--warning-color)', fontWeight: '700' }}>Receipt pending</span> for{' '}
+                                      {deferredReceiptPendingCount === 1 ? 'a line' : `${deferredReceiptPendingCount} lines`} above —
+                                      use <strong>Attach receipt</strong> on the highlighted row.
                                     </>
                                   ) : (
-                                    <>
-                                      None linked yet. Use “+ Add to Ticket” on suggested billable receipts above, or link from the Expenses page—they appear here once tied to this ticket.
-                                    </>
+                                    <>None linked yet. Apply a suggested billable receipt above, or link one from the Expenses page.</>
                                   )}
                                 </p>
                               ) : (
                                 attachedReceipts.map((r: any) => {
                                   const hasLine = receiptHasMatchingTicketExpenseLine(r.description, visibleLinesForReceiptMatch);
                                   return (
-                                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px', marginBottom: '4px', fontSize: '13px' }}>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <span style={{ fontWeight: '500', color: 'var(--text-primary)' }}>{r.description}</span>
-                                      <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>${parseFloat(r.amount).toFixed(2)}</span>
-                                      {parseFloat(r.gst || 0) > 0 && <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px', fontSize: '11px' }}>GST: ${parseFloat(r.gst).toFixed(2)}</span>}
+                                  <div key={r.id} className="ionex-attached-receipt">
+                                    <div className="ionex-attached-receipt-meta">
+                                      <span className="ionex-attached-receipt-desc">{r.description}</span>
+                                      <span className="ionex-attached-receipt-amount">${parseFloat(r.amount).toFixed(2)}</span>
+                                      {parseFloat(r.gst || 0) > 0 && (
+                                        <span className="ionex-attached-receipt-gst">GST ${parseFloat(r.gst).toFixed(2)}</span>
+                                      )}
                                       {!hasLine && (
-                                        <div style={{ marginTop: '4px', fontSize: '11px', color: '#ff9800', fontWeight: '600' }}>
-                                          No matching expense line on this ticket — use Unlink to clear the link, or add an expense with the same description.
+                                        <div className="ionex-attached-receipt-warn">
+                                          No matching expense line on this ticket — Unlink to clear the link, or add a line with the same description.
                                         </div>
                                       )}
                                     </div>
                                     {!effectiveLockedForEditing && (
-                                      <div style={{ display: 'flex', gap: '6px', flexShrink: 0, marginLeft: '8px' }}>
+                                      <div className="ionex-attached-receipt-actions">
                                         <button
+                                          type="button"
+                                          className="ionex-attached-receipt-button"
                                           onClick={() => handleStartReceiptEdit(r)}
-                                          style={{ padding: '3px 8px', backgroundColor: 'rgba(33, 150, 243, 0.1)', color: '#2196F3', border: '1px solid rgba(33, 150, 243, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                                         >
                                           Edit
                                         </button>
                                         {!hasLine && (
-                                        <button
-                                          onClick={async () => {
-                                            if (!confirm('Unlink this receipt from the ticket? It is not tied to an expense line above; the receipt will move back to unapplied billable (if still billable).')) return;
-                                            try {
-                                              await userExpensesService.unapplyFromTicket(r.id);
-                                              queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
-                                              queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
-                                              queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
-                                              if (currentTicketRecordId) await loadExpenses(currentTicketRecordId);
-                                            } catch (err: any) {
-                                              alert('Failed to unlink: ' + (err?.message || 'Unknown error'));
-                                            }
-                                          }}
-                                          style={{ padding: '3px 8px', backgroundColor: 'rgba(239, 83, 80, 0.1)', color: '#ef5350', border: '1px solid rgba(239, 83, 80, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                                        >
-                                          Unlink
-                                        </button>
+                                          <button
+                                            type="button"
+                                            className="ionex-attached-receipt-button is-danger"
+                                            onClick={async () => {
+                                              if (!confirm('Unlink this receipt from the ticket? It is not tied to an expense line above; the receipt will move back to unapplied billable (if still billable).')) return;
+                                              try {
+                                                await userExpensesService.unapplyFromTicket(r.id);
+                                                queryClient.invalidateQueries({ queryKey: ['attachedReceipts'] });
+                                                queryClient.invalidateQueries({ queryKey: ['userExpenses'] });
+                                                queryClient.invalidateQueries({ queryKey: ['serviceTicketExpenseTotals'] });
+                                                if (currentTicketRecordId) await loadExpenses(currentTicketRecordId);
+                                              } catch (err: any) {
+                                                alert('Failed to unlink: ' + (err?.message || 'Unknown error'));
+                                              }
+                                            }}
+                                          >
+                                            Unlink
+                                          </button>
                                         )}
                                       </div>
                                     )}
@@ -7475,8 +7353,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                       )}
                     </div>
                     {/* Right: Inputs */}
-                    <div style={{ flex: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    <div style={{ flex: 1, padding: '22px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+                      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '0.01em' }}>
                         {attachReceiptContext
                           ? pendingReimbursementExpense?.expense_type === 'Hotel'
                             ? 'Attach hotel receipt to ticket line'
@@ -7489,269 +7367,321 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                 : 'Upload receipt for reimbursement'
                             : 'New receipt expense'}
                       </h3>
-                      {(pendingReimbursementExpense || attachReceiptContext) && (
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: '-8px' }}>
-                          {(() => {
-                            const isHotel = pendingReimbursementExpense?.expense_type === 'Hotel';
-                            const isOther = pendingReimbursementExpense?.expense_type === 'Expenses';
-                            const canSplit = isOther && !attachReceiptContext;
-                            return (
-                              <>
-                                <div>
-                                  Enter the <strong>receipt total</strong> (Amount + GST) — that&apos;s what you&apos;ll be reimbursed.
-                                  Then choose how much to bill the client using the <strong>Markup</strong> control:
-                                  toggle <strong>%</strong> to add a percentage on top of the receipt, or <strong>Bill</strong>
-                                  {' '}to enter the flat amount to charge the client. The difference is your markup.
-                                </div>
-                                {isHotel && (
-                                  <div style={{ marginTop: '4px' }}>
-                                    Pre-filled to <strong>Bill</strong> mode at the ticket line&apos;s billed amount so the line is unchanged
-                                    by default; adjust to tweak the markup.
-                                  </div>
-                                )}
-                                {canSplit && (
-                                  <div style={{ marginTop: '4px' }}>
-                                    Receipt covers multiple ticket items (parts + labour, etc.)? Use <strong>Split into lines</strong>
-                                    {' '}below to create one ticket line per item from the same receipt.
-                                  </div>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      )}
-                      {receiptUploadError && <div style={{ color: '#ef5350', fontSize: '13px' }}>{receiptUploadError}</div>}
-                      {receiptAutofillBusy && (
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reading receipt…</div>
-                      )}
-                      {receiptAutofillNote && !receiptAutofillBusy && (
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{receiptAutofillNote}</div>
-                      )}
-                      {(() => {
-                        const canSplit =
-                          pendingReimbursementExpense?.expense_type === 'Expenses' &&
-                          !attachReceiptContext;
-                        const inSplitMode = splitLineItems.length > 0;
+                      {(pendingReimbursementExpense || attachReceiptContext) && (() => {
+                        const isHotel = pendingReimbursementExpense?.expense_type === 'Hotel';
+                        const isOther = pendingReimbursementExpense?.expense_type === 'Expenses';
+                        const canSplit = isOther && !attachReceiptContext;
                         return (
-                          <>
-                            {splitLineItems.length === 0 && (
-                              <div>
-                                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Name / Description</label>
-                                <input type="text" value={receiptForm.description} onChange={(e) => setReceiptForm({ ...receiptForm, description: e.target.value })} placeholder="e.g. Hotel, Fuel, Parts..." style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
-                              </div>
-                            )}
-                            <div>
-                              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Expense date</label>
-                              <input
-                                type="date"
-                                value={receiptForm.expense_date}
-                                onChange={(e) => setReceiptForm({ ...receiptForm, expense_date: e.target.value })}
-                                style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
-                              />
-                            </div>
-                            {canSplit && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (inSplitMode) {
-                                    // Collapse back to single — keep first line's values (combine qty × rate into single Amount)
-                                    const first = splitLineItems[0];
-                                    const subtotal = splitLineSubtotal(first);
-                                    setReceiptForm({
-                                      ...receiptForm,
-                                      description: first.description || receiptForm.description,
-                                      amount: subtotal > 0 ? subtotal.toFixed(2) : '',
-                                      gst: first.gst,
-                                      markupType: first.markupType,
-                                      markupValue: first.markupValue,
-                                    });
-                                    setSplitLineItems([]);
-                                  } else {
-                                    // Switch to split — seed first line from current single values (single line = qty 1 × rate=amount)
-                                    setSplitLineItems([
-                                      newSplitLine({
-                                        description: receiptForm.description,
-                                        quantity: '1',
-                                        rate: receiptForm.amount,
-                                        gst: receiptForm.gst,
-                                        markupType: receiptForm.markupType,
-                                        markupValue: receiptForm.markupValue,
-                                      }),
-                                      newSplitLine(),
-                                    ]);
-                                  }
-                                }}
-                                style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--primary-color)' }}
-                              >
-                                {inSplitMode ? '← Back to single line' : '+ Split into multiple lines'}
-                              </button>
-                            )}
-                            {!inSplitMode && (
-                              <>
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>Amount ($)</label>
-                                  <input type="number" step="0.01" value={receiptForm.amount} onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
-                                </div>
-                                <div>
-                                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>GST ($)</label>
-                                  <input type="number" step="0.01" value={receiptForm.gst} onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })} placeholder="0.00" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }} />
-                                </div>
-                              </>
-                            )}
-                            {inSplitMode && (
-                              <div>
-                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>Line Items</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 50px 75px 65px 1fr 24px', gap: '6px', marginBottom: '4px', fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>
-                                  <span>Description</span>
-                                  <span>Qty</span>
-                                  <span>Rate</span>
-                                  <span>GST</span>
-                                  <span>Markup</span>
-                                  <span />
-                                </div>
-                                {splitLineItems.map((line, idx) => {
-                                  const subtotal = splitLineSubtotal(line);
-                                  const gst = parseFloat(line.gst) || 0;
-                                  const expTotal = subtotal + gst;
-                                  const v = parseFloat(line.markupValue) || 0;
-                                  const qtyNum = parseFloat(line.quantity) || 0;
-                                  const updateLine = (patch: Partial<SplitLineItem>) =>
-                                    setSplitLineItems((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-                                  return (
-                                    <div key={line.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 50px 75px 65px 1fr 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
-                                      <div>
-                                        <input type="text" value={line.description} onChange={(e) => updateLine({ description: e.target.value })} placeholder="e.g. Parts, Labour…" style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
-                                        {qtyNum > 1 && subtotal > 0 && (
-                                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                                            Subtotal: ${subtotal.toFixed(2)}
-                                          </div>
-                                        )}
-                                      </div>
-                                      <input type="number" step="0.01" min="0" value={line.quantity} onChange={(e) => updateLine({ quantity: e.target.value })} placeholder="1" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
-                                      <input type="number" step="0.01" value={line.rate} onChange={(e) => updateLine({ rate: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
-                                      <input type="number" step="0.01" value={line.gst} onChange={(e) => updateLine({ gst: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
-                                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', minWidth: 0 }}>
-                                        <input type="number" step="0.01" value={line.markupValue} onChange={(e) => updateLine({ markupValue: e.target.value })} placeholder={line.markupType === 'bill' ? 'Bill' : '%'} style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
-                                        <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)', flexShrink: 0 }}>
-                                          <button type="button" onClick={() => updateLine({ markupType: 'percent' })} style={{ padding: '4px 7px', border: 'none', fontSize: '11px', fontWeight: 600, cursor: 'pointer', backgroundColor: line.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: line.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
-                                          <button type="button" onClick={() => updateLine({ markupType: 'bill' })} style={{ padding: '4px 7px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', backgroundColor: line.markupType === 'bill' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: line.markupType === 'bill' ? 'white' : 'var(--text-secondary)' }}>Bill</button>
-                                        </div>
-                                      </div>
-                                      {splitLineItems.length > 1 ? (
-                                        <button type="button" onClick={() => setSplitLineItems((prev) => prev.filter((_, i) => i !== idx))} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: '18px', lineHeight: 1, padding: 0 }}>×</button>
-                                      ) : <span />}
-                                    </div>
-                                  );
-                                })}
-                                {/* Totals + Add line */}
-                                {(() => {
-                                  let receiptTotal = 0;
-                                  let billedTotal = 0;
-                                  for (const l of splitLineItems) {
-                                    const subtotal = splitLineSubtotal(l);
-                                    const g = parseFloat(l.gst) || 0;
-                                    const exp = subtotal + g;
-                                    const v = parseFloat(l.markupValue) || 0;
-                                    const t = l.markupType === 'bill' ? v : exp + (exp * v) / 100;
-                                    receiptTotal += exp;
-                                    billedTotal += t;
-                                  }
-                                  return (
-                                    <div style={{ display: 'flex', gap: '14px', borderTop: '1px solid var(--border-color)', paddingTop: '8px', marginTop: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                      <span>Receipt total: <strong style={{ color: 'var(--text-primary)' }}>${receiptTotal.toFixed(2)}</strong></span>
-                                      <span>Billed to client: <strong style={{ color: 'var(--text-primary)' }}>${billedTotal.toFixed(2)}</strong></span>
-                                      <span>Markup: <strong style={{ color: billedTotal - receiptTotal >= 0 ? '#2196F3' : '#b45309' }}>${(billedTotal - receiptTotal).toFixed(2)}</strong></span>
-                                    </div>
-                                  );
-                                })()}
-                                <button type="button" onClick={() => setSplitLineItems((prev) => [...prev, newSplitLine()])} style={{ marginTop: '6px', padding: '5px 10px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>+ Add line</button>
-                              </div>
-                            )}
-                          </>
+                          <div className="ionex-modal-intro">
+                            <strong>Receipt total</strong> = your reimbursement.
+                            Use the <strong>Markup</strong> control in step 2 to set what the client pays
+                            (<strong>%</strong> on top of the receipt, or <strong>Bill</strong> for a flat amount).
+                            {isHotel && <> Pre-filled to <strong>Bill</strong> at the ticket-line amount — adjust to tweak.</>}
+                            {canSplit && <> Receipt covers several items? Toggle <strong>split into lines</strong> in step 1.</>}
+                          </div>
                         );
                       })()}
+                      {receiptUploadError && (
+                        <div className="ionex-expense-error" role="alert" style={{ marginBottom: '12px' }}>{receiptUploadError}</div>
+                      )}
+                      {receiptAutofillBusy && (
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', fontStyle: 'italic' }}>Reading receipt…</div>
+                      )}
+                      {receiptAutofillNote && !receiptAutofillBusy && (
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: '8px' }}>{receiptAutofillNote}</div>
+                      )}
                       {pendingReimbursementExpense?.expense_type === 'Hotel' && hotelTicketLineBilled <= 0 && (
                         <div
+                          className="ionex-expense-error"
+                          role="alert"
                           style={{
-                            padding: '10px 12px',
-                            backgroundColor: 'rgba(245, 158, 11, 0.08)',
-                            border: '1px solid rgba(245, 158, 11, 0.35)',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            lineHeight: 1.45,
-                            color: '#f59e0b',
+                            marginBottom: '12px',
+                            backgroundColor: 'color-mix(in srgb, var(--warning-color) 12%, transparent)',
+                            border: '1px solid color-mix(in srgb, var(--warning-color) 40%, transparent)',
+                            color: 'var(--warning-color)',
                           }}
                         >
                           This line has no billed amount yet. Cancel, edit the hotel line with an amount billed to the client, then attach the receipt again.
                         </div>
                       )}
-                      {splitLineItems.length === 0 && (
-                          <div>
-                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>
-                              {receiptForm.markupType === 'bill' ? 'Bill to client ($)' : 'Markup (%)'}
-                            </label>
-                            {pendingReimbursementExpense?.expense_type === 'Hotel' && hotelTicketLineBilled > 0 && (
-                              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px', lineHeight: 1.4 }}>
-                                Ticket line currently bills <strong style={{ color: 'var(--text-primary)' }}>${hotelTicketLineBilled.toFixed(2)}</strong> to the client.
-                                Pre-filled to match — change to tweak the markup.
-                              </div>
-                            )}
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={receiptForm.markupValue}
-                                onChange={(e) => setReceiptForm({ ...receiptForm, markupValue: e.target.value })}
-                                placeholder={receiptForm.markupType === 'bill' ? '0.00' : '0'}
-                                style={{ flex: 1, padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '14px', boxSizing: 'border-box' }}
-                              />
-                              <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                                <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'percent' })} style={{ padding: '8px 12px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
-                                <button type="button" onClick={() => setReceiptForm({ ...receiptForm, markupType: 'bill' })} style={{ padding: '8px 12px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', backgroundColor: receiptForm.markupType === 'bill' ? 'var(--primary-color)' : 'var(--bg-secondary)', color: receiptForm.markupType === 'bill' ? 'white' : 'var(--text-secondary)' }}>Bill</button>
-                              </div>
-                            </div>
-                            {(() => {
-                              const amt = parseFloat(receiptForm.amount) || 0;
-                              const gst = parseFloat(receiptForm.gst) || 0;
-                              const expTotal = amt + gst;
-                              const val = parseFloat(receiptForm.markupValue) || 0;
-                              let markup: number;
-                              let total: number;
-                              if (receiptForm.markupType === 'bill') {
-                                total = val;
-                                markup = val - expTotal;
-                              } else {
-                                markup = (expTotal * val) / 100;
-                                total = expTotal + markup;
-                              }
-                              if (Math.abs(markup) >= 0.005 || receiptForm.markupType === 'bill') {
-                                return (
-                                  <div style={{ marginTop: '6px', padding: '8px 10px', backgroundColor: 'rgba(33, 150, 243, 0.08)', borderRadius: '6px', fontSize: '13px' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>Markup: </span>
-                                    <span style={{ fontWeight: 600, color: markup >= 0 ? '#2196F3' : '#b45309' }}>
-                                      {markup >= 0 ? '' : '−'}${Math.abs(markup).toFixed(2)}
-                                    </span>
-                                    <span style={{ marginLeft: '12px', color: 'var(--text-secondary)' }}>Total on ticket: </span>
-                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>${total.toFixed(2)}</span>
+                      {/* Step 1 — receipt details */}
+                      <div className="ionex-formstep" data-step="1">
+                        <div className="ionex-formstep-title">Receipt details</div>
+                        <div className="ionex-formstep-sub">
+                          Verify the description, date, and totals captured from the receipt.
+                        </div>
+                        {(() => {
+                          const canSplit =
+                            pendingReimbursementExpense?.expense_type === 'Expenses' &&
+                            !attachReceiptContext;
+                          const inSplitMode = splitLineItems.length > 0;
+                          return (
+                            <>
+                              {!inSplitMode && (
+                                <div className="ionex-formstep-grid">
+                                  <div>
+                                    <label className="ionex-expense-field-label">Name / Description</label>
+                                    <input
+                                      type="text"
+                                      className="ionex-expense-field-input"
+                                      value={receiptForm.description}
+                                      onChange={(e) => setReceiptForm({ ...receiptForm, description: e.target.value })}
+                                      placeholder="e.g. Hotel, Fuel, Parts..."
+                                    />
                                   </div>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </div>
-                      )}
-                      <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px' }}>
-                        <button onClick={() => {
-                          setShowReceiptModal(false);
-                          setPendingReimbursementExpense(null);
-                          setAttachReceiptContext(null);
-                          if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
-                          setReceiptPreviewUrl(null);
-                          setReceiptFile(null);
-                          setReceiptAutofillNote(null);
-                          setReceiptAutofillBusy(false);
-                          setSplitLineItems([]);
-                        }} style={{ flex: 1, padding: '10px', backgroundColor: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
+                                  <div>
+                                    <label className="ionex-expense-field-label">Expense date</label>
+                                    <input
+                                      type="date"
+                                      className="ionex-expense-field-input"
+                                      value={receiptForm.expense_date}
+                                      onChange={(e) => setReceiptForm({ ...receiptForm, expense_date: e.target.value })}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="ionex-expense-field-label">Amount ($)</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      className="ionex-expense-field-input"
+                                      value={receiptForm.amount}
+                                      onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })}
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="ionex-expense-field-label">GST ($)</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      className="ionex-expense-field-input"
+                                      value={receiptForm.gst}
+                                      onChange={(e) => setReceiptForm({ ...receiptForm, gst: e.target.value })}
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                              {inSplitMode && (
+                                <div className="ionex-formstep-grid is-single" style={{ gridTemplateColumns: '1fr' }}>
+                                  <div>
+                                    <label className="ionex-expense-field-label">Expense date</label>
+                                    <input
+                                      type="date"
+                                      className="ionex-expense-field-input"
+                                      value={receiptForm.expense_date}
+                                      onChange={(e) => setReceiptForm({ ...receiptForm, expense_date: e.target.value })}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                              {canSplit && (
+                                <button
+                                  type="button"
+                                  className="ionex-split-toggle"
+                                  style={{ marginTop: '10px' }}
+                                  onClick={() => {
+                                    if (inSplitMode) {
+                                      const first = splitLineItems[0];
+                                      const subtotal = splitLineSubtotal(first);
+                                      setReceiptForm({
+                                        ...receiptForm,
+                                        description: first.description || receiptForm.description,
+                                        amount: subtotal > 0 ? subtotal.toFixed(2) : '',
+                                        gst: first.gst,
+                                        markupType: first.markupType,
+                                        markupValue: first.markupValue,
+                                      });
+                                      setSplitLineItems([]);
+                                    } else {
+                                      setSplitLineItems([
+                                        newSplitLine({
+                                          description: receiptForm.description,
+                                          quantity: '1',
+                                          rate: receiptForm.amount,
+                                          gst: receiptForm.gst,
+                                          markupType: receiptForm.markupType,
+                                          markupValue: receiptForm.markupValue,
+                                        }),
+                                        newSplitLine(),
+                                      ]);
+                                    }
+                                  }}
+                                >
+                                  {inSplitMode ? '← Back to single line' : '+ Split into multiple lines'}
+                                </button>
+                              )}
+                              {inSplitMode && (
+                                <div style={{ marginTop: '12px' }}>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 50px 75px 65px 1fr 24px', gap: '6px', marginBottom: '4px', fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.08em', fontWeight: '700' }}>
+                                    <span>Description</span>
+                                    <span>Qty</span>
+                                    <span>Rate</span>
+                                    <span>GST</span>
+                                    <span>Markup</span>
+                                    <span />
+                                  </div>
+                                  {splitLineItems.map((line, idx) => {
+                                    const subtotal = splitLineSubtotal(line);
+                                    const qtyNum = parseFloat(line.quantity) || 0;
+                                    const updateLine = (patch: Partial<SplitLineItem>) =>
+                                      setSplitLineItems((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+                                    return (
+                                      <div key={line.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 50px 75px 65px 1fr 24px', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                                        <div>
+                                          <input type="text" value={line.description} onChange={(e) => updateLine({ description: e.target.value })} placeholder="e.g. Parts, Labour…" style={{ width: '100%', padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                          {qtyNum > 1 && subtotal > 0 && (
+                                            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                              Subtotal: ${subtotal.toFixed(2)}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <input type="number" step="0.01" min="0" value={line.quantity} onChange={(e) => updateLine({ quantity: e.target.value })} placeholder="1" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                        <input type="number" step="0.01" value={line.rate} onChange={(e) => updateLine({ rate: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                        <input type="number" step="0.01" value={line.gst} onChange={(e) => updateLine({ gst: e.target.value })} placeholder="0.00" style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center', minWidth: 0 }}>
+                                          <input type="number" step="0.01" value={line.markupValue} onChange={(e) => updateLine({ markupValue: e.target.value })} placeholder={line.markupType === 'bill' ? 'Bill' : '%'} style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '13px', boxSizing: 'border-box', minWidth: 0 }} />
+                                          <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-color)', flexShrink: 0 }}>
+                                            <button type="button" onClick={() => updateLine({ markupType: 'percent' })} style={{ padding: '4px 7px', border: 'none', fontSize: '11px', fontWeight: 700, cursor: 'pointer', backgroundColor: line.markupType === 'percent' ? 'var(--primary-color)' : 'var(--bg-primary)', color: line.markupType === 'percent' ? 'white' : 'var(--text-secondary)' }}>%</button>
+                                            <button type="button" onClick={() => updateLine({ markupType: 'bill' })} style={{ padding: '4px 7px', border: 'none', borderLeft: '1px solid var(--border-color)', fontSize: '11px', fontWeight: 700, cursor: 'pointer', backgroundColor: line.markupType === 'bill' ? 'var(--primary-color)' : 'var(--bg-primary)', color: line.markupType === 'bill' ? 'white' : 'var(--text-secondary)' }}>Bill</button>
+                                          </div>
+                                        </div>
+                                        {splitLineItems.length > 1 ? (
+                                          <button type="button" onClick={() => setSplitLineItems((prev) => prev.filter((_, i) => i !== idx))} title="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: '18px', lineHeight: 1, padding: 0 }}>×</button>
+                                        ) : <span />}
+                                      </div>
+                                    );
+                                  })}
+                                  <button type="button" onClick={() => setSplitLineItems((prev) => [...prev, newSplitLine()])} style={{ marginTop: '6px', padding: '5px 12px', backgroundColor: 'transparent', color: 'var(--primary-color)', border: '1px dashed color-mix(in srgb, var(--primary-color) 45%, transparent)', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.04em', textTransform: 'uppercase', cursor: 'pointer' }}>+ Add line</button>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                      {/* Step 2 — markup / bill to client + live money strip */}
+                      <div className="ionex-formstep" data-step="2">
+                        <div className="ionex-formstep-title">
+                          {splitLineItems.length > 0 ? 'Per-line markup' : 'Bill to client / markup'}
+                        </div>
+                        {splitLineItems.length === 0 ? (() => {
+                          const amt = parseFloat(receiptForm.amount) || 0;
+                          const gst = parseFloat(receiptForm.gst) || 0;
+                          const expTotal = amt + gst;
+                          const val = parseFloat(receiptForm.markupValue) || 0;
+                          let markup: number; let total: number;
+                          if (receiptForm.markupType === 'bill') {
+                            total = val; markup = val - expTotal;
+                          } else {
+                            markup = (expTotal * val) / 100; total = expTotal + markup;
+                          }
+                          const isHotelPrefilled = pendingReimbursementExpense?.expense_type === 'Hotel' && hotelTicketLineBilled > 0;
+                          return (
+                            <>
+                              <div className="ionex-formstep-sub">
+                                {isHotelPrefilled ? (
+                                  <>Pre-filled to match the ticket line (<strong>${hotelTicketLineBilled.toFixed(2)}</strong>). Change to tweak the markup.</>
+                                ) : receiptForm.markupType === 'bill' ? (
+                                  <>Enter the total <strong>billed to the client</strong>. Markup auto-calculates as bill − receipt.</>
+                                ) : (
+                                  <>Enter the <strong>%</strong> to add on top of the receipt total.</>
+                                )}
+                              </div>
+                              <div className="ionex-markup-control">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={receiptForm.markupValue}
+                                  onChange={(e) => setReceiptForm({ ...receiptForm, markupValue: e.target.value })}
+                                  placeholder={receiptForm.markupType === 'bill' ? '0.00' : '0'}
+                                />
+                                <div className="ionex-markup-toggle">
+                                  <button
+                                    type="button"
+                                    className={receiptForm.markupType === 'percent' ? 'is-active' : ''}
+                                    onClick={() => setReceiptForm({ ...receiptForm, markupType: 'percent' })}
+                                  >%</button>
+                                  <button
+                                    type="button"
+                                    className={receiptForm.markupType === 'bill' ? 'is-active' : ''}
+                                    onClick={() => setReceiptForm({ ...receiptForm, markupType: 'bill' })}
+                                  >Bill</button>
+                                </div>
+                              </div>
+                              <div className="ionex-money-strip">
+                                <div className="ionex-money-cell is-cost">
+                                  <span className="ionex-money-cell-label">Receipt</span>
+                                  <span className="ionex-money-cell-value">${expTotal.toFixed(2)}</span>
+                                </div>
+                                <span className="ionex-money-op">+</span>
+                                <div className={`ionex-money-cell is-markup${markup < 0 ? ' is-negative' : ''}`}>
+                                  <span className="ionex-money-cell-label">Markup</span>
+                                  <span className="ionex-money-cell-value">
+                                    {markup < 0 ? '−' : ''}${Math.abs(markup).toFixed(2)}
+                                  </span>
+                                </div>
+                                <span className="ionex-money-op">=</span>
+                                <div className="ionex-money-cell is-bill">
+                                  <span className="ionex-money-cell-label">Bill to client</span>
+                                  <span className="ionex-money-cell-value">${total.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </>
+                          );
+                        })() : (() => {
+                          let receiptTotal = 0; let billedTotal = 0;
+                          for (const l of splitLineItems) {
+                            const subtotal = splitLineSubtotal(l);
+                            const g = parseFloat(l.gst) || 0;
+                            const exp = subtotal + g;
+                            const v = parseFloat(l.markupValue) || 0;
+                            const t = l.markupType === 'bill' ? v : exp + (exp * v) / 100;
+                            receiptTotal += exp; billedTotal += t;
+                          }
+                          const markup = billedTotal - receiptTotal;
+                          return (
+                            <>
+                              <div className="ionex-formstep-sub">
+                                Markup is per line in step 1. The totals below sum across all lines.
+                              </div>
+                              <div className="ionex-money-strip">
+                                <div className="ionex-money-cell is-cost">
+                                  <span className="ionex-money-cell-label">Receipt total</span>
+                                  <span className="ionex-money-cell-value">${receiptTotal.toFixed(2)}</span>
+                                </div>
+                                <span className="ionex-money-op">+</span>
+                                <div className={`ionex-money-cell is-markup${markup < 0 ? ' is-negative' : ''}`}>
+                                  <span className="ionex-money-cell-label">Total markup</span>
+                                  <span className="ionex-money-cell-value">
+                                    {markup < 0 ? '−' : ''}${Math.abs(markup).toFixed(2)}
+                                  </span>
+                                </div>
+                                <span className="ionex-money-op">=</span>
+                                <div className="ionex-money-cell is-bill">
+                                  <span className="ionex-money-cell-label">Billed to client</span>
+                                  <span className="ionex-money-cell-value">${billedTotal.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                      <div className="ionex-receipt-modal-actions">
+                        <button
+                          type="button"
+                          className="is-cancel"
+                          onClick={() => {
+                            setShowReceiptModal(false);
+                            setPendingReimbursementExpense(null);
+                            setAttachReceiptContext(null);
+                            if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+                            setReceiptPreviewUrl(null);
+                            setReceiptFile(null);
+                            setReceiptAutofillNote(null);
+                            setReceiptAutofillBusy(false);
+                            setSplitLineItems([]);
+                          }}
+                        >Cancel</button>
                         <button
                           disabled={isUploadingReceipt}
                           onClick={async () => {
@@ -7983,9 +7913,9 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                               setIsUploadingReceipt(false);
                             }
                           }}
-                          style={{ flex: 1, padding: '10px', backgroundColor: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '6px', cursor: isUploadingReceipt ? 'not-allowed' : 'pointer', fontSize: '14px', fontWeight: '600', opacity: isUploadingReceipt ? 0.7 : 1 }}
+                          className="is-save"
                         >
-                          {isUploadingReceipt ? 'Saving...' : 'Save Receipt'}
+                          {isUploadingReceipt ? 'Saving…' : 'Save receipt'}
                         </button>
                       </div>
                     </div>
