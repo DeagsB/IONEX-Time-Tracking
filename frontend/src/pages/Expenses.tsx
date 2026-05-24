@@ -2320,42 +2320,93 @@ export default function Expenses() {
                 .filter((r) => pendingReceiptSelectedIds.has(String(r.id)) && String(r.expense_type) === 'Hotel')
                 .map((r) => String(r.id));
               const canSplitHotel = selectedHotelIds.length >= 2;
+              const n = pendingReceiptSelectedIds.size;
               return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, alignSelf: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flexShrink: 0, alignSelf: 'center', minWidth: '280px' }}>
+                  {/* One-receipt-to-many-items call-out, mirrors the Link Receipt modal's
+                      banner so admins don't have to guess what "Submit receipt for N items"
+                      actually does. */}
+                  {n > 1 && (
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        backgroundColor: 'color-mix(in srgb, var(--primary-color) 8%, transparent)',
+                        border: '1px solid color-mix(in srgb, var(--primary-color) 30%, transparent)',
+                        fontSize: '12px',
+                        color: 'var(--text-secondary)',
+                        lineHeight: 1.5,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                      }}
+                      aria-live="polite"
+                    >
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '50%',
+                          backgroundColor: 'color-mix(in srgb, var(--primary-color) 14%, var(--bg-primary))',
+                          color: 'var(--primary-color)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '13px',
+                          fontWeight: 800,
+                        }}
+                        aria-hidden
+                      >
+                        1
+                      </span>
+                      <span style={{ flex: 1 }}>
+                        <strong style={{ color: 'var(--text-primary)' }}>One receipt → all {n} items.</strong>{' '}
+                        Upload a single receipt and we&apos;ll attach it to every line you ticked.
+                      </span>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => startReceiptLinkingForLines([...pendingReceiptSelectedIds])}
+                    title={
+                      n === 1
+                        ? 'Upload a receipt for this ticket-expense line.'
+                        : `Upload one receipt and attach it to all ${n} ticked lines in one go.`
+                    }
                     style={{
-                      padding: '8px 14px',
-                      borderRadius: '6px',
+                      padding: '10px 14px',
+                      borderRadius: '8px',
                       backgroundColor: 'var(--primary-color)',
                       color: 'white',
                       border: 'none',
                       fontSize: '13px',
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      letterSpacing: '0.01em',
                       cursor: 'pointer',
                     }}
                   >
-                    Submit receipt for {pendingReceiptSelectedIds.size} item
-                    {pendingReceiptSelectedIds.size === 1 ? '' : 's'}
+                    {n === 1
+                      ? 'Submit receipt for 1 item'
+                      : `Submit one receipt for all ${n} items`}
                   </button>
                   {canSplitHotel && (
                     <button
                       type="button"
                       onClick={() => openSplitWizard(selectedHotelIds)}
-                      title="One hotel bill covering several nights — splits subtotal+tax across selected hotel lines proportionally"
+                      title="One hotel bill covering several nights — splits subtotal + tax across selected hotel lines proportionally"
                       style={{
-                        padding: '8px 14px',
-                        borderRadius: '6px',
-                        border: '1px solid rgba(245, 158, 11, 0.6)',
-                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                        color: '#92400e',
+                        padding: '9px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid color-mix(in srgb, var(--warning-color) 60%, transparent)',
+                        backgroundColor: 'color-mix(in srgb, var(--warning-color) 14%, transparent)',
+                        color: 'color-mix(in srgb, var(--warning-color) 80%, var(--text-primary))',
                         fontSize: '12px',
-                        fontWeight: 600,
+                        fontWeight: 700,
                         cursor: 'pointer',
                       }}
                     >
-                      Split hotel bill across {selectedHotelIds.length} nights
+                      Split one hotel bill across {selectedHotelIds.length} nights
                     </button>
                   )}
                 </div>
@@ -2452,6 +2503,7 @@ export default function Expenses() {
                         <button
                           type="button"
                           onClick={() => startReceiptLinkingForLines([id])}
+                          title="Upload a receipt for this line. Tip: tick multiple lines first to attach one receipt to all of them at once."
                           style={{
                             padding: '5px 10px',
                             borderRadius: '6px',
