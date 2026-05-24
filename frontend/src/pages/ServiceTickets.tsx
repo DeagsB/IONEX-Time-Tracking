@@ -6810,16 +6810,16 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
                                   Bills client{' '}
                                   <strong>${(billed || 0).toFixed(2)}</strong>
                                   {isSubsistence && (
-                                    <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll <span style={{ color: 'var(--text-tertiary)' }}>(per diem · 100 % default)</span></>
+                                    <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll <span style={{ color: 'var(--text-tertiary)' }}>(per diem · 100 %)</span></>
                                   )}
                                   {!isSubsistence && isReimburseLine && et === 'Travel' && (
-                                    <> · Reimburses you about <strong>${projectedMileage.toFixed(2)}</strong> via payroll <span style={{ color: 'var(--text-tertiary)' }}>(mileage · 90 % default — uses your rate)</span></>
+                                    <> · Reimburses you about <strong>${projectedMileage.toFixed(2)}</strong> via payroll <span style={{ color: 'var(--text-tertiary)' }}>(mileage · 90 %)</span></>
                                   )}
                                   {!isSubsistence && isReimburseLine && et === 'Equipment' && (
                                     <> · Reimburses you <strong>${(billed || 0).toFixed(2)}</strong> via payroll <span style={{ color: 'var(--text-tertiary)' }}>(equipment · 100 %)</span></>
                                   )}
                                   {!isSubsistence && isReimburseLine && (isHotel || isOther) && (
-                                    <> · Reimbursement = <strong>receipt total</strong> <span style={{ color: 'var(--text-tertiary)' }}>(100 % default — uses your rate)</span></>
+                                    <> · Reimbursement = <strong>receipt total</strong></>
                                   )}
                                   {!isSubsistence && !isReimburseLine && (
                                     <> · No reimbursement</>
