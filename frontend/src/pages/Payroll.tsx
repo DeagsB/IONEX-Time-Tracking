@@ -870,18 +870,28 @@ export default function Payroll() {
     ],
     queryFn: async () => {
       if (payrollTicketIdsForReceiptCheck.length === 0 && payrollLinkedUserExpenseIds.length === 0) return [];
-      // Include the file/amount fields so the reimbursement breakdown can preview the receipt
-      // that backs an "Expense Billed to Customer" / "Hotel" ticket-expense line (these are
-      // ticket rows, but the underlying receipt lives in user_expenses).
-      const filters: string[] = [];
-      if (payrollTicketIdsForReceiptCheck.length > 0) filters.push(`service_ticket_id.in.(${payrollTicketIdsForReceiptCheck.join(',')})`);
-      if (payrollLinkedUserExpenseIds.length > 0) filters.push(`id.in.(${payrollLinkedUserExpenseIds.join(',')})`);
-      const { data, error } = await supabase
-        .from('user_expenses')
-        .select('id, service_ticket_id, description, status, amount, gst, expense_date, notes, receipt_url')
-        .or(filters.join(','));
-      if (error) throw error;
-      return data || [];
+      // Two parallel queries instead of one .or() — Supabase JS's .or() with two .in.(...)
+      // filters tends to mis-parse the embedded commas, which was returning an empty result
+      // set and dropping Chase / Huan's receipt-backed reimbursements to $0.
+      const baseSelect = 'id, service_ticket_id, description, status, amount, gst, expense_date, notes, receipt_url';
+      const byId = new Map<string, any>();
+      if (payrollTicketIdsForReceiptCheck.length > 0) {
+        const { data, error } = await supabase
+          .from('user_expenses')
+          .select(baseSelect)
+          .in('service_ticket_id', payrollTicketIdsForReceiptCheck);
+        if (error) throw error;
+        for (const row of data || []) byId.set(String(row.id), row);
+      }
+      if (payrollLinkedUserExpenseIds.length > 0) {
+        const { data, error } = await supabase
+          .from('user_expenses')
+          .select(baseSelect)
+          .in('id', payrollLinkedUserExpenseIds);
+        if (error) throw error;
+        for (const row of data || []) byId.set(String(row.id), row);
+      }
+      return [...byId.values()];
     },
     enabled: payrollTicketIdsForReceiptCheck.length > 0 || payrollLinkedUserExpenseIds.length > 0,
   });
