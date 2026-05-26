@@ -2364,12 +2364,25 @@ export default function Expenses() {
           The ::before "Workflow" eyebrow is shared across the app — accepted here. */}
       <div className="ionex-tabs-rail" role="tablist" aria-label="Expenses view">
         {([
+          // Each tab's badge counts only rows that still need admin action — the receipt-
+          // expenses tab is already action-only (rows still need a receipt linked), so its
+          // length is the natural count. The Auto and Contractors tabs aggregate "anything
+          // that's been entered" so we have to filter to reimbursement_status != 'paid' for
+          // the count badge to mean "do something here".
           { id: 'receipts' as const, label: 'Receipt expenses', count: pendingReceiptLinesView.length },
-          { id: 'auto' as const, label: 'Auto-reimbursed', count: autoReimbursedRows.length },
+          {
+            id: 'auto' as const,
+            label: 'Auto-reimbursed',
+            count: autoReimbursedRows.filter((r: any) => String(r.reimbursement_status || '') !== 'paid').length,
+          },
           // Admin-only — contractors invoice the company, so the tab is irrelevant to
           // employee logins. Filtered out of the rail below rather than hidden via CSS so
           // the rail measures correctly without a phantom slot.
-          ...(isAdmin ? [{ id: 'contractors' as const, label: 'Contractors', count: contractorTicketExpenseRows.length }] : []),
+          ...(isAdmin ? [{
+            id: 'contractors' as const,
+            label: 'Contractors',
+            count: contractorTicketExpenseRows.filter((r: any) => String(r.reimbursement_status || '') !== 'paid').length,
+          }] : []),
         ]).map((tab) => {
           const isActive = activeExpensesTab === tab.id;
           const classes = ['ionex-tab-chip'];
@@ -4994,10 +5007,12 @@ export default function Expenses() {
         <div>
           <div style={{ marginBottom: '8px' }}>
             <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              Auto-reimbursed (no action needed)
+              Auto-reimbursed
             </h2>
             <p style={{ margin: '6px 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
-              These items are paid on your next payroll once the ticket is approved. No receipt required.
+              {isAdmin
+                ? 'These items don\'t require a receipt, but each one still needs to be explicitly marked accounted for so the books stay in sync with what\'s actually been paid out.'
+                : 'These items don\'t require a receipt. They appear on your payroll once the admin marks them accounted for.'}
             </p>
           </div>
 
@@ -5144,19 +5159,75 @@ export default function Expenses() {
                                     ${total.toFixed(2)}
                                   </td>
                                   <td style={{ padding: '10px 16px', textAlign: 'center' }}>
-                                    <span style={{
-                                      display: 'inline-block',
-                                      padding: '2px 10px',
-                                      borderRadius: '999px',
-                                      fontSize: '11px',
-                                      fontWeight: 700,
-                                      letterSpacing: '0.04em',
-                                      textTransform: 'uppercase',
-                                      backgroundColor: isPaid ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                                      color: isPaid ? '#15803d' : '#92400e',
-                                    }}>
-                                      {isPaid ? 'Paid' : 'Queued'}
-                                    </span>
+                                    {isPaid ? (
+                                      <span style={{
+                                        display: 'inline-block',
+                                        padding: '2px 10px',
+                                        borderRadius: '999px',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        letterSpacing: '0.04em',
+                                        textTransform: 'uppercase',
+                                        backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                        color: '#15803d',
+                                      }}>
+                                        ✓ Accounted
+                                      </span>
+                                    ) : isAdmin ? (
+                                      // Admin-only inline action — auto-reimbursed lines no longer
+                                      // auto-drop out of payroll. Admin must explicitly account for
+                                      // each so the books stay in sync with what's actually been paid.
+                                      <button
+                                        type="button"
+                                        disabled={batchActionBusy}
+                                        onClick={async () => {
+                                          const proceed = window.confirm(
+                                            `Mark this ${category.toLowerCase()} line as accounted ($${total.toFixed(2)} for ${empName})?\n\n` +
+                                            'It will drop out of future Payroll views and be stamped accounted in the system.'
+                                          );
+                                          if (!proceed) return;
+                                          try {
+                                            await serviceTicketExpensesService.updateReimbursementStatus(String(row.id), 'paid');
+                                            queryClient.invalidateQueries({ queryKey: ['ticketReimbExpenses'] });
+                                            queryClient.invalidateQueries({ queryKey: ['payrollTicketExpenses'] });
+                                            queryClient.invalidateQueries({ queryKey: ['payrollCatchUpTicketExpenses'] });
+                                          } catch (err: any) {
+                                            alert('Failed to mark as accounted: ' + (err?.message || 'Unknown error'));
+                                          }
+                                        }}
+                                        title={`Mark this line as accounted ($${total.toFixed(2)}).`}
+                                        style={{
+                                          padding: '3px 10px',
+                                          borderRadius: '999px',
+                                          border: '1px solid rgba(21, 128, 61, 0.4)',
+                                          backgroundColor: 'rgba(34, 197, 94, 0.10)',
+                                          color: '#15803d',
+                                          fontSize: '11px',
+                                          fontWeight: 700,
+                                          letterSpacing: '0.04em',
+                                          textTransform: 'uppercase',
+                                          cursor: batchActionBusy ? 'not-allowed' : 'pointer',
+                                          fontFamily: 'inherit',
+                                          opacity: batchActionBusy ? 0.5 : 1,
+                                        }}
+                                      >
+                                        Account for
+                                      </button>
+                                    ) : (
+                                      <span style={{
+                                        display: 'inline-block',
+                                        padding: '2px 10px',
+                                        borderRadius: '999px',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        letterSpacing: '0.04em',
+                                        textTransform: 'uppercase',
+                                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                                        color: '#92400e',
+                                      }}>
+                                        Needs accounting
+                                      </span>
+                                    )}
                                   </td>
                                 </tr>
                               );
