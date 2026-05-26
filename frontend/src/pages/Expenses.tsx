@@ -1618,9 +1618,13 @@ export default function Expenses() {
   // period (the natural cadence for bookkeeping data entry). Independent of UEM's filter
   // rail so admin always has the full reconcile picture in this tab. Hidden hotel
   // ticket placeholders are stripped — the employee's actual receipt is what gets entered.
+  // Contractor rows are excluded — they invoice the company directly and don't run
+  // through the reimbursement workflow, so they live in the dedicated Contractors tab.
   const reconcileGroupedByDate = useMemo(() => {
     const rows = (mergedAdminExpensesForApproval as any[]).filter((e) => {
       if (isHiddenHotelTicketPlaceholder(e)) return false;
+      const uid = String(e._userId ?? '');
+      if (uid && contractorByUserId.get(uid)) return false;
       return e._status === 'unpaid';
     });
     const sorted = [...rows].sort((a: any, b: any) => {
@@ -1640,7 +1644,7 @@ export default function Expenses() {
     }
     return groups;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mergedAdminExpensesForApproval]);
+  }, [mergedAdminExpensesForApproval, contractorByUserId]);
 
   const reconcileGroupedByPayPeriod = useMemo(
     () => groupDateGroupsByPayPeriod(reconcileGroupedByDate, (e) => e._date || e.expense_date),
