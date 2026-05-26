@@ -7019,9 +7019,20 @@ export default function Invoices() {
                   const periodLabel = activeGroup.key.periodLabel ?? activeGroup.key.periodKey ?? '';
 
                   // --- Step actions ---
+                  // Prefer the signed approval PDF when the approver has returned one (portal
+                  // post-approval flow). Earlier steps (submit_approval, attach_signed) have no
+                  // signed PDF yet and naturally fall through to a regenerated merge.
                   const onDownloadBatchPdf = async () => {
                     setExportError(null);
                     try {
+                      const sig = savedApprovalMetadata?.[persistId];
+                      if (sig) {
+                        const blob = await invoicedBatchApprovalsService.downloadApproval(sig.storagePath);
+                        const filename = invoiceFilenameForDownload(sig.filename);
+                        saveAs(blob, filename);
+                        setWizardDownloadToast(`Downloaded ${filename}`);
+                        return;
+                      }
                       const merged = await buildMergedBatchPdfBlob(activeGroup);
                       const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects);
                       saveAs(merged, filename);
@@ -7630,12 +7641,17 @@ export default function Invoices() {
                           )}
                           {lineItemsBlock}
                           {!hasInvoiceFile ? (
-                            fileDropZone({
-                              id: `wiz-port-invoice-${persistId}`,
-                              label: 'Drop invoice PDF here to combine + download',
-                              uploading: uploadingInvoiceGroupId === persistId,
-                              onPick: onAttachAndDownloadCombined,
-                            })
+                            <div style={{ marginBottom: '12px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                                Once the invoice is created, drop the PDF here
+                              </div>
+                              {fileDropZone({
+                                id: `wiz-port-invoice-${persistId}`,
+                                label: 'Drop invoice PDF here to combine + download',
+                                uploading: uploadingInvoiceGroupId === persistId,
+                                onPick: onAttachAndDownloadCombined,
+                              })}
+                            </div>
                           ) : (
                             <div>
                               <div style={{ marginBottom: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
@@ -7646,6 +7662,11 @@ export default function Invoices() {
                               </button>
                             </div>
                           )}
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button type="button" onClick={onDownloadBatchPdf} style={goButtonStyle} title={hasApprovalFile ? 'Download the signed approval PDF returned by the approver.' : 'Re-build and download the merged batch PDF.'}>
+                              ⬇ {hasApprovalFile ? 'Download signed batch PDF' : 'Download batch PDF'}
+                            </button>
+                          </div>
                         </div>
                       );
                     }
