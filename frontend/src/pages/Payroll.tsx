@@ -1251,6 +1251,12 @@ export default function Payroll() {
       const userId = exp.service_tickets?.user_id;
       if (!userId) continue;
 
+      // Past-period view: skip unaccounted lines. They roll forward to the current
+      // pay period via the catch-up query and should only be reimbursed there — leaving
+      // them on the historical period inflates the Reimburse column for a period that
+      // didn't actually pay them out.
+      if (!isCurrentPeriod && exp.reimbursement_status !== 'paid') continue;
+
       // Receipt-required types (Hotel, Expenses) without a linked receipt can't be
       // reimbursed yet, but they still need to be visible in the breakdown so admins
       // see what's outstanding — silently dropping them was the bug behind Chase
@@ -1381,6 +1387,9 @@ export default function Payroll() {
       // Admin explicitly marked this receipt as not reimbursable (e.g. company paid).
       // It stays in user_expenses so it can be Applied-to-Ticket, but payroll skips it.
       if (exp.not_reimbursable === true) continue;
+      // Past-period view: same rollover rule as ticket-expenses above — unpaid receipts
+      // belong on the current period (catch-up brings them in), not on a past period.
+      if (!isCurrentPeriod && exp.status !== 'paid') continue;
       const userId = exp.user_id;
       if (!userId) continue;
 
@@ -1416,7 +1425,7 @@ export default function Payroll() {
     }
 
     return map;
-  }, [ticketExpensesForReimbursements, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink, linkedTicketExpensesForReceipts]);
+  }, [ticketExpensesForReimbursements, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink, linkedTicketExpensesForReceipts, isCurrentPeriod]);
 
   const grandTotalReimbursements = useMemo(() => {
     const employeeIds = new Set(displayedEmployeeHours.map((e) => e.userId));
