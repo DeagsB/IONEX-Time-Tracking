@@ -1920,15 +1920,19 @@ export default function Expenses() {
     }
     if (hasSeededContractorPeriodCollapse.current) return;
     hasSeededContractorPeriodCollapse.current = true;
-    // Same quiet default as the other tabs — every period collapsed on first paint.
-    const collapsed = contractorRowsGroupedByPayPeriod.map((p) => p.periodKey);
+    // Same quiet default as the other tabs — composite (userId|periodKey) so toggling one
+    // contractor's period doesn't drag every other contractor's matching period open.
+    const collapsed: string[] = [];
+    for (const u of contractorRowsGroupedByUser) {
+      for (const p of u.periods) collapsed.push(`${u.userId}|${p.periodKey}`);
+    }
     setCollapsedContractorPeriodKeys(new Set(collapsed));
-  }, [contractorRowsGroupedByPayPeriod]);
-  const toggleContractorPeriodGroup = (periodKey: string) => {
+  }, [contractorRowsGroupedByPayPeriod, contractorRowsGroupedByUser]);
+  const toggleContractorPeriodGroup = (compositeKey: string) => {
     setCollapsedContractorPeriodKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(periodKey)) next.delete(periodKey);
-      else next.add(periodKey);
+      if (next.has(compositeKey)) next.delete(compositeKey);
+      else next.add(compositeKey);
       return next;
     });
   };
@@ -2069,11 +2073,11 @@ export default function Expenses() {
     });
   };
 
-  const toggleAutoExpensePeriodGroup = (periodKey: string) => {
+  const toggleAutoExpensePeriodGroup = (compositeKey: string) => {
     setCollapsedAutoExpensePeriodKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(periodKey)) next.delete(periodKey);
-      else next.add(periodKey);
+      if (next.has(compositeKey)) next.delete(compositeKey);
+      else next.add(compositeKey);
       return next;
     });
   };
@@ -2086,11 +2090,14 @@ export default function Expenses() {
     }
     if (hasSeededAutoExpensePeriodCollapse.current) return;
     hasSeededAutoExpensePeriodCollapse.current = true;
-    // Start with every pay-period card collapsed — the user prefers a quiet default
-    // and expands the period they want to look at. Same rationale for the other tabs.
-    const collapsed = autoReimbursedGroupedByPayPeriod.map((p) => p.periodKey);
+    // Start with every pay-period card collapsed — composite (userId|periodKey) so each
+    // user's period collapses independently rather than all sharing one period state.
+    const collapsed: string[] = [];
+    for (const u of autoReimbursedGroupedByUser) {
+      for (const p of u.periods) collapsed.push(`${u.userId}|${p.periodKey}`);
+    }
     setCollapsedAutoExpensePeriodKeys(new Set(collapsed));
-  }, [autoReimbursedGroupedByPayPeriod]);
+  }, [autoReimbursedGroupedByPayPeriod, autoReimbursedGroupedByUser]);
 
   useEffect(() => {
     hasSeededAutoExpensePeriodCollapse.current = false;
@@ -2105,11 +2112,14 @@ export default function Expenses() {
       return next;
     });
   };
-  const toggleAdminExpensePeriodGroup = (periodKey: string) => {
+  /** Composite key (userId|periodKey) — the user-first layout means the same period
+   *  appears under every employee, so a plain periodKey would toggle all of them at
+   *  once. Composite keying scopes each toggle to a single user-card row. */
+  const toggleAdminExpensePeriodGroup = (compositeKey: string) => {
     setCollapsedAdminExpensePeriodKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(periodKey)) next.delete(periodKey);
-      else next.add(periodKey);
+      if (next.has(compositeKey)) next.delete(compositeKey);
+      else next.add(compositeKey);
       return next;
     });
   };
@@ -2141,9 +2151,14 @@ export default function Expenses() {
     }
     if (hasSeededAdminExpensePeriodCollapse.current) return;
     hasSeededAdminExpensePeriodCollapse.current = true;
-    const collapsed = adminFilteredExpensesGroupedByPayPeriod.map((p) => p.periodKey);
+    // Seed composite keys (one per user × period) so the initial "everything collapsed"
+    // state covers every card on the page, not just one row per period.
+    const collapsed: string[] = [];
+    for (const u of adminFilteredExpensesGroupedByUser) {
+      for (const p of u.periods) collapsed.push(`${u.userId}|${p.periodKey}`);
+    }
     setCollapsedAdminExpensePeriodKeys(new Set(collapsed));
-  }, [adminFilteredExpensesGroupedByPayPeriod]);
+  }, [adminFilteredExpensesGroupedByPayPeriod, adminFilteredExpensesGroupedByUser]);
 
   const toggleMyExpenseDateGroup = (dateKey: string) => {
     setCollapsedMyExpenseDateKeys((prev) => {
@@ -4724,7 +4739,8 @@ export default function Expenses() {
                     </span>
                   </button>
                   {!userCollapsed && userGroup.periods.map((period) => {
-              const periodCollapsed = collapsedAdminExpensePeriodKeys.has(period.periodKey);
+              const compositePeriodKey = `${userGroup.userId}|${period.periodKey}`;
+              const periodCollapsed = collapsedAdminExpensePeriodKeys.has(compositePeriodKey);
               const flatItems: any[] = period.dateGroups.flatMap((g) => g.items);
               const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(flatItems);
               const receiptGroupTotals = sharedReceiptGroupTotalsInOrder(flatItems, sharedReceiptMeta);
@@ -4742,13 +4758,13 @@ export default function Expenses() {
               const periodModifier = period.isCurrent ? '' : period.isFuture ? ' is-future' : '';
               return (
                 <div
-                  key={`admin-period-${period.periodKey}`}
+                  key={`admin-period-${userGroup.userId}-${period.periodKey}`}
                   className={`ionex-period-card${periodCollapsed ? ' is-collapsed' : ''}${periodModifier}`}
                 >
                   <button
                     type="button"
                     className="ionex-period-card-header"
-                    onClick={() => toggleAdminExpensePeriodGroup(period.periodKey)}
+                    onClick={() => toggleAdminExpensePeriodGroup(compositePeriodKey)}
                     aria-expanded={!periodCollapsed}
                   >
                     <span className="ionex-period-card-chevron" style={{ transform: periodCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }} aria-hidden>▶</span>
@@ -5330,17 +5346,18 @@ export default function Expenses() {
                 </thead>
                 <tbody>
                   {userGroup.periods.map((period) => {
-                    const periodCollapsed = collapsedAutoExpensePeriodKeys.has(period.periodKey);
+                    const compositeAutoKey = `${userGroup.userId}|${period.periodKey}`;
+                    const periodCollapsed = collapsedAutoExpensePeriodKeys.has(compositeAutoKey);
                     // Employee column removed inside user cards — the card header carries the
                     // employee name, so each row is one column narrower than the original layout.
                     const colCount = 7;
                     return (
-                      <Fragment key={`auto-period-${period.periodKey}`}>
+                      <Fragment key={`auto-period-${userGroup.userId}-${period.periodKey}`}>
                         <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.10)', borderBottom: '2px solid rgba(20, 184, 166, 0.45)' }}>
                           <td colSpan={colCount} style={{ padding: 0 }}>
                             <button
                               type="button"
-                              onClick={() => toggleAutoExpensePeriodGroup(period.periodKey)}
+                              onClick={() => toggleAutoExpensePeriodGroup(compositeAutoKey)}
                               aria-expanded={!periodCollapsed}
                               style={{
                                 width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
@@ -5645,16 +5662,17 @@ export default function Expenses() {
                 </thead>
                 <tbody>
                   {userGroup.periods.map((period) => {
-                    const periodCollapsed = collapsedContractorPeriodKeys.has(period.periodKey);
+                    const compositeContractorKey = `${userGroup.userId}|${period.periodKey}`;
+                    const periodCollapsed = collapsedContractorPeriodKeys.has(compositeContractorKey);
                     // Contractor column removed inside user cards — header already names the contractor.
                     const colCount = 6;
                     return (
-                      <Fragment key={`contractor-period-${period.periodKey}`}>
+                      <Fragment key={`contractor-period-${userGroup.userId}-${period.periodKey}`}>
                         <tr style={{ backgroundColor: 'rgba(99, 102, 241, 0.10)', borderBottom: '2px solid rgba(99, 102, 241, 0.45)' }}>
                           <td colSpan={colCount} style={{ padding: 0 }}>
                             <button
                               type="button"
-                              onClick={() => toggleContractorPeriodGroup(period.periodKey)}
+                              onClick={() => toggleContractorPeriodGroup(compositeContractorKey)}
                               aria-expanded={!periodCollapsed}
                               style={{
                                 width: '100%', display: 'flex', alignItems: 'center', gap: '12px',

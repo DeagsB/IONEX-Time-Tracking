@@ -790,7 +790,17 @@ export default function Payroll() {
     return t.toISOString().split('T')[0];
   }, []);
 
-  const isCurrentPeriod = endDate >= todayStr;
+  // "Current period" means the admin is looking at the pay run they're about to
+  // process — anything from the current 14-day pay period onward. Using endDate >= today
+  // alone misses the gap between period-end and payday (e.g. period ends Sun, today is
+  // Mon, payday Fri) — during that window the admin is still preparing this payroll and
+  // catch-up rollovers must apply. Compare against getCurrentPayPeriod().start so a view
+  // that ends anywhere from the current period forward counts as current.
+  const currentPayPeriodStart = useMemo(() => {
+    const p = getCurrentPayPeriod();
+    return p?.start ?? todayStr;
+  }, [todayStr]);
+  const isCurrentPeriod = endDate >= currentPayPeriodStart;
 
   const { data: catchUpReceiptsRaw = [] } = useQuery({
     queryKey: ['payrollCatchUpReceipts', startDate, isAdmin, user?.id],
