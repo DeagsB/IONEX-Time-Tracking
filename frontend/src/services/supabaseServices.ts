@@ -3251,6 +3251,14 @@ export const invoicedBatchApprovalsService = {
     return { storagePath, filename: label };
   },
 
+  async getAllGroupIds(): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('invoiced_batch_approvals')
+      .select('group_id');
+    if (error) throw error;
+    return (data || []).map((row) => row.group_id);
+  },
+
   async getMetadataByGroupIds(groupIds: string[]): Promise<Record<string, { filename: string; storagePath: string }>> {
     if (groupIds.length === 0) return {};
     const { data, error } = await supabase

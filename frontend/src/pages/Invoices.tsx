@@ -4949,11 +4949,22 @@ export default function Invoices() {
     enabled: invoicedGroupIdsFromDb.length > 0,
   });
 
+  // Group IDs that have a signed approval row uploaded. Tracked independently from
+  // invoicedGroupIdsFromDb because approval PDFs are uploaded at Submitted → Approved,
+  // well before an invoice is attached. Without this separate query the approval
+  // metadata only loaded for batches that already had an invoice on file — meaning
+  // approved batches in the Ready-to-Invoice queue showed no signed PDF even after
+  // the user had uploaded one on the Awaiting Signed step.
+  const { data: approvalGroupIdsFromDb = [] } = useQuery({
+    queryKey: ['invoicedBatchApprovals', 'allGroupIds'],
+    queryFn: () => invoicedBatchApprovalsService.getAllGroupIds(),
+  });
+
   /** Approval (signed batch) PDF metadata for marked batches. Used by the Submitted-for-approval and Approved sections. */
   const { data: savedApprovalMetadata } = useQuery({
-    queryKey: ['invoicedBatchApprovals', [...invoicedGroupIdsFromDb].sort().join(',')],
-    queryFn: () => invoicedBatchApprovalsService.getMetadataByGroupIds(invoicedGroupIdsFromDb),
-    enabled: invoicedGroupIdsFromDb.length > 0,
+    queryKey: ['invoicedBatchApprovals', [...approvalGroupIdsFromDb].sort().join(',')],
+    queryFn: () => invoicedBatchApprovalsService.getMetadataByGroupIds(approvalGroupIdsFromDb),
+    enabled: approvalGroupIdsFromDb.length > 0,
   });
 
   const getInvoiceLabel = useCallback((group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }) => {
