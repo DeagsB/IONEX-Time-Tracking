@@ -2718,26 +2718,88 @@ export default function Payroll() {
                                 {p.lines.map((line, idx) => {
                                   const hasReceipt = !!line.receipt;
                                   const hasFile = !!line.receipt?.url;
+                                  // Per-line "Account for" — same mutation as the bulk CTA below,
+                                  // scoped to this line's ids only. Lets the admin reconcile entries
+                                  // one at a time when the breakdown has a mix of statuses or the
+                                  // user only wants to commit some lines this period.
+                                  const lineIsBusy = markEmployeePaidMutation.isPending;
+                                  const lineReceiptIds = hasReceipt && line.receipt?.id ? [String(line.receipt.id)] : [];
+                                  const lineTicketExpenseIds = !hasReceipt && line.ticketExpenseId ? [String(line.ticketExpenseId)] : [];
+                                  const lineHasAction = lineReceiptIds.length > 0 || lineTicketExpenseIds.length > 0;
+                                  const onAccountForLine = (e: React.MouseEvent) => {
+                                    e.stopPropagation();
+                                    if (!lineHasAction || line.isPaid) return;
+                                    const proceed = window.confirm(
+                                      `Mark this $${line.amount.toFixed(2)} ${line.category.toLowerCase()} line as accounted for ${empName}?\n\n` +
+                                      'It will drop out of future Payroll views and be stamped accounted in the system.'
+                                    );
+                                    if (!proceed) return;
+                                    markEmployeePaidMutation.mutate({
+                                      receiptIds: lineReceiptIds,
+                                      ticketExpenseIds: lineTicketExpenseIds,
+                                    });
+                                  };
+                                  const renderRightSlot = () => (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '8px' }}>
+                                      {line.isPaid ? (
+                                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'rgba(34, 197, 94, 0.16)', color: '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                          ✓ Accounted
+                                        </span>
+                                      ) : lineHasAction ? (
+                                        <button
+                                          type="button"
+                                          onClick={onAccountForLine}
+                                          disabled={lineIsBusy}
+                                          title={`Mark just this line as accounted ($${line.amount.toFixed(2)}).`}
+                                          style={{
+                                            padding: '3px 9px',
+                                            borderRadius: '999px',
+                                            border: '1px solid rgba(21, 128, 61, 0.4)',
+                                            backgroundColor: 'rgba(34, 197, 94, 0.10)',
+                                            color: '#15803d',
+                                            fontSize: '10px',
+                                            fontWeight: 700,
+                                            letterSpacing: '0.04em',
+                                            textTransform: 'uppercase',
+                                            cursor: lineIsBusy ? 'not-allowed' : 'pointer',
+                                            fontFamily: 'inherit',
+                                            opacity: lineIsBusy ? 0.5 : 1,
+                                          }}
+                                        >
+                                          Account for
+                                        </button>
+                                      ) : null}
+                                      <span style={{ fontFamily: 'monospace' }}>${line.amount.toFixed(2)}</span>
+                                    </span>
+                                  );
                                   if (hasReceipt) {
+                                    // Receipt-backed lines: the description area opens the preview;
+                                    // the right slot hosts the "Account for" pill + amount. Nested
+                                    // <button>s are invalid HTML so the outer container is a div
+                                    // with the click target carved out to the inner button.
                                     return (
-                                      <button
+                                      <div
                                         key={`${line.receipt?.id ?? idx}`}
-                                        type="button"
-                                        onClick={() => openReceiptPreview(line)}
-                                        title={hasFile ? 'Open receipt details and preview' : 'Open receipt details (no file attached)'}
                                         style={{
                                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                           width: '100%', padding: '6px 8px 6px 22px',
-                                          backgroundColor: 'transparent', border: 'none',
                                           borderBottom: '1px solid var(--border-color)',
-                                          cursor: 'pointer', fontFamily: 'inherit', fontSize: '12px',
-                                          color: 'var(--text-secondary)', textAlign: 'left',
-                                          transition: 'background-color 0.12s',
+                                          fontSize: '12px',
+                                          color: 'var(--text-secondary)',
                                         }}
-                                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
-                                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                                       >
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => openReceiptPreview(line)}
+                                          title={hasFile ? 'Open receipt details and preview' : 'Open receipt details (no file attached)'}
+                                          style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0,
+                                            background: 'transparent', border: 'none', padding: 0,
+                                            cursor: 'pointer', fontFamily: 'inherit', fontSize: '12px',
+                                            color: 'var(--text-secondary)', textAlign: 'left',
+                                            flex: 1,
+                                          }}
+                                        >
                                           <span aria-hidden style={{ flexShrink: 0 }}>{hasFile ? '🧾' : '📄'}</span>
                                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                             {line.description || '(no description)'}
@@ -2748,9 +2810,9 @@ export default function Payroll() {
                                           {!line.ticketNumber && line.receipt?.date && (
                                             <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· {line.receipt.date}</span>
                                           )}
-                                        </span>
-                                        <span style={{ fontFamily: 'monospace', flexShrink: 0, marginLeft: '8px' }}>${line.amount.toFixed(2)}</span>
-                                      </button>
+                                        </button>
+                                        {renderRightSlot()}
+                                      </div>
                                     );
                                   }
                                   // Non-receipt lines: static row exposing the qty × rate × reimb%
@@ -2775,9 +2837,12 @@ export default function Payroll() {
                                         {line.ticketNumber && (
                                           <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· #{line.ticketNumber}</span>
                                         )}
+                                        {line.date && (
+                                          <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· {line.date}</span>
+                                        )}
                                         <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>· {detail}</span>
                                       </span>
-                                      <span style={{ fontFamily: 'monospace', flexShrink: 0, marginLeft: '8px' }}>${line.amount.toFixed(2)}</span>
+                                      {renderRightSlot()}
                                     </div>
                                   );
                                 })}

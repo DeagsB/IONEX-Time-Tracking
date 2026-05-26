@@ -1612,6 +1612,112 @@ export default function Expenses() {
     [adminFilteredExpensesGroupedByDate, todayPeriodIndex]
   );
 
+  // User Expense Management: outer grouping by employee, inner grouping by pay period.
+  // Admins want to focus on one person's reconciliation at a time rather than scanning
+  // across all employees in one period — switching to user-first puts the pay-period
+  // splits underneath each user so the within-user comparison stays intact.
+  type AdminUserGroup = {
+    userId: string;
+    userName: string;
+    periods: PayPeriodGroup[];
+    totals: { count: number; amount: number; gst: number; total: number };
+    unpaidCount: number;
+  };
+  const adminFilteredExpensesGroupedByUser = useMemo(() => {
+    const byUser = new Map<string, AdminUserGroup>();
+    for (const period of adminFilteredExpensesGroupedByPayPeriod) {
+      // Sub-bucket each period's items by userId so we can rebuild a per-user view of
+      // the period without recomputing date groupings or totals from scratch.
+      const periodItemsByUser = new Map<string, { dateGroups: { dateKey: string; items: any[] }[]; totals: PayPeriodGroup['totals']; userName: string; unpaidCount: number }>();
+      for (const grp of period.dateGroups) {
+        // Items inside a date group may belong to multiple users — split per item.
+        const itemsByUser = new Map<string, any[]>();
+        const namesByUser = new Map<string, string>();
+        for (const exp of grp.items) {
+          const uid = String(exp._userId ?? '');
+          if (!itemsByUser.has(uid)) itemsByUser.set(uid, []);
+          itemsByUser.get(uid)!.push(exp);
+          if (!namesByUser.has(uid)) {
+            namesByUser.set(uid, String(exp._employeeName || 'Unknown'));
+          }
+        }
+        for (const [uid, items] of itemsByUser) {
+          if (!periodItemsByUser.has(uid)) {
+            periodItemsByUser.set(uid, {
+              dateGroups: [],
+              totals: { amount: 0, gst: 0, total: 0, count: 0 },
+              userName: namesByUser.get(uid) || 'Unknown',
+              unpaidCount: 0,
+            });
+          }
+          const bucket = periodItemsByUser.get(uid)!;
+          bucket.dateGroups.push({ dateKey: grp.dateKey, items });
+          for (const exp of items) {
+            const amt = parseFloat(String(exp.amount ?? exp._amount ?? 0)) || 0;
+            const gst = parseFloat(String(exp.gst ?? exp._gst ?? 0)) || 0;
+            bucket.totals.amount += amt;
+            bucket.totals.gst += gst;
+            bucket.totals.total += amt + gst;
+            bucket.totals.count += 1;
+            if (exp._status === 'unpaid') bucket.unpaidCount += 1;
+          }
+        }
+      }
+      for (const [uid, bucket] of periodItemsByUser) {
+        if (!byUser.has(uid)) {
+          byUser.set(uid, {
+            userId: uid,
+            userName: bucket.userName,
+            periods: [],
+            totals: { count: 0, amount: 0, gst: 0, total: 0 },
+            unpaidCount: 0,
+          });
+        }
+        const userGroup = byUser.get(uid)!;
+        userGroup.periods.push({
+          ...period,
+          dateGroups: bucket.dateGroups,
+          totals: bucket.totals,
+        });
+        userGroup.totals.amount += bucket.totals.amount;
+        userGroup.totals.gst += bucket.totals.gst;
+        userGroup.totals.total += bucket.totals.total;
+        userGroup.totals.count += bucket.totals.count;
+        userGroup.unpaidCount += bucket.unpaidCount;
+      }
+    }
+    // Alphabetical by name — predictable scanning beats sorting by amount, which would
+    // make the order jump around as the date filters change.
+    return Array.from(byUser.values()).sort((a, b) => a.userName.localeCompare(b.userName));
+  }, [adminFilteredExpensesGroupedByPayPeriod]);
+
+  /** Per-user collapse state. Seeded so every user is collapsed except the ones that
+   *  have unpaid items in the current period — that's the only thing the admin actually
+   *  needs to look at on the first scan. */
+  const [collapsedAdminExpenseUserKeys, setCollapsedAdminExpenseUserKeys] = useState<Set<string>>(new Set());
+  const hasSeededAdminExpenseUserCollapse = useRef<boolean>(false);
+  useEffect(() => {
+    if (adminFilteredExpensesGroupedByUser.length === 0) {
+      hasSeededAdminExpenseUserCollapse.current = false;
+      setCollapsedAdminExpenseUserKeys(new Set());
+      return;
+    }
+    if (hasSeededAdminExpenseUserCollapse.current) return;
+    hasSeededAdminExpenseUserCollapse.current = true;
+    const collapsed = adminFilteredExpensesGroupedByUser
+      .filter((u) => u.unpaidCount === 0)
+      .map((u) => u.userId);
+    setCollapsedAdminExpenseUserKeys(new Set(collapsed));
+  }, [adminFilteredExpensesGroupedByUser]);
+  const toggleAdminExpenseUserGroup = (userId: string) => {
+    setCollapsedAdminExpenseUserKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
   // ---- Auto-reimbursed tab: source rows ------------------------------------------------
   // Both queries (`pendingReceiptLines` for employees, `ticketReimbExpenses` for admins)
   // are already loaded for the Receipts tab. We just filter them to the auto-pay types.
@@ -4363,7 +4469,50 @@ export default function Expenses() {
               </div>
             </div>
           ) : (
-            adminFilteredExpensesGroupedByPayPeriod.map((period) => {
+            adminFilteredExpensesGroupedByUser.map((userGroup) => {
+              const userCollapsed = collapsedAdminExpenseUserKeys.has(userGroup.userId);
+              return (
+                <div
+                  key={`admin-user-${userGroup.userId}`}
+                  className="ionex-customer-section"
+                  style={{ marginBottom: '14px' }}
+                >
+                  <button
+                    type="button"
+                    className="ionex-customer-section-toggle"
+                    onClick={() => toggleAdminExpenseUserGroup(userGroup.userId)}
+                    aria-expanded={!userCollapsed}
+                  >
+                    <span aria-hidden className={`ionex-customer-section-chevron${userCollapsed ? ' is-collapsed' : ''}`}>▾</span>
+                    <span className="ionex-customer-section-name">
+                      {userGroup.userName}
+                      {userGroup.unpaidCount > 0 && (
+                        <span
+                          title={`${userGroup.unpaidCount} unpaid line${userGroup.unpaidCount === 1 ? '' : 's'} across all periods`}
+                          style={{
+                            marginLeft: '10px',
+                            padding: '2px 9px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            borderRadius: '999px',
+                            backgroundColor: 'rgba(245, 158, 11, 0.16)',
+                            color: '#92400e',
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            verticalAlign: 'middle',
+                          }}
+                        >
+                          {userGroup.unpaidCount} unpaid
+                        </span>
+                      )}
+                    </span>
+                    <span className="ionex-customer-section-meta">
+                      <span>{userGroup.periods.length} pay {userGroup.periods.length === 1 ? 'period' : 'periods'}</span>
+                      <span>{userGroup.totals.count} {userGroup.totals.count === 1 ? 'item' : 'items'}</span>
+                      <span>Total <strong>${userGroup.totals.total.toFixed(2)}</strong></span>
+                    </span>
+                  </button>
+                  {!userCollapsed && userGroup.periods.map((period) => {
               const periodCollapsed = collapsedAdminExpensePeriodKeys.has(period.periodKey);
               const flatItems: any[] = period.dateGroups.flatMap((g) => g.items);
               const sharedReceiptMeta = sharedReceiptLabelMetaForGroup(flatItems);
@@ -4780,6 +4929,9 @@ export default function Expenses() {
                       </table>
                     </div>
                   </div>
+                </div>
+              );
+            })}
                 </div>
               );
             })
