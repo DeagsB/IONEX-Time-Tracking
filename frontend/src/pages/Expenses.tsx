@@ -270,10 +270,11 @@ export default function Expenses() {
   // Persisted across reloads so the user lands where they last were. URL params already
   // claim `?tab=` for the admin status filter (see effect below), so this only uses
   // localStorage to avoid collision.
-  const [activeExpensesTab, setActiveExpensesTab] = useState<'receipts' | 'auto'>(() => {
+  const [activeExpensesTab, setActiveExpensesTab] = useState<'receipts' | 'auto' | 'contractors'>(() => {
     try {
       const v = localStorage.getItem('ionex-expenses-tab');
-      return v === 'auto' ? 'auto' : 'receipts';
+      if (v === 'auto' || v === 'contractors') return v;
+      return 'receipts';
     } catch { return 'receipts'; }
   });
   useEffect(() => {
@@ -1625,8 +1626,11 @@ export default function Expenses() {
       // an explicit override and not really auto-paid.
       if ((Number(r.actual_cost) || 0) > 0) return false;
       if (r.service_tickets?.is_discarded) return false;
+      // Contractor lines live in the dedicated Contractors tab — keep this view clean of
+      // anything that needs invoice-based accounting rather than payroll auto-pay.
+      const ownerId = String(r.service_tickets?.user_id ?? '');
+      if (ownerId && contractorByUserId.get(ownerId)) return false;
       if (isAdmin && autoEmployeeFilter !== 'all') {
-        const ownerId = String(r.service_tickets?.user_id ?? '');
         if (ownerId !== autoEmployeeFilter) return false;
       }
       return true;
@@ -1641,7 +1645,87 @@ export default function Expenses() {
       _amount: (Number(r.quantity) || 0) * (Number(r.rate) || 0),
       _gst: 0,
     }));
-  }, [isAdmin, ticketReimbExpenses, pendingReceiptLines, AUTO_REIMB_TYPES, autoEmployeeFilter]);
+  }, [isAdmin, ticketReimbExpenses, pendingReceiptLines, AUTO_REIMB_TYPES, autoEmployeeFilter, contractorByUserId]);
+
+  // Contractors tab: every ticket-expense row owned by a user flagged Contractor on the
+  // employees table. All expense types — receipt-required (Hotel/Expenses) and auto-pay
+  // (Travel/Subsistence/Equipment) — surface here together so admins have a single view
+  // of contractor activity, since contractors invoice the company directly and don't
+  // run through payroll reimbursement.
+  const [contractorEmployeeFilter, setContractorEmployeeFilter] = useState<string>('all');
+  const contractorTicketExpenseRows = useMemo(() => {
+    if (!isAdmin) return [] as any[];
+    const rows = (ticketReimbExpenses as any[]).filter((r) => {
+      if (r.service_tickets?.is_discarded) return false;
+      const ownerId = String(r.service_tickets?.user_id ?? '');
+      if (!ownerId || !contractorByUserId.get(ownerId)) return false;
+      if (contractorEmployeeFilter !== 'all' && ownerId !== contractorEmployeeFilter) return false;
+      return true;
+    });
+    return rows.map((r: any) => ({
+      ...r,
+      _date: r.service_tickets?.date || r.created_at?.split('T')[0] || '',
+      _userId: r.service_tickets?.user_id,
+      _amount: (() => {
+        const actual = Number(r.actual_cost) || 0;
+        if (actual > 0) return actual;
+        return (Number(r.quantity) || 0) * (Number(r.rate) || 0);
+      })(),
+      _gst: 0,
+    }));
+  }, [isAdmin, ticketReimbExpenses, contractorByUserId, contractorEmployeeFilter]);
+
+  // Distinct contractor employees in the data — used for the per-employee filter dropdown.
+  // Unfiltered by contractorEmployeeFilter so all options remain selectable.
+  const contractorEmployeeOptions = useMemo(() => {
+    if (!isAdmin) return [] as { id: string; name: string }[];
+    const map = new Map<string, string>();
+    for (const r of (ticketReimbExpenses as any[])) {
+      const id = String(r.service_tickets?.user_id ?? '');
+      if (!id || !contractorByUserId.get(id)) continue;
+      if (map.has(id)) continue;
+      const u = r.service_tickets?.user;
+      const name = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown' : 'Unknown';
+      map.set(id, name);
+    }
+    return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [isAdmin, ticketReimbExpenses, contractorByUserId]);
+
+  const contractorRowsGroupedByDate = useMemo(() => {
+    const sorted = [...contractorTicketExpenseRows].sort((a, b) => {
+      const ka = normalizeExpenseTableDateKey(String(a._date || ''));
+      const kb = normalizeExpenseTableDateKey(String(b._date || ''));
+      if (ka !== kb) return kb.localeCompare(ka);
+      return String(b.created_at || b.id || '').localeCompare(String(a.created_at || a.id || ''));
+    });
+    const groups: { dateKey: string; items: any[] }[] = [];
+    let lastKey = '';
+    for (const r of sorted) {
+      const k = normalizeExpenseTableDateKey(String(r._date || ''));
+      if (k !== lastKey) {
+        groups.push({ dateKey: k, items: [] });
+        lastKey = k;
+      }
+      groups[groups.length - 1].items.push(r);
+    }
+    return groups;
+  }, [contractorTicketExpenseRows]);
+
+  const contractorRowsGroupedByPayPeriod = useMemo(
+    () => groupDateGroupsByPayPeriod(contractorRowsGroupedByDate, (e) => e._date),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [contractorRowsGroupedByDate, todayPeriodIndex]
+  );
+
+  const [collapsedContractorPeriodKeys, setCollapsedContractorPeriodKeys] = useState<Set<string>>(new Set());
+  const toggleContractorPeriodGroup = (periodKey: string) => {
+    setCollapsedContractorPeriodKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(periodKey)) next.delete(periodKey);
+      else next.add(periodKey);
+      return next;
+    });
+  };
 
   const autoEmployeeOptions = useMemo(() => {
     if (!isAdmin) return [] as { id: string; name: string }[];
@@ -2176,6 +2260,10 @@ export default function Expenses() {
         {([
           { id: 'receipts' as const, label: 'Receipt expenses', count: pendingReceiptLinesView.length },
           { id: 'auto' as const, label: 'Auto-reimbursed', count: autoReimbursedRows.length },
+          // Admin-only — contractors invoice the company, so the tab is irrelevant to
+          // employee logins. Filtered out of the rail below rather than hidden via CSS so
+          // the rail measures correctly without a phantom slot.
+          ...(isAdmin ? [{ id: 'contractors' as const, label: 'Contractors', count: contractorTicketExpenseRows.length }] : []),
         ]).map((tab) => {
           const isActive = activeExpensesTab === tab.id;
           const classes = ['ionex-tab-chip'];
@@ -4917,6 +5005,174 @@ export default function Expenses() {
                                     }}>
                                       {isPaid ? 'Paid' : 'Queued'}
                                     </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </Fragment>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Contractors tab content (admin only — view-only). Same table shape as
+          auto-reimbursed, but spans every expense type since contractors invoice
+          the company and don't run through payroll. */}
+      {activeExpensesTab === 'contractors' && isAdmin && (
+        <div>
+          <div style={{ marginBottom: '8px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              Contractor expenses
+            </h2>
+            <p style={{ margin: '6px 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '720px' }}>
+              All ticket-expense lines submitted by contractors. Contractors invoice the company directly, so these items
+              are not reimbursed through payroll — this tab is for tracking and reconciliation against their invoices.
+            </p>
+          </div>
+
+          {contractorEmployeeOptions.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Contractor</label>
+              <select
+                value={contractorEmployeeFilter}
+                onChange={(e) => setContractorEmployeeFilter(e.target.value)}
+                style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '13px' }}
+              >
+                <option value="all">All contractors</option>
+                {contractorEmployeeOptions.map((emp) => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {contractorTicketExpenseRows.length === 0 ? (
+            <div style={{
+              padding: '24px',
+              borderRadius: '10px',
+              border: '1px dashed var(--border-color)',
+              backgroundColor: 'var(--bg-tertiary)',
+              color: 'var(--text-tertiary)',
+              fontSize: '14px',
+              textAlign: 'center',
+              marginTop: '12px',
+            }}>
+              No contractor expense lines in this period.
+            </div>
+          ) : (
+            <div style={{ marginTop: '12px', backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '12px 16px' }}>Date</th>
+                    <th style={{ padding: '12px 16px' }}>Contractor</th>
+                    <th style={{ padding: '12px 16px' }}>Ticket</th>
+                    <th style={{ padding: '12px 16px' }}>Category</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Qty</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Rate</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contractorRowsGroupedByPayPeriod.map((period) => {
+                    const periodCollapsed = collapsedContractorPeriodKeys.has(period.periodKey);
+                    const colCount = 7;
+                    return (
+                      <Fragment key={`contractor-period-${period.periodKey}`}>
+                        <tr style={{ backgroundColor: 'rgba(99, 102, 241, 0.10)', borderBottom: '2px solid rgba(99, 102, 241, 0.45)' }}>
+                          <td colSpan={colCount} style={{ padding: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => toggleContractorPeriodGroup(period.periodKey)}
+                              aria-expanded={!periodCollapsed}
+                              style={{
+                                width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '12px 16px', border: 'none', background: 'transparent',
+                                cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                              }}
+                            >
+                              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', width: '14px', flexShrink: 0 }} aria-hidden>
+                                {periodCollapsed ? '▶' : '▼'}
+                              </span>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#4338ca', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
+                                Pay Period
+                              </span>
+                              <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {period.periodLabel}
+                              </span>
+                              {period.isCurrent && (
+                                <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'rgba(34, 197, 94, 0.18)', color: '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Current</span>
+                              )}
+                              {period.isFuture && (
+                                <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Upcoming</span>
+                              )}
+                              <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'baseline', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                <span><strong style={{ color: 'var(--text-primary)' }}>{period.totals.count}</strong> {period.totals.count === 1 ? 'item' : 'items'}</span>
+                                <span>Total <strong style={{ fontFamily: 'monospace', color: '#4338ca' }}>${period.totals.total.toFixed(2)}</strong></span>
+                              </span>
+                            </button>
+                          </td>
+                        </tr>
+                        {!periodCollapsed && period.dateGroups.map(({ dateKey, items }) => (
+                          <Fragment key={`contractor-date-${period.periodKey}-${dateKey}`}>
+                            <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                              <td colSpan={colCount} style={{ padding: '8px 16px 8px 32px', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {formatExpenseGroupDateLabel(dateKey)}
+                                <span style={{ marginLeft: '8px', fontSize: '12px', fontWeight: 500, color: 'var(--text-tertiary)' }}>
+                                  ({items.length} {items.length === 1 ? 'item' : 'items'})
+                                </span>
+                              </td>
+                            </tr>
+                            {items.map((row: any) => {
+                              const tn = row.service_tickets?.ticket_number || '—';
+                              const hasTicketNumber = !!row.service_tickets?.ticket_number;
+                              const qty = Number(row.quantity) || 0;
+                              const rate = Number(row.rate) || 0;
+                              const actual = Number(row.actual_cost) || 0;
+                              const total = actual > 0 ? actual : qty * rate;
+                              const category = expenseTypeOf(row);
+                              const u = row.service_tickets?.user;
+                              const empName = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown' : 'Unknown';
+                              return (
+                                <tr key={`contractor-row-${row.id}`} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                  <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>{row._date || '—'}</td>
+                                  <td style={{ padding: '10px 16px', color: 'var(--text-primary)', fontWeight: 600 }}>{empName}</td>
+                                  <td style={{ padding: '10px 16px', fontFamily: hasTicketNumber ? 'monospace' : 'inherit' }}>
+                                    {row.service_ticket_id ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingTicketRecordId(String(row.service_ticket_id))}
+                                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: hasTicketNumber ? 'var(--primary-color)' : 'var(--text-tertiary)', fontWeight: 600, fontFamily: hasTicketNumber ? 'monospace' : 'inherit', fontSize: 'inherit', textDecoration: 'underline', fontStyle: hasTicketNumber ? 'normal' : 'italic' }}
+                                        title="Open service ticket"
+                                      >
+                                        {tn}
+                                      </button>
+                                    ) : (
+                                      <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{tn}</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                                    {category}
+                                    {row.description ? (
+                                      <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 400, marginTop: '2px' }}>
+                                        {row.description}
+                                      </span>
+                                    ) : null}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace' }}>
+                                    {qty}{row.unit ? ` ${row.unit}` : ''}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace' }}>
+                                    ${rate.toFixed(2)}
+                                  </td>
+                                  <td style={{ padding: '10px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
+                                    ${total.toFixed(2)}
                                   </td>
                                 </tr>
                               );
