@@ -1236,7 +1236,7 @@ export default function Expenses() {
     // Confirm before flipping a batch — single-row marks already prompt for the
     // receipt-required case, but batch actions had no guard and could flip dozens of
     // rows in one click. Show count + intended state so admins can sanity check.
-    const verb = newStatus === 'paid' ? 'paid' : 'unpaid';
+    const verb = newStatus === 'paid' ? 'accounted for' : 'unaccounted';
     const proceed = window.confirm(`Mark ${rows.length} expense${rows.length === 1 ? '' : 's'} as ${verb}?`);
     if (!proceed) return;
     setBatchActionBusy(true);
@@ -1325,7 +1325,7 @@ export default function Expenses() {
       const isContractor = ownerId ? !!contractorByUserId.get(ownerId) : false;
       if (needsReceipt && !hasReceipt && !isContractor) {
         const proceed = window.confirm(
-          'This ticket expense does not have a receipt attached yet. Mark as paid anyway?\n\n' +
+          'This ticket expense does not have a receipt attached yet. Mark as accounted for anyway?\n\n' +
           'You can still find it later in the Awaiting Receipts section.'
         );
         if (!proceed) return;
@@ -4265,10 +4265,10 @@ export default function Expenses() {
                     {employeeCount} {employeeCount === 1 ? 'employee' : 'employees'}
                   </span>
                   {totalUnpaid > 0 && (
-                    <span className="ionex-status-pill is-unpaid">{totalUnpaid} unpaid</span>
+                    <span className="ionex-status-pill is-unpaid">{totalUnpaid} unaccounted</span>
                   )}
                   {totalPaid > 0 && (
-                    <span className="ionex-status-pill is-paid">{totalPaid} paid</span>
+                    <span className="ionex-status-pill is-paid">{totalPaid} accounted</span>
                   )}
                 </span>
               );
@@ -4288,15 +4288,18 @@ export default function Expenses() {
                   const count = status === 'all'
                     ? visible.length
                     : visible.filter((e: any) => e._status === status).length;
+                  // Status filter value is still 'paid'/'unpaid' internally — only the label
+                  // changes to match the explicit "Accounted For" workflow the admin sees.
+                  const label = status === 'unpaid' ? 'Unaccounted' : status === 'paid' ? 'Accounted' : 'All';
                   return (
                     <button
                       key={status}
                       type="button"
                       onClick={() => setAdminStatusFilter(status)}
                       className={`ionex-tab-chip${adminStatusFilter === status ? ' is-active' : ''}`}
-                      style={{ padding: '6px 12px', textTransform: 'capitalize' }}
+                      style={{ padding: '6px 12px' }}
                     >
-                      {status}
+                      {label}
                       <span className={`ionex-tab-count${count === 0 ? ' is-zero' : ''}`}>{count}</span>
                     </button>
                   );
@@ -4316,7 +4319,7 @@ export default function Expenses() {
                   <option value="all">All employees</option>
                   {expenseEmployeeSummary.map((emp) => (
                     <option key={emp.userId} value={emp.userId}>
-                      {emp.name}{emp.unpaid > 0 ? ` — ${emp.unpaid} unpaid` : ''}
+                      {emp.name}{emp.unpaid > 0 ? ` — ${emp.unpaid} unaccounted` : ''}
                     </option>
                   ))}
                 </select>
@@ -4417,7 +4420,7 @@ export default function Expenses() {
                     disabled={batchActionBusy}
                     onClick={() => handleAdminBatchStatusChange(toStatusPayload(unpaidRows), 'paid')}
                   >
-                    Mark {unpaidRows.length} paid
+                    Mark {unpaidRows.length} accounted
                   </button>
                 )}
                 {paidRows.length > 0 && (
@@ -4427,7 +4430,7 @@ export default function Expenses() {
                     disabled={batchActionBusy}
                     onClick={() => handleAdminBatchStatusChange(toStatusPayload(paidRows), 'pending')}
                   >
-                    Mark {paidRows.length} unpaid
+                    Mark {paidRows.length} unaccounted
                   </button>
                 )}
                 {receiptsToFlag.length > 0 && (
@@ -4501,7 +4504,7 @@ export default function Expenses() {
                       {userGroup.userName}
                       {userGroup.unpaidCount > 0 && (
                         <span
-                          title={`${userGroup.unpaidCount} unpaid line${userGroup.unpaidCount === 1 ? '' : 's'} across all periods`}
+                          title={`${userGroup.unpaidCount} unaccounted line${userGroup.unpaidCount === 1 ? '' : 's'} across all periods`}
                           style={{
                             marginLeft: '10px',
                             padding: '2px 9px',
@@ -4515,7 +4518,7 @@ export default function Expenses() {
                             verticalAlign: 'middle',
                           }}
                         >
-                          {userGroup.unpaidCount} unpaid
+                          {userGroup.unpaidCount} unaccounted
                         </span>
                       )}
                     </span>
@@ -4664,7 +4667,7 @@ export default function Expenses() {
                                   <div className="ionex-expense-table-desc-meta">
                                     <span className="desc">{exp.description}</span>
                                     <span className={`ionex-status-pill ${status === 'paid' ? 'is-paid' : 'is-unpaid'}`}>
-                                      {status === 'paid' ? 'Paid' : 'Unpaid'}
+                                      {status === 'paid' ? 'Accounted' : 'Unaccounted'}
                                     </span>
                                     {source === 'receipt' && exp.not_reimbursable === true && (
                                       <span
@@ -4734,8 +4737,9 @@ export default function Expenses() {
                                         className="ionex-row-action-icon is-success"
                                         disabled={isUpdating}
                                         onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'paid', source, exp); }}
+                                        title="Mark this expense as Accounted For — it's been recorded in the books."
                                       >
-                                        Mark paid
+                                        Mark Accounted For
                                       </button>
                                     )}
                                     {status === 'paid' && (
@@ -4744,8 +4748,9 @@ export default function Expenses() {
                                         className="ionex-row-action-icon is-warning"
                                         disabled={isUpdating}
                                         onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'pending', source); }}
+                                        title="Reopen — flip back to Unaccounted so this expense appears in the workflow again."
                                       >
-                                        Mark unpaid
+                                        Mark Unaccounted
                                       </button>
                                     )}
                                     {source === 'receipt' && (() => {
