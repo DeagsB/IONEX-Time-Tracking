@@ -6912,7 +6912,7 @@ export default function Invoices() {
                   const isPortal = isPortalApprovalWorkflow(activeWf);
 
                   type StandardStepId = 'line_items' | 'send' | 'done';
-                  type PortalStepId = 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'done';
+                  type PortalStepId = 'submit_approval' | 'attach_signed' | 'attach_invoice' | 'send_portal' | 'done';
                   type WizardStepId = StandardStepId | PortalStepId;
                   // Each queue surfaces only the steps the user actually performs in that
                   // queue — the others are out of scope and just add noise.
@@ -6927,10 +6927,15 @@ export default function Invoices() {
                     if (effectiveQueue === 'awaiting_signed') {
                       return [{ id: 'attach_signed', label: 'Attach signed approval PDF' }];
                     }
-                    // ready_to_be_invoiced
+                    // ready_to_be_invoiced — both flows now run a matching 2-step pattern:
+                    // (1) line-items breakdown + drop the invoice PDF, (2) re-grab the merged
+                    // PDF and mark invoiced. The portal step IDs differ from the standard ones
+                    // because the post-approval surface needs portal-specific actions (mark via
+                    // markFinalInvoicedMutation, signed-batch download).
                     if (isPortal) {
                       return [
-                        { id: 'attach_invoice', label: 'Create invoice & mark invoiced' },
+                        { id: 'attach_invoice', label: 'Create invoice & attach PDF' },
+                        { id: 'send_portal', label: 'Download combined PDF & finish' },
                       ];
                     }
                     return [
@@ -7000,7 +7005,10 @@ export default function Invoices() {
                   let currentStep: WizardStepId;
                   if (isPortal) {
                     if (statusId === 'submitted_portal' || statusId === 'sent' || statusId === 'invoiced' || statusId === 'portal_submission') currentStep = 'done';
-                    else if (statusId === 'approved') currentStep = 'attach_invoice';
+                    // Same step progression as the standard flow at the equivalent stage:
+                    // once an invoice is attached we advance from attach_invoice → send_portal
+                    // so the user lands on the "download merged + mark invoiced" panel.
+                    else if (statusId === 'approved') currentStep = hasInvoiceFile ? 'send_portal' : 'attach_invoice';
                     else if (statusId === 'submitted_approval') currentStep = 'attach_signed';
                     else currentStep = 'submit_approval';
                   } else {
@@ -7631,7 +7639,7 @@ export default function Invoices() {
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
                             Signed approval is in. Create the invoice in your invoicing system using the lines below — click any line or amount to copy it.
-                            Then upload the invoice PDF and mark the batch as invoiced.
+                            When the invoice is raised, drop the PDF here — the wizard will combine it with the signed batch so you can send a single bundle to the customer.
                           </p>
                           {summaryBlock}
                           {hasApprovalFile && (
@@ -7640,31 +7648,88 @@ export default function Invoices() {
                             </div>
                           )}
                           {lineItemsBlock}
-                          {!hasInvoiceFile ? (
-                            <div style={{ marginBottom: '12px' }}>
-                              <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                                Once the invoice is created, drop the PDF here
-                              </div>
-                              {fileDropZone({
-                                id: `wiz-port-invoice-${persistId}`,
-                                label: 'Drop invoice PDF here to combine + download',
-                                uploading: uploadingInvoiceGroupId === persistId,
-                                onPick: onAttachAndDownloadCombined,
-                              })}
+                          <div style={{ marginBottom: '12px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                              Once the invoice is created, drop the PDF here
                             </div>
-                          ) : (
-                            <div>
-                              <div style={{ marginBottom: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                Invoice attached: <strong>{invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf'}</strong>
-                              </div>
-                              <button type="button" onClick={onMarkPortalInvoiced} disabled={markFinalInvoicedMutation.isPending} style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}>
-                                {markFinalInvoicedMutation.isPending ? 'Saving…' : '✓ Mark as invoiced'}
-                              </button>
-                            </div>
-                          )}
+                            {fileDropZone({
+                              id: `wiz-port-invoice-${persistId}`,
+                              label: 'Drop invoice PDF here to combine + download',
+                              uploading: uploadingInvoiceGroupId === persistId,
+                              onPick: onAttachAndDownloadCombined,
+                            })}
+                          </div>
                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                             <button type="button" onClick={onDownloadBatchPdf} style={goButtonStyle} title={hasApprovalFile ? 'Download the signed approval PDF returned by the approver.' : 'Re-build and download the merged batch PDF.'}>
                               ⬇ {hasApprovalFile ? 'Download signed batch PDF' : 'Download batch PDF'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (isPortal && currentStep === 'send_portal') {
+                      // Mirror the standard 'send' step for the portal approved-batch flow:
+                      // shows the attached invoice with an escape hatch back to step 1, a
+                      // re-download button for the merged invoice + signed-batch PDF, and the
+                      // portal-specific "Mark as invoiced" CTA (markFinalInvoicedMutation).
+                      const isDownloading = downloadingWithInvoiceGroupId === persistId;
+                      const attachedFilename = invoiceFile?.name ?? savedInvoiceMetadata?.[persistId]?.filename ?? 'invoice.pdf';
+                      return (
+                        <div>
+                          <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
+                            Download the merged invoice + signed-batch PDF and send it to the customer, then mark the batch as invoiced to finish.
+                          </p>
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                            padding: '10px 12px', marginBottom: '14px',
+                            backgroundColor: 'var(--bg-tertiary)',
+                            border: '1px dashed var(--border-color)',
+                            borderRadius: '8px', fontSize: '13px',
+                          }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>
+                              Invoice attached: <strong style={{ color: 'var(--text-primary)' }}>{attachedFilename}</strong>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!window.confirm('Detach the current invoice PDF and return to step 1 so you can upload a different one?')) return;
+                                onReopen('attach_invoice');
+                              }}
+                              title="Detach the current invoice PDF and return to step 1 to upload a different one."
+                              style={{
+                                marginLeft: 'auto',
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(245, 158, 11, 0.55)',
+                                backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                                color: '#b45309',
+                                fontFamily: 'inherit',
+                                fontSize: '12px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              ← Back to step 1 — attach a different PDF
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={onDownloadCombined}
+                              disabled={isDownloading}
+                              title="Build the merged invoice + signed-batch PDF for this batch."
+                              style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px' }}
+                            >
+                              {isDownloading ? 'Building…' : '⬇ Download merged invoice + signed batch'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={onMarkPortalInvoiced}
+                              disabled={markFinalInvoicedMutation.isPending}
+                              style={{ ...goButtonStyle, padding: '10px 18px', fontSize: '13px', backgroundColor: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.55)', color: '#15803d' }}
+                            >
+                              {markFinalInvoicedMutation.isPending ? 'Saving…' : '✓ Mark as invoiced'}
                             </button>
                           </div>
                         </div>
@@ -7747,18 +7812,21 @@ export default function Invoices() {
                     );
                   };
 
-                  // Past-step reopen for the standard flow: clears the line-items ack flag and/or
-                  // the attached invoice so the user lands back at the picked step. Portal steps
-                  // reflect persisted DB status — they cannot be rewound from the wizard. Use the
-                  // corresponding tab (Submitted, Approved) for those.
+                  // Past-step reopen for the in-wizard "Back to step 1" escape hatch. Clears the
+                  // attached invoice so the user lands back at the upload step. Only handles
+                  // step-1 rewinds — earlier portal status transitions (Submitted ↔ Approved)
+                  // require the explicit Undo actions on the corresponding tabs.
                   //
                   // Clearing only local state isn't enough — once the invoice PDF is uploaded
                   // it lives in invoiced_batch_invoices and savedInvoiceMetadata keeps the step
-                  // pinned at 'send'. Delete the persisted row too so step derivation rolls
-                  // back to 'attach'.
+                  // pinned at send. Delete the persisted row too so step derivation rolls back.
                   const onReopen = (stepId: WizardStepId) => {
-                    if (isMarked || isPortal) return;
-                    if (stepId === 'line_items') {
+                    if (isMarked) return;
+                    // Standard: send → line_items. Portal: send_portal → attach_invoice.
+                    // Both require dropping the uploaded invoice from local + persisted state.
+                    const isStdRewind = !isPortal && stepId === 'line_items';
+                    const isPortalRewind = isPortal && stepId === 'attach_invoice';
+                    if (isStdRewind || isPortalRewind) {
                       clearWizardProgressForGroup(groupId);
                       setInvoiceFileForGroup(persistId, null);
                       if (!isDemoMode && savedInvoiceMetadata?.[persistId]) {
