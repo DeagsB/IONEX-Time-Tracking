@@ -2097,7 +2097,8 @@ export const serviceTicketExpensesService = {
       .select(`
         *,
         service_tickets (
-          id, user_id, date, ticket_number,
+          id, user_id, date, ticket_number, project_id,
+          project:projects(id, name, project_number, customer:customers(id, name)),
           user:users!service_tickets_user_id_fkey(id, first_name, last_name, email)
         )
       `)

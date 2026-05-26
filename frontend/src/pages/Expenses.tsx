@@ -1,4 +1,6 @@
 import React, { useState, useRef, useMemo, Fragment, useEffect } from 'react';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { userExpensesService, serviceTicketExpensesService, employeesService } from '../services/supabaseServices';
@@ -5850,17 +5852,162 @@ export default function Expenses() {
           one period at a time when entering into the books. Each row has Account For;
           checkboxes drive a bulk Mark-N-accounted action so several lines flip at once
           after a batch entry. */}
-      {activeExpensesTab === 'reconcile' && isAdmin && (
+      {activeExpensesTab === 'reconcile' && isAdmin && (() => {
+        // Export every pay period's unaccounted lines into one workbook, one sheet per
+        // period. Headers shaded + bold, column widths auto-fit, Amount/GST formatted as
+        // currency so the file is a drop-in checklist for whoever's entering into QB.
+        const onExportReconcile = async () => {
+          if (reconcileGroupedByPayPeriod.length === 0) return;
+          const workbook = new ExcelJS.Workbook();
+          workbook.creator = 'IONEX Time Tracking';
+          workbook.created = new Date();
+          const currencyFmt = '"$"#,##0.00';
+          const sanitizeSheetName = (s: string) => s.replace(/[\\/?*:[\]]/g, ' ').slice(0, 31) || 'Period';
+          for (const period of reconcileGroupedByPayPeriod) {
+            const sheet = workbook.addWorksheet(sanitizeSheetName(period.periodLabel || period.periodKey));
+            sheet.columns = [
+              { header: 'Date', key: 'date' },
+              { header: 'Employee', key: 'employee' },
+              { header: 'Project', key: 'project' },
+              { header: 'Customer', key: 'customer' },
+              { header: 'Category', key: 'category' },
+              { header: 'Description', key: 'description' },
+              { header: 'Ticket', key: 'ticket' },
+              { header: 'Source', key: 'source' },
+              { header: 'Amount', key: 'amount' },
+              { header: 'GST', key: 'gst' },
+              { header: 'Total', key: 'total' },
+            ];
+            const headerRow = sheet.getRow(1);
+            headerRow.font = { bold: true };
+            headerRow.eachCell((cell) => {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFEF' } };
+            });
+            const widthSamples: number[] = sheet.columns!.map((c) => String(c.header || '').length);
+            const flat = period.dateGroups.flatMap((g) => g.items);
+            for (const exp of flat as any[]) {
+              const projRaw = exp.service_ticket?.project || exp.service_tickets?.project;
+              const project = projRaw ? [projRaw.project_number, projRaw.name].filter(Boolean).join(' – ') : '';
+              const customer = projRaw?.customer?.name || '';
+              const amount = Number(exp._amount) || 0;
+              const gst = exp._source === 'receipt' ? (parseFloat(String(exp.gst || 0)) || 0) : 0;
+              const row = sheet.addRow({
+                date: exp._date || '',
+                employee: exp._employeeName || '',
+                project,
+                customer,
+                category: expenseTypeOf(exp),
+                description: exp.description || '',
+                ticket: exp.service_tickets?.ticket_number || exp._ticketNumber || '',
+                source: exp._source === 'receipt' ? 'Receipt' : 'Ticket line',
+                amount,
+                gst,
+                total: amount + gst,
+              });
+              row.getCell('amount').numFmt = currencyFmt;
+              row.getCell('gst').numFmt = currencyFmt;
+              row.getCell('total').numFmt = currencyFmt;
+              // Update width-tracking using formatted strings — numbers render wider when
+              // shown as currency, so use the formatted form for sizing.
+              const cellLens = [
+                String(exp._date || ''),
+                String(exp._employeeName || ''),
+                project,
+                customer,
+                expenseTypeOf(exp),
+                String(exp.description || ''),
+                String(exp.service_tickets?.ticket_number || exp._ticketNumber || ''),
+                exp._source === 'receipt' ? 'Receipt' : 'Ticket line',
+                `$${amount.toFixed(2)}`,
+                `$${gst.toFixed(2)}`,
+                `$${(amount + gst).toFixed(2)}`,
+              ];
+              for (let i = 0; i < cellLens.length; i++) {
+                if (cellLens[i].length > widthSamples[i]) widthSamples[i] = cellLens[i].length;
+              }
+            }
+            // Total row at the bottom: count + sum of Amount + sum of GST + sum of Total.
+            const totals = (flat as any[]).reduce(
+              (acc, e) => {
+                const amt = Number(e._amount) || 0;
+                const gst = e._source === 'receipt' ? (parseFloat(String(e.gst || 0)) || 0) : 0;
+                acc.amount += amt;
+                acc.gst += gst;
+                acc.total += amt + gst;
+                return acc;
+              },
+              { amount: 0, gst: 0, total: 0 }
+            );
+            const totalRow = sheet.addRow({
+              date: '',
+              employee: '',
+              project: '',
+              customer: '',
+              category: '',
+              description: `Total — ${flat.length} ${flat.length === 1 ? 'line' : 'lines'}`,
+              ticket: '',
+              source: '',
+              amount: totals.amount,
+              gst: totals.gst,
+              total: totals.total,
+            });
+            totalRow.font = { bold: true };
+            totalRow.getCell('amount').numFmt = currencyFmt;
+            totalRow.getCell('gst').numFmt = currencyFmt;
+            totalRow.getCell('total').numFmt = currencyFmt;
+            totalRow.eachCell({ includeEmpty: false }, (cell) => {
+              cell.border = { top: { style: 'thin', color: { argb: 'FFCCCCCC' } } };
+            });
+            // Auto-fit with min/max guardrails so a single long description doesn't blow
+            // the column out and short columns still read cleanly.
+            const MIN_WIDTH = 10;
+            const MAX_WIDTH = 60;
+            const PADDING = 2;
+            for (let i = 0; i < widthSamples.length; i++) {
+              const w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, widthSamples[i] + PADDING));
+              sheet.getColumn(i + 1).width = w;
+            }
+          }
+          const buf = await workbook.xlsx.writeBuffer();
+          const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const stamp = new Date().toISOString().slice(0, 10);
+          saveAs(blob, `expense-reconcile_${stamp}.xlsx`);
+        };
+        return (
         <div>
-          <div style={{ marginBottom: '14px' }}>
-            <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              Reconcile
-            </h2>
-            <p style={{ margin: '6px 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '760px' }}>
-              Every unaccounted expense across the company, grouped by pay period. Work through one
-              period at a time, enter the lines into the books, then mark them accounted so nothing slips
-              through. Select multiple rows for a bulk mark.
-            </p>
+          <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                Reconcile
+              </h2>
+              <p style={{ margin: '6px 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '760px' }}>
+                Every unaccounted expense across the company, grouped by pay period. Work through one
+                period at a time, enter the lines into the books, then mark them accounted so nothing slips
+                through. Select multiple rows for a bulk mark.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onExportReconcile}
+              disabled={reconcileGroupedByPayPeriod.length === 0}
+              title="Download an Excel workbook with one sheet per pay period — drop-in checklist for entering into the books."
+              className="payroll-action-btn"
+              style={{
+                padding: '8px 14px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                fontFamily: 'inherit',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: reconcileGroupedByPayPeriod.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: reconcileGroupedByPayPeriod.length === 0 ? 0.55 : 1,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span aria-hidden>⬇</span> Export to Excel
+            </button>
           </div>
 
           {reconcileGroupedByPayPeriod.length === 0 ? (
@@ -6063,7 +6210,8 @@ export default function Expenses() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Ticket Picker Modal */}
       {showTicketPickerModal && (
