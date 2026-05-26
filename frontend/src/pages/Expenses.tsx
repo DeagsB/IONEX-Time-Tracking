@@ -270,10 +270,10 @@ export default function Expenses() {
   // Persisted across reloads so the user lands where they last were. URL params already
   // claim `?tab=` for the admin status filter (see effect below), so this only uses
   // localStorage to avoid collision.
-  const [activeExpensesTab, setActiveExpensesTab] = useState<'receipts' | 'auto' | 'contractors'>(() => {
+  const [activeExpensesTab, setActiveExpensesTab] = useState<'receipts' | 'auto' | 'contractors' | 'management'>(() => {
     try {
       const v = localStorage.getItem('ionex-expenses-tab');
-      if (v === 'auto' || v === 'contractors') return v;
+      if (v === 'auto' || v === 'contractors' || v === 'management') return v;
       return 'receipts';
     } catch { return 'receipts'; }
   });
@@ -1823,6 +1823,93 @@ export default function Expenses() {
     [contractorRowsGroupedByDate, todayPeriodIndex]
   );
 
+  // User-first grouping for the Contractors tab. Same shape and rationale as the
+  // Auto and User Expense Management tabs — contractors invoice separately so the
+  // outer-user / inner-period layout makes per-contractor reconciliation faster.
+  const contractorRowsGroupedByUser = useMemo(() => {
+    const byUser = new Map<string, AutoUserGroup>();
+    for (const period of contractorRowsGroupedByPayPeriod) {
+      const periodItemsByUser = new Map<string, { dateGroups: { dateKey: string; items: any[] }[]; totals: PayPeriodGroup['totals']; userName: string; unaccountedCount: number }>();
+      for (const grp of period.dateGroups) {
+        const itemsByUser = new Map<string, any[]>();
+        const namesByUser = new Map<string, string>();
+        for (const exp of grp.items) {
+          const uid = String(exp._userId ?? exp.service_tickets?.user_id ?? '');
+          if (!itemsByUser.has(uid)) itemsByUser.set(uid, []);
+          itemsByUser.get(uid)!.push(exp);
+          if (!namesByUser.has(uid)) {
+            const u = exp.service_tickets?.user;
+            const name = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown' : 'Unknown';
+            namesByUser.set(uid, name);
+          }
+        }
+        for (const [uid, items] of itemsByUser) {
+          if (!periodItemsByUser.has(uid)) {
+            periodItemsByUser.set(uid, {
+              dateGroups: [],
+              totals: { amount: 0, gst: 0, total: 0, count: 0 },
+              userName: namesByUser.get(uid) || 'Unknown',
+              unaccountedCount: 0,
+            });
+          }
+          const bucket = periodItemsByUser.get(uid)!;
+          bucket.dateGroups.push({ dateKey: grp.dateKey, items });
+          for (const exp of items) {
+            const amt = parseFloat(String(exp._amount ?? 0)) || 0;
+            bucket.totals.amount += amt;
+            bucket.totals.total += amt;
+            bucket.totals.count += 1;
+            if (String(exp.reimbursement_status || '') !== 'paid') bucket.unaccountedCount += 1;
+          }
+        }
+      }
+      for (const [uid, bucket] of periodItemsByUser) {
+        if (!byUser.has(uid)) {
+          byUser.set(uid, {
+            userId: uid,
+            userName: bucket.userName,
+            periods: [],
+            totals: { count: 0, amount: 0, gst: 0, total: 0 },
+            unaccountedCount: 0,
+          });
+        }
+        const userGroup = byUser.get(uid)!;
+        userGroup.periods.push({
+          ...period,
+          dateGroups: bucket.dateGroups,
+          totals: bucket.totals,
+        });
+        userGroup.totals.amount += bucket.totals.amount;
+        userGroup.totals.total += bucket.totals.total;
+        userGroup.totals.count += bucket.totals.count;
+        userGroup.unaccountedCount += bucket.unaccountedCount;
+      }
+    }
+    return Array.from(byUser.values()).sort((a, b) => a.userName.localeCompare(b.userName));
+  }, [contractorRowsGroupedByPayPeriod]);
+
+  const [collapsedContractorUserKeys, setCollapsedContractorUserKeys] = useState<Set<string>>(new Set());
+  const hasSeededContractorUserCollapse = useRef<boolean>(false);
+  useEffect(() => {
+    if (contractorRowsGroupedByUser.length === 0) {
+      hasSeededContractorUserCollapse.current = false;
+      setCollapsedContractorUserKeys(new Set());
+      return;
+    }
+    if (hasSeededContractorUserCollapse.current) return;
+    hasSeededContractorUserCollapse.current = true;
+    const collapsed = contractorRowsGroupedByUser.filter((u) => u.unaccountedCount === 0).map((u) => u.userId);
+    setCollapsedContractorUserKeys(new Set(collapsed));
+  }, [contractorRowsGroupedByUser]);
+  const toggleContractorUserGroup = (userId: string) => {
+    setCollapsedContractorUserKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
   const [collapsedContractorPeriodKeys, setCollapsedContractorPeriodKeys] = useState<Set<string>>(new Set());
   const toggleContractorPeriodGroup = (periodKey: string) => {
     setCollapsedContractorPeriodKeys((prev) => {
@@ -1872,6 +1959,102 @@ export default function Expenses() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [autoReimbursedGroupedByDate, todayPeriodIndex]
   );
+
+  // User-first grouping for the Auto-reimbursed tab — outer accordion is the
+  // employee, inner card is the pay-period split. Mirrors the User Expense
+  // Management layout so admins reconcile one person at a time.
+  type AutoUserGroup = {
+    userId: string;
+    userName: string;
+    periods: PayPeriodGroup[];
+    totals: { count: number; amount: number; gst: number; total: number };
+    unaccountedCount: number;
+  };
+  const autoReimbursedGroupedByUser = useMemo(() => {
+    const byUser = new Map<string, AutoUserGroup>();
+    for (const period of autoReimbursedGroupedByPayPeriod) {
+      const periodItemsByUser = new Map<string, { dateGroups: { dateKey: string; items: any[] }[]; totals: PayPeriodGroup['totals']; userName: string; unaccountedCount: number }>();
+      for (const grp of period.dateGroups) {
+        const itemsByUser = new Map<string, any[]>();
+        const namesByUser = new Map<string, string>();
+        for (const exp of grp.items) {
+          const uid = String(exp._userId ?? exp.service_tickets?.user_id ?? '');
+          if (!itemsByUser.has(uid)) itemsByUser.set(uid, []);
+          itemsByUser.get(uid)!.push(exp);
+          if (!namesByUser.has(uid)) {
+            const u = exp.service_tickets?.user;
+            const name = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown' : 'Unknown';
+            namesByUser.set(uid, name);
+          }
+        }
+        for (const [uid, items] of itemsByUser) {
+          if (!periodItemsByUser.has(uid)) {
+            periodItemsByUser.set(uid, {
+              dateGroups: [],
+              totals: { amount: 0, gst: 0, total: 0, count: 0 },
+              userName: namesByUser.get(uid) || 'Unknown',
+              unaccountedCount: 0,
+            });
+          }
+          const bucket = periodItemsByUser.get(uid)!;
+          bucket.dateGroups.push({ dateKey: grp.dateKey, items });
+          for (const exp of items) {
+            const amt = parseFloat(String(exp._amount ?? 0)) || 0;
+            bucket.totals.amount += amt;
+            bucket.totals.total += amt;
+            bucket.totals.count += 1;
+            if (String(exp.reimbursement_status || '') !== 'paid') bucket.unaccountedCount += 1;
+          }
+        }
+      }
+      for (const [uid, bucket] of periodItemsByUser) {
+        if (!byUser.has(uid)) {
+          byUser.set(uid, {
+            userId: uid,
+            userName: bucket.userName,
+            periods: [],
+            totals: { count: 0, amount: 0, gst: 0, total: 0 },
+            unaccountedCount: 0,
+          });
+        }
+        const userGroup = byUser.get(uid)!;
+        userGroup.periods.push({
+          ...period,
+          dateGroups: bucket.dateGroups,
+          totals: bucket.totals,
+        });
+        userGroup.totals.amount += bucket.totals.amount;
+        userGroup.totals.total += bucket.totals.total;
+        userGroup.totals.count += bucket.totals.count;
+        userGroup.unaccountedCount += bucket.unaccountedCount;
+      }
+    }
+    return Array.from(byUser.values()).sort((a, b) => a.userName.localeCompare(b.userName));
+  }, [autoReimbursedGroupedByPayPeriod]);
+
+  const [collapsedAutoUserKeys, setCollapsedAutoUserKeys] = useState<Set<string>>(new Set());
+  const hasSeededAutoUserCollapse = useRef<boolean>(false);
+  useEffect(() => {
+    if (autoReimbursedGroupedByUser.length === 0) {
+      hasSeededAutoUserCollapse.current = false;
+      setCollapsedAutoUserKeys(new Set());
+      return;
+    }
+    if (hasSeededAutoUserCollapse.current) return;
+    hasSeededAutoUserCollapse.current = true;
+    // Seed collapse on users with zero unaccounted lines — first scan surfaces
+    // only the people who still need attention.
+    const collapsed = autoReimbursedGroupedByUser.filter((u) => u.unaccountedCount === 0).map((u) => u.userId);
+    setCollapsedAutoUserKeys(new Set(collapsed));
+  }, [autoReimbursedGroupedByUser]);
+  const toggleAutoUserGroup = (userId: string) => {
+    setCollapsedAutoUserKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
 
   const toggleAutoExpensePeriodGroup = (periodKey: string) => {
     setCollapsedAutoExpensePeriodKeys((prev) => {
@@ -2382,6 +2565,14 @@ export default function Expenses() {
             id: 'contractors' as const,
             label: 'Contractors',
             count: contractorTicketExpenseRows.filter((r: any) => String(r.reimbursement_status || '') !== 'paid').length,
+          }] : []),
+          // Admin User Expense Management — surfaces every receipt + reimbursable
+          // ticket-expense across the company, grouped by employee. Promoted from a
+          // collapsible panel into a tab so the workflow rail is the single nav.
+          ...(isAdmin ? [{
+            id: 'management' as const,
+            label: 'User Expense Management',
+            count: expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0),
           }] : []),
         ]).map((tab) => {
           const isActive = activeExpensesTab === tab.id;
@@ -4216,45 +4407,15 @@ export default function Expenses() {
         </div>
       ))}
 
-      {/* Admin: Expense Approval Section — Receipts tab only. Collapsed by default. */}
-      {activeExpensesTab === 'receipts' && isAdmin && (
-        <div style={{ marginTop: '40px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: expenseManagementCollapsed ? 0 : '14px' }}>
-            <button
-              type="button"
-              onClick={() => setExpenseManagementCollapsed((v) => !v)}
-              aria-expanded={!expenseManagementCollapsed}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '10px',
-                fontFamily: 'inherit',
-                color: 'var(--text-primary)',
-              }}
-            >
-              <span
-                style={{
-                  fontSize: '12px',
-                  color: 'var(--text-secondary)',
-                  transition: 'transform 0.15s',
-                  transform: expenseManagementCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
-                  display: 'inline-block',
-                  width: '12px',
-                }}
-                aria-hidden
-              >
-                ▶
-              </span>
-              <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
-                User Expense Management
-              </h2>
-            </button>
-            {/* Headline totals stay visible even when collapsed so admins can see the
-                queue at a glance without expanding. */}
+      {/* Admin: User Expense Management — promoted to its own workflow tab. The
+          collapsible header was retired with the tab move; the tab toggle is now the
+          single nav surface. */}
+      {activeExpensesTab === 'management' && isAdmin && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.01em' }}>
+              User Expense Management
+            </h2>
             {(() => {
               const totalUnpaid = expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0);
               const totalPaid = expenseEmployeeSummary.reduce((s, e) => s + e.paid, 0);
@@ -4275,7 +4436,6 @@ export default function Expenses() {
             })()}
           </div>
 
-          {!expenseManagementCollapsed && (<>
           {/* Single inline filter rail — no popover, no separate chip strip. Status / Employee
               / Type / Date / Clear are all visible at once so the admin sees what's filtering
               the table without clicking through. */}
@@ -5003,7 +5163,6 @@ export default function Expenses() {
               </span>
             </div>
           )}
-          </>)}
         </div>
       )}
 
@@ -5051,12 +5210,55 @@ export default function Expenses() {
               No auto-reimbursed items in this period.
             </div>
           ) : (
-            <div style={{ marginTop: '12px', backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {autoReimbursedGroupedByUser.map((userGroup) => {
+                const userCollapsed = collapsedAutoUserKeys.has(userGroup.userId);
+                return (
+                <div
+                  key={`auto-user-${userGroup.userId}`}
+                  className="ionex-customer-section"
+                >
+                  <button
+                    type="button"
+                    className="ionex-customer-section-toggle"
+                    onClick={() => toggleAutoUserGroup(userGroup.userId)}
+                    aria-expanded={!userCollapsed}
+                  >
+                    <span aria-hidden className={`ionex-customer-section-chevron${userCollapsed ? ' is-collapsed' : ''}`}>▾</span>
+                    <span className="ionex-customer-section-name">
+                      {userGroup.userName}
+                      {userGroup.unaccountedCount > 0 && (
+                        <span
+                          title={`${userGroup.unaccountedCount} unaccounted line${userGroup.unaccountedCount === 1 ? '' : 's'} across all periods`}
+                          style={{
+                            marginLeft: '10px',
+                            padding: '2px 9px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            borderRadius: '999px',
+                            backgroundColor: 'rgba(245, 158, 11, 0.16)',
+                            color: '#92400e',
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            verticalAlign: 'middle',
+                          }}
+                        >
+                          {userGroup.unaccountedCount} unaccounted
+                        </span>
+                      )}
+                    </span>
+                    <span className="ionex-customer-section-meta">
+                      <span>{userGroup.periods.length} pay {userGroup.periods.length === 1 ? 'period' : 'periods'}</span>
+                      <span>{userGroup.totals.count} {userGroup.totals.count === 1 ? 'item' : 'items'}</span>
+                      <span>Total <strong>${userGroup.totals.total.toFixed(2)}</strong></span>
+                    </span>
+                  </button>
+                  {!userCollapsed && (
+                  <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)', margin: '10px 0 0' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase' }}>
                     <th style={{ padding: '12px 16px' }}>Date</th>
-                    {isAdmin && <th style={{ padding: '12px 16px' }}>Employee</th>}
                     <th style={{ padding: '12px 16px' }}>Ticket</th>
                     <th style={{ padding: '12px 16px' }}>Category</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right' }}>Qty</th>
@@ -5066,9 +5268,11 @@ export default function Expenses() {
                   </tr>
                 </thead>
                 <tbody>
-                  {autoReimbursedGroupedByPayPeriod.map((period) => {
+                  {userGroup.periods.map((period) => {
                     const periodCollapsed = collapsedAutoExpensePeriodKeys.has(period.periodKey);
-                    const colCount = isAdmin ? 8 : 7;
+                    // Employee column removed inside user cards — the card header carries the
+                    // employee name, so each row is one column narrower than the original layout.
+                    const colCount = 7;
                     return (
                       <Fragment key={`auto-period-${period.periodKey}`}>
                         <tr style={{ backgroundColor: 'rgba(20, 184, 166, 0.10)', borderBottom: '2px solid rgba(20, 184, 166, 0.45)' }}>
@@ -5129,9 +5333,6 @@ export default function Expenses() {
                               return (
                                 <tr key={`auto-row-${row.id}`} style={{ borderBottom: '1px solid var(--border-color)' }}>
                                   <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>{row._date || '—'}</td>
-                                  {isAdmin && (
-                                    <td style={{ padding: '10px 16px', color: 'var(--text-primary)', fontWeight: 600 }}>{empName}</td>
-                                  )}
                                   <td style={{ padding: '10px 16px', fontFamily: hasTicketNumber ? 'monospace' : 'inherit' }}>
                                     {row.service_ticket_id ? (
                                       <button
@@ -5244,6 +5445,11 @@ export default function Expenses() {
                   })}
                 </tbody>
               </table>
+              </div>
+              )}
+            </div>
+              );
+              })}
             </div>
           )}
         </div>
@@ -5294,12 +5500,55 @@ export default function Expenses() {
               No contractor expense lines in this period.
             </div>
           ) : (
-            <div style={{ marginTop: '12px', backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {contractorRowsGroupedByUser.map((userGroup) => {
+                const userCollapsed = collapsedContractorUserKeys.has(userGroup.userId);
+                return (
+                <div
+                  key={`contractor-user-${userGroup.userId}`}
+                  className="ionex-customer-section"
+                >
+                  <button
+                    type="button"
+                    className="ionex-customer-section-toggle"
+                    onClick={() => toggleContractorUserGroup(userGroup.userId)}
+                    aria-expanded={!userCollapsed}
+                  >
+                    <span aria-hidden className={`ionex-customer-section-chevron${userCollapsed ? ' is-collapsed' : ''}`}>▾</span>
+                    <span className="ionex-customer-section-name">
+                      {userGroup.userName}
+                      {userGroup.unaccountedCount > 0 && (
+                        <span
+                          title={`${userGroup.unaccountedCount} unaccounted line${userGroup.unaccountedCount === 1 ? '' : 's'} across all periods`}
+                          style={{
+                            marginLeft: '10px',
+                            padding: '2px 9px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            borderRadius: '999px',
+                            backgroundColor: 'rgba(245, 158, 11, 0.16)',
+                            color: '#92400e',
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            verticalAlign: 'middle',
+                          }}
+                        >
+                          {userGroup.unaccountedCount} unaccounted
+                        </span>
+                      )}
+                    </span>
+                    <span className="ionex-customer-section-meta">
+                      <span>{userGroup.periods.length} pay {userGroup.periods.length === 1 ? 'period' : 'periods'}</span>
+                      <span>{userGroup.totals.count} {userGroup.totals.count === 1 ? 'item' : 'items'}</span>
+                      <span>Total <strong>${userGroup.totals.total.toFixed(2)}</strong></span>
+                    </span>
+                  </button>
+                  {!userCollapsed && (
+                  <div style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)', margin: '10px 0 0' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase' }}>
                     <th style={{ padding: '12px 16px' }}>Date</th>
-                    <th style={{ padding: '12px 16px' }}>Contractor</th>
                     <th style={{ padding: '12px 16px' }}>Ticket</th>
                     <th style={{ padding: '12px 16px' }}>Category</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right' }}>Qty</th>
@@ -5308,9 +5557,10 @@ export default function Expenses() {
                   </tr>
                 </thead>
                 <tbody>
-                  {contractorRowsGroupedByPayPeriod.map((period) => {
+                  {userGroup.periods.map((period) => {
                     const periodCollapsed = collapsedContractorPeriodKeys.has(period.periodKey);
-                    const colCount = 7;
+                    // Contractor column removed inside user cards — header already names the contractor.
+                    const colCount = 6;
                     return (
                       <Fragment key={`contractor-period-${period.periodKey}`}>
                         <tr style={{ backgroundColor: 'rgba(99, 102, 241, 0.10)', borderBottom: '2px solid rgba(99, 102, 241, 0.45)' }}>
@@ -5370,7 +5620,6 @@ export default function Expenses() {
                               return (
                                 <tr key={`contractor-row-${row.id}`} style={{ borderBottom: '1px solid var(--border-color)' }}>
                                   <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>{row._date || '—'}</td>
-                                  <td style={{ padding: '10px 16px', color: 'var(--text-primary)', fontWeight: 600 }}>{empName}</td>
                                   <td style={{ padding: '10px 16px', fontFamily: hasTicketNumber ? 'monospace' : 'inherit' }}>
                                     {row.service_ticket_id ? (
                                       <button
@@ -5412,6 +5661,11 @@ export default function Expenses() {
                   })}
                 </tbody>
               </table>
+              </div>
+              )}
+            </div>
+              );
+              })}
             </div>
           )}
         </div>
