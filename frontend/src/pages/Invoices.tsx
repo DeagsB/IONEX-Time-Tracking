@@ -7280,50 +7280,97 @@ export default function Invoices() {
                     );
                   };
 
+                  // Copy-pastable labour + expense lines for entry into the user's invoicing system.
+                  // Shared between the standard `line_items` step and the portal `attach_invoice` step
+                  // (approved batches) so both surfaces show the breakdown the user needs to invoice.
+                  const lineItemsBlock = (() => {
+                    const isCombined = combinedExpenseGroupIds.has(persistId);
+                    const isSplitRate = splitRateGroupIds.has(persistId);
+                    const isSplitDay = splitDayGroupIds.has(persistId);
+                    const linesMode: LinesMode = isSplitRate && isSplitDay ? 'rate-day' : isSplitRate ? 'rate' : isSplitDay ? 'day' : 'itemized';
+                    const tks = activeGroup.tickets as (ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string })[];
+                    const isCnrlPeriodGroupForLines = !!(activeGroup.key.periodKey && activeGroup.key.approverCode && activeGroup.key.approverCode !== activeGroup.key.periodKey);
+                    const breakdownLines = isSplitRate
+                      ? buildRateTypeBreakdown(tks, expensesByRecordId, false, isSplitDay)
+                      : isSplitDay
+                        ? buildDayBreakdown(tks, expensesByRecordId, isCombined)
+                        : activeGroup.key.periodKey && !isCnrlPeriodGroupForLines
+                          ? buildSingleLineBreakdown(tks, expensesByRecordId, isCombined)
+                          : buildPoAfeBreakdown(
+                              tks,
+                              (t) =>
+                                getInvoiceGroupKey(
+                                  {
+                                    projectId: t.recordProjectId ?? t.projectId,
+                                    projectName: t.projectName,
+                                    projectNumber: t.projectNumber,
+                                    location: t.location,
+                                    projectApproverPoAfe: (t as ServiceTicket & { projectApproverPoAfe?: string }).projectApproverPoAfe,
+                                    projectLocation: (t as ServiceTicket & { projectLocation?: string }).projectLocation,
+                                    projectOther: (t as ServiceTicket & { projectOther?: string }).projectOther,
+                                    customerInfo: t.customerInfo,
+                                    entries: t.entries,
+                                  },
+                                  t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
+                                ),
+                              expensesByRecordId,
+                              isCombined
+                            );
+                    const { lines: expLinesForCopy } = computeGroupExpenseTotal(tks, expensesByRecordId);
+                    const expensesFolded = isCombined && !isSplitRate;
+                    const categoryLabel = expensesFolded && expLinesForCopy.length > 0
+                      ? `labour & ${expLinesForCopy.length === 1 ? 'expense' : 'expenses'}`
+                      : undefined;
+                    const lineTotal = breakdownLines.reduce((s, l) => s + (Number(l.totalAmount) || 0), 0)
+                      + ((isSplitRate || !isCombined) ? expLinesForCopy.reduce((s, l) => s + (Number(l.amount) || 0), 0) : 0);
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)' }}>
+                            Invoice line items
+                          </span>
+                          <BreakdownModeToggle
+                            lines={linesMode}
+                            combined={isCombined}
+                            onLines={(m) => {
+                              setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'rate' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
+                              setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
+                            }}
+                            onCombined={(c) => {
+                              setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (c) next.add(persistId); else next.delete(persistId); return next; });
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                          {breakdownLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
+                            <PoAfeBreakdownLine key={`wiz-li-${i}`} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
+                          ))}
+                          {(isSplitRate || !isCombined) && expLinesForCopy.map((l, i) => {
+                            const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
+                            return (
+                              <PoAfeBreakdownLine
+                                key={`wiz-exp-${i}`}
+                                ticketList={`${l.label}${suffix}`}
+                                poAfe=""
+                                totalAmount={l.amount}
+                                category="expense"
+                              />
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                          <strong>Subtotal (pre-GST)</strong>
+                          <strong>${lineTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                        </div>
+                      </>
+                    );
+                  })();
+
                   const renderStepBody = () => {
                     // ----- Standard flow -----
                     if (!isPortal && currentStep === 'line_items') {
                       // Mirror Approved-tab line-items: copy-pastable labour + expense lines for entry
                       // into the user's invoicing system. Toggle controls match the Invoiced tab.
-                      const isCombined = combinedExpenseGroupIds.has(persistId);
-                      const isSplitRate = splitRateGroupIds.has(persistId);
-                      const isSplitDay = splitDayGroupIds.has(persistId);
-                      const linesMode: LinesMode = isSplitRate && isSplitDay ? 'rate-day' : isSplitRate ? 'rate' : isSplitDay ? 'day' : 'itemized';
-                      const tks = activeGroup.tickets as (ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string })[];
-                      const isCnrlPeriodGroupForLines = !!(activeGroup.key.periodKey && activeGroup.key.approverCode && activeGroup.key.approverCode !== activeGroup.key.periodKey);
-                      const breakdownLines = isSplitRate
-                        ? buildRateTypeBreakdown(tks, expensesByRecordId, false, isSplitDay)
-                        : isSplitDay
-                          ? buildDayBreakdown(tks, expensesByRecordId, isCombined)
-                          : activeGroup.key.periodKey && !isCnrlPeriodGroupForLines
-                            ? buildSingleLineBreakdown(tks, expensesByRecordId, isCombined)
-                            : buildPoAfeBreakdown(
-                                tks,
-                                (t) =>
-                                  getInvoiceGroupKey(
-                                    {
-                                      projectId: t.recordProjectId ?? t.projectId,
-                                      projectName: t.projectName,
-                                      projectNumber: t.projectNumber,
-                                      location: t.location,
-                                      projectApproverPoAfe: (t as ServiceTicket & { projectApproverPoAfe?: string }).projectApproverPoAfe,
-                                      projectLocation: (t as ServiceTicket & { projectLocation?: string }).projectLocation,
-                                      projectOther: (t as ServiceTicket & { projectOther?: string }).projectOther,
-                                      customerInfo: t.customerInfo,
-                                      entries: t.entries,
-                                    },
-                                    t.headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined
-                                  ),
-                                expensesByRecordId,
-                                isCombined
-                              );
-                      const { lines: expLinesForCopy } = computeGroupExpenseTotal(tks, expensesByRecordId);
-                      const expensesFolded = isCombined && !isSplitRate;
-                      const categoryLabel = expensesFolded && expLinesForCopy.length > 0
-                        ? `labour & ${expLinesForCopy.length === 1 ? 'expense' : 'expenses'}`
-                        : undefined;
-                      const lineTotal = breakdownLines.reduce((s, l) => s + (Number(l.totalAmount) || 0), 0)
-                        + ((isSplitRate || !isCombined) ? expLinesForCopy.reduce((s, l) => s + (Number(l.amount) || 0), 0) : 0);
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
@@ -7331,43 +7378,7 @@ export default function Invoices() {
                             When the invoice is raised, continue to upload the invoice PDF — the wizard will combine it with the service tickets so you can send a single bundle to the customer.
                           </p>
                           {summaryBlock}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)' }}>
-                              Invoice line items
-                            </span>
-                            <BreakdownModeToggle
-                              lines={linesMode}
-                              combined={isCombined}
-                              onLines={(m) => {
-                                setSplitRateGroupIds((prev) => { const next = new Set(prev); if (m === 'rate' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
-                                setSplitDayGroupIds((prev) => { const next = new Set(prev); if (m === 'day' || m === 'rate-day') next.add(persistId); else next.delete(persistId); return next; });
-                              }}
-                              onCombined={(c) => {
-                                setCombinedExpenseGroupIds((prev) => { const next = new Set(prev); if (c) next.add(persistId); else next.delete(persistId); return next; });
-                              }}
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
-                            {breakdownLines.map(({ ticketList, poAfe, totalAmount, splitRate, splitHours, serviceDate }, i) => (
-                              <PoAfeBreakdownLine key={`wiz-li-${i}`} ticketList={ticketList} poAfe={poAfe} totalAmount={totalAmount} category={categoryLabel} splitRate={splitRate} splitHours={splitHours} serviceDate={serviceDate} />
-                            ))}
-                            {(isSplitRate || !isCombined) && expLinesForCopy.map((l, i) => {
-                              const suffix = l.ticketNums.length > 0 ? ` (${formatTicketNumbersWithRanges(l.ticketNums)})` : '';
-                              return (
-                                <PoAfeBreakdownLine
-                                  key={`wiz-exp-${i}`}
-                                  ticketList={`${l.label}${suffix}`}
-                                  poAfe=""
-                                  totalAmount={l.amount}
-                                  category="expense"
-                                />
-                              );
-                            })}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
-                            <strong>Subtotal (pre-GST)</strong>
-                            <strong>${lineTotal.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                          </div>
+                          {lineItemsBlock}
                           <div style={{ marginBottom: '12px' }}>
                             <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
                               Once the invoice is created, drop the PDF here
@@ -7590,8 +7601,8 @@ export default function Invoices() {
                       return (
                         <div>
                           <p style={{ marginTop: 0, color: 'var(--text-secondary)' }}>
-                            Signed approval is in. Create the invoice for this batch's amount in your invoicing system,
-                            upload the invoice PDF, then mark the batch as invoiced.
+                            Signed approval is in. Create the invoice in your invoicing system using the lines below — click any line or amount to copy it.
+                            Then upload the invoice PDF and mark the batch as invoiced.
                           </p>
                           {summaryBlock}
                           {hasApprovalFile && (
@@ -7599,6 +7610,7 @@ export default function Invoices() {
                               ✓ Signed approval attached: <strong>{savedApprovalMetadata?.[persistId]?.filename ?? 'approval.pdf'}</strong>
                             </div>
                           )}
+                          {lineItemsBlock}
                           {!hasInvoiceFile ? (
                             fileDropZone({
                               id: `wiz-port-invoice-${persistId}`,
