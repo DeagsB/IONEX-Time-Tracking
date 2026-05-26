@@ -1911,6 +1911,19 @@ export default function Expenses() {
   };
 
   const [collapsedContractorPeriodKeys, setCollapsedContractorPeriodKeys] = useState<Set<string>>(new Set());
+  const hasSeededContractorPeriodCollapse = useRef<boolean>(false);
+  useEffect(() => {
+    if (contractorRowsGroupedByPayPeriod.length === 0) {
+      hasSeededContractorPeriodCollapse.current = false;
+      setCollapsedContractorPeriodKeys(new Set());
+      return;
+    }
+    if (hasSeededContractorPeriodCollapse.current) return;
+    hasSeededContractorPeriodCollapse.current = true;
+    // Same quiet default as the other tabs — every period collapsed on first paint.
+    const collapsed = contractorRowsGroupedByPayPeriod.map((p) => p.periodKey);
+    setCollapsedContractorPeriodKeys(new Set(collapsed));
+  }, [contractorRowsGroupedByPayPeriod]);
   const toggleContractorPeriodGroup = (periodKey: string) => {
     setCollapsedContractorPeriodKeys((prev) => {
       const next = new Set(prev);
@@ -2073,9 +2086,9 @@ export default function Expenses() {
     }
     if (hasSeededAutoExpensePeriodCollapse.current) return;
     hasSeededAutoExpensePeriodCollapse.current = true;
-    const collapsed = autoReimbursedGroupedByPayPeriod
-      .filter((p) => !p.isCurrent)
-      .map((p) => p.periodKey);
+    // Start with every pay-period card collapsed — the user prefers a quiet default
+    // and expands the period they want to look at. Same rationale for the other tabs.
+    const collapsed = autoReimbursedGroupedByPayPeriod.map((p) => p.periodKey);
     setCollapsedAutoExpensePeriodKeys(new Set(collapsed));
   }, [autoReimbursedGroupedByPayPeriod]);
 
@@ -2111,9 +2124,7 @@ export default function Expenses() {
     }
     if (hasSeededMyExpensePeriodCollapse.current) return;
     hasSeededMyExpensePeriodCollapse.current = true;
-    const collapsed = myExpensesGroupedByPayPeriod
-      .filter((p) => !p.isCurrent)
-      .map((p) => p.periodKey);
+    const collapsed = myExpensesGroupedByPayPeriod.map((p) => p.periodKey);
     setCollapsedMyExpensePeriodKeys(new Set(collapsed));
   }, [myExpensesGroupedByPayPeriod]);
 
@@ -2130,9 +2141,7 @@ export default function Expenses() {
     }
     if (hasSeededAdminExpensePeriodCollapse.current) return;
     hasSeededAdminExpensePeriodCollapse.current = true;
-    const collapsed = adminFilteredExpensesGroupedByPayPeriod
-      .filter((p) => !p.isCurrent)
-      .map((p) => p.periodKey);
+    const collapsed = adminFilteredExpensesGroupedByPayPeriod.map((p) => p.periodKey);
     setCollapsedAdminExpensePeriodKeys(new Set(collapsed));
   }, [adminFilteredExpensesGroupedByPayPeriod]);
 
@@ -4682,10 +4691,36 @@ export default function Expenses() {
                         </span>
                       )}
                     </span>
-                    <span className="ionex-customer-section-meta">
-                      <span>{userGroup.periods.length} pay {userGroup.periods.length === 1 ? 'period' : 'periods'}</span>
-                      <span>{userGroup.totals.count} {userGroup.totals.count === 1 ? 'item' : 'items'}</span>
-                      <span>Total <strong>${userGroup.totals.total.toFixed(2)}</strong></span>
+                    <span
+                      className="ionex-customer-section-meta"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px' }}>
+                        <strong style={{ color: 'var(--text-primary)', fontFamily: 'SF Mono, monospace', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>
+                          {userGroup.periods.length}
+                        </strong>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          {userGroup.periods.length === 1 ? 'period' : 'periods'}
+                        </span>
+                      </span>
+                      <span aria-hidden style={{ color: 'var(--text-tertiary)', opacity: 0.5 }}>·</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px' }}>
+                        <strong style={{ color: 'var(--text-primary)', fontFamily: 'SF Mono, monospace', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>
+                          {userGroup.totals.count}
+                        </strong>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          {userGroup.totals.count === 1 ? 'item' : 'items'}
+                        </span>
+                      </span>
+                      <span aria-hidden style={{ color: 'var(--text-tertiary)', opacity: 0.5 }}>·</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px' }}>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          Total
+                        </span>
+                        <strong style={{ color: 'var(--primary-color)', fontFamily: 'SF Mono, monospace', fontSize: '15px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+                          ${userGroup.totals.total.toFixed(2)}
+                        </strong>
+                      </span>
                     </span>
                   </button>
                   {!userCollapsed && userGroup.periods.map((period) => {
@@ -5247,10 +5282,36 @@ export default function Expenses() {
                         </span>
                       )}
                     </span>
-                    <span className="ionex-customer-section-meta">
-                      <span>{userGroup.periods.length} pay {userGroup.periods.length === 1 ? 'period' : 'periods'}</span>
-                      <span>{userGroup.totals.count} {userGroup.totals.count === 1 ? 'item' : 'items'}</span>
-                      <span>Total <strong>${userGroup.totals.total.toFixed(2)}</strong></span>
+                    <span
+                      className="ionex-customer-section-meta"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px' }}>
+                        <strong style={{ color: 'var(--text-primary)', fontFamily: 'SF Mono, monospace', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>
+                          {userGroup.periods.length}
+                        </strong>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          {userGroup.periods.length === 1 ? 'period' : 'periods'}
+                        </span>
+                      </span>
+                      <span aria-hidden style={{ color: 'var(--text-tertiary)', opacity: 0.5 }}>·</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px' }}>
+                        <strong style={{ color: 'var(--text-primary)', fontFamily: 'SF Mono, monospace', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>
+                          {userGroup.totals.count}
+                        </strong>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          {userGroup.totals.count === 1 ? 'item' : 'items'}
+                        </span>
+                      </span>
+                      <span aria-hidden style={{ color: 'var(--text-tertiary)', opacity: 0.5 }}>·</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px' }}>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          Total
+                        </span>
+                        <strong style={{ color: 'var(--primary-color)', fontFamily: 'SF Mono, monospace', fontSize: '15px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+                          ${userGroup.totals.total.toFixed(2)}
+                        </strong>
+                      </span>
                     </span>
                   </button>
                   {!userCollapsed && (
@@ -5537,10 +5598,36 @@ export default function Expenses() {
                         </span>
                       )}
                     </span>
-                    <span className="ionex-customer-section-meta">
-                      <span>{userGroup.periods.length} pay {userGroup.periods.length === 1 ? 'period' : 'periods'}</span>
-                      <span>{userGroup.totals.count} {userGroup.totals.count === 1 ? 'item' : 'items'}</span>
-                      <span>Total <strong>${userGroup.totals.total.toFixed(2)}</strong></span>
+                    <span
+                      className="ionex-customer-section-meta"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px' }}>
+                        <strong style={{ color: 'var(--text-primary)', fontFamily: 'SF Mono, monospace', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>
+                          {userGroup.periods.length}
+                        </strong>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          {userGroup.periods.length === 1 ? 'period' : 'periods'}
+                        </span>
+                      </span>
+                      <span aria-hidden style={{ color: 'var(--text-tertiary)', opacity: 0.5 }}>·</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px' }}>
+                        <strong style={{ color: 'var(--text-primary)', fontFamily: 'SF Mono, monospace', fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>
+                          {userGroup.totals.count}
+                        </strong>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          {userGroup.totals.count === 1 ? 'item' : 'items'}
+                        </span>
+                      </span>
+                      <span aria-hidden style={{ color: 'var(--text-tertiary)', opacity: 0.5 }}>·</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '6px' }}>
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          Total
+                        </span>
+                        <strong style={{ color: 'var(--primary-color)', fontFamily: 'SF Mono, monospace', fontSize: '15px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>
+                          ${userGroup.totals.total.toFixed(2)}
+                        </strong>
+                      </span>
                     </span>
                   </button>
                   {!userCollapsed && (
