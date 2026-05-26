@@ -7049,10 +7049,14 @@ export default function Invoices() {
                       setUploadingInvoiceGroupId(null);
                     }
                   };
-                  // Standard step 2: after a successful invoice upload, kick off the combined
-                  // download automatically so the user doesn't have to click again on step 3.
+                  // After a successful invoice upload, kick off the combined download automatically
+                  // so the user doesn't have to click again. Used by:
+                  //   - standard line_items step (so step 'send' lands with the merged PDF already in hand)
+                  //   - portal attach_invoice step (approved batches — same convenience for portal customers)
+                  // For customers with a customer-supplied timesheet attached, handleDownloadBatchWithInvoice
+                  // already swaps the service-ticket PDFs for that file, so the same helper works for both flows.
                   // Falls through to the regular handler for any upload failure.
-                  const onAttachStandardAutoDownload = async (file: File) => {
+                  const onAttachAndDownloadCombined = async (file: File) => {
                     const uploaded = await onAttach(file);
                     if (!uploaded) return;
                     try {
@@ -7392,7 +7396,7 @@ export default function Invoices() {
                                   setExportError('Fix the blockers above before attaching the invoice.');
                                   return;
                                 }
-                                await onAttachStandardAutoDownload(file);
+                                await onAttachAndDownloadCombined(file);
                               },
                             })}
                           </div>
@@ -7614,9 +7618,9 @@ export default function Invoices() {
                           {!hasInvoiceFile ? (
                             fileDropZone({
                               id: `wiz-port-invoice-${persistId}`,
-                              label: 'Click to upload invoice PDF',
+                              label: 'Drop invoice PDF here to combine + download',
                               uploading: uploadingInvoiceGroupId === persistId,
-                              onPick: onAttach,
+                              onPick: onAttachAndDownloadCombined,
                             })
                           ) : (
                             <div>
