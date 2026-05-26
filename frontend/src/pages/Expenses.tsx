@@ -270,10 +270,10 @@ export default function Expenses() {
   // Persisted across reloads so the user lands where they last were. URL params already
   // claim `?tab=` for the admin status filter (see effect below), so this only uses
   // localStorage to avoid collision.
-  const [activeExpensesTab, setActiveExpensesTab] = useState<'receipts' | 'auto' | 'contractors' | 'management'>(() => {
+  const [activeExpensesTab, setActiveExpensesTab] = useState<'receipts' | 'auto' | 'contractors' | 'management' | 'reconcile'>(() => {
     try {
       const v = localStorage.getItem('ionex-expenses-tab');
-      if (v === 'auto' || v === 'contractors' || v === 'management') return v;
+      if (v === 'auto' || v === 'contractors' || v === 'management' || v === 'reconcile') return v;
       return 'receipts';
     } catch { return 'receipts'; }
   });
@@ -1612,6 +1612,67 @@ export default function Expenses() {
     [adminFilteredExpensesGroupedByDate, todayPeriodIndex]
   );
 
+  // Reconcile tab: every unaccounted expense across the whole company, grouped by pay
+  // period (the natural cadence for bookkeeping data entry). Independent of UEM's filter
+  // rail so admin always has the full reconcile picture in this tab. Hidden hotel
+  // ticket placeholders are stripped — the employee's actual receipt is what gets entered.
+  const reconcileGroupedByDate = useMemo(() => {
+    const rows = (mergedAdminExpensesForApproval as any[]).filter((e) => {
+      if (isHiddenHotelTicketPlaceholder(e)) return false;
+      return e._status === 'unpaid';
+    });
+    const sorted = [...rows].sort((a: any, b: any) => {
+      const ka = normalizeExpenseTableDateKey(String(a._date || ''));
+      const kb = normalizeExpenseTableDateKey(String(b._date || ''));
+      if (ka !== kb) return kb.localeCompare(ka);
+      const sa = `${a._employeeName || ''}|${a.description || ''}|${a.id}`;
+      const sb = `${b._employeeName || ''}|${b.description || ''}|${b.id}`;
+      return sa.localeCompare(sb);
+    });
+    const groups: { dateKey: string; items: any[] }[] = [];
+    let lastKey = '';
+    for (const exp of sorted) {
+      const k = normalizeExpenseTableDateKey(String(exp._date || ''));
+      if (k !== lastKey) { groups.push({ dateKey: k, items: [] }); lastKey = k; }
+      groups[groups.length - 1].items.push(exp);
+    }
+    return groups;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergedAdminExpensesForApproval]);
+
+  const reconcileGroupedByPayPeriod = useMemo(
+    () => groupDateGroupsByPayPeriod(reconcileGroupedByDate, (e) => e._date || e.expense_date),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reconcileGroupedByDate, todayPeriodIndex]
+  );
+
+  const [collapsedReconcilePeriodKeys, setCollapsedReconcilePeriodKeys] = useState<Set<string>>(new Set());
+  const hasSeededReconcilePeriodCollapse = useRef<boolean>(false);
+  useEffect(() => {
+    if (reconcileGroupedByPayPeriod.length === 0) {
+      hasSeededReconcilePeriodCollapse.current = false;
+      setCollapsedReconcilePeriodKeys(new Set());
+      return;
+    }
+    if (hasSeededReconcilePeriodCollapse.current) return;
+    hasSeededReconcilePeriodCollapse.current = true;
+    // Same quiet default — every period collapsed. Reconcile is a focused per-period task,
+    // so the admin opens the one they're entering into the books and ignores the rest.
+    setCollapsedReconcilePeriodKeys(new Set(reconcileGroupedByPayPeriod.map((p) => p.periodKey)));
+  }, [reconcileGroupedByPayPeriod]);
+  const toggleReconcilePeriodGroup = (periodKey: string) => {
+    setCollapsedReconcilePeriodKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(periodKey)) next.delete(periodKey);
+      else next.add(periodKey);
+      return next;
+    });
+  };
+
+  /** Selected reconcile rows for bulk Account-for. Keyed the same as the UEM bulk bar
+   *  ("<source>-<id>") so the existing selection-handling code can be reused. */
+  const [selectedReconcileKeys, setSelectedReconcileKeys] = useState<Set<string>>(new Set());
+
   // User Expense Management: outer grouping by employee, inner grouping by pay period.
   // Admins want to focus on one person's reconciliation at a time rather than scanning
   // across all employees in one period — switching to user-first puts the pay-period
@@ -2597,6 +2658,14 @@ export default function Expenses() {
             id: 'management' as const,
             label: 'User Expense Management',
             count: expenseEmployeeSummary.reduce((s, e) => s + e.unpaid, 0),
+          }] : []),
+          // Reconcile — pay-period-first view of every unaccounted line, optimized
+          // for entering expenses into the books. Same source data as UEM but laid
+          // out for sequential bookkeeping work rather than per-employee audit.
+          ...(isAdmin ? [{
+            id: 'reconcile' as const,
+            label: 'Reconcile',
+            count: reconcileGroupedByPayPeriod.reduce((s, p) => s + p.totals.count, 0),
           }] : []),
         ]).map((tab) => {
           const isActive = activeExpensesTab === tab.id;
@@ -5770,6 +5839,226 @@ export default function Expenses() {
               )}
             </div>
               );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Reconcile tab (admin only). Streamlined data-entry view: pay-period accordions
+          stacking every unaccounted expense system-wide so the admin can work through
+          one period at a time when entering into the books. Each row has Account For;
+          checkboxes drive a bulk Mark-N-accounted action so several lines flip at once
+          after a batch entry. */}
+      {activeExpensesTab === 'reconcile' && isAdmin && (
+        <div>
+          <div style={{ marginBottom: '14px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              Reconcile
+            </h2>
+            <p style={{ margin: '6px 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '760px' }}>
+              Every unaccounted expense across the company, grouped by pay period. Work through one
+              period at a time, enter the lines into the books, then mark them accounted so nothing slips
+              through. Select multiple rows for a bulk mark.
+            </p>
+          </div>
+
+          {reconcileGroupedByPayPeriod.length === 0 ? (
+            <div className="ionex-empty">
+              <div className="title">All caught up</div>
+              <div className="body">Every expense has been marked accounted for. Nothing left to reconcile.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {reconcileGroupedByPayPeriod.map((period) => {
+                const periodCollapsed = collapsedReconcilePeriodKeys.has(period.periodKey);
+                const flatItems: any[] = period.dateGroups.flatMap((g) => g.items);
+                const itemKeys = flatItems.map((e: any) => `${e._source}-${e.id}`);
+                const allSelected = itemKeys.length > 0 && itemKeys.every((k) => selectedReconcileKeys.has(k));
+                const anySelected = itemKeys.some((k) => selectedReconcileKeys.has(k));
+                const selectedRows = flatItems.filter((e: any) => selectedReconcileKeys.has(`${e._source}-${e.id}`));
+                const selectedTotal = selectedRows.reduce((s, r: any) => s + (Number(r._amount) || 0), 0);
+                const toggleAllInPeriod = (checked: boolean) => {
+                  setSelectedReconcileKeys((prev) => {
+                    const next = new Set(prev);
+                    if (checked) for (const k of itemKeys) next.add(k);
+                    else for (const k of itemKeys) next.delete(k);
+                    return next;
+                  });
+                };
+                const onBulkAccount = async () => {
+                  if (selectedRows.length === 0) return;
+                  const proceed = window.confirm(
+                    `Mark ${selectedRows.length} expense${selectedRows.length === 1 ? '' : 's'} as accounted for ($${selectedTotal.toFixed(2)})?\n\n` +
+                    'They drop out of the workflow once they\'re stamped accounted in the system.'
+                  );
+                  if (!proceed) return;
+                  await handleAdminBatchStatusChange(
+                    selectedRows.map((r: any) => ({ id: String(r.id), source: r._source as 'receipt' | 'ticket' })),
+                    'paid'
+                  );
+                  setSelectedReconcileKeys((prev) => {
+                    const next = new Set(prev);
+                    for (const r of selectedRows) next.delete(`${r._source}-${r.id}`);
+                    return next;
+                  });
+                };
+                const periodModifier = period.isCurrent ? '' : period.isFuture ? ' is-future' : '';
+                return (
+                  <div
+                    key={`reconcile-period-${period.periodKey}`}
+                    className={`ionex-period-card${periodCollapsed ? ' is-collapsed' : ''}${periodModifier}`}
+                  >
+                    <button
+                      type="button"
+                      className="ionex-period-card-header"
+                      onClick={() => toggleReconcilePeriodGroup(period.periodKey)}
+                      aria-expanded={!periodCollapsed}
+                    >
+                      <span className="ionex-period-card-chevron" style={{ transform: periodCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }} aria-hidden>▶</span>
+                      <span className="ionex-period-card-eyebrow">Pay period</span>
+                      <span className="ionex-period-card-title">{period.periodLabel}</span>
+                      {period.isCurrent && <span className="ionex-status-pill is-period-current">Current</span>}
+                      {period.isFuture && <span className="ionex-status-pill is-period-future">Upcoming</span>}
+                      <span className="ionex-period-card-meta">
+                        <span><strong>{period.totals.count}</strong> {period.totals.count === 1 ? 'line' : 'lines'} to enter</span>
+                        <span>Total <strong className="is-grand">${period.totals.total.toFixed(2)}</strong></span>
+                      </span>
+                    </button>
+                    {!periodCollapsed && (
+                      <div className="ionex-period-card-body">
+                        {selectedRows.length > 0 && (
+                          <div
+                            role="region"
+                            aria-label="Bulk Account For"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+                              padding: '10px 14px', marginBottom: '10px',
+                              backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                              border: '1px solid rgba(21, 128, 61, 0.3)',
+                              borderRadius: '8px',
+                            }}
+                          >
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#15803d' }}>
+                              {selectedRows.length} selected · ${selectedTotal.toFixed(2)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={onBulkAccount}
+                              disabled={batchActionBusy}
+                              className="ionex-row-action-icon is-success"
+                              style={{ marginLeft: 'auto' }}
+                            >
+                              Mark {selectedRows.length} accounted
+                            </button>
+                          </div>
+                        )}
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="ionex-expense-table" style={{ minWidth: '900px' }}>
+                            <thead>
+                              <tr>
+                                <th className="is-checkbox">
+                                  <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    ref={(el) => { if (el) el.indeterminate = !allSelected && anySelected; }}
+                                    onChange={(e) => toggleAllInPeriod(e.target.checked)}
+                                    title="Select all in this pay period"
+                                    style={{ cursor: 'pointer' }}
+                                  />
+                                </th>
+                                <th>Date</th>
+                                <th>Employee</th>
+                                <th>Project</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th className="is-numeric">Amount</th>
+                                <th className="is-numeric">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {flatItems.map((exp: any) => {
+                                const selKey = `${exp._source}-${exp.id}`;
+                                const isSelected = selectedReconcileKeys.has(selKey);
+                                const isUpdating = updatingExpenseId === exp.id;
+                                const dt = normalizeExpenseTableDateKey(String(exp._date || ''));
+                                // Project label: receipt-backed lines carry it on service_ticket.project;
+                                // ticket-expense rows on service_tickets.project. Fall back to a dash so the
+                                // column never looks broken when an expense has no project assigned.
+                                const projRaw = exp.service_ticket?.project || exp.service_tickets?.project;
+                                const projLabel = projRaw
+                                  ? [projRaw.project_number, projRaw.name].filter(Boolean).join(' – ')
+                                  : '—';
+                                const category = expenseTypeOf(exp);
+                                return (
+                                  <tr key={selKey} className={`ionex-expense-table-row${isSelected ? ' is-selected' : ''}`}>
+                                    <td style={{ paddingLeft: '18px', width: '32px' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => {
+                                          setSelectedReconcileKeys((prev) => {
+                                            const next = new Set(prev);
+                                            if (e.target.checked) next.add(selKey);
+                                            else next.delete(selKey);
+                                            return next;
+                                          });
+                                        }}
+                                      />
+                                    </td>
+                                    <td style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                                      {dt ? formatExpenseGroupDateLabel(dt) : '—'}
+                                    </td>
+                                    <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                                      {exp._employeeName || '—'}
+                                    </td>
+                                    <td style={{ color: projLabel === '—' ? 'var(--text-tertiary)' : 'var(--text-primary)', fontStyle: projLabel === '—' ? 'italic' : 'normal' }}>
+                                      {projLabel}
+                                    </td>
+                                    <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                                      {category}
+                                    </td>
+                                    <td style={{ color: 'var(--text-secondary)' }}>
+                                      {exp.description || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>(no description)</span>}
+                                      {exp._source === 'receipt' && exp.receipt_url && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
+                                          className="ionex-expense-table-link-button"
+                                          style={{ marginLeft: '8px', fontSize: '11px' }}
+                                          title="Preview receipt"
+                                        >
+                                          {loadingReceiptId === exp.id ? '…' : '🧾 View receipt'}
+                                        </button>
+                                      )}
+                                    </td>
+                                    <td className="is-numeric">
+                                      <span className="ionex-expense-table-amount">${(Number(exp._amount) || 0).toFixed(2)}</span>
+                                      {exp._source === 'receipt' && parseFloat(exp.gst || 0) > 0 && (
+                                        <span className="ionex-expense-table-amount-gst">+ GST ${parseFloat(exp.gst || 0).toFixed(2)}</span>
+                                      )}
+                                    </td>
+                                    <td className="is-numeric">
+                                      <button
+                                        type="button"
+                                        className="ionex-row-action-icon is-success"
+                                        disabled={isUpdating || batchActionBusy}
+                                        onClick={() => handleAdminStatusChange(exp.id, 'paid', exp._source as 'receipt' | 'ticket', exp)}
+                                        title="Mark this line as accounted for — entered into the books."
+                                      >
+                                        Account for
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
               })}
             </div>
           )}
