@@ -846,21 +846,44 @@ export default function Payroll() {
     [ticketExpensesForReimbursements]
   );
 
+  // Receipt ids referenced via user_expense_id from any ticket-expense in scope. Without
+  // this, a receipt linked via the Apply-to-Ticket flow whose own service_ticket_id was
+  // never backfilled (or points at a ticket outside scope) wouldn't appear in
+  // payrollLinkedApprovedReceipts, and ticketExpenseHasPayrollEligibleLinkedReceipt
+  // would falsely report "no receipt" — driving the bug behind Chase Gibbon's 3
+  // unaccounted-but-receipted lines disappearing from the breakdown.
+  const payrollLinkedUserExpenseIds = useMemo(
+    () => [...new Set(
+      (ticketExpensesForReimbursements as any[])
+        .map((e: any) => e.user_expense_id)
+        .filter((id: any): id is string => !!id)
+        .map((id: string) => String(id))
+    )],
+    [ticketExpensesForReimbursements]
+  );
+
   const { data: payrollLinkedApprovedReceipts = [] } = useQuery({
-    queryKey: ['payrollLinkedApprovedReceipts', payrollTicketIdsForReceiptCheck.slice().sort().join(',')],
+    queryKey: [
+      'payrollLinkedApprovedReceipts',
+      payrollTicketIdsForReceiptCheck.slice().sort().join(','),
+      payrollLinkedUserExpenseIds.slice().sort().join(','),
+    ],
     queryFn: async () => {
-      if (payrollTicketIdsForReceiptCheck.length === 0) return [];
+      if (payrollTicketIdsForReceiptCheck.length === 0 && payrollLinkedUserExpenseIds.length === 0) return [];
       // Include the file/amount fields so the reimbursement breakdown can preview the receipt
       // that backs an "Expense Billed to Customer" / "Hotel" ticket-expense line (these are
       // ticket rows, but the underlying receipt lives in user_expenses).
+      const filters: string[] = [];
+      if (payrollTicketIdsForReceiptCheck.length > 0) filters.push(`service_ticket_id.in.(${payrollTicketIdsForReceiptCheck.join(',')})`);
+      if (payrollLinkedUserExpenseIds.length > 0) filters.push(`id.in.(${payrollLinkedUserExpenseIds.join(',')})`);
       const { data, error } = await supabase
         .from('user_expenses')
         .select('id, service_ticket_id, description, status, amount, gst, expense_date, notes, receipt_url')
-        .in('service_ticket_id', payrollTicketIdsForReceiptCheck);
+        .or(filters.join(','));
       if (error) throw error;
       return data || [];
     },
-    enabled: payrollTicketIdsForReceiptCheck.length > 0,
+    enabled: payrollTicketIdsForReceiptCheck.length > 0 || payrollLinkedUserExpenseIds.length > 0,
   });
 
   /** All receipt ids in this payroll set — used to find any service_ticket_expenses
