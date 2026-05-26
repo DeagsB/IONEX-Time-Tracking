@@ -9966,9 +9966,18 @@ export default function Invoices() {
                             setExportError(null);
                             setRedownloadingApprovalId(persistId);
                             try {
-                              const merged = await buildMergedBatchPdfBlob(group);
-                              const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
-                              saveAs(merged, filename);
+                              // Prefer the signed PDF the approver returned (uploaded at the Submitted →
+                              // Approved transition). Falling back to a fresh merge would silently hand
+                              // the user an unsigned regeneration, defeating the purpose of downloading
+                              // "the approved batch". Only regenerate if the storage row is missing.
+                              if (approval) {
+                                const blob = await invoicedBatchApprovalsService.downloadApproval(approval.storagePath);
+                                saveAs(blob, invoiceFilenameForDownload(approval.filename));
+                              } else {
+                                const merged = await buildMergedBatchPdfBlob(group);
+                                const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+                                saveAs(merged, filename);
+                              }
                             } catch (err) {
                               console.error('Re-download approval batch error:', err);
                               setExportError(err instanceof Error ? err.message : 'Could not generate batch PDF.');
@@ -9976,7 +9985,9 @@ export default function Invoices() {
                               setRedownloadingApprovalId(null);
                             }
                           }}
-                          title="Re-generate and download the merged batch PDF (Approver - Period.pdf). Does not change status."
+                          title={approval
+                            ? 'Download the signed approval PDF returned by the approver.'
+                            : 'Re-generate and download the merged batch PDF (Approver - Period.pdf) — no signed PDF on file. Does not change status.'}
                           style={{
                             padding: '6px 12px',
                             fontSize: '12px',
@@ -9992,7 +10003,9 @@ export default function Invoices() {
                           }}
                         >
                           <span aria-hidden>📥</span>
-                          {redownloadingApprovalId === persistId ? 'Building…' : 'Download batch again'}
+                          {redownloadingApprovalId === persistId
+                            ? (approval ? 'Downloading…' : 'Building…')
+                            : (approval ? 'Download signed batch' : 'Download batch again')}
                         </button>
                         <button
                           type="button"
@@ -10081,8 +10094,19 @@ export default function Invoices() {
                                   const zip = new JSZip();
                                   const used = new Set<string>();
                                   for (const g of section.groups) {
-                                    const merged = await buildMergedBatchPdfBlob(g);
-                                    let name = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                    // Same precedence as the per-batch button: use the signed PDF
+                                    // returned by the approver when one is on file, else regenerate.
+                                    const pid = resolvedPersistGroupId(g, invoicedMarkRows);
+                                    const sig = savedApprovalMetadata?.[pid];
+                                    let batchBlob: Blob;
+                                    let name: string;
+                                    if (sig) {
+                                      batchBlob = await invoicedBatchApprovalsService.downloadApproval(sig.storagePath);
+                                      name = invoiceFilenameForDownload(sig.filename);
+                                    } else {
+                                      batchBlob = await buildMergedBatchPdfBlob(g);
+                                      name = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                    }
                                     if (used.has(name)) {
                                       const stem = name.replace(/\.pdf$/i, '');
                                       let n = 2;
@@ -10090,7 +10114,7 @@ export default function Invoices() {
                                       name = `${stem} (${n}).pdf`;
                                     }
                                     used.add(name);
-                                    zip.file(name, merged);
+                                    zip.file(name, batchBlob);
                                   }
                                   const blob = await zip.generateAsync({ type: 'blob' });
                                   const periodPart = (section.periodLabel || '').trim();
