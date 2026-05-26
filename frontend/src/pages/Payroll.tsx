@@ -6,6 +6,7 @@ import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
 import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
 import { saveAs } from 'file-saver';
+import ExcelJS from 'exceljs';
 import { ticketExpenseReimbursementBase } from '../utils/ticketExpenseReimbursement';
 import { linkedUserExpenseRedundantWithTicketExpenseLine } from '../utils/ticketExpenseReceiptMatch';
 import PayPeriodCalendar from '../components/PayPeriodCalendar';
@@ -1102,6 +1103,10 @@ export default function Payroll() {
     projectKey: string;
     /** Display label for the project — falls back to "(no project)" when unassigned. */
     projectLabel: string;
+    /** Date the expense was incurred. Ticket-expense lines borrow the service ticket's
+     *  date; receipt-backed lines use the receipt's expense_date. May be missing on
+     *  legacy rows where the date wasn't recorded. */
+    date?: string;
     /** service_ticket_expenses.id when this line was sourced from a ticket-expense row.
      *  The Mark-as-Paid button flips `reimbursement_status` to 'paid' on these ids. */
     ticketExpenseId?: string;
@@ -1262,6 +1267,7 @@ export default function Payroll() {
         ticketNumber,
         projectKey,
         projectLabel,
+        date: exp.service_tickets?.date ?? undefined,
         ticketExpenseId: String(exp.id),
         isPaid: exp.reimbursement_status === 'paid',
         receipt: receiptPayload,
@@ -1306,6 +1312,7 @@ export default function Payroll() {
         amount,
         projectKey,
         projectLabel,
+        date: exp.expense_date ?? undefined,
         isPaid: exp.status === 'paid',
         receipt: {
           id: String(exp.id),
@@ -1699,7 +1706,8 @@ export default function Payroll() {
   // --- CSV export for QuickBooks ---
   // Builds a friendly multi-section sheet: project allocations per employee, then a payroll summary
   // (gross, deductions, net, reimbursements, total payout, allowances) ready for QuickBooks input.
-  const handleExportCsv = () => {
+  // Exported as XLSX (not CSV) so column widths can be auto-fitted to the longest cell content.
+  const handleExportCsv = async () => {
     const empByUserId = new Map<string, any>();
     if (allEmployees) {
       for (const e of allEmployees as any[]) {
@@ -1707,14 +1715,20 @@ export default function Payroll() {
       }
     }
 
-    const csvEscape = (v: any): string => {
-      const s = v === null || v === undefined ? '' : String(v);
-      if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-      return s;
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'IONEX Time Tracking';
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet('Payroll');
+
+    // Track every row written so we can compute per-column max-width at the end.
+    // Numeric cells keep their numeric value (preserves Excel formatting + sorting)
+    // but we record their formatted string length for the width calculation.
+    const rows: { values: (string | number)[]; widthSamples: string[] }[] = [];
+    const pushRow = (cells: (string | number)[]) => {
+      const widthSamples = cells.map((c) => typeof c === 'number' ? c.toFixed(2) : String(c));
+      rows.push({ values: cells, widthSamples });
     };
-    const rows: string[][] = [];
-    const pushRow = (cells: (string | number)[]) => rows.push(cells.map((c) => typeof c === 'number' ? c.toFixed(2) : String(c)));
-    const blank = () => rows.push([]);
+    const blank = () => rows.push({ values: [], widthSamples: [] });
 
     pushRow(['Payroll Export']);
     pushRow(['Period Start', startDate, 'Period End', endDate, 'Payday', paydayLabel]);
@@ -1730,7 +1744,6 @@ export default function Payroll() {
       const empType = employee?.employment_type || 'Employee';
       const dept = employee?.department || '';
 
-      // Aggregate (project, rate type, billable) → hours
       const agg = new Map<string, { projNumber: string; projName: string; custName: string; rateType: string; billable: boolean; hours: number }>();
       for (const entry of emp.entries) {
         const projNumber = entry.project?.project_number || '';
@@ -1744,7 +1757,6 @@ export default function Payroll() {
       }
 
       if (agg.size === 0) {
-        // employee with no entries — emit a zero row so they still show up
         pushRow([emp.name, emp.email, empType, dept, '', '', '', '', 0]);
         continue;
       }
@@ -1774,30 +1786,77 @@ export default function Payroll() {
 
     blank();
 
-    // Section 3: reimbursement detail (so we can copy lines straight into QB)
+    // Section 3: reimbursement detail (so we can copy lines straight into QB).
+    // Track which sheet rows are reimbursement detail rows (1-based) so we can apply
+    // currency formatting to the Rate (col 9) and Amount (col 11) cells after writing.
+    const reimbDetailRowIdxs: number[] = [];
     pushRow(['Reimbursement Detail']);
-    pushRow(['Employee', 'Email', 'Category', 'Description', 'Ticket', 'Qty', 'Rate', 'Reimb %', 'Amount']);
+    pushRow(['Employee', 'Email', 'Date', 'Project', 'Category', 'Description', 'Ticket', 'Qty', 'Rate', 'Reimb %', 'Amount']);
     for (const emp of displayedEmployeeHours) {
       const reimb = reimbursementsByUser.get(emp.userId);
       if (!reimb || reimb.lines.length === 0) continue;
       for (const line of reimb.lines) {
+        reimbDetailRowIdxs.push(rows.length + 1); // 1-based, captured before push
         pushRow([
-          emp.name, emp.email, line.category, line.description, line.ticketNumber || '',
+          emp.name, emp.email, line.date || '', line.projectLabel || '', line.category, line.description, line.ticketNumber || '',
           line.quantity, line.rate, line.reimbRate * 100, line.amount,
         ]);
       }
     }
 
-    const csv = rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `payroll_${startDate}_to_${endDate}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Section-banner and column-header rows that should render bold + shaded so the
+    // three sections are visually distinct in Excel. Tracked by row index (1-based).
+    const sectionBannerRowIdxs = new Set<number>();
+    const columnHeaderRowIdxs = new Set<number>();
+    rows.forEach((r, i) => {
+      const first = String(r.values[0] ?? '');
+      if (first === 'Payroll Export') sectionBannerRowIdxs.add(i + 1);
+      else if (first === 'Project Allocations' || first === 'Payroll Summary (per employee)' || first === 'Reimbursement Detail') sectionBannerRowIdxs.add(i + 1);
+      else if (first === 'Employee') columnHeaderRowIdxs.add(i + 1);
+    });
+
+    // Write rows + capture max content width per column.
+    const colWidths: number[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const xlRow = sheet.addRow(r.values);
+      const isHeader = sectionBannerRowIdxs.has(i + 1) || columnHeaderRowIdxs.has(i + 1);
+      if (isHeader) {
+        xlRow.font = { bold: true };
+        xlRow.eachCell({ includeEmpty: false }, (cell) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFEF' } };
+        });
+      }
+      for (let c = 0; c < r.widthSamples.length; c++) {
+        const len = r.widthSamples[c].length;
+        if (!colWidths[c] || len > colWidths[c]) colWidths[c] = len;
+      }
+    }
+
+    // Apply auto-fit widths — Excel's "width" unit is roughly one character; add a
+    // small padding so values don't kiss the column edge, and cap so a single very
+    // long description (e.g. expense memo) doesn't blow out the column.
+    const MIN_WIDTH = 10;
+    const MAX_WIDTH = 50;
+    const PADDING = 2;
+    for (let c = 0; c < colWidths.length; c++) {
+      const w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, (colWidths[c] || 0) + PADDING));
+      sheet.getColumn(c + 1).width = w;
+    }
+
+    // Currency formatting for the Reimbursement Detail section. Columns map to the
+    // header pushed above: Rate is col 9, Amount is col 11. Applying numFmt cell-by-cell
+    // (not column-wide) keeps the Payroll Summary's numeric columns untouched.
+    const currencyFmt = '"$"#,##0.00';
+    for (const rowIdx of reimbDetailRowIdxs) {
+      const row = sheet.getRow(rowIdx);
+      row.getCell(9).numFmt = currencyFmt;
+      row.getCell(11).numFmt = currencyFmt;
+    }
+
+    const buf = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, `payroll_${startDate}_to_${endDate}.xlsx`);
   };
 
   // Payday for selected range (if it's a 14-day period) or current pay period's payday
@@ -1950,15 +2009,15 @@ export default function Payroll() {
               Exclude contractors
             </label>
 
-            {/* Export to QuickBooks-friendly CSV */}
+            {/* Export to QuickBooks-friendly Excel workbook (XLSX so column widths auto-fit) */}
             <button
               type="button"
               onClick={handleExportCsv}
               className="payroll-action-btn payroll-action-spacer"
-              title="Download a CSV with project allocations, rates, and payroll inputs for QuickBooks"
+              title="Download an Excel workbook with project allocations, rates, and payroll inputs for QuickBooks"
               disabled={displayedEmployeeHours.length === 0}
             >
-              <span aria-hidden>⬇</span> Export CSV
+              <span aria-hidden>⬇</span> Export Excel
             </button>
           </div>
         )}
