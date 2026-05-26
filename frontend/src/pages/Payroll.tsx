@@ -1786,7 +1786,50 @@ export default function Payroll() {
 
     blank();
 
-    // Section 3: reimbursement detail (so we can copy lines straight into QB).
+    // Section 3: reimbursement summary by project. Aggregates each employee's lines into
+    // (project, category) buckets so the user sees what's being reimbursed against each
+    // project at a glance, with a subtotal per project and a grand total per employee —
+    // a copy-pastable view that doesn't require pivot-tabling the detail section below.
+    // Tracked row indexes so we can later apply currency formatting + bold totals.
+    const reimbSummaryAmountRowIdxs: number[] = [];
+    const reimbSummarySubtotalRowIdxs: number[] = [];
+    pushRow(['Reimbursement Summary by Project']);
+    pushRow(['Employee', 'Email', 'Project', 'Category', 'Amount']);
+    for (const emp of displayedEmployeeHours) {
+      const reimb = reimbursementsByUser.get(emp.userId);
+      if (!reimb || reimb.lines.length === 0) continue;
+      // Bucket: project label → category → amount sum. Use projectLabel (already includes
+      // a "(no project)" fallback) so lines without a project still aggregate predictably.
+      const byProject = new Map<string, Map<string, number>>();
+      for (const line of reimb.lines) {
+        const proj = line.projectLabel || '(no project)';
+        if (!byProject.has(proj)) byProject.set(proj, new Map());
+        const byCat = byProject.get(proj)!;
+        byCat.set(line.category, (byCat.get(line.category) || 0) + line.amount);
+      }
+      let employeeTotal = 0;
+      const sortedProjects = [...byProject.keys()].sort();
+      for (const proj of sortedProjects) {
+        const byCat = byProject.get(proj)!;
+        let projectSubtotal = 0;
+        const sortedCats = [...byCat.keys()].sort();
+        for (const cat of sortedCats) {
+          const amt = byCat.get(cat) || 0;
+          projectSubtotal += amt;
+          reimbSummaryAmountRowIdxs.push(rows.length + 1);
+          pushRow([emp.name, emp.email, proj, cat, amt]);
+        }
+        employeeTotal += projectSubtotal;
+        reimbSummarySubtotalRowIdxs.push(rows.length + 1);
+        pushRow([emp.name, emp.email, proj, '— Project subtotal —', projectSubtotal]);
+      }
+      reimbSummarySubtotalRowIdxs.push(rows.length + 1);
+      pushRow([emp.name, emp.email, '', '— Employee total —', employeeTotal]);
+    }
+
+    blank();
+
+    // Section 4: reimbursement detail (so we can copy lines straight into QB).
     // Track which sheet rows are reimbursement detail rows (1-based) so we can apply
     // currency formatting to the Rate (col 9) and Amount (col 11) cells after writing.
     const reimbDetailRowIdxs: number[] = [];
@@ -1811,7 +1854,7 @@ export default function Payroll() {
     rows.forEach((r, i) => {
       const first = String(r.values[0] ?? '');
       if (first === 'Payroll Export') sectionBannerRowIdxs.add(i + 1);
-      else if (first === 'Project Allocations' || first === 'Payroll Summary (per employee)' || first === 'Reimbursement Detail') sectionBannerRowIdxs.add(i + 1);
+      else if (first === 'Project Allocations' || first === 'Payroll Summary (per employee)' || first === 'Reimbursement Summary by Project' || first === 'Reimbursement Detail') sectionBannerRowIdxs.add(i + 1);
       else if (first === 'Employee') columnHeaderRowIdxs.add(i + 1);
     });
 
@@ -1852,6 +1895,20 @@ export default function Payroll() {
       const row = sheet.getRow(rowIdx);
       row.getCell(9).numFmt = currencyFmt;
       row.getCell(11).numFmt = currencyFmt;
+    }
+    // Same treatment for the Reimbursement Summary by Project section. Amount is col 5.
+    // Subtotal/total rows additionally get bold + a soft top border so the visual
+    // separation between projects (and between employees) is unmissable in Excel.
+    for (const rowIdx of reimbSummaryAmountRowIdxs) {
+      sheet.getRow(rowIdx).getCell(5).numFmt = currencyFmt;
+    }
+    for (const rowIdx of reimbSummarySubtotalRowIdxs) {
+      const row = sheet.getRow(rowIdx);
+      row.getCell(5).numFmt = currencyFmt;
+      row.font = { bold: true };
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        cell.border = { top: { style: 'thin', color: { argb: 'FFCCCCCC' } } };
+      });
     }
 
     const buf = await workbook.xlsx.writeBuffer();
