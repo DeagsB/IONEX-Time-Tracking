@@ -767,28 +767,6 @@ export default function Payroll() {
       ),
   });
 
-  const payrollTicketIdsForReceiptCheck = useMemo(
-    () => [...new Set((ticketExpenses as any[]).map((e: any) => e.service_ticket_id).filter(Boolean))],
-    [ticketExpenses]
-  );
-
-  const { data: payrollLinkedApprovedReceipts = [] } = useQuery({
-    queryKey: ['payrollLinkedApprovedReceipts', payrollTicketIdsForReceiptCheck.slice().sort().join(',')],
-    queryFn: async () => {
-      if (payrollTicketIdsForReceiptCheck.length === 0) return [];
-      // Include the file/amount fields so the reimbursement breakdown can preview the receipt
-      // that backs an "Expense Billed to Customer" / "Hotel" ticket-expense line (these are
-      // ticket rows, but the underlying receipt lives in user_expenses).
-      const { data, error } = await supabase
-        .from('user_expenses')
-        .select('id, service_ticket_id, description, status, amount, gst, expense_date, notes, receipt_url')
-        .in('service_ticket_id', payrollTicketIdsForReceiptCheck);
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: payrollTicketIdsForReceiptCheck.length > 0,
-  });
-
   const { data: receiptExpenses = [] } = useQuery({
     queryKey: ['payrollReceiptExpenses', startDate, endDate, isAdmin, user?.id],
     queryFn: async () => {
@@ -833,6 +811,57 @@ export default function Payroll() {
     () => (receiptExpenses as any[]).concat(catchUpReceipts),
     [receiptExpenses, catchUpReceipts]
   );
+
+  // Same rollover treatment for ticket-expense reimbursements (mileage, per diem,
+  // hotel, etc.) — fetch any unpaid lines dated before the current period so they
+  // surface here until the admin marks them accounted. Mirrors the catchUpReceipts
+  // pattern above so the two sources of reimbursement flow through the same code
+  // path in reimbursementsByUser without diverging.
+  const { data: catchUpTicketExpensesRaw = [] } = useQuery({
+    queryKey: ['payrollCatchUpTicketExpenses', startDate, isAdmin, user?.id],
+    queryFn: () =>
+      serviceTicketExpensesService.getCatchUpReimbursable(
+        startDate,
+        !isAdmin && user?.id ? user.id : undefined
+      ),
+    enabled: isCurrentPeriod,
+  });
+
+  const catchUpTicketExpenses = useMemo(() => {
+    if (!isCurrentPeriod) return [];
+    return catchUpTicketExpensesRaw as any[];
+  }, [isCurrentPeriod, catchUpTicketExpensesRaw]);
+
+  const ticketExpensesForReimbursements = useMemo(
+    () => (ticketExpenses as any[]).concat(catchUpTicketExpenses),
+    [ticketExpenses, catchUpTicketExpenses]
+  );
+
+  // Sourced from the merged set (current period + rollover) so a catch-up ticket-expense
+  // that needs a backing receipt still triggers the receipt fetch. Without this, an
+  // Expense-Billed-to-Customer line rolled forward from a prior period would silently
+  // drop out of reimbursementsByUser's payroll-eligibility check.
+  const payrollTicketIdsForReceiptCheck = useMemo(
+    () => [...new Set((ticketExpensesForReimbursements as any[]).map((e: any) => e.service_ticket_id).filter(Boolean))],
+    [ticketExpensesForReimbursements]
+  );
+
+  const { data: payrollLinkedApprovedReceipts = [] } = useQuery({
+    queryKey: ['payrollLinkedApprovedReceipts', payrollTicketIdsForReceiptCheck.slice().sort().join(',')],
+    queryFn: async () => {
+      if (payrollTicketIdsForReceiptCheck.length === 0) return [];
+      // Include the file/amount fields so the reimbursement breakdown can preview the receipt
+      // that backs an "Expense Billed to Customer" / "Hotel" ticket-expense line (these are
+      // ticket rows, but the underlying receipt lives in user_expenses).
+      const { data, error } = await supabase
+        .from('user_expenses')
+        .select('id, service_ticket_id, description, status, amount, gst, expense_date, notes, receipt_url')
+        .in('service_ticket_id', payrollTicketIdsForReceiptCheck);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: payrollTicketIdsForReceiptCheck.length > 0,
+  });
 
   /** All receipt ids in this payroll set — used to find any service_ticket_expenses
    * rows that reference them via user_expense_id, regardless of ticket date. A receipt
@@ -909,7 +938,7 @@ export default function Payroll() {
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      alert('Failed to mark as paid: ' + msg);
+      alert('Failed to mark as accounted: ' + msg);
     },
   });
 
@@ -1182,7 +1211,20 @@ export default function Payroll() {
     };
 
     // Process service ticket expenses
-    for (const exp of ticketExpenses as any[]) {
+    // De-duplicate the merged set — when viewing the current period, a ticket-expense
+    // whose date lands exactly on startDate appears in both the in-range and catch-up
+    // queries. Keeping by id avoids double-paying the same row.
+    const dedupedTicketExpenses = (() => {
+      const byId = new Map<string, any>();
+      for (const exp of ticketExpensesForReimbursements as any[]) {
+        if (!exp?.id) continue;
+        const key = String(exp.id);
+        if (!byId.has(key)) byId.set(key, exp);
+      }
+      return [...byId.values()];
+    })();
+
+    for (const exp of dedupedTicketExpenses) {
       const userId = exp.service_tickets?.user_id;
       if (!userId) continue;
 
@@ -1283,7 +1325,7 @@ export default function Payroll() {
     // set fetched by user_expense_id / service_ticket_id link so a receipt dated in
     // one period and its matching ticket-expense dated in another still dedupe.
     const widenedTicketExpensesForDedup = [
-      ...(ticketExpenses as any[]),
+      ...dedupedTicketExpenses,
       ...(linkedTicketExpensesForReceipts as any[]),
     ];
     for (const exp of receiptExpensesForReimbursements as any[]) {
@@ -1327,7 +1369,7 @@ export default function Payroll() {
     }
 
     return map;
-  }, [ticketExpenses, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink, linkedTicketExpensesForReceipts]);
+  }, [ticketExpensesForReimbursements, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink, linkedTicketExpensesForReceipts]);
 
   const grandTotalReimbursements = useMemo(() => {
     const employeeIds = new Set(displayedEmployeeHours.map((e) => e.userId));
@@ -2774,8 +2816,8 @@ export default function Payroll() {
                   if (unpaidReceiptIds.length > 0) summaryParts.push(`${unpaidReceiptIds.length} receipt${unpaidReceiptIds.length === 1 ? '' : 's'}`);
                   if (unpaidTicketExpenseIds.length > 0) summaryParts.push(`${unpaidTicketExpenseIds.length} ticket expense${unpaidTicketExpenseIds.length === 1 ? '' : 's'}`);
                   const proceed = window.confirm(
-                    `Mark ${summaryParts.join(' + ')} as paid for ${empName} ($${unpaidTotal.toFixed(2)})?\n\n` +
-                    'They will drop out of future Payroll views for this period and be stamped paid in the system.'
+                    `Mark ${summaryParts.join(' + ')} as accounted for ${empName} ($${unpaidTotal.toFixed(2)})?\n\n` +
+                    'They will drop out of future Payroll views for this period and be stamped accounted in the system.'
                   );
                   if (!proceed) return;
                   markEmployeePaidMutation.mutate({
@@ -2790,21 +2832,21 @@ export default function Payroll() {
                       Total Reimbursement
                       {paidLines.length > 0 && (
                         <span style={{ marginLeft: '10px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', backgroundColor: 'rgba(59, 130, 246, 0.14)', color: '#1d4ed8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                          {paidLines.length} of {reimb.lines.length} paid
+                          {paidLines.length} of {reimb.lines.length} accounted
                         </span>
                       )}
                     </span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '12px' }}>
                       {nothingToMark ? (
                         <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '999px', backgroundColor: 'rgba(34, 197, 94, 0.16)', color: '#15803d', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                          ✓ All paid
+                          ✓ All accounted
                         </span>
                       ) : (
                         <button
                           type="button"
                           onClick={onMarkPaid}
                           disabled={isBusy}
-                          title={`Mark this employee's ${unpaidLines.length} unpaid line${unpaidLines.length === 1 ? '' : 's'} as paid for this pay period.`}
+                          title={`Mark this employee's ${unpaidLines.length} unaccounted line${unpaidLines.length === 1 ? '' : 's'} as accounted for this pay period.`}
                           style={{
                             padding: '8px 14px', borderRadius: '6px',
                             backgroundColor: '#15803d', color: 'white',
@@ -2813,7 +2855,7 @@ export default function Payroll() {
                             fontFamily: 'inherit',
                           }}
                         >
-                          {isBusy ? 'Marking…' : `✓ Mark $${unpaidTotal.toFixed(2)} as paid`}
+                          {isBusy ? 'Marking…' : `✓ Mark $${unpaidTotal.toFixed(2)} as accounted`}
                         </button>
                       )}
                       <span style={{ fontSize: '18px', fontWeight: 700, color: '#00897b' }}>${reimb.total.toFixed(2)}</span>

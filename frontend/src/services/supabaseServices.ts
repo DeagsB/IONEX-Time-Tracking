@@ -2059,6 +2059,35 @@ export const serviceTicketExpensesService = {
     return (data || []).filter((r: any) => !r.service_tickets?.is_discarded);
   },
 
+  /**
+   * Unpaid reimbursable ticket-expense rows from BEFORE the given date. Mirrors
+   * userExpensesService.getCatchUpReceipts — used by Payroll to roll forward any
+   * outstanding ticket-expense reimbursements into the current pay period so they
+   * don't get lost between periods. Treats both NULL and any non-'paid'
+   * reimbursement_status as outstanding (matches the client-side isPaid check).
+   */
+  async getCatchUpReimbursable(beforeDate: string, userId?: string) {
+    let query = supabase
+      .from('service_ticket_expenses')
+      .select(`
+        *,
+        service_tickets!inner (
+          id, user_id, date, ticket_number, is_discarded, project_id,
+          project:projects(id, name, project_number)
+        )
+      `)
+      .lt('service_tickets.date', beforeDate)
+      .or('reimbursement_status.is.null,reimbursement_status.neq.paid');
+
+    if (userId) {
+      query = query.eq('service_tickets.user_id', userId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).filter((r: any) => !r.service_tickets?.is_discarded);
+  },
+
   async getNeedsReimbursement() {
     const { data, error } = await supabase
       .from('service_ticket_expenses')
