@@ -5136,6 +5136,20 @@ export default function Invoices() {
     setDownloadingWithInvoiceGroupId(groupId);
     setExportError(null);
     try {
+      // Signed-approval short-circuit (portal-approved batches): when the approver has
+      // returned a signed PDF, that file IS the authoritative service-ticket record for
+      // this batch — it's what the customer actually signed off on. Regenerating the
+      // summary + per-ticket PDFs from current state would silently hand the customer
+      // unsigned tickets that may even differ from what they approved (if a ticket was
+      // edited after sign-off). So when a signed approval is on file, the combined
+      // package is just invoice + signed-approval PDF.
+      const signedApproval = savedApprovalMetadata?.[groupId];
+      if (signedApproval) {
+        const signedBlob = await invoicedBatchApprovalsService.downloadApproval(signedApproval.storagePath);
+        const merged = await mergePdfBlobs([invoiceBlob, signedBlob]);
+        saveAs(merged, downloadFilename);
+        return;
+      }
       // Customer-supplied timesheet short-circuit: when the customer requires their own
       // format, the combined package is just our invoice + their timesheet. No IONEX
       // summary, no IONEX per-ticket PDFs. Check both persistId (the groupId passed in)
