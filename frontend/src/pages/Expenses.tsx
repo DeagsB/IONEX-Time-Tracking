@@ -1675,6 +1675,24 @@ export default function Expenses() {
     });
   };
 
+  // Collapse state for the project and category sub-groups inside each Reconcile period.
+  // Keyed by composite (period::project / period::project::category) so the same project
+  // name under two periods toggles independently. Default expanded — opening a period
+  // shows its full project → category breakdown; the user collapses what they're done with.
+  const [collapsedReconcileProjectKeys, setCollapsedReconcileProjectKeys] = useState<Set<string>>(new Set());
+  const [collapsedReconcileCategoryKeys, setCollapsedReconcileCategoryKeys] = useState<Set<string>>(new Set());
+  const toggleReconcileGroupKey = (
+    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    key: string
+  ) => {
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   /** Selected reconcile rows for bulk Account-for. Keyed the same as the UEM bulk bar
    *  ("<source>-<id>") so the existing selection-handling code can be reused. */
   const [selectedReconcileKeys, setSelectedReconcileKeys] = useState<Set<string>>(new Set());
@@ -6183,6 +6201,8 @@ export default function Expenses() {
                                         return next;
                                       });
                                     };
+                                    const projGroupKey = `${period.periodKey}::${pg.projectLabel}`;
+                                    const projCollapsed = collapsedReconcileProjectKeys.has(projGroupKey);
                                     return (
                                       <React.Fragment key={`recproj-${pg.projectLabel}`}>
                                         <tr className="ionex-expense-table-group is-project">
@@ -6196,27 +6216,43 @@ export default function Expenses() {
                                               style={{ cursor: 'pointer' }}
                                             />
                                           </td>
-                                          <td colSpan={5} style={{ backgroundColor: 'var(--bg-tertiary)', fontWeight: 700, color: pg.projectLabel === '—' ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
+                                          <td
+                                            colSpan={5}
+                                            onClick={() => toggleReconcileGroupKey(setCollapsedReconcileProjectKeys, projGroupKey)}
+                                            style={{ backgroundColor: 'var(--bg-tertiary)', fontWeight: 700, color: pg.projectLabel === '—' ? 'var(--text-tertiary)' : 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}
+                                            title={projCollapsed ? 'Expand project' : 'Collapse project'}
+                                          >
+                                            <span aria-hidden style={{ display: 'inline-block', width: '12px', marginRight: '6px', fontSize: '10px', color: 'var(--text-tertiary)', transform: projCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
                                             <span style={{ fontStyle: pg.projectLabel === '—' ? 'italic' : 'normal' }}>
                                               {pg.projectLabel === '—' ? 'No project assigned' : pg.projectLabel}
                                             </span>
                                             <span style={{ marginLeft: '10px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>
                                               {pg.count} {pg.count === 1 ? 'line' : 'lines'} · ${pg.total.toFixed(2)}
+                                              {projCollapsed && pg.categories.length > 1 && <> · {pg.categories.length} categories</>}
                                             </span>
                                           </td>
                                         </tr>
-                                        {pg.categories.map((cg) => (
+                                        {!projCollapsed && pg.categories.map((cg) => {
+                                          const catGroupKey = `${projGroupKey}::${cg.category}`;
+                                          const catCollapsed = collapsedReconcileCategoryKeys.has(catGroupKey);
+                                          return (
                                           <React.Fragment key={`reccat-${pg.projectLabel}-${cg.category}`}>
                                             <tr className="ionex-expense-table-group is-category">
                                               <td />
-                                              <td colSpan={5} style={{ paddingLeft: '6px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                                              <td
+                                                colSpan={5}
+                                                onClick={() => toggleReconcileGroupKey(setCollapsedReconcileCategoryKeys, catGroupKey)}
+                                                style={{ paddingLeft: '6px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
+                                                title={catCollapsed ? 'Expand category' : 'Collapse category'}
+                                              >
+                                                <span aria-hidden style={{ display: 'inline-block', width: '10px', marginRight: '6px', fontSize: '9px', color: 'var(--text-tertiary)', transform: catCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
                                                 {cg.category}
                                                 <span style={{ marginLeft: '8px', fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--text-tertiary)' }}>
-                                                  ${cg.total.toFixed(2)}
+                                                  {cg.items.length} · ${cg.total.toFixed(2)}
                                                 </span>
                                               </td>
                                             </tr>
-                                            {cg.items.map((exp: any) => {
+                                            {!catCollapsed && cg.items.map((exp: any) => {
                                               const selKey = `${exp._source}-${exp.id}`;
                                               const isSelected = selectedReconcileKeys.has(selKey);
                                               const isUpdating = updatingExpenseId === exp.id;
@@ -6278,7 +6314,8 @@ export default function Expenses() {
                                               );
                                             })}
                                           </React.Fragment>
-                                        ))}
+                                          );
+                                        })}
                                       </React.Fragment>
                                     );
                                   })}
