@@ -8232,72 +8232,108 @@ export default function Invoices() {
                         </div>
                         {(() => {
                           // Expense chips for the batch — mirrors the "Tickets in this batch"
-                          // row above. Each linked service-ticket expense renders as its own
-                          // orange-accented chip (label + pre-GST amount) and opens its parent
-                          // ticket on click, the same way the ticket chips do. The breakdown in
-                          // the Invoice Line Items step is the source of truth for billing; this
-                          // is just an at-a-glance view of what expenses ride along in the batch.
-                          const expenseChips = activeGroup.tickets.flatMap((t) => {
-                            const tt = t as TicketChipTicket;
-                            const rid = tt.recordId?.trim() || '';
-                            if (!rid) return [];
-                            return (expensesByRecordId.get(rid) ?? []).map((e, i) => ({
-                              key: `${tt.id}-exp-${i}`,
-                              rid,
-                              ticketId: tt.id,
-                              ticketNumber: tt.ticketNumber,
-                              label: formatInvoiceExpenseLineLabel(e),
-                              amount: (Number(e.quantity) || 0) * (Number(e.rate) || 0),
-                            }));
-                          });
-                          if (expenseChips.length === 0) return null;
+                          // row above. Repeat expenses (per diem, laptop/basic equipment, etc.)
+                          // recur once per ticket, so collapse identical labels into a single
+                          // chip carrying a ×count multiplier and the combined pre-GST total —
+                          // otherwise a long batch buries the panel under dozens of duplicates.
+                          // Clicking opens the first ticket the expense rides on (the tooltip
+                          // lists them all). The Invoice Line Items step stays the billing source
+                          // of truth; this is just an at-a-glance view of what's in the batch.
+                          const expenseGroups = (() => {
+                            const map = new Map<string, {
+                              label: string; count: number; amount: number;
+                              ticketNumbers: Set<string>; firstRid: string; firstTicketId: string;
+                            }>();
+                            for (const t of activeGroup.tickets) {
+                              const tt = t as TicketChipTicket;
+                              const rid = tt.recordId?.trim() || '';
+                              if (!rid) continue;
+                              const ticketNumber = String(tt.ticketNumber ?? '');
+                              for (const e of expensesByRecordId.get(rid) ?? []) {
+                                const label = formatInvoiceExpenseLineLabel(e);
+                                const amount = (Number(e.quantity) || 0) * (Number(e.rate) || 0);
+                                const key = label.toLowerCase();
+                                const existing = map.get(key);
+                                if (existing) {
+                                  existing.count += 1;
+                                  existing.amount += amount;
+                                  existing.ticketNumbers.add(ticketNumber);
+                                } else {
+                                  map.set(key, { label, count: 1, amount, ticketNumbers: new Set([ticketNumber]), firstRid: rid, firstTicketId: tt.id });
+                                }
+                              }
+                            }
+                            return [...map.values()].sort((a, b) => b.amount - a.amount);
+                          })();
+                          if (expenseGroups.length === 0) return null;
+                          const totalLines = expenseGroups.reduce((s, g) => s + g.count, 0);
+                          const fmt = (n: number) => `$${n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                           return (
                             <div style={{ marginBottom: '14px', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px' }}>
                               <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
-                                Expenses in this batch · {expenseChips.length}
+                                Expenses in this batch · {totalLines}
+                                {expenseGroups.length !== totalLines && <> · {expenseGroups.length} {expenseGroups.length === 1 ? 'type' : 'types'}</>}
                               </div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                {expenseChips.map((c) => (
-                                  <button
-                                    key={c.key}
-                                    type="button"
-                                    title={`${c.label} · $${c.amount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — on ticket ${c.ticketNumber}. Click to open the ticket.`}
-                                    onClick={() => setEditTicketRecordId(c.rid || c.ticketId)}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(230, 126, 34, 0.18)'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(230, 126, 34, 0.10)'; }}
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '8px',
-                                      padding: '6px 12px',
-                                      borderRadius: '8px',
-                                      border: '1px solid rgba(230, 126, 34, 0.45)',
-                                      backgroundColor: 'rgba(230, 126, 34, 0.10)',
-                                      color: 'var(--text-primary)',
-                                      fontFamily: 'inherit',
-                                      fontSize: '13px',
-                                      fontWeight: 600,
-                                      cursor: 'pointer',
-                                      transition: 'background-color 0.12s',
-                                    }}
-                                  >
-                                    <span
-                                      aria-hidden
+                                {expenseGroups.map((g) => {
+                                  const tickets = [...g.ticketNumbers];
+                                  const title = g.count > 1
+                                    ? `${g.label} · ${g.count} expenses totalling ${fmt(g.amount)} — on ticket${tickets.length === 1 ? '' : 's'} ${tickets.join(', ')}. Click to open the first.`
+                                    : `${g.label} · ${fmt(g.amount)} — on ticket ${tickets[0]}. Click to open the ticket.`;
+                                  return (
+                                    <button
+                                      key={g.label.toLowerCase()}
+                                      type="button"
+                                      title={title}
+                                      onClick={() => setEditTicketRecordId(g.firstRid || g.firstTicketId)}
+                                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(230, 126, 34, 0.18)'; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(230, 126, 34, 0.10)'; }}
                                       style={{
-                                        fontSize: '11px', fontWeight: 700, padding: '0 6px', minWidth: 16, height: 16,
-                                        borderRadius: '999px', backgroundColor: 'rgba(230, 126, 34, 0.18)', color: '#c2410c',
-                                        border: '1px solid rgba(230, 126, 34, 0.45)', display: 'inline-flex',
-                                        alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid rgba(230, 126, 34, 0.45)',
+                                        backgroundColor: 'rgba(230, 126, 34, 0.10)',
+                                        color: 'var(--text-primary)',
+                                        fontFamily: 'inherit',
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        transition: 'background-color 0.12s',
                                       }}
                                     >
-                                      $
-                                    </span>
-                                    <span>{c.label}</span>
-                                    <span style={{ color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                                      ${c.amount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </span>
-                                  </button>
-                                ))}
+                                      <span
+                                        aria-hidden
+                                        style={{
+                                          fontSize: '11px', fontWeight: 700, padding: '0 6px', minWidth: 16, height: 16,
+                                          borderRadius: '999px', backgroundColor: 'rgba(230, 126, 34, 0.18)', color: '#c2410c',
+                                          border: '1px solid rgba(230, 126, 34, 0.45)', display: 'inline-flex',
+                                          alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                                        }}
+                                      >
+                                        $
+                                      </span>
+                                      <span>{g.label}</span>
+                                      {g.count > 1 && (
+                                        <span
+                                          style={{
+                                            fontSize: '11px', fontWeight: 700, padding: '0 6px', height: 16,
+                                            borderRadius: '999px', backgroundColor: 'rgba(230, 126, 34, 0.22)', color: '#9a3412',
+                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                                            fontVariantNumeric: 'tabular-nums',
+                                          }}
+                                        >
+                                          ×{g.count}
+                                        </span>
+                                      )}
+                                      <span style={{ color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                                        {fmt(g.amount)}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
                           );
