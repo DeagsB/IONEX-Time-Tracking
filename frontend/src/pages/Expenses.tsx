@@ -1684,10 +1684,13 @@ export default function Expenses() {
 
   // Collapse state for the project and category sub-groups inside each Reconcile period.
   // Keyed by composite (period::project / period::project::category) so the same project
-  // name under two periods toggles independently. Default expanded — opening a period
-  // shows its full project → category breakdown; the user collapses what they're done with.
+  // name under two periods toggles independently.
+  //   Projects use a COLLAPSED set (default expanded) — opening a period shows its projects.
+  //   Categories use an EXPANDED set (default collapsed) — each project lists its category
+  //   summaries and the user drills into the one they're entering. Inverting the set lets
+  //   "collapsed by default" work without pre-seeding keys that are computed during render.
   const [collapsedReconcileProjectKeys, setCollapsedReconcileProjectKeys] = useState<Set<string>>(new Set());
-  const [collapsedReconcileCategoryKeys, setCollapsedReconcileCategoryKeys] = useState<Set<string>>(new Set());
+  const [expandedReconcileCategoryKeys, setExpandedReconcileCategoryKeys] = useState<Set<string>>(new Set());
   const toggleReconcileGroupKey = (
     setter: React.Dispatch<React.SetStateAction<Set<string>>>,
     key: string
@@ -6263,24 +6266,24 @@ export default function Expenses() {
                                                 className="ionex-row-action-icon is-success"
                                                 disabled={batchActionBusy}
                                                 onClick={(e) => { e.stopPropagation(); accountForGroup(pg.items, pg.projectLabel === '—' ? 'this no-project group' : pg.projectLabel); }}
-                                                title="Mark every line in this project as accounted for"
+                                                title={`Mark all ${pg.count} line${pg.count === 1 ? '' : 's'} in this project as accounted for ($${pg.total.toFixed(2)})`}
                                                 style={{ marginLeft: 'auto' }}
                                               >
-                                                Account for {pg.count}
+                                                Account for whole project
                                               </button>
                                             </div>
                                           </td>
                                         </tr>
                                         {!projCollapsed && pg.categories.map((cg) => {
                                           const catGroupKey = `${projGroupKey}::${cg.category}`;
-                                          const catCollapsed = collapsedReconcileCategoryKeys.has(catGroupKey);
+                                          const catCollapsed = !expandedReconcileCategoryKeys.has(catGroupKey);
                                           return (
                                           <React.Fragment key={`reccat-${pg.projectLabel}-${cg.category}`}>
                                             <tr className="ionex-expense-table-group is-category">
                                               <td />
                                               <td
                                                 colSpan={5}
-                                                onClick={() => toggleReconcileGroupKey(setCollapsedReconcileCategoryKeys, catGroupKey)}
+                                                onClick={() => toggleReconcileGroupKey(setExpandedReconcileCategoryKeys, catGroupKey)}
                                                 style={{ paddingLeft: '6px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
                                                 title={catCollapsed ? 'Expand category' : 'Collapse category'}
                                               >
@@ -6295,10 +6298,10 @@ export default function Expenses() {
                                                     className="ionex-row-action-icon is-success"
                                                     disabled={batchActionBusy}
                                                     onClick={(e) => { e.stopPropagation(); accountForGroup(cg.items, `${pg.projectLabel === '—' ? 'No project' : pg.projectLabel} · ${cg.category}`); }}
-                                                    title="Mark every line in this category as accounted for"
+                                                    title={`Mark all ${cg.items.length} ${cg.category} line${cg.items.length === 1 ? '' : 's'} as accounted for ($${cg.total.toFixed(2)})`}
                                                     style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}
                                                   >
-                                                    Account for {cg.items.length}
+                                                    Account for category
                                                   </button>
                                                 </div>
                                               </td>
