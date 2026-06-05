@@ -7832,11 +7832,18 @@ export default function Invoices() {
                   // it lives in invoiced_batch_invoices and savedInvoiceMetadata keeps the step
                   // pinned at send. Delete the persisted row too so step derivation rolls back.
                   const onReopen = (stepId: WizardStepId) => {
-                    if (isMarked) return;
                     // Standard: send → line_items. Portal: send_portal → attach_invoice.
                     // Both require dropping the uploaded invoice from local + persisted state.
                     const isStdRewind = !isPortal && stepId === 'line_items';
                     const isPortalRewind = isPortal && stepId === 'attach_invoice';
+                    // A standard batch that's already marked invoiced (the 'done' step) rewinds
+                    // via handleUnmarkAsInvoiced, not here — so block that case. But portal
+                    // batches ALWAYS carry a mark row to hold their workflow status (approved,
+                    // etc.; getGroupStatusId reads statusId off that row), which means isMarked
+                    // is true for every post-approval portal batch. Blocking on it here is what
+                    // made the portal "Back to step 1" button a no-op — only detach the invoice
+                    // PDF and leave the mark/status intact.
+                    if (isStdRewind && isMarked) return;
                     if (isStdRewind || isPortalRewind) {
                       clearWizardProgressForGroup(groupId);
                       setInvoiceFileForGroup(persistId, null);
