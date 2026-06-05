@@ -6355,8 +6355,20 @@ export default function Expenses() {
                                                   const isUpdating = updatingExpenseId === exp.id;
                                                   const dt = normalizeExpenseTableDateKey(String(exp._date || ''));
                                                   return (
-                                                    <tr key={selKey} className={`ionex-expense-table-row${isSelected ? ' is-selected' : ''}`}>
-                                                      <td style={{ paddingLeft: '40px', width: '32px' }}>
+                                                    <tr
+                                                      key={selKey}
+                                                      className={`ionex-expense-table-row${isSelected ? ' is-selected' : ''}`}
+                                                      onClick={() => {
+                                                        // Open whatever backs the line: a receipt preview for
+                                                        // receipt-source rows (when a file is attached), otherwise
+                                                        // the service ticket the line sits on.
+                                                        if (exp._source === 'receipt') { if (exp.receipt_url) handleViewReceipt(exp); }
+                                                        else if (exp.service_ticket_id) setViewingTicketRecordId(String(exp.service_ticket_id));
+                                                      }}
+                                                      title={exp._source === 'receipt' ? (exp.receipt_url ? 'Open receipt' : undefined) : (exp.service_ticket_id ? 'Open the service ticket' : undefined)}
+                                                      style={{ cursor: ((exp._source === 'receipt' && exp.receipt_url) || (exp._source !== 'receipt' && exp.service_ticket_id)) ? 'pointer' : 'default' }}
+                                                    >
+                                                      <td style={{ paddingLeft: '40px', width: '32px' }} onClick={(e) => e.stopPropagation()}>
                                                         <input
                                                           type="checkbox"
                                                           checked={isSelected}
@@ -6398,7 +6410,7 @@ export default function Expenses() {
                                                           type="button"
                                                           className="ionex-row-action-icon is-success"
                                                           disabled={isUpdating || batchActionBusy}
-                                                          onClick={() => handleAdminStatusChange(exp.id, 'paid', exp._source as 'receipt' | 'ticket', exp)}
+                                                          onClick={(e) => { e.stopPropagation(); handleAdminStatusChange(exp.id, 'paid', exp._source as 'receipt' | 'ticket', exp); }}
                                                           title="Mark this line as accounted for — entered into the books."
                                                         >
                                                           Account for
