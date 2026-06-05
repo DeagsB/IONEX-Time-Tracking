@@ -8230,6 +8230,78 @@ export default function Invoices() {
                             })}
                           </div>
                         </div>
+                        {(() => {
+                          // Expense chips for the batch — mirrors the "Tickets in this batch"
+                          // row above. Each linked service-ticket expense renders as its own
+                          // orange-accented chip (label + pre-GST amount) and opens its parent
+                          // ticket on click, the same way the ticket chips do. The breakdown in
+                          // the Invoice Line Items step is the source of truth for billing; this
+                          // is just an at-a-glance view of what expenses ride along in the batch.
+                          const expenseChips = activeGroup.tickets.flatMap((t) => {
+                            const tt = t as TicketChipTicket;
+                            const rid = tt.recordId?.trim() || '';
+                            if (!rid) return [];
+                            return (expensesByRecordId.get(rid) ?? []).map((e, i) => ({
+                              key: `${tt.id}-exp-${i}`,
+                              rid,
+                              ticketId: tt.id,
+                              ticketNumber: tt.ticketNumber,
+                              label: formatInvoiceExpenseLineLabel(e),
+                              amount: (Number(e.quantity) || 0) * (Number(e.rate) || 0),
+                            }));
+                          });
+                          if (expenseChips.length === 0) return null;
+                          return (
+                            <div style={{ marginBottom: '14px', padding: '10px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+                                Expenses in this batch · {expenseChips.length}
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                {expenseChips.map((c) => (
+                                  <button
+                                    key={c.key}
+                                    type="button"
+                                    title={`${c.label} · $${c.amount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — on ticket ${c.ticketNumber}. Click to open the ticket.`}
+                                    onClick={() => setEditTicketRecordId(c.rid || c.ticketId)}
+                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(230, 126, 34, 0.18)'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(230, 126, 34, 0.10)'; }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '6px 12px',
+                                      borderRadius: '8px',
+                                      border: '1px solid rgba(230, 126, 34, 0.45)',
+                                      backgroundColor: 'rgba(230, 126, 34, 0.10)',
+                                      color: 'var(--text-primary)',
+                                      fontFamily: 'inherit',
+                                      fontSize: '13px',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      transition: 'background-color 0.12s',
+                                    }}
+                                  >
+                                    <span
+                                      aria-hidden
+                                      style={{
+                                        fontSize: '11px', fontWeight: 700, padding: '0 6px', minWidth: 16, height: 16,
+                                        borderRadius: '999px', backgroundColor: 'rgba(230, 126, 34, 0.18)', color: '#c2410c',
+                                        border: '1px solid rgba(230, 126, 34, 0.45)', display: 'inline-flex',
+                                        alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                                      }}
+                                    >
+                                      $
+                                    </span>
+                                    <span>{c.label}</span>
+                                    <span style={{ color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                                      ${c.amount.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {renderBlockerBanner()}
                         {renderStepBody()}
                       </div>
