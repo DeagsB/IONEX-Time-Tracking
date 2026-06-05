@@ -2811,7 +2811,7 @@ export default function Invoices() {
   type ExpenseChipBreakdown = {
     label: string;
     total: number;
-    items: { key: string; ticketNumber: string; date?: string; description: string; amount: number }[];
+    items: { key: string; rid: string; ticketId: string; ticketNumber: string; date?: string; description: string; amount: number }[];
   };
   const [expenseChipBreakdown, setExpenseChipBreakdown] = useState<ExpenseChipBreakdown | null>(null);
   // Persist queue selection per-browser so each role lands on their queue automatically:
@@ -8266,6 +8266,8 @@ export default function Invoices() {
                                 const key = label.toLowerCase();
                                 const item = {
                                   key: `${tt.id}-${i}`,
+                                  rid,
+                                  ticketId: tt.id,
                                   ticketNumber,
                                   date: tt.date || undefined,
                                   description: (e.description || '').trim() || label,
@@ -11449,11 +11451,16 @@ export default function Invoices() {
               </div>
               <div style={{ overflowY: 'auto', padding: '6px 0' }}>
                 {rows.map((it) => (
-                  <div
+                  <button
                     key={it.key}
-                    style={{ display: 'flex', alignItems: 'baseline', gap: '10px', padding: '8px 20px', fontSize: '13px' }}
+                    type="button"
+                    title={it.ticketNumber ? `Open ticket ${it.ticketNumber}` : 'Open ticket'}
+                    onClick={() => { setExpenseChipBreakdown(null); setEditTicketRecordId(it.rid || it.ticketId); }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    style={{ display: 'flex', width: '100%', alignItems: 'baseline', gap: '10px', padding: '8px 20px', fontSize: '13px', border: 'none', background: 'transparent', fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left', transition: 'background-color 0.12s' }}
                   >
-                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--primary-color, #2563eb)', whiteSpace: 'nowrap' }}>
                       {it.ticketNumber ? `TKT ${it.ticketNumber}` : '—'}
                     </span>
                     {it.date && (
@@ -11467,7 +11474,7 @@ export default function Invoices() {
                     <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                       {fmtAmt(it.amount)}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
               <div style={{ borderTop: '1px solid var(--border-color)', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-tertiary)' }}>
