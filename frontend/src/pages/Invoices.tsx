@@ -2804,6 +2804,16 @@ export default function Invoices() {
   type WizardQueue = 'ready_to_be_invoiced' | 'needs_to_be_approved' | 'awaiting_signed';
   type WizardStepProgress = { lineItemsAckAt?: string };
   const [wizardActiveGroupId, setWizardActiveGroupId] = useState<string | null>(null);
+  // Expense-chip breakdown popover (Ready-to-Invoice wizard). When an expense chip is
+  // clicked it holds that group's label + total + the individual folded lines (ticket,
+  // date, description, amount) so the user can see exactly what's combined — instead of
+  // jumping to one arbitrary service ticket.
+  type ExpenseChipBreakdown = {
+    label: string;
+    total: number;
+    items: { key: string; ticketNumber: string; date?: string; description: string; amount: number }[];
+  };
+  const [expenseChipBreakdown, setExpenseChipBreakdown] = useState<ExpenseChipBreakdown | null>(null);
   // Persist queue selection per-browser so each role lands on their queue automatically:
   // accountants pick "Ready to Invoice" once, service techs pick "Needs Approval" once,
   // and the choice sticks across sessions without any user-role infrastructure.
@@ -8236,32 +8246,41 @@ export default function Invoices() {
                           // recur once per ticket, so collapse identical labels into a single
                           // chip carrying a ×count multiplier and the combined pre-GST total —
                           // otherwise a long batch buries the panel under dozens of duplicates.
-                          // Clicking opens the first ticket the expense rides on (the tooltip
-                          // lists them all). The Invoice Line Items step stays the billing source
-                          // of truth; this is just an at-a-glance view of what's in the batch.
+                          // Clicking a chip opens a breakdown popover listing the individual
+                          // folded lines (ticket, date, amount). The Invoice Line Items step
+                          // stays the billing source of truth; this is an at-a-glance view.
                           const expenseGroups = (() => {
                             const map = new Map<string, {
                               label: string; count: number; amount: number;
-                              ticketNumbers: Set<string>; firstRid: string; firstTicketId: string;
+                              ticketNumbers: Set<string>;
+                              items: ExpenseChipBreakdown['items'];
                             }>();
                             for (const t of activeGroup.tickets) {
                               const tt = t as TicketChipTicket;
                               const rid = tt.recordId?.trim() || '';
                               if (!rid) continue;
                               const ticketNumber = String(tt.ticketNumber ?? '');
-                              for (const e of expensesByRecordId.get(rid) ?? []) {
+                              (expensesByRecordId.get(rid) ?? []).forEach((e, i) => {
                                 const label = formatInvoiceExpenseLineLabel(e);
                                 const amount = (Number(e.quantity) || 0) * (Number(e.rate) || 0);
                                 const key = label.toLowerCase();
+                                const item = {
+                                  key: `${tt.id}-${i}`,
+                                  ticketNumber,
+                                  date: tt.date || undefined,
+                                  description: (e.description || '').trim() || label,
+                                  amount,
+                                };
                                 const existing = map.get(key);
                                 if (existing) {
                                   existing.count += 1;
                                   existing.amount += amount;
                                   existing.ticketNumbers.add(ticketNumber);
+                                  existing.items.push(item);
                                 } else {
-                                  map.set(key, { label, count: 1, amount, ticketNumbers: new Set([ticketNumber]), firstRid: rid, firstTicketId: tt.id });
+                                  map.set(key, { label, count: 1, amount, ticketNumbers: new Set([ticketNumber]), items: [item] });
                                 }
-                              }
+                              });
                             }
                             return [...map.values()].sort((a, b) => b.amount - a.amount);
                           })();
@@ -8278,14 +8297,14 @@ export default function Invoices() {
                                 {expenseGroups.map((g) => {
                                   const tickets = [...g.ticketNumbers];
                                   const title = g.count > 1
-                                    ? `${g.label} · ${g.count} expenses totalling ${fmt(g.amount)} — on ticket${tickets.length === 1 ? '' : 's'} ${tickets.join(', ')}. Click to open the first.`
-                                    : `${g.label} · ${fmt(g.amount)} — on ticket ${tickets[0]}. Click to open the ticket.`;
+                                    ? `${g.label} · ${g.count} expenses totalling ${fmt(g.amount)} — on ticket${tickets.length === 1 ? '' : 's'} ${tickets.join(', ')}. Click for the breakdown.`
+                                    : `${g.label} · ${fmt(g.amount)} — on ticket ${tickets[0]}. Click for the breakdown.`;
                                   return (
                                     <button
                                       key={g.label.toLowerCase()}
                                       type="button"
                                       title={title}
-                                      onClick={() => setEditTicketRecordId(g.firstRid || g.firstTicketId)}
+                                      onClick={() => setExpenseChipBreakdown({ label: g.label, total: g.amount, items: g.items })}
                                       onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(230, 126, 34, 0.18)'; }}
                                       onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(230, 126, 34, 0.10)'; }}
                                       style={{
@@ -11381,6 +11400,84 @@ export default function Invoices() {
           }}
         />
       )}
+
+      {/* Expense-chip breakdown popover — opens when a grouped expense chip in the
+          Ready-to-Invoice wizard is clicked. Lists the individual folded lines (ticket,
+          date, description, amount) so the user can see exactly what the ×count chip
+          combined, without jumping to an arbitrary ticket. */}
+      {expenseChipBreakdown && (() => {
+        const b = expenseChipBreakdown;
+        const fmtAmt = (n: number) => `$${n.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const rows = [...b.items].sort((a, z) => (a.date || '').localeCompare(z.date || '') || a.ticketNumber.localeCompare(z.ticketNumber));
+        return (
+          <div
+            onClick={() => setExpenseChipBreakdown(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 10010, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-label={`${b.label} expense breakdown`}
+              style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', width: '100%', maxWidth: '460px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', overflow: 'hidden' }}
+            >
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span
+                  aria-hidden
+                  style={{
+                    fontSize: '13px', fontWeight: 700, width: 26, height: 26, flexShrink: 0,
+                    borderRadius: '999px', backgroundColor: 'rgba(230, 126, 34, 0.18)', color: '#c2410c',
+                    border: '1px solid rgba(230, 126, 34, 0.45)', display: 'inline-flex',
+                    alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                  }}
+                >
+                  $
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{b.label}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    {rows.length} {rows.length === 1 ? 'expense' : 'expenses'} · {fmtAmt(b.total)}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpenseChipBreakdown(null)}
+                  title="Close"
+                  style={{ border: 'none', background: 'transparent', fontSize: '20px', lineHeight: 1, color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 6px', fontFamily: 'inherit' }}
+                >
+                  ×
+                </button>
+              </div>
+              <div style={{ overflowY: 'auto', padding: '6px 0' }}>
+                {rows.map((it) => (
+                  <div
+                    key={it.key}
+                    style={{ display: 'flex', alignItems: 'baseline', gap: '10px', padding: '8px 20px', fontSize: '13px' }}
+                  >
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                      {it.ticketNumber ? `TKT ${it.ticketNumber}` : '—'}
+                    </span>
+                    {it.date && (
+                      <span style={{ color: 'var(--text-tertiary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                        · {shortMonthDayLabel(it.date) || it.date}
+                      </span>
+                    )}
+                    <span style={{ flex: 1, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.description}>
+                      {it.description}
+                    </span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                      {fmtAmt(it.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ borderTop: '1px solid var(--border-color)', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-tertiary)' }}>
+                <strong style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Total (pre-GST)</strong>
+                <strong style={{ fontSize: '14px', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{fmtAmt(b.total)}</strong>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
