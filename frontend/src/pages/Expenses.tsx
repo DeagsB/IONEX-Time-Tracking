@@ -1689,6 +1689,7 @@ export default function Expenses() {
   //   Categories use an EXPANDED set (default collapsed) — each project lists its category
   //   summaries and the user drills into the one they're entering. Inverting the set lets
   //   "collapsed by default" work without pre-seeding keys that are computed during render.
+  const [collapsedReconcileEmployeeKeys, setCollapsedReconcileEmployeeKeys] = useState<Set<string>>(new Set());
   const [collapsedReconcileProjectKeys, setCollapsedReconcileProjectKeys] = useState<Set<string>>(new Set());
   const [expandedReconcileCategoryKeys, setExpandedReconcileCategoryKeys] = useState<Set<string>>(new Set());
   const toggleReconcileGroupKey = (
@@ -6153,52 +6154,56 @@ export default function Expenses() {
                           </div>
                         )}
                         {(() => {
-                          // Reconcile entry is project-driven: bookkeepers post one project's
-                          // expenses at a time, and within a project they batch by category
-                          // (all mileage, then all per diem, …). So nest the period's lines as
-                          // project → category, each carrying its own subtotal, instead of one
-                          // flat date-sorted list. Projectless lines sink to a trailing "—" group.
+                          // Reconcile is reviewed per employee: each person's unaccounted lines
+                          // nest by project, then by category. Every level carries its own
+                          // subtotal and a one-click "Account for" that batch-stamps the whole
+                          // group. The facts that matter — who, which project, which category,
+                          // how much — live in the group headers; data rows just carry the date,
+                          // description, and amount. Default: employees + projects expanded,
+                          // categories collapsed (open the one you're posting).
                           const projectLabelOf = (exp: any): string => {
                             const projRaw = exp.service_ticket?.project || exp.service_tickets?.project;
                             return projRaw ? [projRaw.project_number, projRaw.name].filter(Boolean).join(' – ') : '—';
                           };
-                          const projMap = new Map<string, any[]>();
+                          const sumAmt = (items: any[]) => items.reduce((s, e: any) => s + (Number(e._amount) || 0), 0);
+                          const buildCategories = (items: any[]) => {
+                            const catMap = new Map<string, any[]>();
+                            for (const exp of items) {
+                              const c = expenseTypeOf(exp);
+                              if (!catMap.has(c)) catMap.set(c, []);
+                              catMap.get(c)!.push(exp);
+                            }
+                            return [...catMap.entries()]
+                              .map(([category, catItems]) => ({ category, items: catItems, total: sumAmt(catItems) }))
+                              .sort((a, b) => a.category.localeCompare(b.category));
+                          };
+                          const buildProjects = (items: any[]) => {
+                            const projMap = new Map<string, any[]>();
+                            for (const exp of items) {
+                              const k = projectLabelOf(exp);
+                              if (!projMap.has(k)) projMap.set(k, []);
+                              projMap.get(k)!.push(exp);
+                            }
+                            return [...projMap.entries()]
+                              .map(([projectLabel, pItems]) => ({ projectLabel, items: pItems, count: pItems.length, total: sumAmt(pItems), categories: buildCategories(pItems) }))
+                              .sort((a, b) => {
+                                if (a.projectLabel === '—') return 1;
+                                if (b.projectLabel === '—') return -1;
+                                return a.projectLabel.localeCompare(b.projectLabel);
+                              });
+                          };
+                          const empMap = new Map<string, { userId: string; name: string; items: any[] }>();
                           for (const exp of flatItems) {
-                            const k = projectLabelOf(exp);
-                            if (!projMap.has(k)) projMap.set(k, []);
-                            projMap.get(k)!.push(exp);
+                            const uid = String(exp._userId ?? exp._employeeName ?? '');
+                            if (!empMap.has(uid)) empMap.set(uid, { userId: uid, name: exp._employeeName || '—', items: [] });
+                            empMap.get(uid)!.items.push(exp);
                           }
-                          const projectGroups = [...projMap.entries()]
-                            .map(([projectLabel, items]) => {
-                              const catMap = new Map<string, any[]>();
-                              for (const exp of items) {
-                                const c = expenseTypeOf(exp);
-                                if (!catMap.has(c)) catMap.set(c, []);
-                                catMap.get(c)!.push(exp);
-                              }
-                              const categories = [...catMap.entries()]
-                                .map(([category, catItems]) => ({
-                                  category,
-                                  items: catItems,
-                                  total: catItems.reduce((s, e: any) => s + (Number(e._amount) || 0), 0),
-                                }))
-                                .sort((a, b) => a.category.localeCompare(b.category));
-                              return {
-                                projectLabel,
-                                items,
-                                count: items.length,
-                                total: items.reduce((s, e: any) => s + (Number(e._amount) || 0), 0),
-                                categories,
-                              };
-                            })
-                            .sort((a, b) => {
-                              if (a.projectLabel === '—') return 1;
-                              if (b.projectLabel === '—') return -1;
-                              return a.projectLabel.localeCompare(b.projectLabel);
-                            });
+                          const employeeGroups = [...empMap.values()]
+                            .map((e) => ({ userId: e.userId, name: e.name, items: e.items, count: e.items.length, total: sumAmt(e.items), projects: buildProjects(e.items) }))
+                            .sort((a, b) => a.name.localeCompare(b.name));
                           return (
                             <div style={{ overflowX: 'auto' }}>
-                              <table className="ionex-expense-table" style={{ minWidth: '760px' }}>
+                              <table className="ionex-expense-table" style={{ minWidth: '720px' }}>
                                 <thead>
                                   <tr>
                                     <th className="is-checkbox">
@@ -6212,159 +6217,170 @@ export default function Expenses() {
                                       />
                                     </th>
                                     <th>Date</th>
-                                    <th>Employee</th>
                                     <th>Description</th>
                                     <th className="is-numeric">Amount</th>
                                     <th className="is-numeric">Action</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {projectGroups.map((pg) => {
-                                    const projKeys = pg.items.map((e: any) => `${e._source}-${e.id}`);
-                                    const projAllSelected = projKeys.length > 0 && projKeys.every((k) => selectedReconcileKeys.has(k));
-                                    const projAnySelected = projKeys.some((k) => selectedReconcileKeys.has(k));
-                                    const toggleProject = (checked: boolean) => {
-                                      setSelectedReconcileKeys((prev) => {
-                                        const next = new Set(prev);
-                                        if (checked) for (const k of projKeys) next.add(k);
-                                        else for (const k of projKeys) next.delete(k);
-                                        return next;
-                                      });
-                                    };
-                                    const projGroupKey = `${period.periodKey}::${pg.projectLabel}`;
-                                    const projCollapsed = collapsedReconcileProjectKeys.has(projGroupKey);
+                                  {employeeGroups.map((eg) => {
+                                    const empGroupKey = `${period.periodKey}::${eg.userId}`;
+                                    const empCollapsed = collapsedReconcileEmployeeKeys.has(empGroupKey);
                                     return (
-                                      <React.Fragment key={`recproj-${pg.projectLabel}`}>
-                                        <tr className="ionex-expense-table-group is-project">
-                                          <td style={{ paddingLeft: '18px', width: '32px', backgroundColor: 'var(--bg-tertiary)' }}>
-                                            <input
-                                              type="checkbox"
-                                              checked={projAllSelected}
-                                              ref={(el) => { if (el) el.indeterminate = !projAllSelected && projAnySelected; }}
-                                              onChange={(e) => toggleProject(e.target.checked)}
-                                              title="Select all lines for this project"
-                                              style={{ cursor: 'pointer' }}
-                                            />
-                                          </td>
+                                      <React.Fragment key={`recemp-${eg.userId}`}>
+                                        <tr className="ionex-expense-table-group is-employee">
+                                          <td style={{ width: '32px', backgroundColor: 'var(--bg-secondary)' }} />
                                           <td
-                                            colSpan={5}
-                                            onClick={() => toggleReconcileGroupKey(setCollapsedReconcileProjectKeys, projGroupKey)}
-                                            style={{ backgroundColor: 'var(--bg-tertiary)', fontWeight: 700, color: pg.projectLabel === '—' ? 'var(--text-tertiary)' : 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}
-                                            title={projCollapsed ? 'Expand project' : 'Collapse project'}
+                                            colSpan={4}
+                                            onClick={() => toggleReconcileGroupKey(setCollapsedReconcileEmployeeKeys, empGroupKey)}
+                                            style={{ backgroundColor: 'var(--bg-secondary)', cursor: 'pointer', userSelect: 'none', paddingLeft: '10px' }}
+                                            title={empCollapsed ? 'Expand employee' : 'Collapse employee'}
                                           >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-                                              <span aria-hidden style={{ display: 'inline-block', width: '12px', marginRight: '6px', fontSize: '10px', color: 'var(--text-tertiary)', transform: projCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
-                                              <span style={{ fontStyle: pg.projectLabel === '—' ? 'italic' : 'normal' }}>
-                                                {pg.projectLabel === '—' ? 'No project assigned' : pg.projectLabel}
-                                              </span>
+                                              <span aria-hidden style={{ display: 'inline-block', width: '12px', marginRight: '8px', fontSize: '11px', color: 'var(--text-secondary)', transform: empCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
+                                              <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>{eg.name}</span>
                                               <span style={{ marginLeft: '10px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                                {pg.count} {pg.count === 1 ? 'line' : 'lines'} · ${pg.total.toFixed(2)}
-                                                {projCollapsed && pg.categories.length > 1 && <> · {pg.categories.length} categories</>}
+                                                {eg.count} {eg.count === 1 ? 'line' : 'lines'} · {eg.projects.length} {eg.projects.length === 1 ? 'project' : 'projects'} · ${eg.total.toFixed(2)}
                                               </span>
                                               <button
                                                 type="button"
                                                 className="ionex-row-action-icon is-success"
                                                 disabled={batchActionBusy}
-                                                onClick={(e) => { e.stopPropagation(); accountForGroup(pg.items, pg.projectLabel === '—' ? 'this no-project group' : pg.projectLabel); }}
-                                                title={`Mark all ${pg.count} line${pg.count === 1 ? '' : 's'} in this project as accounted for ($${pg.total.toFixed(2)})`}
+                                                onClick={(e) => { e.stopPropagation(); accountForGroup(eg.items, eg.name); }}
+                                                title={`Mark all ${eg.count} line${eg.count === 1 ? '' : 's'} for ${eg.name} as accounted for ($${eg.total.toFixed(2)})`}
                                                 style={{ marginLeft: 'auto' }}
                                               >
-                                                Account for whole project
+                                                Account for employee
                                               </button>
                                             </div>
                                           </td>
                                         </tr>
-                                        {!projCollapsed && pg.categories.map((cg) => {
-                                          const catGroupKey = `${projGroupKey}::${cg.category}`;
-                                          const catCollapsed = !expandedReconcileCategoryKeys.has(catGroupKey);
+                                        {!empCollapsed && eg.projects.map((pg) => {
+                                          const projGroupKey = `${empGroupKey}::${pg.projectLabel}`;
+                                          const projCollapsed = collapsedReconcileProjectKeys.has(projGroupKey);
                                           return (
-                                          <React.Fragment key={`reccat-${pg.projectLabel}-${cg.category}`}>
-                                            <tr className="ionex-expense-table-group is-category">
-                                              <td />
+                                          <React.Fragment key={`recproj-${eg.userId}-${pg.projectLabel}`}>
+                                            <tr className="ionex-expense-table-group is-project">
+                                              <td style={{ width: '32px', backgroundColor: 'var(--bg-tertiary)' }} />
                                               <td
-                                                colSpan={5}
-                                                onClick={() => toggleReconcileGroupKey(setExpandedReconcileCategoryKeys, catGroupKey)}
-                                                style={{ paddingLeft: '6px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
-                                                title={catCollapsed ? 'Expand category' : 'Collapse category'}
+                                                colSpan={4}
+                                                onClick={() => toggleReconcileGroupKey(setCollapsedReconcileProjectKeys, projGroupKey)}
+                                                style={{ backgroundColor: 'var(--bg-tertiary)', fontWeight: 700, color: pg.projectLabel === '—' ? 'var(--text-tertiary)' : 'var(--text-primary)', cursor: 'pointer', userSelect: 'none', paddingLeft: '26px' }}
+                                                title={projCollapsed ? 'Expand project' : 'Collapse project'}
                                               >
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-                                                  <span aria-hidden style={{ display: 'inline-block', width: '10px', marginRight: '6px', fontSize: '9px', color: 'var(--text-tertiary)', transform: catCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
-                                                  {cg.category}
-                                                  <span style={{ marginLeft: '8px', fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--text-tertiary)' }}>
-                                                    {cg.items.length} · ${cg.total.toFixed(2)}
+                                                  <span aria-hidden style={{ display: 'inline-block', width: '12px', marginRight: '6px', fontSize: '10px', color: 'var(--text-tertiary)', transform: projCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
+                                                  <span style={{ fontStyle: pg.projectLabel === '—' ? 'italic' : 'normal' }}>
+                                                    {pg.projectLabel === '—' ? 'No project assigned' : pg.projectLabel}
+                                                  </span>
+                                                  <span style={{ marginLeft: '10px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                                    {pg.count} {pg.count === 1 ? 'line' : 'lines'} · ${pg.total.toFixed(2)}
+                                                    {projCollapsed && pg.categories.length > 1 && <> · {pg.categories.length} categories</>}
                                                   </span>
                                                   <button
                                                     type="button"
                                                     className="ionex-row-action-icon is-success"
                                                     disabled={batchActionBusy}
-                                                    onClick={(e) => { e.stopPropagation(); accountForGroup(cg.items, `${pg.projectLabel === '—' ? 'No project' : pg.projectLabel} · ${cg.category}`); }}
-                                                    title={`Mark all ${cg.items.length} ${cg.category} line${cg.items.length === 1 ? '' : 's'} as accounted for ($${cg.total.toFixed(2)})`}
-                                                    style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}
+                                                    onClick={(e) => { e.stopPropagation(); accountForGroup(pg.items, `${eg.name} · ${pg.projectLabel === '—' ? 'No project' : pg.projectLabel}`); }}
+                                                    title={`Mark all ${pg.count} line${pg.count === 1 ? '' : 's'} in this project as accounted for ($${pg.total.toFixed(2)})`}
+                                                    style={{ marginLeft: 'auto' }}
                                                   >
-                                                    Account for category
+                                                    Account for project
                                                   </button>
                                                 </div>
                                               </td>
                                             </tr>
-                                            {!catCollapsed && cg.items.map((exp: any) => {
-                                              const selKey = `${exp._source}-${exp.id}`;
-                                              const isSelected = selectedReconcileKeys.has(selKey);
-                                              const isUpdating = updatingExpenseId === exp.id;
-                                              const dt = normalizeExpenseTableDateKey(String(exp._date || ''));
+                                            {!projCollapsed && pg.categories.map((cg) => {
+                                              const catGroupKey = `${projGroupKey}::${cg.category}`;
+                                              const catCollapsed = !expandedReconcileCategoryKeys.has(catGroupKey);
                                               return (
-                                                <tr key={selKey} className={`ionex-expense-table-row${isSelected ? ' is-selected' : ''}`}>
-                                                  <td style={{ paddingLeft: '28px', width: '32px' }}>
-                                                    <input
-                                                      type="checkbox"
-                                                      checked={isSelected}
-                                                      onChange={(e) => {
-                                                        setSelectedReconcileKeys((prev) => {
-                                                          const next = new Set(prev);
-                                                          if (e.target.checked) next.add(selKey);
-                                                          else next.delete(selKey);
-                                                          return next;
-                                                        });
-                                                      }}
-                                                    />
-                                                  </td>
-                                                  <td style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
-                                                    {dt ? formatExpenseGroupDateLabel(dt) : '—'}
-                                                  </td>
-                                                  <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                                                    {exp._employeeName || '—'}
-                                                  </td>
-                                                  <td style={{ color: 'var(--text-secondary)' }}>
-                                                    {exp.description || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>(no description)</span>}
-                                                    {exp._source === 'receipt' && exp.receipt_url && (
+                                              <React.Fragment key={`reccat-${eg.userId}-${pg.projectLabel}-${cg.category}`}>
+                                                <tr className="ionex-expense-table-group is-category">
+                                                  <td />
+                                                  <td
+                                                    colSpan={4}
+                                                    onClick={() => toggleReconcileGroupKey(setExpandedReconcileCategoryKeys, catGroupKey)}
+                                                    style={{ paddingLeft: '42px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
+                                                    title={catCollapsed ? 'Expand category' : 'Collapse category'}
+                                                  >
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+                                                      <span aria-hidden style={{ display: 'inline-block', width: '10px', marginRight: '6px', fontSize: '9px', color: 'var(--text-tertiary)', transform: catCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
+                                                      {cg.category}
+                                                      <span style={{ marginLeft: '8px', fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--text-tertiary)' }}>
+                                                        {cg.items.length} · ${cg.total.toFixed(2)}
+                                                      </span>
                                                       <button
                                                         type="button"
-                                                        onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
-                                                        className="ionex-expense-table-link-button"
-                                                        style={{ marginLeft: '8px', fontSize: '11px' }}
-                                                        title="Preview receipt"
+                                                        className="ionex-row-action-icon is-success"
+                                                        disabled={batchActionBusy}
+                                                        onClick={(e) => { e.stopPropagation(); accountForGroup(cg.items, `${eg.name} · ${pg.projectLabel === '—' ? 'No project' : pg.projectLabel} · ${cg.category}`); }}
+                                                        title={`Mark all ${cg.items.length} ${cg.category} line${cg.items.length === 1 ? '' : 's'} as accounted for ($${cg.total.toFixed(2)})`}
+                                                        style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}
                                                       >
-                                                        {loadingReceiptId === exp.id ? '…' : '🧾 View receipt'}
+                                                        Account for category
                                                       </button>
-                                                    )}
-                                                  </td>
-                                                  <td className="is-numeric">
-                                                    <span className="ionex-expense-table-amount">${(Number(exp._amount) || 0).toFixed(2)}</span>
-                                                    {exp._source === 'receipt' && parseFloat(exp.gst || 0) > 0 && (
-                                                      <span className="ionex-expense-table-amount-gst">+ GST ${parseFloat(exp.gst || 0).toFixed(2)}</span>
-                                                    )}
-                                                  </td>
-                                                  <td className="is-numeric">
-                                                    <button
-                                                      type="button"
-                                                      className="ionex-row-action-icon is-success"
-                                                      disabled={isUpdating || batchActionBusy}
-                                                      onClick={() => handleAdminStatusChange(exp.id, 'paid', exp._source as 'receipt' | 'ticket', exp)}
-                                                      title="Mark this line as accounted for — entered into the books."
-                                                    >
-                                                      Account for
-                                                    </button>
+                                                    </div>
                                                   </td>
                                                 </tr>
+                                                {!catCollapsed && cg.items.map((exp: any) => {
+                                                  const selKey = `${exp._source}-${exp.id}`;
+                                                  const isSelected = selectedReconcileKeys.has(selKey);
+                                                  const isUpdating = updatingExpenseId === exp.id;
+                                                  const dt = normalizeExpenseTableDateKey(String(exp._date || ''));
+                                                  return (
+                                                    <tr key={selKey} className={`ionex-expense-table-row${isSelected ? ' is-selected' : ''}`}>
+                                                      <td style={{ paddingLeft: '40px', width: '32px' }}>
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={isSelected}
+                                                          onChange={(e) => {
+                                                            setSelectedReconcileKeys((prev) => {
+                                                              const next = new Set(prev);
+                                                              if (e.target.checked) next.add(selKey);
+                                                              else next.delete(selKey);
+                                                              return next;
+                                                            });
+                                                          }}
+                                                        />
+                                                      </td>
+                                                      <td style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                                                        {dt ? formatExpenseGroupDateLabel(dt) : '—'}
+                                                      </td>
+                                                      <td style={{ color: 'var(--text-secondary)' }}>
+                                                        {exp.description || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>(no description)</span>}
+                                                        {exp._source === 'receipt' && exp.receipt_url && (
+                                                          <button
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
+                                                            className="ionex-expense-table-link-button"
+                                                            style={{ marginLeft: '8px', fontSize: '11px' }}
+                                                            title="Preview receipt"
+                                                          >
+                                                            {loadingReceiptId === exp.id ? '…' : '🧾 View receipt'}
+                                                          </button>
+                                                        )}
+                                                      </td>
+                                                      <td className="is-numeric">
+                                                        <span className="ionex-expense-table-amount">${(Number(exp._amount) || 0).toFixed(2)}</span>
+                                                        {exp._source === 'receipt' && parseFloat(exp.gst || 0) > 0 && (
+                                                          <span className="ionex-expense-table-amount-gst">+ GST ${parseFloat(exp.gst || 0).toFixed(2)}</span>
+                                                        )}
+                                                      </td>
+                                                      <td className="is-numeric">
+                                                        <button
+                                                          type="button"
+                                                          className="ionex-row-action-icon is-success"
+                                                          disabled={isUpdating || batchActionBusy}
+                                                          onClick={() => handleAdminStatusChange(exp.id, 'paid', exp._source as 'receipt' | 'ticket', exp)}
+                                                          title="Mark this line as accounted for — entered into the books."
+                                                        >
+                                                          Account for
+                                                        </button>
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </React.Fragment>
                                               );
                                             })}
                                           </React.Fragment>
