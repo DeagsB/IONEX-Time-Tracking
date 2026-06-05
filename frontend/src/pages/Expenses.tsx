@@ -5918,9 +5918,44 @@ export default function Expenses() {
             });
             const widthSamples: number[] = sheet.columns!.map((c) => String(c.header || '').length);
             const flat = period.dateGroups.flatMap((g) => g.items);
-            for (const exp of flat as any[]) {
+
+            // Mirror the on-screen Reconcile layout: employee → project → category. The
+            // columns stay fully populated per line (so the sheet is still filterable),
+            // but the rows are ordered by that nesting and a bold subtotal row follows
+            // each category, project, and employee — reading like the UI accordion.
+            const projectLabelOf = (exp: any): string => {
               const projRaw = exp.service_ticket?.project || exp.service_tickets?.project;
-              const project = projRaw ? [projRaw.project_number, projRaw.name].filter(Boolean).join(' – ') : '';
+              return projRaw ? [projRaw.project_number, projRaw.name].filter(Boolean).join(' – ') : 'No project';
+            };
+            const sumAmt = (items: any[]) => items.reduce((s, e: any) => s + (Number(e._amount) || 0), 0);
+            const sumGst = (items: any[]) => items.reduce((s, e: any) => s + (e._source === 'receipt' ? (parseFloat(String(e.gst || 0)) || 0) : 0), 0);
+            const buildCategories = (items: any[]) => {
+              const m = new Map<string, any[]>();
+              for (const e of items) { const c = expenseTypeOf(e); if (!m.has(c)) m.set(c, []); m.get(c)!.push(e); }
+              return [...m.entries()].map(([category, its]) => ({ category, items: its })).sort((a, b) => a.category.localeCompare(b.category));
+            };
+            const buildProjects = (items: any[]) => {
+              const m = new Map<string, any[]>();
+              for (const e of items) { const k = projectLabelOf(e); if (!m.has(k)) m.set(k, []); m.get(k)!.push(e); }
+              return [...m.entries()].map(([projectLabel, its]) => ({ projectLabel, items: its }))
+                .sort((a, b) => { if (a.projectLabel === 'No project') return 1; if (b.projectLabel === 'No project') return -1; return a.projectLabel.localeCompare(b.projectLabel); });
+            };
+            const empMap = new Map<string, { name: string; items: any[] }>();
+            for (const exp of flat as any[]) {
+              const uid = String(exp._userId ?? exp._employeeName ?? '');
+              if (!empMap.has(uid)) empMap.set(uid, { name: exp._employeeName || '—', items: [] });
+              empMap.get(uid)!.items.push(exp);
+            }
+            const employeeGroups = [...empMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+            const trackWidths = (vals: string[]) => {
+              for (let i = 0; i < vals.length; i++) {
+                if (vals[i].length > widthSamples[i]) widthSamples[i] = vals[i].length;
+              }
+            };
+            const addLineRow = (exp: any) => {
+              const project = projectLabelOf(exp);
+              const projRaw = exp.service_ticket?.project || exp.service_tickets?.project;
               const customer = projRaw?.customer?.name || '';
               const amount = Number(exp._amount) || 0;
               const gst = exp._source === 'receipt' ? (parseFloat(String(exp.gst || 0)) || 0) : 0;
@@ -5940,9 +5975,7 @@ export default function Expenses() {
               row.getCell('amount').numFmt = currencyFmt;
               row.getCell('gst').numFmt = currencyFmt;
               row.getCell('total').numFmt = currencyFmt;
-              // Update width-tracking using formatted strings — numbers render wider when
-              // shown as currency, so use the formatted form for sizing.
-              const cellLens = [
+              trackWidths([
                 String(exp._date || ''),
                 String(exp._employeeName || ''),
                 project,
@@ -5954,43 +5987,37 @@ export default function Expenses() {
                 `$${amount.toFixed(2)}`,
                 `$${gst.toFixed(2)}`,
                 `$${(amount + gst).toFixed(2)}`,
-              ];
-              for (let i = 0; i < cellLens.length; i++) {
-                if (cellLens[i].length > widthSamples[i]) widthSamples[i] = cellLens[i].length;
+              ]);
+            };
+            // Bold subtotal row carrying the group label in Description + summed money.
+            // `fill` shades the row (employee/grand totals); `border` draws a top rule.
+            const addSubtotalRow = (label: string, items: any[], opts: { fill?: string; border?: boolean } = {}) => {
+              const amount = sumAmt(items);
+              const gst = sumGst(items);
+              const row = sheet.addRow({ description: label, amount, gst, total: amount + gst });
+              row.font = { bold: true };
+              row.getCell('amount').numFmt = currencyFmt;
+              row.getCell('gst').numFmt = currencyFmt;
+              row.getCell('total').numFmt = currencyFmt;
+              if (opts.fill) row.eachCell({ includeEmpty: false }, (cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill! } }; });
+              if (opts.border) row.eachCell({ includeEmpty: false }, (cell) => { cell.border = { top: { style: 'thin', color: { argb: 'FFCCCCCC' } } }; });
+              trackWidths(['', '', '', '', '', label, '', '', `$${amount.toFixed(2)}`, `$${gst.toFixed(2)}`, `$${(amount + gst).toFixed(2)}`]);
+            };
+
+            for (const eg of employeeGroups) {
+              for (const pg of buildProjects(eg.items)) {
+                for (const cg of buildCategories(pg.items)) {
+                  const sortedItems = [...cg.items].sort((a, b) => String(a._date || '').localeCompare(String(b._date || '')));
+                  for (const exp of sortedItems) addLineRow(exp);
+                  addSubtotalRow(`        ${cg.category} subtotal`, cg.items, { border: true });
+                }
+                addSubtotalRow(`    ${pg.projectLabel} — project subtotal`, pg.items);
               }
+              addSubtotalRow(`${eg.name} — EMPLOYEE TOTAL`, eg.items, { fill: 'FFF2F2F2' });
+              sheet.addRow({}); // spacer between employees
             }
-            // Total row at the bottom: count + sum of Amount + sum of GST + sum of Total.
-            const totals = (flat as any[]).reduce(
-              (acc, e) => {
-                const amt = Number(e._amount) || 0;
-                const gst = e._source === 'receipt' ? (parseFloat(String(e.gst || 0)) || 0) : 0;
-                acc.amount += amt;
-                acc.gst += gst;
-                acc.total += amt + gst;
-                return acc;
-              },
-              { amount: 0, gst: 0, total: 0 }
-            );
-            const totalRow = sheet.addRow({
-              date: '',
-              employee: '',
-              project: '',
-              customer: '',
-              category: '',
-              description: `Total — ${flat.length} ${flat.length === 1 ? 'line' : 'lines'}`,
-              ticket: '',
-              source: '',
-              amount: totals.amount,
-              gst: totals.gst,
-              total: totals.total,
-            });
-            totalRow.font = { bold: true };
-            totalRow.getCell('amount').numFmt = currencyFmt;
-            totalRow.getCell('gst').numFmt = currencyFmt;
-            totalRow.getCell('total').numFmt = currencyFmt;
-            totalRow.eachCell({ includeEmpty: false }, (cell) => {
-              cell.border = { top: { style: 'thin', color: { argb: 'FFCCCCCC' } } };
-            });
+            // Grand total across every employee in the period.
+            addSubtotalRow(`GRAND TOTAL — ${flat.length} ${flat.length === 1 ? 'line' : 'lines'}`, flat as any[], { fill: 'FFEFEFEF', border: true });
             // Auto-fit with min/max guardrails so a single long description doesn't blow
             // the column out and short columns still read cleanly.
             const MIN_WIDTH = 10;
