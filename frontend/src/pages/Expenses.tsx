@@ -1411,6 +1411,13 @@ export default function Expenses() {
       if (desc.includes('mileage') || desc.includes('km')) return 'Mileage';
       return 'Travel';
     }
+    if (t === 'Equipment') {
+      // Truck-as-equipment stays its own bucket; everything else (laptops, basic
+      // field gear, etc.) reads as the friendlier "Laptop/Basic Equipment".
+      const desc = String(exp.description || '').toLowerCase();
+      if (desc.includes('truck')) return 'Truck';
+      return 'Laptop/Basic Equipment';
+    }
     return t;
   };
 
@@ -6072,6 +6079,26 @@ export default function Expenses() {
                     return next;
                   });
                 };
+                // Account-for-all for a project or category title row: confirm, mark the
+                // whole group accounted in one batch, then clear any of its selections.
+                const accountForGroup = async (items: any[], label: string) => {
+                  if (items.length === 0) return;
+                  const total = items.reduce((s, r: any) => s + (Number(r._amount) || 0), 0);
+                  const proceed = window.confirm(
+                    `Mark ${items.length} expense${items.length === 1 ? '' : 's'} in ${label} as accounted for ($${total.toFixed(2)})?\n\n` +
+                    'They drop out of the workflow once they\'re stamped accounted in the system.'
+                  );
+                  if (!proceed) return;
+                  await handleAdminBatchStatusChange(
+                    items.map((r: any) => ({ id: String(r.id), source: r._source as 'receipt' | 'ticket' })),
+                    'paid'
+                  );
+                  setSelectedReconcileKeys((prev) => {
+                    const next = new Set(prev);
+                    for (const r of items) next.delete(`${r._source}-${r.id}`);
+                    return next;
+                  });
+                };
                 const periodModifier = period.isCurrent ? '' : period.isFuture ? ' is-future' : '';
                 return (
                   <div
@@ -6222,14 +6249,26 @@ export default function Expenses() {
                                             style={{ backgroundColor: 'var(--bg-tertiary)', fontWeight: 700, color: pg.projectLabel === '—' ? 'var(--text-tertiary)' : 'var(--text-primary)', cursor: 'pointer', userSelect: 'none' }}
                                             title={projCollapsed ? 'Expand project' : 'Collapse project'}
                                           >
-                                            <span aria-hidden style={{ display: 'inline-block', width: '12px', marginRight: '6px', fontSize: '10px', color: 'var(--text-tertiary)', transform: projCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
-                                            <span style={{ fontStyle: pg.projectLabel === '—' ? 'italic' : 'normal' }}>
-                                              {pg.projectLabel === '—' ? 'No project assigned' : pg.projectLabel}
-                                            </span>
-                                            <span style={{ marginLeft: '10px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                              {pg.count} {pg.count === 1 ? 'line' : 'lines'} · ${pg.total.toFixed(2)}
-                                              {projCollapsed && pg.categories.length > 1 && <> · {pg.categories.length} categories</>}
-                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+                                              <span aria-hidden style={{ display: 'inline-block', width: '12px', marginRight: '6px', fontSize: '10px', color: 'var(--text-tertiary)', transform: projCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
+                                              <span style={{ fontStyle: pg.projectLabel === '—' ? 'italic' : 'normal' }}>
+                                                {pg.projectLabel === '—' ? 'No project assigned' : pg.projectLabel}
+                                              </span>
+                                              <span style={{ marginLeft: '10px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                                {pg.count} {pg.count === 1 ? 'line' : 'lines'} · ${pg.total.toFixed(2)}
+                                                {projCollapsed && pg.categories.length > 1 && <> · {pg.categories.length} categories</>}
+                                              </span>
+                                              <button
+                                                type="button"
+                                                className="ionex-row-action-icon is-success"
+                                                disabled={batchActionBusy}
+                                                onClick={(e) => { e.stopPropagation(); accountForGroup(pg.items, pg.projectLabel === '—' ? 'this no-project group' : pg.projectLabel); }}
+                                                title="Mark every line in this project as accounted for"
+                                                style={{ marginLeft: 'auto' }}
+                                              >
+                                                Account for {pg.count}
+                                              </button>
+                                            </div>
                                           </td>
                                         </tr>
                                         {!projCollapsed && pg.categories.map((cg) => {
@@ -6245,11 +6284,23 @@ export default function Expenses() {
                                                 style={{ paddingLeft: '6px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none' }}
                                                 title={catCollapsed ? 'Expand category' : 'Collapse category'}
                                               >
-                                                <span aria-hidden style={{ display: 'inline-block', width: '10px', marginRight: '6px', fontSize: '9px', color: 'var(--text-tertiary)', transform: catCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
-                                                {cg.category}
-                                                <span style={{ marginLeft: '8px', fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--text-tertiary)' }}>
-                                                  {cg.items.length} · ${cg.total.toFixed(2)}
-                                                </span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+                                                  <span aria-hidden style={{ display: 'inline-block', width: '10px', marginRight: '6px', fontSize: '9px', color: 'var(--text-tertiary)', transform: catCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.12s' }}>▶</span>
+                                                  {cg.category}
+                                                  <span style={{ marginLeft: '8px', fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--text-tertiary)' }}>
+                                                    {cg.items.length} · ${cg.total.toFixed(2)}
+                                                  </span>
+                                                  <button
+                                                    type="button"
+                                                    className="ionex-row-action-icon is-success"
+                                                    disabled={batchActionBusy}
+                                                    onClick={(e) => { e.stopPropagation(); accountForGroup(cg.items, `${pg.projectLabel === '—' ? 'No project' : pg.projectLabel} · ${cg.category}`); }}
+                                                    title="Mark every line in this category as accounted for"
+                                                    style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}
+                                                  >
+                                                    Account for {cg.items.length}
+                                                  </button>
+                                                </div>
                                               </td>
                                             </tr>
                                             {!catCollapsed && cg.items.map((exp: any) => {
