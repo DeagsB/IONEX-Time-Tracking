@@ -1277,35 +1277,16 @@ export default function Payroll() {
       // didn't actually pay them out.
       if (!isCurrentPeriod && exp.reimbursement_status !== 'paid') continue;
 
-      // Receipt-required types (Hotel, Expenses) without a linked receipt can't be
-      // reimbursed yet, but they still need to be visible in the breakdown so admins
-      // see what's outstanding — silently dropping them was the bug behind Chase
-      // Gibbon's "missing" 3 unaccounted expenses. Surface them as a zero-amount
-      // "Awaiting receipt" line; admin can attach a receipt to reimburse, or use the
-      // per-line Account For pill to mark accounted without payout.
+      // Receipt-required types (Hotel, Expenses) without a linked receipt aren't
+      // reimbursable yet, so skip them entirely — they no longer surface as a
+      // zero-amount "Awaiting receipt" row, which only cluttered the reimbursement
+      // breakdown. The outstanding-receipt picture lives in the Expenses Reconcile
+      // view; payroll stays focused on what actually pays out.
       if (
         exp.needs_reimbursement &&
         ticketExpenseRequiresLinkedReceiptForPayroll(exp) &&
         !ticketExpenseHasPayrollEligibleLinkedReceipt(exp, payrollLinkedApprovedReceipts as any[])
       ) {
-        if (exp.reimbursement_status === 'paid') continue;
-        const t0 = exp.service_tickets;
-        const proj = t0?.project;
-        const entry = getOrCreate(userId);
-        entry.lines.push({
-          category: 'Awaiting receipt',
-          description: exp.description || '',
-          quantity: Number(exp.quantity) || 1,
-          rate: Number(exp.rate) || 0,
-          reimbRate: 0,
-          amount: 0,
-          ticketNumber: t0?.ticket_number,
-          projectKey: String(proj?.id ?? t0?.project_id ?? ''),
-          projectLabel: formatProjectLabel(proj),
-          date: t0?.date ?? undefined,
-          ticketExpenseId: String(exp.id),
-          isPaid: false,
-        });
         continue;
       }
 

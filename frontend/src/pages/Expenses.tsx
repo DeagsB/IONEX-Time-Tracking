@@ -6104,108 +6104,189 @@ export default function Expenses() {
                             </button>
                           </div>
                         )}
-                        <div style={{ overflowX: 'auto' }}>
-                          <table className="ionex-expense-table" style={{ minWidth: '900px' }}>
-                            <thead>
-                              <tr>
-                                <th className="is-checkbox">
-                                  <input
-                                    type="checkbox"
-                                    checked={allSelected}
-                                    ref={(el) => { if (el) el.indeterminate = !allSelected && anySelected; }}
-                                    onChange={(e) => toggleAllInPeriod(e.target.checked)}
-                                    title="Select all in this pay period"
-                                    style={{ cursor: 'pointer' }}
-                                  />
-                                </th>
-                                <th>Date</th>
-                                <th>Employee</th>
-                                <th>Project</th>
-                                <th>Category</th>
-                                <th>Description</th>
-                                <th className="is-numeric">Amount</th>
-                                <th className="is-numeric">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {flatItems.map((exp: any) => {
-                                const selKey = `${exp._source}-${exp.id}`;
-                                const isSelected = selectedReconcileKeys.has(selKey);
-                                const isUpdating = updatingExpenseId === exp.id;
-                                const dt = normalizeExpenseTableDateKey(String(exp._date || ''));
-                                // Project label: receipt-backed lines carry it on service_ticket.project;
-                                // ticket-expense rows on service_tickets.project. Fall back to a dash so the
-                                // column never looks broken when an expense has no project assigned.
-                                const projRaw = exp.service_ticket?.project || exp.service_tickets?.project;
-                                const projLabel = projRaw
-                                  ? [projRaw.project_number, projRaw.name].filter(Boolean).join(' – ')
-                                  : '—';
-                                const category = expenseTypeOf(exp);
-                                return (
-                                  <tr key={selKey} className={`ionex-expense-table-row${isSelected ? ' is-selected' : ''}`}>
-                                    <td style={{ paddingLeft: '18px', width: '32px' }}>
+                        {(() => {
+                          // Reconcile entry is project-driven: bookkeepers post one project's
+                          // expenses at a time, and within a project they batch by category
+                          // (all mileage, then all per diem, …). So nest the period's lines as
+                          // project → category, each carrying its own subtotal, instead of one
+                          // flat date-sorted list. Projectless lines sink to a trailing "—" group.
+                          const projectLabelOf = (exp: any): string => {
+                            const projRaw = exp.service_ticket?.project || exp.service_tickets?.project;
+                            return projRaw ? [projRaw.project_number, projRaw.name].filter(Boolean).join(' – ') : '—';
+                          };
+                          const projMap = new Map<string, any[]>();
+                          for (const exp of flatItems) {
+                            const k = projectLabelOf(exp);
+                            if (!projMap.has(k)) projMap.set(k, []);
+                            projMap.get(k)!.push(exp);
+                          }
+                          const projectGroups = [...projMap.entries()]
+                            .map(([projectLabel, items]) => {
+                              const catMap = new Map<string, any[]>();
+                              for (const exp of items) {
+                                const c = expenseTypeOf(exp);
+                                if (!catMap.has(c)) catMap.set(c, []);
+                                catMap.get(c)!.push(exp);
+                              }
+                              const categories = [...catMap.entries()]
+                                .map(([category, catItems]) => ({
+                                  category,
+                                  items: catItems,
+                                  total: catItems.reduce((s, e: any) => s + (Number(e._amount) || 0), 0),
+                                }))
+                                .sort((a, b) => a.category.localeCompare(b.category));
+                              return {
+                                projectLabel,
+                                items,
+                                count: items.length,
+                                total: items.reduce((s, e: any) => s + (Number(e._amount) || 0), 0),
+                                categories,
+                              };
+                            })
+                            .sort((a, b) => {
+                              if (a.projectLabel === '—') return 1;
+                              if (b.projectLabel === '—') return -1;
+                              return a.projectLabel.localeCompare(b.projectLabel);
+                            });
+                          return (
+                            <div style={{ overflowX: 'auto' }}>
+                              <table className="ionex-expense-table" style={{ minWidth: '760px' }}>
+                                <thead>
+                                  <tr>
+                                    <th className="is-checkbox">
                                       <input
                                         type="checkbox"
-                                        checked={isSelected}
-                                        onChange={(e) => {
-                                          setSelectedReconcileKeys((prev) => {
-                                            const next = new Set(prev);
-                                            if (e.target.checked) next.add(selKey);
-                                            else next.delete(selKey);
-                                            return next;
-                                          });
-                                        }}
+                                        checked={allSelected}
+                                        ref={(el) => { if (el) el.indeterminate = !allSelected && anySelected; }}
+                                        onChange={(e) => toggleAllInPeriod(e.target.checked)}
+                                        title="Select all in this pay period"
+                                        style={{ cursor: 'pointer' }}
                                       />
-                                    </td>
-                                    <td style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
-                                      {dt ? formatExpenseGroupDateLabel(dt) : '—'}
-                                    </td>
-                                    <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                                      {exp._employeeName || '—'}
-                                    </td>
-                                    <td style={{ color: projLabel === '—' ? 'var(--text-tertiary)' : 'var(--text-primary)', fontStyle: projLabel === '—' ? 'italic' : 'normal' }}>
-                                      {projLabel}
-                                    </td>
-                                    <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                                      {category}
-                                    </td>
-                                    <td style={{ color: 'var(--text-secondary)' }}>
-                                      {exp.description || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>(no description)</span>}
-                                      {exp._source === 'receipt' && exp.receipt_url && (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
-                                          className="ionex-expense-table-link-button"
-                                          style={{ marginLeft: '8px', fontSize: '11px' }}
-                                          title="Preview receipt"
-                                        >
-                                          {loadingReceiptId === exp.id ? '…' : '🧾 View receipt'}
-                                        </button>
-                                      )}
-                                    </td>
-                                    <td className="is-numeric">
-                                      <span className="ionex-expense-table-amount">${(Number(exp._amount) || 0).toFixed(2)}</span>
-                                      {exp._source === 'receipt' && parseFloat(exp.gst || 0) > 0 && (
-                                        <span className="ionex-expense-table-amount-gst">+ GST ${parseFloat(exp.gst || 0).toFixed(2)}</span>
-                                      )}
-                                    </td>
-                                    <td className="is-numeric">
-                                      <button
-                                        type="button"
-                                        className="ionex-row-action-icon is-success"
-                                        disabled={isUpdating || batchActionBusy}
-                                        onClick={() => handleAdminStatusChange(exp.id, 'paid', exp._source as 'receipt' | 'ticket', exp)}
-                                        title="Mark this line as accounted for — entered into the books."
-                                      >
-                                        Account for
-                                      </button>
-                                    </td>
+                                    </th>
+                                    <th>Date</th>
+                                    <th>Employee</th>
+                                    <th>Description</th>
+                                    <th className="is-numeric">Amount</th>
+                                    <th className="is-numeric">Action</th>
                                   </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
+                                </thead>
+                                <tbody>
+                                  {projectGroups.map((pg) => {
+                                    const projKeys = pg.items.map((e: any) => `${e._source}-${e.id}`);
+                                    const projAllSelected = projKeys.length > 0 && projKeys.every((k) => selectedReconcileKeys.has(k));
+                                    const projAnySelected = projKeys.some((k) => selectedReconcileKeys.has(k));
+                                    const toggleProject = (checked: boolean) => {
+                                      setSelectedReconcileKeys((prev) => {
+                                        const next = new Set(prev);
+                                        if (checked) for (const k of projKeys) next.add(k);
+                                        else for (const k of projKeys) next.delete(k);
+                                        return next;
+                                      });
+                                    };
+                                    return (
+                                      <React.Fragment key={`recproj-${pg.projectLabel}`}>
+                                        <tr className="ionex-expense-table-group is-project">
+                                          <td style={{ paddingLeft: '18px', width: '32px', backgroundColor: 'var(--bg-tertiary)' }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={projAllSelected}
+                                              ref={(el) => { if (el) el.indeterminate = !projAllSelected && projAnySelected; }}
+                                              onChange={(e) => toggleProject(e.target.checked)}
+                                              title="Select all lines for this project"
+                                              style={{ cursor: 'pointer' }}
+                                            />
+                                          </td>
+                                          <td colSpan={5} style={{ backgroundColor: 'var(--bg-tertiary)', fontWeight: 700, color: pg.projectLabel === '—' ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
+                                            <span style={{ fontStyle: pg.projectLabel === '—' ? 'italic' : 'normal' }}>
+                                              {pg.projectLabel === '—' ? 'No project assigned' : pg.projectLabel}
+                                            </span>
+                                            <span style={{ marginLeft: '10px', fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                              {pg.count} {pg.count === 1 ? 'line' : 'lines'} · ${pg.total.toFixed(2)}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                        {pg.categories.map((cg) => (
+                                          <React.Fragment key={`reccat-${pg.projectLabel}-${cg.category}`}>
+                                            <tr className="ionex-expense-table-group is-category">
+                                              <td />
+                                              <td colSpan={5} style={{ paddingLeft: '6px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                                                {cg.category}
+                                                <span style={{ marginLeft: '8px', fontWeight: 600, textTransform: 'none', letterSpacing: 0, color: 'var(--text-tertiary)' }}>
+                                                  ${cg.total.toFixed(2)}
+                                                </span>
+                                              </td>
+                                            </tr>
+                                            {cg.items.map((exp: any) => {
+                                              const selKey = `${exp._source}-${exp.id}`;
+                                              const isSelected = selectedReconcileKeys.has(selKey);
+                                              const isUpdating = updatingExpenseId === exp.id;
+                                              const dt = normalizeExpenseTableDateKey(String(exp._date || ''));
+                                              return (
+                                                <tr key={selKey} className={`ionex-expense-table-row${isSelected ? ' is-selected' : ''}`}>
+                                                  <td style={{ paddingLeft: '28px', width: '32px' }}>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={isSelected}
+                                                      onChange={(e) => {
+                                                        setSelectedReconcileKeys((prev) => {
+                                                          const next = new Set(prev);
+                                                          if (e.target.checked) next.add(selKey);
+                                                          else next.delete(selKey);
+                                                          return next;
+                                                        });
+                                                      }}
+                                                    />
+                                                  </td>
+                                                  <td style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                                                    {dt ? formatExpenseGroupDateLabel(dt) : '—'}
+                                                  </td>
+                                                  <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                                                    {exp._employeeName || '—'}
+                                                  </td>
+                                                  <td style={{ color: 'var(--text-secondary)' }}>
+                                                    {exp.description || <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>(no description)</span>}
+                                                    {exp._source === 'receipt' && exp.receipt_url && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); handleViewReceipt(exp); }}
+                                                        className="ionex-expense-table-link-button"
+                                                        style={{ marginLeft: '8px', fontSize: '11px' }}
+                                                        title="Preview receipt"
+                                                      >
+                                                        {loadingReceiptId === exp.id ? '…' : '🧾 View receipt'}
+                                                      </button>
+                                                    )}
+                                                  </td>
+                                                  <td className="is-numeric">
+                                                    <span className="ionex-expense-table-amount">${(Number(exp._amount) || 0).toFixed(2)}</span>
+                                                    {exp._source === 'receipt' && parseFloat(exp.gst || 0) > 0 && (
+                                                      <span className="ionex-expense-table-amount-gst">+ GST ${parseFloat(exp.gst || 0).toFixed(2)}</span>
+                                                    )}
+                                                  </td>
+                                                  <td className="is-numeric">
+                                                    <button
+                                                      type="button"
+                                                      className="ionex-row-action-icon is-success"
+                                                      disabled={isUpdating || batchActionBusy}
+                                                      onClick={() => handleAdminStatusChange(exp.id, 'paid', exp._source as 'receipt' | 'ticket', exp)}
+                                                      title="Mark this line as accounted for — entered into the books."
+                                                    >
+                                                      Account for
+                                                    </button>
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </React.Fragment>
+                                        ))}
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
