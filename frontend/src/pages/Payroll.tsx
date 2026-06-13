@@ -227,7 +227,7 @@ function EmployeeProjectsAndDailyBreakdown({
     }
   };
   // Group by project
-  const byProject = new Map<string, { name: string; customer: string; hours: number; byRateType: Map<string, number> }>();
+  const byProject = new Map<string, { name: string; number: string; customer: string; hours: number; byRateType: Map<string, number> }>();
   // Group by date for daily overtime check
   const byDate = new Map<string, { total: number; byRateType: Map<string, number>; entries: TimeEntry[] }>();
   // Group by ISO week for weekly overtime check
@@ -247,9 +247,10 @@ function EmployeeProjectsAndDailyBreakdown({
     const hrs = Number(e.hours) || 0;
     const projKey = e.project_id || '__none__';
     const projName = e.project?.name || (e.project_id ? 'Unknown Project' : 'Unassigned');
+    const projNum = e.project?.project_number || '';
     const custName = e.project?.customer?.name || '';
     if (!byProject.has(projKey)) {
-      byProject.set(projKey, { name: projName, customer: custName, hours: 0, byRateType: new Map() });
+      byProject.set(projKey, { name: projName, number: projNum, customer: custName, hours: 0, byRateType: new Map() });
     }
     const p = byProject.get(projKey)!;
     p.hours += hrs;
@@ -309,7 +310,10 @@ function EmployeeProjectsAndDailyBreakdown({
                 const isCopied = copiedKey === cellKey;
                 return (
                   <tr key={key}>
-                    <td>{p.name}</td>
+                    <td>
+                      {p.number && <span className="payroll-muted" style={{ marginRight: '6px', fontFamily: 'SF Mono, Menlo, Consolas, monospace' }}>{p.number}</span>}
+                      {p.name}
+                    </td>
                     <td className="payroll-muted">{p.customer || '—'}</td>
                     <td className="payroll-muted" style={{ fontSize: '11px' }}>
                       {Array.from(p.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
