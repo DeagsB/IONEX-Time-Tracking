@@ -1841,7 +1841,8 @@ function sanitizeFilenamePart(s: string): string {
 function getApprovalBatchFilename(
   key: InvoiceGroupKeyWithPeriod,
   tickets: ServiceTicket[],
-  projects: Array<{ project_number?: string | null; approver?: string | null }> | undefined
+  projects: Array<{ project_number?: string | null; approver?: string | null }> | undefined,
+  summaryNo?: string
 ): string {
   const codeFromKey = key.approverCode?.trim();
   let approver: string | null = codeFromKey && codeFromKey.length > 0 ? codeFromKey : null;
@@ -1858,38 +1859,49 @@ function getApprovalBatchFilename(
     ?? tickets[0]?.customerName?.trim()
     ?? 'batch';
   const period = key.periodLabel?.trim() || getTicketDateRangeStr(tickets);
-  // Always suffix the IONEX project number (260xx) so each export is unambiguously
-  // tied to a project — critical when signed approvals come back and need to be
-  // matched to the right batch by filename.
+  // Lead with the Summary Number when allocated — it's the single reference the client uses for
+  // cost tracking, so the saved file is filed under that id. It already encodes the project
+  // number (e.g. 26012-007), so drop the redundant trailing project suffix in that case.
+  const sn = summaryNo?.trim();
+  const prefix = sn ? `${sanitizeFilenamePart(sn)} - ` : '';
+  // Otherwise suffix the IONEX project number (260xx) so each export is unambiguously tied to a
+  // project — critical when signed approvals come back and need to be matched by filename.
   const projNum = key.projectNumber?.trim();
-  const projSuffix = projNum ? ` (${sanitizeFilenamePart(projNum)})` : '';
-  return `${sanitizeFilenamePart(name)} - ${sanitizeFilenamePart(period)}${projSuffix}.pdf`;
+  const projSuffix = projNum && !sn ? ` (${sanitizeFilenamePart(projNum)})` : '';
+  return `${prefix}${sanitizeFilenamePart(name)} - ${sanitizeFilenamePart(period)}${projSuffix}.pdf`;
 }
 
-/** Invoice PDF filename: Approver_ProjectNumber_DateRange.pdf (CNRL) or ProjectNumber_PeriodLabel.pdf (non-CNRL) */
+/** Invoice PDF filename: Approver_ProjectNumber_DateRange.pdf (CNRL) or ProjectNumber_PeriodLabel.pdf (non-CNRL).
+ *  Leads with the Summary Number when allocated. */
 function getInvoicePdfFilename(
   key: InvoiceGroupKeyWithPeriod,
-  tickets: ServiceTicket[]
+  tickets: ServiceTicket[],
+  summaryNo?: string
 ): string {
+  const sn = summaryNo?.trim();
+  const prefix = sn ? `${sn.replace(/[/\\?*:|"]/g, '_')}_` : '';
   const projectNum = (key.projectNumber || key.projectId || 'no-project').trim().replace(/[/\\?*:|"]/g, '_');
   if (key.periodKey && key.periodLabel) {
     const periodPart = key.periodLabel.replace(/[/\\?*:|"]/g, '_');
-    return `${projectNum}_${periodPart}.pdf`;
+    return `${prefix}${projectNum}_${periodPart}.pdf`;
   }
   const approver = (key.approverCode || 'no-approver').replace(/[/\\?*:|"]/g, '_');
   const dateRange = getTicketDateRangeStr(tickets);
-  return `${approver}_${projectNum}_${dateRange}.pdf`;
+  return `${prefix}${approver}_${projectNum}_${dateRange}.pdf`;
 }
 
 /**
  * Filename for merged download (QuickBooks invoice + service ticket PDFs).
  * Differs from the standalone invoice name so saving to the same folder does not create " (1)" duplicates.
+ * Leads with the Summary Number when allocated.
  */
-function mergedInvoiceBatchDownloadFilename(sourceInvoiceName: string | null | undefined): string {
+function mergedInvoiceBatchDownloadFilename(sourceInvoiceName: string | null | undefined, summaryNo?: string): string {
   let stem = invoiceFilenameForDownload(sourceInvoiceName);
   stem = stem.replace(/\.pdf$/i, '').trim();
   if (!stem) stem = 'invoice';
-  return `${stem} - with service tickets.pdf`;
+  const sn = summaryNo?.trim();
+  const prefix = sn ? `${sanitizeFilenamePart(sn)} - ` : '';
+  return `${prefix}${stem} - with service tickets.pdf`;
 }
 
 /** One row in the invoice copy/paste breakdown; splitRate/splitHours only used in "Split by rate" mode; serviceDate only used in "Split by day" mode (yyyy-mm-dd). */
@@ -2385,6 +2397,16 @@ export default function Invoices() {
     queryFn: () => batchSummaryNoService.getAll(),
     enabled: loadInvoicedBatchMarks,
   });
+
+  /** Already-allocated Summary Number for a batch (drift-tolerant via resolvedPersistGroupId).
+   *  Used to label downloaded batch files. Undefined until first allocated. */
+  const summaryNoForGroup = useCallback(
+    (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): string | undefined => {
+      const pid = resolvedPersistGroupId(group, invoicedMarkRows);
+      return batchSummaryNos[pid] ?? batchSummaryNos[getGroupId(group)];
+    },
+    [batchSummaryNos, invoicedMarkRows]
+  );
 
   /** Allocate (or fetch the existing) Summary Number for a batch before generating its summary PDF.
    *  Idempotent server-side; skipped in demo mode (no DB). Returns undefined on failure so PDF
@@ -3803,7 +3825,7 @@ export default function Invoices() {
     // If generation fails, abort before marking as sent.
     try {
       const merged = await buildMergedBatchPdfBlob(group);
-      const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+      const filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNoForGroup(group));
       saveAs(merged, filename);
     } catch (err) {
       console.error('Approval batch download error:', err);
@@ -3917,7 +3939,7 @@ export default function Invoices() {
     const currentSnap = (row?.key_snapshot ?? {}) as FrozenGroupSnapshot;
     try {
       const merged = await buildMergedBatchPdfBlob(group);
-      const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+      const filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNoForGroup(group));
       saveAs(merged, filename);
     } catch (err) {
       console.error('Resubmit batch download error:', err);
@@ -3966,7 +3988,7 @@ export default function Invoices() {
         const group = groupsForCustomer[i];
         setBulkSendProgress({ customer: customerName, current: i + 1, total: groupsForCustomer.length });
         const merged = await buildMergedBatchPdfBlob(group);
-        let filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+        let filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNoForGroup(group));
         if (usedNames.has(filename)) {
           const baseStem = filename.replace(/\.pdf$/i, '');
           let n = 2;
@@ -5116,7 +5138,7 @@ export default function Invoices() {
         savedCustomerTimesheetMetadata?.[groupId];
       if (customerTimesheet) {
         const timesheetBlob = await invoicedBatchCustomerTimesheetsService.downloadTimesheet(customerTimesheet.storagePath);
-        const filename = getInvoicePdfFilename(key, groupTickets);
+        const filename = getInvoicePdfFilename(key, groupTickets, summaryNoForGroup(group));
         saveAs(timesheetBlob, filename);
         return;
       }
@@ -5153,7 +5175,7 @@ export default function Invoices() {
 
       if (blobs.length > 0) {
         const merged = await mergePdfBlobs(blobs);
-        const filename = getInvoicePdfFilename(key, groupTickets);
+        const filename = getInvoicePdfFilename(key, groupTickets, summaryNoForGroup(group));
         saveAs(merged, filename);
       }
     } catch (err) {
@@ -5183,7 +5205,7 @@ export default function Invoices() {
       sourceInvoiceName = saved.filename || 'invoice.pdf';
     } else return;
 
-    const downloadFilename = mergedInvoiceBatchDownloadFilename(sourceInvoiceName);
+    const downloadFilename = mergedInvoiceBatchDownloadFilename(sourceInvoiceName, summaryNoForGroup(group));
     const dlSnap = invoicedMarkRows.find((r) => r.group_id === groupId)?.key_snapshot as FrozenGroupSnapshot | undefined;
     const dlLabourNotes = dlSnap?.labourNotes ?? pendingLabourNotes[groupId];
     const dlLocalGroupId = getGroupId(group);
@@ -5382,7 +5404,7 @@ export default function Invoices() {
 
         if (blobs.length > 0) {
           const merged = await mergePdfBlobs(blobs);
-          const filename = getInvoicePdfFilename(key, groupTickets);
+          const filename = getInvoicePdfFilename(key, groupTickets, summaryNoForGroup(uninvoicedGroups[i]));
           saveAs(merged, filename);
           }
       }
@@ -7119,7 +7141,7 @@ export default function Invoices() {
                         return;
                       }
                       const merged = await buildMergedBatchPdfBlob(activeGroup);
-                      const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects);
+                      const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects, summaryNoForGroup(activeGroup));
                       saveAs(merged, filename);
                       setWizardDownloadToast(`Downloaded ${filename}`);
                     } catch (err) {
@@ -7291,8 +7313,10 @@ export default function Invoices() {
                     }
                   };
 
+                  const activeSummaryNo = summaryNoForGroup(activeGroup);
                   const summaryBlock = (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', padding: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                      {activeSummaryNo && (<><strong>Summary&nbsp;No.:</strong><span style={{ fontWeight: 700, fontFamily: 'var(--font-mono, monospace)' }}>{activeSummaryNo}</span></>)}
                       <strong>Customer:</strong><span>{customer}</span>
                       <strong>Project:</strong><span>{projectLabel || '—'}</span>
                       <strong>Period:</strong><span>{periodLabel || '—'}</span>
@@ -8130,14 +8154,20 @@ export default function Invoices() {
                                   <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {t?.customerName ?? '—'}
                                   </div>
-                                  {/* IONEX project number on its own line so the user can match
-                                      a returned signed PDF (filename also carries the project
-                                      number) back to the exact batch without guessing. */}
-                                  {c.group.key.projectNumber?.trim() && (
-                                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      #{c.group.key.projectNumber.trim()}
-                                    </div>
-                                  )}
+                                  {/* Batch identifier on its own line so the user can match a
+                                      returned signed PDF back to the exact batch without guessing.
+                                      On the Awaiting-Signed queue the signed PDF filename leads with
+                                      the Summary Number, so show that here instead of the project #. */}
+                                  {(() => {
+                                    const cSummaryNo = wizardQueue === 'awaiting_signed' ? summaryNoForGroup(c.group) : undefined;
+                                    const label = cSummaryNo ?? (c.group.key.projectNumber?.trim() ? `#${c.group.key.projectNumber.trim()}` : '');
+                                    if (!label) return null;
+                                    return (
+                                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {label}
+                                      </div>
+                                    );
+                                  })()}
                                   <div style={{ fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {c.group.key.periodLabel ?? c.group.key.periodKey ?? ''} · {c.group.tickets.length} ticket{c.group.tickets.length === 1 ? '' : 's'}
                                   </div>
@@ -9851,7 +9881,7 @@ export default function Invoices() {
                                   const used = new Set<string>();
                                   for (const g of section.groups) {
                                     const merged = await buildMergedBatchPdfBlob(g);
-                                    let name = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                    let name = getApprovalBatchFilename(g.key, g.tickets, projects, summaryNoForGroup(g));
                                     if (used.has(name)) {
                                       const stem = name.replace(/\.pdf$/i, '');
                                       let n = 2;
@@ -10411,7 +10441,7 @@ export default function Invoices() {
                                       name = invoiceFilenameForDownload(sig.filename);
                                     } else {
                                       batchBlob = await buildMergedBatchPdfBlob(g);
-                                      name = getApprovalBatchFilename(g.key, g.tickets, projects);
+                                      name = getApprovalBatchFilename(g.key, g.tickets, projects, summaryNoForGroup(g));
                                     }
                                     if (used.has(name)) {
                                       const stem = name.replace(/\.pdf$/i, '');

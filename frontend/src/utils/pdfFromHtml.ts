@@ -3,6 +3,16 @@ import { PDFDocument } from 'pdf-lib';
 import { ServiceTicket, getApproverPoAfeCcFromTicket } from './serviceTickets';
 import { supabase } from '../lib/supabaseClient';
 
+/** Escape a value for safe interpolation into the PDF HTML (these strings are rendered via innerHTML). */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /** yyyy-mm-dd parses as UTC midnight in JS, which shifts the calendar day west of UTC (e.g. Americas). */
 function parseDateForTicketPdf(dateStr: string): Date {
   const trimmed = dateStr.trim();
@@ -794,7 +804,7 @@ function buildBatchSummaryPdfHtml(
         <div style="width: 140px; text-align: right;">
           ${summaryNo ? `
           <div style="font-size: 7.5pt; color: #555; text-transform: uppercase; letter-spacing: 1px;">Summary No.</div>
-          <div style="font-size: 13pt; font-weight: bold; color: #000;">${summaryNo}</div>` : ''}
+          <div style="font-size: 13pt; font-weight: bold; color: #000;">${escapeHtml(summaryNo)}</div>` : ''}
         </div>
       </div>`;
 

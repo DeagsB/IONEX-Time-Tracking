@@ -83,6 +83,10 @@ BEGIN
   RETURNING last_seq INTO v_seq;
 
   v_prefix := COALESCE(NULLIF(TRIM(p_project_number), ''), NULLIF(TRIM(p_project_id), ''), 'BATCH');
+  -- Keep only filename/HTML-safe characters so the stored summary_no is safe everywhere it is
+  -- rendered (PDF HTML, download filenames) regardless of what the project number contains.
+  v_prefix := regexp_replace(v_prefix, '[^A-Za-z0-9_-]', '', 'g');
+  v_prefix := COALESCE(NULLIF(v_prefix, ''), 'BATCH');
   v_result := v_prefix || '-' || LPAD(v_seq::TEXT, 3, '0');
 
   INSERT INTO public.invoice_batch_summary_nos (group_id, project_id, summary_no, allocated_by)
@@ -92,4 +96,8 @@ BEGIN
 END;
 $$;
 
+-- Lock the RPC down to signed-in users only (the body still enforces is_admin()).
+-- Postgres grants EXECUTE to PUBLIC by default; revoke so anon can't reach it.
+REVOKE EXECUTE ON FUNCTION public.allocate_batch_summary_no(TEXT, TEXT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.allocate_batch_summary_no(TEXT, TEXT, TEXT) FROM anon;
 GRANT EXECUTE ON FUNCTION public.allocate_batch_summary_no(TEXT, TEXT, TEXT) TO authenticated;
