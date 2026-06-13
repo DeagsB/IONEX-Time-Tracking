@@ -14,6 +14,7 @@ import {
   invoicedBatchApprovalsService,
   invoicedBatchCustomerTimesheetsService,
   invoicedBatchMarksService,
+  batchSummaryNoService,
   invoiceForceReadyService,
   type InvoicedBatchMarkRow,
   invoiceFilenameForDownload,
@@ -2377,6 +2378,38 @@ export default function Invoices() {
     enabled: loadInvoicedBatchMarks,
   });
 
+  // group_id → Summary Number (e.g. 26012-007). Allocated lazily when a batch's summary PDF is
+  // first generated; shown on the batch row and printed on the Service Ticket Summary cover.
+  const { data: batchSummaryNos = {} } = useQuery({
+    queryKey: ['batchSummaryNos'],
+    queryFn: () => batchSummaryNoService.getAll(),
+    enabled: loadInvoicedBatchMarks,
+  });
+
+  /** Allocate (or fetch the existing) Summary Number for a batch before generating its summary PDF.
+   *  Idempotent server-side; skipped in demo mode (no DB). Returns undefined on failure so PDF
+   *  generation still proceeds without a number. */
+  const ensureSummaryNo = useCallback(
+    async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }, persistId: string): Promise<string | undefined> => {
+      const existing = batchSummaryNos[persistId] ?? batchSummaryNos[getGroupId(group)];
+      if (existing) return existing;
+      if (isDemoMode) return undefined;
+      try {
+        const no = await batchSummaryNoService.allocate(
+          persistId,
+          group.key.projectId ?? '',
+          group.key.projectNumber ?? ''
+        );
+        queryClient.invalidateQueries({ queryKey: ['batchSummaryNos'] });
+        return no;
+      } catch (e) {
+        console.warn('Failed to allocate Summary Number:', e);
+        return undefined;
+      }
+    },
+    [batchSummaryNos, isDemoMode, queryClient]
+  );
+
   /** When invoiced batches load, auto-collapse any whose status is a terminal/forwarded state
    *  (submitted-for-approval, approved, submitted-to-portal, sent-to-customer). Only acts the first
    *  time each batch is observed in this session — once seen, user-driven expand sticks across refetches. */
@@ -3739,7 +3772,8 @@ export default function Invoices() {
         blobs.push(result.blob);
       }
       try {
-        const summaryPdf = await generateBatchSummaryPdf(group.tickets, allExpenses, exportLabourNotes);
+        const summaryNo = await ensureSummaryNo(group, persistId);
+        const summaryPdf = await generateBatchSummaryPdf(group.tickets, allExpenses, exportLabourNotes, summaryNo);
         blobs.unshift(summaryPdf);
       } catch (err) {
         console.warn('Failed to generate summary PDF:', err);
@@ -3747,7 +3781,7 @@ export default function Invoices() {
       if (blobs.length === 0) throw new Error('No PDFs generated.');
       return mergePdfBlobs(blobs);
     },
-    [invoicedMarkRows, pendingLabourNotes, savedCustomerTimesheetMetadata]
+    [invoicedMarkRows, pendingLabourNotes, savedCustomerTimesheetMetadata, ensureSummaryNo]
   );
 
   /**
@@ -5110,7 +5144,8 @@ export default function Invoices() {
       }
 
       try {
-        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, exportLabourNotes);
+        const summaryNo = await ensureSummaryNo(group, exportPersistId);
+        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, exportLabourNotes, summaryNo);
         blobs.unshift(summaryPdf);
       } catch (err) {
         console.warn('Failed to generate summary PDF:', err);
@@ -5209,7 +5244,8 @@ export default function Invoices() {
       }
 
       try {
-        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, dlLabourNotes);
+        const summaryNo = await ensureSummaryNo(group, groupId);
+        const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, dlLabourNotes, summaryNo);
         blobs.splice(1, 0, summaryPdf); // Insert after invoice PDF
       } catch (err) {
         console.warn('Failed to generate summary PDF:', err);
@@ -5336,7 +5372,9 @@ export default function Invoices() {
 
         try {
           const groupId = getGroupId(uninvoicedGroups[i]);
-          const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, pendingLabourNotes[groupId]);
+          const persistId = resolvedPersistGroupId(uninvoicedGroups[i], invoicedMarkRows);
+          const summaryNo = await ensureSummaryNo(uninvoicedGroups[i], persistId);
+          const summaryPdf = await generateBatchSummaryPdf(groupTickets, allExpenses, pendingLabourNotes[groupId], summaryNo);
           blobs.unshift(summaryPdf);
         } catch (err) {
           console.warn('Failed to generate summary PDF:', err);
@@ -5977,6 +6015,24 @@ export default function Invoices() {
                     <span style={{ color: 'var(--text-primary)', fontWeight: 700, flexShrink: 0 }}>
                       #{ionexProjectNum || '—'}
                     </span>
+                    {batchSummaryNos[persistId] && (
+                      <span
+                        title="Summary Number — the single reference for this batch on the Service Ticket Summary cover."
+                        style={{
+                          flexShrink: 0,
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          fontFamily: 'var(--font-mono, monospace)',
+                          color: 'var(--text-secondary)',
+                          background: 'var(--bg-tertiary, rgba(127,127,127,0.12))',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '5px',
+                          padding: '1px 6px',
+                        }}
+                      >
+                        {batchSummaryNos[persistId]}
+                      </span>
+                    )}
                     {(key.periodLabel || key.periodKey) && (
                       <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>
                         {key.periodLabel || key.periodKey}

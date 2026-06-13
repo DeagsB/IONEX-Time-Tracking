@@ -546,7 +546,8 @@ export async function downloadPdfFromHtml(
 export async function generateBatchSummaryPdf(
   groupTickets: ServiceTicket[],
   allExpenses: Array<{ expense_type: string; description: string; quantity: number; rate: number; unit?: string }>,
-  labourNotes?: Record<string, string>
+  labourNotes?: Record<string, string>,
+  summaryNo?: string
 ): Promise<Blob> {
   const firstTicket = groupTickets[0];
   if (!firstTicket) throw new Error('No tickets in batch');
@@ -700,7 +701,8 @@ export async function generateBatchSummaryPdf(
     expensesTotal,
     grandTotal,
     labourNotes,
-    ticketNumbers
+    ticketNumbers,
+    summaryNo
   );
 
   const container = document.createElement('div');
@@ -743,7 +745,8 @@ function buildBatchSummaryPdfHtml(
   expensesTotal: number,
   grandTotal: number,
   labourNotes?: Record<string, string>,
-  ticketNumbers: string[] = []
+  ticketNumbers: string[] = [],
+  summaryNo?: string
 ): string {
   // Customer Info header now defers Service Location / PO/AFE/CC / Coding entirely
   // to the labour summary — only Approver/Other still come from the first ticket.
@@ -789,6 +792,9 @@ function buildBatchSummaryPdfHtml(
             : `Summary of all service tickets attached below${ticketNumbers.length > 0 ? ` &nbsp;·&nbsp; <span style="font-weight:600;">${ticketNumbers.length} ticket${ticketNumbers.length === 1 ? '' : 's'}:</span> ${ticketNumbers.join(', ')}` : ''}`}</div>
         </div>
         <div style="width: 140px; text-align: right;">
+          ${summaryNo ? `
+          <div style="font-size: 7.5pt; color: #555; text-transform: uppercase; letter-spacing: 1px;">Summary No.</div>
+          <div style="font-size: 13pt; font-weight: bold; color: #000;">${summaryNo}</div>` : ''}
         </div>
       </div>`;
 

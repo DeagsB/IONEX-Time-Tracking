@@ -3566,6 +3566,39 @@ export const invoicedBatchMarksService = {
   },
 };
 
+/**
+ * Per-project Summary Number for each invoice batch (the Service Ticket Summary cover).
+ * Lets the client reference one id (e.g. 26012-007) for cost tracking instead of every ticket
+ * number under the batch. Allocated lazily at summary-PDF generation time and frozen, so
+ * re-downloads of the same batch reuse the same number. See migration_create_invoice_batch_summary_nos.
+ */
+export const batchSummaryNoService = {
+  /** group_id → summary_no for every batch that has one allocated. */
+  async getAll(): Promise<Record<string, string>> {
+    const { data, error } = await supabase
+      .from('invoice_batch_summary_nos')
+      .select('group_id, summary_no');
+    if (error) throw error;
+    const out: Record<string, string> = {};
+    for (const row of data ?? []) {
+      const r = row as { group_id: string; summary_no: string };
+      if (r.group_id && r.summary_no) out[r.group_id] = r.summary_no;
+    }
+    return out;
+  },
+
+  /** Allocate (or return the existing) Summary Number for a batch. Idempotent on groupId. */
+  async allocate(groupId: string, projectId: string, projectNumber: string): Promise<string> {
+    const { data, error } = await supabase.rpc('allocate_batch_summary_no', {
+      p_group_id: groupId,
+      p_project_id: projectId ?? '',
+      p_project_number: projectNumber ?? '',
+    });
+    if (error) throw error;
+    return String(data);
+  },
+};
+
 /* ─── Invoice Workflows ─── */
 
 export type InvoiceWorkflowStatus = {
