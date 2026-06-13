@@ -1844,6 +1844,10 @@ function getApprovalBatchFilename(
   projects: Array<{ project_number?: string | null; approver?: string | null }> | undefined,
   summaryNo?: string
 ): string {
+  // When a Summary Number is allocated it IS the filename — the client files the batch under
+  // that single reference. Everything else (approver, period, project #) is dropped.
+  const snOnly = summaryNo?.trim();
+  if (snOnly) return `${sanitizeFilenamePart(snOnly)}.pdf`;
   const codeFromKey = key.approverCode?.trim();
   let approver: string | null = codeFromKey && codeFromKey.length > 0 ? codeFromKey : null;
   if (!approver) {
@@ -1878,16 +1882,17 @@ function getInvoicePdfFilename(
   tickets: ServiceTicket[],
   summaryNo?: string
 ): string {
+  // Summary Number, when present, is the whole filename.
   const sn = summaryNo?.trim();
-  const prefix = sn ? `${sn.replace(/[/\\?*:|"]/g, '_')}_` : '';
+  if (sn) return `${sn.replace(/[/\\?*:|"]/g, '_')}.pdf`;
   const projectNum = (key.projectNumber || key.projectId || 'no-project').trim().replace(/[/\\?*:|"]/g, '_');
   if (key.periodKey && key.periodLabel) {
     const periodPart = key.periodLabel.replace(/[/\\?*:|"]/g, '_');
-    return `${prefix}${projectNum}_${periodPart}.pdf`;
+    return `${projectNum}_${periodPart}.pdf`;
   }
   const approver = (key.approverCode || 'no-approver').replace(/[/\\?*:|"]/g, '_');
   const dateRange = getTicketDateRangeStr(tickets);
-  return `${prefix}${approver}_${projectNum}_${dateRange}.pdf`;
+  return `${approver}_${projectNum}_${dateRange}.pdf`;
 }
 
 /**
@@ -1896,12 +1901,13 @@ function getInvoicePdfFilename(
  * Leads with the Summary Number when allocated.
  */
 function mergedInvoiceBatchDownloadFilename(sourceInvoiceName: string | null | undefined, summaryNo?: string): string {
+  // Summary Number, when present, is the whole filename.
+  const sn = summaryNo?.trim();
+  if (sn) return `${sanitizeFilenamePart(sn)}.pdf`;
   let stem = invoiceFilenameForDownload(sourceInvoiceName);
   stem = stem.replace(/\.pdf$/i, '').trim();
   if (!stem) stem = 'invoice';
-  const sn = summaryNo?.trim();
-  const prefix = sn ? `${sanitizeFilenamePart(sn)} - ` : '';
-  return `${prefix}${stem} - with service tickets.pdf`;
+  return `${stem} - with service tickets.pdf`;
 }
 
 /** One row in the invoice copy/paste breakdown; splitRate/splitHours only used in "Split by rate" mode; serviceDate only used in "Split by day" mode (yyyy-mm-dd). */
