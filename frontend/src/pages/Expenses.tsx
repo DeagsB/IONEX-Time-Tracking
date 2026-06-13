@@ -1994,8 +1994,10 @@ export default function Expenses() {
     }
     if (hasSeededContractorUserCollapse.current) return;
     hasSeededContractorUserCollapse.current = true;
-    const collapsed = contractorRowsGroupedByUser.filter((u) => u.unaccountedCount === 0).map((u) => u.userId);
-    setCollapsedContractorUserKeys(new Set(collapsed));
+    // Quiet default — collapse every contractor. There's no accounted/unaccounted state to
+    // draw attention to (contractors invoice us), so this tab opens tidy and the admin
+    // expands whichever contractor they're verifying against an invoice.
+    setCollapsedContractorUserKeys(new Set(contractorRowsGroupedByUser.map((u) => u.userId)));
   }, [contractorRowsGroupedByUser]);
   const toggleContractorUserGroup = (userId: string) => {
     setCollapsedContractorUserKeys((prev) => {
@@ -2681,10 +2683,12 @@ export default function Expenses() {
           // Admin-only — contractors invoice the company, so the tab is irrelevant to
           // employee logins. Filtered out of the rail below rather than hidden via CSS so
           // the rail measures correctly without a phantom slot.
+          // Contractors aren't "accounted for" (they invoice us), so the badge is an
+          // informational volume count of their lines, not an action count.
           ...(isAdmin ? [{
             id: 'contractors' as const,
             label: 'Contractors',
-            count: contractorTicketExpenseRows.filter((r: any) => String(r.reimbursement_status || '') !== 'paid').length,
+            count: contractorTicketExpenseRows.length,
           }] : []),
           // Admin User Expense Management — surfaces every receipt + reimbursable
           // ticket-expense across the company, grouped by employee. Promoted from a
@@ -5699,25 +5703,8 @@ export default function Expenses() {
                     <span aria-hidden className={`ionex-customer-section-chevron${userCollapsed ? ' is-collapsed' : ''}`}>▾</span>
                     <span className="ionex-customer-section-name">
                       {userGroup.userName}
-                      {userGroup.unaccountedCount > 0 && (
-                        <span
-                          title={`${userGroup.unaccountedCount} unaccounted line${userGroup.unaccountedCount === 1 ? '' : 's'} across all periods`}
-                          style={{
-                            marginLeft: '10px',
-                            padding: '2px 9px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            borderRadius: '999px',
-                            backgroundColor: 'rgba(245, 158, 11, 0.16)',
-                            color: '#92400e',
-                            letterSpacing: '0.04em',
-                            textTransform: 'uppercase',
-                            verticalAlign: 'middle',
-                          }}
-                        >
-                          {userGroup.unaccountedCount} unaccounted
-                        </span>
-                      )}
+                      {/* No "unaccounted" badge for contractors — they invoice us and are not
+                          marked accounted-for; this tab only exists to check their invoices. */}
                     </span>
                     <span
                       className="ionex-customer-section-meta"

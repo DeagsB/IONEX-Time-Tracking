@@ -818,7 +818,9 @@ export default function Payroll() {
 
   const catchUpReceipts = useMemo(() => {
     if (!isCurrentPeriod) return [];
-    return (catchUpReceiptsRaw as any[]);
+    // Tag rollover rows so contractor reimbursements can exclude them — contractors
+    // invoice us and are assumed settled each pay period, so nothing carries forward.
+    return (catchUpReceiptsRaw as any[]).map((r) => ({ ...r, _isCatchUp: true }));
   }, [isCurrentPeriod, catchUpReceiptsRaw]);
 
   const receiptExpensesForReimbursements = useMemo(
@@ -843,7 +845,8 @@ export default function Payroll() {
 
   const catchUpTicketExpenses = useMemo(() => {
     if (!isCurrentPeriod) return [];
-    return catchUpTicketExpensesRaw as any[];
+    // Tag rollover rows so contractor reimbursements can exclude them (no carry forward).
+    return (catchUpTicketExpensesRaw as any[]).map((r) => ({ ...r, _isCatchUp: true }));
   }, [isCurrentPeriod, catchUpTicketExpensesRaw]);
 
   const ticketExpensesForReimbursements = useMemo(
@@ -1275,11 +1278,19 @@ export default function Payroll() {
       const userId = exp.service_tickets?.user_id;
       if (!userId) continue;
 
-      // Past-period view: skip unaccounted lines. They roll forward to the current
-      // pay period via the catch-up query and should only be reimbursed there — leaving
-      // them on the historical period inflates the Reimburse column for a period that
-      // didn't actually pay them out.
-      if (!isCurrentPeriod && exp.reimbursement_status !== 'paid') continue;
+      // Contractors invoice us and are assumed paid each pay period (settling the invoice
+      // is their responsibility), so their reimbursements are strictly period-scoped:
+      //  - never carry forward (drop rollover/catch-up rows pulled in from prior periods)
+      //  - always show in the period the line is dated, regardless of reimbursement_status
+      const isContractor = contractorByUserId.get(String(userId)) === true;
+      if (isContractor) {
+        if (exp._isCatchUp) continue;
+      } else if (!isCurrentPeriod && exp.reimbursement_status !== 'paid') {
+        // Employees: skip unaccounted lines on past periods. They roll forward to the current
+        // pay period via the catch-up query and should only be reimbursed there — leaving them
+        // on the historical period inflates the Reimburse column for a period that didn't pay.
+        continue;
+      }
 
       // Receipt-required types (Hotel, Expenses) without a linked receipt aren't
       // reimbursable yet, so skip them entirely — they no longer surface as a
@@ -1369,7 +1380,8 @@ export default function Payroll() {
         projectLabel,
         date: exp.service_tickets?.date ?? undefined,
         ticketExpenseId: String(exp.id),
-        isPaid: exp.reimbursement_status === 'paid',
+        // Contractors are assumed settled each period via their invoice — treat as paid.
+        isPaid: isContractor || exp.reimbursement_status === 'paid',
         receipt: receiptPayload,
       });
     }
@@ -1392,11 +1404,17 @@ export default function Payroll() {
       // Admin explicitly marked this receipt as not reimbursable (e.g. company paid).
       // It stays in user_expenses so it can be Applied-to-Ticket, but payroll skips it.
       if (exp.not_reimbursable === true) continue;
-      // Past-period view: same rollover rule as ticket-expenses above — unpaid receipts
-      // belong on the current period (catch-up brings them in), not on a past period.
-      if (!isCurrentPeriod && exp.status !== 'paid') continue;
       const userId = exp.user_id;
       if (!userId) continue;
+      // Contractors: strictly period-scoped, no carry forward (see ticket-expense loop above).
+      const isContractor = contractorByUserId.get(String(userId)) === true;
+      if (isContractor) {
+        if (exp._isCatchUp) continue;
+      } else if (!isCurrentPeriod && exp.status !== 'paid') {
+        // Employees: unpaid receipts belong on the current period (catch-up brings them in),
+        // not on a past period.
+        continue;
+      }
 
       const subtotalAmount = Number(exp.amount) || 0;
       const gstAmount = Number(exp.gst) || 0;
@@ -1416,7 +1434,8 @@ export default function Payroll() {
         projectKey,
         projectLabel,
         date: exp.expense_date ?? undefined,
-        isPaid: exp.status === 'paid',
+        // Contractors are assumed settled each period via their invoice — treat as paid.
+        isPaid: isContractor || exp.status === 'paid',
         receipt: {
           id: String(exp.id),
           url: exp.receipt_url ?? null,
@@ -1430,7 +1449,7 @@ export default function Payroll() {
     }
 
     return map;
-  }, [ticketExpensesForReimbursements, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink, linkedTicketExpensesForReceipts, isCurrentPeriod]);
+  }, [ticketExpensesForReimbursements, receiptExpensesForReimbursements, allEmployees, payrollLinkedApprovedReceipts, receiptIdsCoveredByTicketLink, linkedTicketExpensesForReceipts, isCurrentPeriod, contractorByUserId]);
 
   const grandTotalReimbursements = useMemo(() => {
     const employeeIds = new Set(displayedEmployeeHours.map((e) => e.userId));
