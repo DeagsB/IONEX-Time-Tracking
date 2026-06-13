@@ -7313,7 +7313,12 @@ export default function Invoices() {
                     }
                   };
 
-                  const activeSummaryNo = summaryNoForGroup(activeGroup);
+                  // Same gate as the queue card: only surface the Summary Number once the batch is
+                  // actually awaiting a signed PDF, so an unmarked batch shown via queue-fallback
+                  // doesn't display a premature number.
+                  const activeSummaryNo = getGroupStatusId(activeGroup) === 'submitted_approval'
+                    ? summaryNoForGroup(activeGroup)
+                    : undefined;
                   const summaryBlock = (
                     <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 14px', padding: '12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px', marginBottom: '12px', fontSize: '13px' }}>
                       {activeSummaryNo && (<><strong>Summary&nbsp;No.:</strong><span style={{ fontWeight: 700, fontFamily: 'var(--font-mono, monospace)' }}>{activeSummaryNo}</span></>)}
@@ -8159,7 +8164,12 @@ export default function Invoices() {
                                       On the Awaiting-Signed queue the signed PDF filename leads with
                                       the Summary Number, so show that here instead of the project #. */}
                                   {(() => {
-                                    const cSummaryNo = wizardQueue === 'awaiting_signed' ? summaryNoForGroup(c.group) : undefined;
+                                    // Show the Summary Number only for batches genuinely awaiting a
+                                    // signed PDF (submitted_approval) — NOT merely because the
+                                    // Awaiting-Signed queue is selected. When that queue is empty the
+                                    // wizard falls back to another queue's batches, which haven't been
+                                    // sent and must still show the project #.
+                                    const cSummaryNo = cStatusId === 'submitted_approval' ? summaryNoForGroup(c.group) : undefined;
                                     const label = cSummaryNo ?? (c.group.key.projectNumber?.trim() ? `#${c.group.key.projectNumber.trim()}` : '');
                                     if (!label) return null;
                                     return (
