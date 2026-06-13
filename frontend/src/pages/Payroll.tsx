@@ -310,10 +310,7 @@ function EmployeeProjectsAndDailyBreakdown({
                 const isCopied = copiedKey === cellKey;
                 return (
                   <tr key={key}>
-                    <td>
-                      {p.number && <span className="payroll-muted" style={{ marginRight: '6px', fontFamily: 'SF Mono, Menlo, Consolas, monospace' }}>{p.number}</span>}
-                      {p.name}
-                    </td>
+                    <td>{p.number ? `${p.number} - ${p.name}` : p.name}</td>
                     <td className="payroll-muted">{p.customer || '—'}</td>
                     <td className="payroll-muted" style={{ fontSize: '11px' }}>
                       {Array.from(p.byRateType.entries()).map(([rt, h]) => `${rt}: ${h.toFixed(2)}h`).join(' · ')}
