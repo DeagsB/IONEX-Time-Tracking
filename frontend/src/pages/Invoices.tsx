@@ -7081,30 +7081,6 @@ export default function Invoices() {
                       deepLinkTab: undefined,
                     });
                   }
-                  const isCnrlPeriodGroup = !!(activeGroup.key.periodKey && activeGroup.key.approverCode && activeGroup.key.approverCode !== activeGroup.key.periodKey);
-                  const missingPoAfe = isCnrlPeriodGroup && activeGroup.tickets.some((t) => {
-                    const k = getInvoiceGroupKey(
-                      {
-                        projectId: (t as ServiceTicket & { recordProjectId?: string }).recordProjectId ?? t.projectId,
-                        projectName: t.projectName,
-                        projectNumber: t.projectNumber,
-                        location: t.location,
-                        projectApproverPoAfe: (t as ServiceTicket & { projectApproverPoAfe?: string }).projectApproverPoAfe,
-                        projectLocation: (t as ServiceTicket & { projectLocation?: string }).projectLocation,
-                        projectOther: (t as ServiceTicket & { projectOther?: string }).projectOther,
-                        customerInfo: t.customerInfo,
-                        entries: t.entries,
-                      },
-                      (t as ServiceTicket & { headerOverrides?: unknown }).headerOverrides as { approver_po_afe?: string; approver?: string; po_afe?: string; cc?: string; other?: string; service_location?: string } | undefined,
-                    );
-                    return !(k.poAfe || '').trim();
-                  });
-                  // PO/AFE is only a hard blocker at the approval stage. On the
-                  // ready-to-invoice and awaiting-signed queues it's a soft gap, so
-                  // we don't block progression there.
-                  if (missingPoAfe && effectiveQueue === 'needs_to_be_approved') {
-                    blockers.push({ id: 'po_afe', message: 'One or more tickets are missing a PO/AFE. Fix the headers on the Ready tab before invoicing.', deepLinkTab: 'ready' });
-                  }
 
                   // --- Active step derivation ---
                   // Blockers no longer take a step slot — they render as a banner above the
