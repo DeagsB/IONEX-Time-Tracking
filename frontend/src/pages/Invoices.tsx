@@ -7099,7 +7099,10 @@ export default function Invoices() {
                     );
                     return !(k.poAfe || '').trim();
                   });
-                  if (missingPoAfe) {
+                  // PO/AFE is only a hard blocker at the approval stage. On the
+                  // ready-to-invoice and awaiting-signed queues it's a soft gap, so
+                  // we don't block progression there.
+                  if (missingPoAfe && effectiveQueue === 'needs_to_be_approved') {
                     blockers.push({ id: 'po_afe', message: 'One or more tickets are missing a PO/AFE. Fix the headers on the Ready tab before invoicing.', deepLinkTab: 'ready' });
                   }
 
