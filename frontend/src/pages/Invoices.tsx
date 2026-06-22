@@ -3770,7 +3770,7 @@ export default function Invoices() {
 
   /** Build the merged batch PDF (per-ticket + summary) for one group. Shared by single and bulk approval flows. */
   const buildMergedBatchPdfBlob = useCallback(
-    async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): Promise<Blob> => {
+    async (group: { key: InvoiceGroupKeyWithPeriod; tickets: ServiceTicket[] }): Promise<{ blob: Blob; summaryNo?: string }> => {
       const persistId = resolvedPersistGroupId(group, invoicedMarkRows);
       const groupId = getGroupId(group);
 
@@ -3782,7 +3782,8 @@ export default function Invoices() {
         savedCustomerTimesheetMetadata?.[persistId] ??
         savedCustomerTimesheetMetadata?.[groupId];
       if (customerTimesheet) {
-        return invoicedBatchCustomerTimesheetsService.downloadTimesheet(customerTimesheet.storagePath);
+        const blob = await invoicedBatchCustomerTimesheetsService.downloadTimesheet(customerTimesheet.storagePath);
+        return { blob, summaryNo: summaryNoForGroup(group) };
       }
 
       const exportSnap = invoicedMarkRows.find((r) => r.group_id === persistId)?.key_snapshot as FrozenGroupSnapshot | undefined;
@@ -3799,17 +3800,23 @@ export default function Invoices() {
         const result = await generateAndStorePdf(ticket, expenses, { uploadToStorage: false, downloadLocally: false });
         blobs.push(result.blob);
       }
+      // Allocate (or fetch) the Summary Number and hand it back to the caller so the
+      // downloaded filename uses the freshly-allocated value. Reading it from
+      // summaryNoForGroup() instead would miss a just-allocated number, since the query
+      // invalidation hasn't propagated into batchSummaryNos state yet (causes the
+      // "first download = old format, retry = new format" bug).
+      let summaryNo: string | undefined;
       try {
-        const summaryNo = await ensureSummaryNo(group, persistId);
+        summaryNo = await ensureSummaryNo(group, persistId);
         const summaryPdf = await generateBatchSummaryPdf(group.tickets, allExpenses, exportLabourNotes, summaryNo);
         blobs.unshift(summaryPdf);
       } catch (err) {
         console.warn('Failed to generate summary PDF:', err);
       }
       if (blobs.length === 0) throw new Error('No PDFs generated.');
-      return mergePdfBlobs(blobs);
+      return { blob: await mergePdfBlobs(blobs), summaryNo };
     },
-    [invoicedMarkRows, pendingLabourNotes, savedCustomerTimesheetMetadata, ensureSummaryNo]
+    [invoicedMarkRows, pendingLabourNotes, savedCustomerTimesheetMetadata, ensureSummaryNo, summaryNoForGroup]
   );
 
   /**
@@ -3830,8 +3837,8 @@ export default function Invoices() {
     // Generate + download merged batch PDF first so user has the file to send to approver.
     // If generation fails, abort before marking as sent.
     try {
-      const merged = await buildMergedBatchPdfBlob(group);
-      const filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNoForGroup(group));
+      const { blob: merged, summaryNo } = await buildMergedBatchPdfBlob(group);
+      const filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNo);
       saveAs(merged, filename);
     } catch (err) {
       console.error('Approval batch download error:', err);
@@ -3944,8 +3951,8 @@ export default function Invoices() {
     const row = invoicedMarkRows.find((r) => r.group_id === persistId);
     const currentSnap = (row?.key_snapshot ?? {}) as FrozenGroupSnapshot;
     try {
-      const merged = await buildMergedBatchPdfBlob(group);
-      const filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNoForGroup(group));
+      const { blob: merged, summaryNo } = await buildMergedBatchPdfBlob(group);
+      const filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNo);
       saveAs(merged, filename);
     } catch (err) {
       console.error('Resubmit batch download error:', err);
@@ -3993,8 +4000,8 @@ export default function Invoices() {
       for (let i = 0; i < groupsForCustomer.length; i++) {
         const group = groupsForCustomer[i];
         setBulkSendProgress({ customer: customerName, current: i + 1, total: groupsForCustomer.length });
-        const merged = await buildMergedBatchPdfBlob(group);
-        let filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNoForGroup(group));
+        const { blob: merged, summaryNo } = await buildMergedBatchPdfBlob(group);
+        let filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNo);
         if (usedNames.has(filename)) {
           const baseStem = filename.replace(/\.pdf$/i, '');
           let n = 2;
@@ -7125,8 +7132,8 @@ export default function Invoices() {
                         setWizardDownloadToast(`Downloaded ${filename}`);
                         return;
                       }
-                      const merged = await buildMergedBatchPdfBlob(activeGroup);
-                      const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects, summaryNoForGroup(activeGroup));
+                      const { blob: merged, summaryNo } = await buildMergedBatchPdfBlob(activeGroup);
+                      const filename = getApprovalBatchFilename(activeGroup.key, activeGroup.tickets, projects, summaryNo);
                       saveAs(merged, filename);
                       setWizardDownloadToast(`Downloaded ${filename}`);
                     } catch (err) {
@@ -9701,8 +9708,8 @@ export default function Invoices() {
                               setExportError(null);
                               setRedownloadingApprovalId(persistId);
                               try {
-                                const merged = await buildMergedBatchPdfBlob(group);
-                                const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+                                const { blob: merged, summaryNo } = await buildMergedBatchPdfBlob(group);
+                                const filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNo);
                                 saveAs(merged, filename);
                               } catch (err) {
                                 console.error('Re-download approval batch error:', err);
@@ -9875,8 +9882,8 @@ export default function Invoices() {
                                   const zip = new JSZip();
                                   const used = new Set<string>();
                                   for (const g of section.groups) {
-                                    const merged = await buildMergedBatchPdfBlob(g);
-                                    let name = getApprovalBatchFilename(g.key, g.tickets, projects, summaryNoForGroup(g));
+                                    const { blob: merged, summaryNo } = await buildMergedBatchPdfBlob(g);
+                                    let name = getApprovalBatchFilename(g.key, g.tickets, projects, summaryNo);
                                     if (used.has(name)) {
                                       const stem = name.replace(/\.pdf$/i, '');
                                       let n = 2;
@@ -10305,8 +10312,8 @@ export default function Invoices() {
                                 const blob = await invoicedBatchApprovalsService.downloadApproval(approval.storagePath);
                                 saveAs(blob, invoiceFilenameForDownload(approval.filename));
                               } else {
-                                const merged = await buildMergedBatchPdfBlob(group);
-                                const filename = getApprovalBatchFilename(group.key, group.tickets, projects);
+                                const { blob: merged, summaryNo } = await buildMergedBatchPdfBlob(group);
+                                const filename = getApprovalBatchFilename(group.key, group.tickets, projects, summaryNo);
                                 saveAs(merged, filename);
                               }
                             } catch (err) {
@@ -10435,8 +10442,9 @@ export default function Invoices() {
                                       batchBlob = await invoicedBatchApprovalsService.downloadApproval(sig.storagePath);
                                       name = invoiceFilenameForDownload(sig.filename);
                                     } else {
-                                      batchBlob = await buildMergedBatchPdfBlob(g);
-                                      name = getApprovalBatchFilename(g.key, g.tickets, projects, summaryNoForGroup(g));
+                                      const built = await buildMergedBatchPdfBlob(g);
+                                      batchBlob = built.blob;
+                                      name = getApprovalBatchFilename(g.key, g.tickets, projects, built.summaryNo);
                                     }
                                     if (used.has(name)) {
                                       const stem = name.replace(/\.pdf$/i, '');
