@@ -982,12 +982,26 @@ export default function Payroll() {
       queryClient.invalidateQueries({ queryKey: ['payrollReceiptExpenses', startDate, endDate] });
       queryClient.invalidateQueries({ queryKey: ['payrollTicketExpenses', startDate, endDate] });
       queryClient.invalidateQueries({ queryKey: ['payrollLinkedApprovedReceipts'] });
+      // Catch-up (rolled-forward) lines come from their own queries - without these the
+      // just-accounted line stays visible until a full page refresh.
+      queryClient.invalidateQueries({ queryKey: ['payrollCatchUpReceipts'] });
+      queryClient.invalidateQueries({ queryKey: ['payrollCatchUpTicketExpenses'] });
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       alert('Failed to mark as accounted: ' + msg);
     },
   });
+
+  // In-app confirmation for the "Account for" actions (per-line pill and bulk CTA).
+  // Replaces window.confirm so the dialog matches the app's modals and theming.
+  const [accountForConfirm, setAccountForConfirm] = useState<{
+    title: string;
+    message: string;
+    receiptIds: string[];
+    ticketExpenseIds: string[];
+  } | null>(null);
+  const accountForConfirmBackdropClose = useBackdropClose(() => setAccountForConfirm(null));
 
   // State for the reimbursement breakdown modal
   const [reimbursementModalUserId, setReimbursementModalUserId] = useState<string | null>(null);
@@ -2803,18 +2817,15 @@ export default function Payroll() {
                                   const lineReceiptIds = hasReceipt && line.receipt?.id ? [String(line.receipt.id)] : [];
                                   // Ticket-sourced lines (Hotel, Expense Billed to Customer) carry a
                                   // receipt payload for preview, but their accounted state lives on the
-                                  // service_ticket_expenses row — always include ticketExpenseId when set.
+                                  // service_ticket_expenses row - always include ticketExpenseId when set.
                                   const lineTicketExpenseIds = line.ticketExpenseId ? [String(line.ticketExpenseId)] : [];
                                   const lineHasAction = lineReceiptIds.length > 0 || lineTicketExpenseIds.length > 0;
                                   const onAccountForLine = (e: React.MouseEvent) => {
                                     e.stopPropagation();
                                     if (!lineHasAction || line.isPaid) return;
-                                    const proceed = window.confirm(
-                                      `Mark this $${line.amount.toFixed(2)} ${line.category.toLowerCase()} line as accounted for ${empName}?\n\n` +
-                                      'It will drop out of future Payroll views and be stamped accounted in the system.'
-                                    );
-                                    if (!proceed) return;
-                                    markEmployeePaidMutation.mutate({
+                                    setAccountForConfirm({
+                                      title: `Mark this $${line.amount.toFixed(2)} ${line.category.toLowerCase()} line as accounted for ${empName}?`,
+                                      message: 'It will drop out of future Payroll views and be stamped accounted in the system.',
                                       receiptIds: lineReceiptIds,
                                       ticketExpenseIds: lineTicketExpenseIds,
                                     });
@@ -2960,12 +2971,9 @@ export default function Payroll() {
                   const summaryParts: string[] = [];
                   if (unpaidReceiptIds.length > 0) summaryParts.push(`${unpaidReceiptIds.length} receipt${unpaidReceiptIds.length === 1 ? '' : 's'}`);
                   if (unpaidTicketExpenseIds.length > 0) summaryParts.push(`${unpaidTicketExpenseIds.length} ticket expense${unpaidTicketExpenseIds.length === 1 ? '' : 's'}`);
-                  const proceed = window.confirm(
-                    `Mark ${summaryParts.join(' + ')} as accounted for ${empName} ($${unpaidTotal.toFixed(2)})?\n\n` +
-                    'They will drop out of future Payroll views for this period and be stamped accounted in the system.'
-                  );
-                  if (!proceed) return;
-                  markEmployeePaidMutation.mutate({
+                  setAccountForConfirm({
+                    title: `Mark ${summaryParts.join(' + ')} as accounted for ${empName} ($${unpaidTotal.toFixed(2)})?`,
+                    message: 'They will drop out of future Payroll views for this period and be stamped accounted in the system.',
                     receiptIds: unpaidReceiptIds,
                     ticketExpenseIds: unpaidTicketExpenseIds,
                   });
@@ -3132,6 +3140,51 @@ export default function Payroll() {
           </div>
         );
       })()}
+
+      {/* "Account for" confirmation - replaces window.confirm so the dialog matches the app's
+       *  modals. Layered at zIndex 10001 so it sits above the reimbursement breakdown (9999)
+       *  and the receipt preview (10000) it can be triggered from. */}
+      {accountForConfirm && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          {...accountForConfirmBackdropClose}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ backgroundColor: 'var(--bg-primary)', borderRadius: '12px', padding: '20px', width: '92%', maxWidth: '440px', boxShadow: '0 24px 64px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: '14px' }}
+          >
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {accountForConfirm.title}
+            </h3>
+            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+              {accountForConfirm.message}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setAccountForConfirm(null)}
+                style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', fontWeight: 600, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={markEmployeePaidMutation.isPending}
+                onClick={() => {
+                  markEmployeePaidMutation.mutate({
+                    receiptIds: accountForConfirm.receiptIds,
+                    ticketExpenseIds: accountForConfirm.ticketExpenseIds,
+                  });
+                  setAccountForConfirm(null);
+                }}
+                style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: '#15803d', color: 'white', border: 'none', fontWeight: 600, fontSize: '13px', cursor: markEmployeePaidMutation.isPending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: markEmployeePaidMutation.isPending ? 0.5 : 1 }}
+              >
+                ✓ Mark as accounted
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
