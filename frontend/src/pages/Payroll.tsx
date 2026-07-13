@@ -2801,7 +2801,10 @@ export default function Payroll() {
                                   // user only wants to commit some lines this period.
                                   const lineIsBusy = markEmployeePaidMutation.isPending;
                                   const lineReceiptIds = hasReceipt && line.receipt?.id ? [String(line.receipt.id)] : [];
-                                  const lineTicketExpenseIds = !hasReceipt && line.ticketExpenseId ? [String(line.ticketExpenseId)] : [];
+                                  // Ticket-sourced lines (Hotel, Expense Billed to Customer) carry a
+                                  // receipt payload for preview, but their accounted state lives on the
+                                  // service_ticket_expenses row — always include ticketExpenseId when set.
+                                  const lineTicketExpenseIds = line.ticketExpenseId ? [String(line.ticketExpenseId)] : [];
                                   const lineHasAction = lineReceiptIds.length > 0 || lineTicketExpenseIds.length > 0;
                                   const onAccountForLine = (e: React.MouseEvent) => {
                                     e.stopPropagation();
@@ -2946,7 +2949,7 @@ export default function Payroll() {
                 ));
                 const unpaidTicketExpenseIds = Array.from(new Set(
                   unpaidLines
-                    .filter((l) => !l.receipt && !!l.ticketExpenseId)
+                    .filter((l) => !!l.ticketExpenseId)
                     .map((l) => l.ticketExpenseId as string)
                 ));
                 const nothingToMark = unpaidReceiptIds.length === 0 && unpaidTicketExpenseIds.length === 0;
