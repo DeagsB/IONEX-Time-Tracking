@@ -20,8 +20,9 @@ build/
 
 # Supabase backups (local dumps)
 backups/
-backup-config.env
+backup-config.env*
 roles.sql
+*.dump
 
 # IDE
 .vscode/
