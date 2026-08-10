@@ -107,7 +107,11 @@ function Invoke-Dump {
     $errFile = Join-Path $env:TEMP "pgdump-$([guid]::NewGuid().ToString('N')).err"
     & $Exe @DumpArgs 2> $errFile
     $code = $LASTEXITCODE
-    $stderr = if (Test-Path $errFile) { (Get-Content $errFile -Raw) } else { '' }
+    $stderr = ''
+    if (Test-Path $errFile) {
+        $raw = Get-Content $errFile -Raw
+        if ($null -ne $raw) { $stderr = [string]$raw }
+    }
     Remove-Item $errFile -ErrorAction SilentlyContinue
 
     if ($code -ne 0) {
