@@ -21,6 +21,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { downloadExcelServiceTicket } from '../utils/serviceTicketXlsx';
 import { downloadPdfFromHtml } from '../utils/pdfFromHtml';
 import { supabase } from '../lib/supabaseClient';
+import { fetchAllRows } from '../lib/fetchAllRows';
 import SearchableSelect from '../components/SearchableSelect';
 import {
   receiptHasMatchingTicketExpenseLine,
@@ -1605,7 +1606,8 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
   // When useSavedData is true (e.g. admin approved from panel after saving), only assign number/metadata; do not overwrite hours/header.
   // When knownRecordId is provided (panel approve flow), use it directly to avoid stale-closure mismatches
   // where findMatchingTicketRecord could resolve to a different record than performSave just wrote to.
-  const handleAssignTicketNumber = async (ticket: ServiceTicket, opts?: { useSavedData?: boolean; knownRecordId?: string }) => {
+  // Returns false (after telling the user why) when the ticket could not be approved.
+  const handleAssignTicketNumber = async (ticket: ServiceTicket, opts?: { useSavedData?: boolean; knownRecordId?: string }): Promise<boolean> => {
     try {
       // Find or create ticket record — prefer the caller-supplied ID to avoid stale-closure issues
       const existing = opts?.knownRecordId
@@ -1615,17 +1617,30 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       let ticketRecordId: string;
       // Empty entries array (standalone tickets) should NOT be treated as demo
       const isDemoTicket = ticket.entries.length > 0 && ticket.entries.every(entry => entry.is_demo === true);
-      
+
+      // knownRecordId comes from getOrCreateTicket, which queries the DB directly, so it can
+      // point at a record the client-side list never saw. Never trust the absence of a cached
+      // row as proof the record is unnumbered — re-read it, or an already-approved ticket gets
+      // silently re-numbered (and its old number is burned).
+      const targetRecordId = opts?.knownRecordId ?? existing?.id;
+      const alreadyNumbered = existing?.ticket_number
+        ?? (targetRecordId && !existing
+          ? (await serviceTicketsService.getById(targetRecordId, isDemoTicket))?.ticket_number
+          : null);
+      if (alreadyNumbered) {
+        await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
+        await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
+        alert(`This ticket is already approved as ${alreadyNumbered}. The list has been refreshed.`);
+        return false;
+      }
+
       // Get the next available ticket number ONCE before any database operations
       const ticketNumber = await serviceTicketsService.getNextTicketNumber(ticket.userInitials, isDemoTicket);
       const year = new Date().getFullYear() % 100;
       const sequenceMatch = ticketNumber.match(/\d{3}$/);
       const sequenceNumber = sequenceMatch ? parseInt(sequenceMatch[0]) : 1;
-      
+
       if (existing || opts?.knownRecordId) {
-        if (existing?.ticket_number) {
-          return; // Already has a ticket number assigned
-        }
         ticketRecordId = opts?.knownRecordId || existing!.id;
         const useSavedData = opts?.useSavedData === true;
         const headerOverrides = useSavedData ? undefined : buildApprovalHeaderOverrides(ticket);
@@ -1692,8 +1707,14 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
       await queryClient.invalidateQueries({ queryKey: ['existingServiceTickets'] });
       await queryClient.refetchQueries({ queryKey: ['existingServiceTickets'] });
     } catch (error) {
+      // Never swallow this. A rejected write (invoiced-batch lock trigger, RLS, unique
+      // violation) used to look identical to a working button that simply did nothing.
       console.error('Error assigning ticket number:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`Could not approve this ticket: ${message}`);
+      return false;
     }
+    return true;
   };
 
   // Unassign ticket number from a single ticket
@@ -1847,13 +1868,20 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
         return; // No tickets to assign
       }
 
+      // Each ticket reports its own failure; keep going so one bad row doesn't strand the rest.
+      let failed = 0;
       for (const ticket of ticketsToAssign) {
-        await handleAssignTicketNumber(ticket);
+        const ok = await handleAssignTicketNumber(ticket);
+        if (!ok) failed++;
+      }
+      if (failed > 0) {
+        alert(`${ticketsToAssign.length - failed} of ${ticketsToAssign.length} tickets approved. ${failed} could not be approved — see the messages above.`);
       }
 
       setSelectedTicketIds(new Set());
     } catch (error) {
       console.error('Error in bulk assign:', error);
+      alert(`Bulk approve failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -2052,33 +2080,34 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
     queryKey: ['existingServiceTickets', isDemoMode, startDate, endDate, isAdmin, user?.id],
     queryFn: async () => {
       const tableName = isDemoMode ? 'service_tickets_demo' : 'service_tickets';
-      let query = supabase
-        .from(tableName)
-        .select(`
-          id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
-          approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
-        `)
-        .gte('date', startDate)
-        .lte('date', endDate);
-      if (!isAdmin && user?.id) {
-        query = query.eq('user_id', user.id);
-      }
-      const { data, error } = await query;
-      if (error) {
+      // Must be paged: a truncated response drops approved records, which makes their time
+      // entries reappear as drafts that cannot be approved (they already have a ticket number).
+      const restrictToOwner = !isAdmin && !!user?.id;
+      try {
+        return await fetchAllRows(() => {
+          let q = supabase
+            .from(tableName)
+            .select(`
+              id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides,
+              approved_by_admin:users!service_tickets_approved_by_admin_id_fkey(first_name, last_name)
+            `)
+            .gte('date', startDate)
+            .lte('date', endDate);
+          if (restrictToOwner) q = q.eq('user_id', user!.id);
+          return q;
+        });
+      } catch {
         // If the join fails (column doesn't exist yet), try without the join
-        let fallbackQuery = supabase
-          .from(tableName)
-          .select('id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
-          .gte('date', startDate)
-          .lte('date', endDate);
-        if (!isAdmin && user?.id) {
-          fallbackQuery = fallbackQuery.eq('user_id', user.id);
-        }
-        const { data: fallbackData, error: fallbackError } = await fallbackQuery;
-        if (fallbackError) throw fallbackError;
-        return fallbackData;
+        return await fetchAllRows(() => {
+          let q = supabase
+            .from(tableName)
+            .select('id, ticket_number, sequence_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, workflow_status, approved_by_admin_id, is_discarded, restored_at, rejected_at, rejection_notes, header_overrides')
+            .gte('date', startDate)
+            .lte('date', endDate);
+          if (restrictToOwner) q = q.eq('user_id', user!.id);
+          return q;
+        });
       }
-      return data;
     },
   });
 

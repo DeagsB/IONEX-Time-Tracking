@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { supabase } from '../lib/supabaseClient';
+import { fetchAllRows } from '../lib/fetchAllRows';
 import { employeesService, serviceTicketExpensesService, userExpensesService } from '../services/supabaseServices';
 import { saveAs } from 'file-saver';
 import ExcelJS from 'exceljs';
@@ -438,29 +439,29 @@ export default function Payroll() {
   const { data: timeEntries, isLoading: isLoadingTimeEntries, error } = useQuery({
     queryKey: ['payrollReport', startDate, endDate, isDemoMode, isAdmin, user?.id],
     queryFn: async () => {
-      let query = supabase
-        .from('time_entries')
-        .select(`
-          *,
-          user:users!time_entries_user_id_fkey(id, first_name, last_name, email),
-          project:projects!time_entries_project_id_fkey(
-            id,
-            name,
-            project_number,
-            customer:customers!projects_customer_id_fkey(id, name)
-          )
-        `)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .eq('is_demo', isDemoMode); // Only show demo entries in demo mode
-      
-      // Non-admins can only see their own payroll data
-      if (!isAdmin && user?.id) {
-        query = query.eq('user_id', user.id);
-      }
+      const data = await fetchAllRows(() => {
+        let query = supabase
+          .from('time_entries')
+          .select(`
+            *,
+            user:users!time_entries_user_id_fkey(id, first_name, last_name, email),
+            project:projects!time_entries_project_id_fkey(
+              id,
+              name,
+              project_number,
+              customer:customers!projects_customer_id_fkey(id, name)
+            )
+          `)
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .eq('is_demo', isDemoMode); // Only show demo entries in demo mode
 
-      const { data, error } = await query.order('date', { ascending: true });
-      if (error) throw error;
+        // Non-admins can only see their own payroll data
+        if (!isAdmin && user?.id) {
+          query = query.eq('user_id', user.id);
+        }
+        return query.order('date', { ascending: true });
+      });
       return data as TimeEntry[];
     },
   });
@@ -477,18 +478,20 @@ export default function Payroll() {
     queryKey: ['payrollYtdEntries', ytdStartDate, ytdEndDate, isDemoMode, isAdmin, user?.id],
     queryFn: async () => {
       if (ytdEndDate < ytdStartDate) return [];
-      let query = supabase
-        .from('time_entries')
-        .select('user_id, hours, rate_type, billable')
-        .gte('date', ytdStartDate)
-        .lte('date', ytdEndDate)
-        .eq('is_demo', isDemoMode);
-      if (!isAdmin && user?.id) {
-        query = query.eq('user_id', user.id);
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      // Paged: spans the whole year for every employee, so it is the first query to blow
+      // past the row cap — and truncation here understates the CPP/EI annual caps.
+      return await fetchAllRows(() => {
+        let query = supabase
+          .from('time_entries')
+          .select('user_id, hours, rate_type, billable')
+          .gte('date', ytdStartDate)
+          .lte('date', ytdEndDate)
+          .eq('is_demo', isDemoMode);
+        if (!isAdmin && user?.id) {
+          query = query.eq('user_id', user.id);
+        }
+        return query;
+      });
     },
   });
 

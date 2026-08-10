@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, customersService, timeEntriesService, invoiceWorkflowsService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
+import { fetchAllRows } from '../lib/fetchAllRows';
 import SearchableSelect from '../components/SearchableSelect';
 export default function Projects() {
   const { user, isAdmin } = useAuth();
@@ -90,14 +91,12 @@ export default function Projects() {
     queryKey: ['projectTicketCounts'],
     queryFn: async () => {
       const counts: Record<string, number> = {};
+      // Paged: a truncated list undercounts and would let a still-referenced project be deleted.
       const [real, demo] = await Promise.all([
-        supabase.from('service_tickets').select('project_id'),
-        supabase.from('service_tickets_demo').select('project_id'),
+        fetchAllRows<{ project_id: string | null }>(() => supabase.from('service_tickets').select('project_id')),
+        fetchAllRows<{ project_id: string | null }>(() => supabase.from('service_tickets_demo').select('project_id')),
       ]);
-      for (const row of (real.data || []) as { project_id: string | null }[]) {
-        if (row.project_id) counts[row.project_id] = (counts[row.project_id] || 0) + 1;
-      }
-      for (const row of (demo.data || []) as { project_id: string | null }[]) {
+      for (const row of [...real, ...demo]) {
         if (row.project_id) counts[row.project_id] = (counts[row.project_id] || 0) + 1;
       }
       return counts;

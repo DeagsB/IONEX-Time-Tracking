@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDemoMode } from '../context/DemoModeContext';
 import { projectsService, employeesService, timeEntriesService, payRateHistoryService } from '../services/supabaseServices';
 import { supabase } from '../lib/supabaseClient';
+import { fetchAllRows } from '../lib/fetchAllRows';
 import { calculateBurden, applyGst } from '../utils/employeeReports';
 import { ticketExpenseCostForMargin } from '../utils/ticketExpenseReimbursement';
 import {
@@ -97,12 +98,14 @@ export default function Profitability() {
   const { data: serviceTickets = [] } = useQuery({
     queryKey: ['profitability-tickets', isDemoMode],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select('id, ticket_number, user_id, date, total_hours, total_amount, customer_id, project_id, location, header_overrides, is_edited, edited_hours, workflow_status')
-        .or('is_discarded.is.null,is_discarded.eq.false');
-      if (error) throw error;
-      return data || [];
+      // Paged: unfiltered by date, so this reads the whole table — truncation silently
+      // understates revenue and margin.
+      return await fetchAllRows(() =>
+        supabase
+          .from(tableName)
+          .select('id, ticket_number, user_id, date, total_hours, total_amount, customer_id, project_id, location, header_overrides, is_edited, edited_hours, workflow_status')
+          .or('is_discarded.is.null,is_discarded.eq.false')
+      );
     },
     enabled: isAdmin,
   });
@@ -111,14 +114,15 @@ export default function Profitability() {
     queryKey: ['profitability-ticket-expenses', isDemoMode],
     queryFn: async () => {
       const expTable = isDemoMode ? 'service_ticket_expenses' : 'service_ticket_expenses';
-      const { data, error } = await supabase
-        .from(expTable)
-        .select(`
-          id, service_ticket_id, expense_type, description, quantity, rate, actual_cost, needs_reimbursement,
-          service_tickets!inner(id, project_id, user_id, workflow_status, is_discarded)
-        `);
-      if (error) throw error;
-      return (data || []).filter((r: any) => {
+      const data = await fetchAllRows(() =>
+        supabase
+          .from(expTable)
+          .select(`
+            id, service_ticket_id, expense_type, description, quantity, rate, actual_cost, needs_reimbursement,
+            service_tickets!inner(id, project_id, user_id, workflow_status, is_discarded)
+          `)
+      );
+      return data.filter((r: any) => {
         const st = r.service_tickets;
         if (!st) return false;
         if (st.is_discarded === true) return false;

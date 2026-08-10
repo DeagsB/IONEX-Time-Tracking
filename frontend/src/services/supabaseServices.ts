@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import { fetchAllRows } from '../lib/fetchAllRows';
 import { buildApproverPoAfe, buildBillingKey, buildGroupingKey } from '../utils/serviceTickets';
 
 // Service functions for interacting with Supabase tables
@@ -8,39 +9,37 @@ export const timeEntriesService = {
     // RLS policies automatically filter time entries:
     // - Regular users can only see their own entries (user_id = auth.uid())
     // - Admins can see all entries (but we filter by userId in frontend for privacy)
-    let query = supabase
-      .from('time_entries')
-      .select(`
-        *,
-        project:projects!time_entries_project_id_fkey(
-          id,
-          name,
-          project_number,
-          location,
-          po_afe,
-          color,
-          customer:customers!projects_customer_id_fkey(
+    return await fetchAllRows(() => {
+      let query = supabase
+        .from('time_entries')
+        .select(`
+          *,
+          project:projects!time_entries_project_id_fkey(
             id,
-            name
+            name,
+            project_number,
+            location,
+            po_afe,
+            color,
+            customer:customers!projects_customer_id_fkey(
+              id,
+              name
+            )
           )
-        )
-      `)
-      .order('date', { ascending: false });
-    
-    // Filter by demo mode if specified
-    if (isDemoMode !== undefined) {
-      query = query.eq('is_demo', isDemoMode);
-    }
-    
-    // Explicitly filter by user_id if provided (for privacy - even admins only see their own in calendar views)
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
+        `)
+        .order('date', { ascending: false });
 
-    const { data, error } = await query;
+      // Filter by demo mode if specified
+      if (isDemoMode !== undefined) {
+        query = query.eq('is_demo', isDemoMode);
+      }
 
-    if (error) throw error;
-    return data;
+      // Explicitly filter by user_id if provided (for privacy - even admins only see their own in calendar views)
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      return query;
+    });
   },
 
   async getById(id: string) {
@@ -653,47 +652,42 @@ export const usersService = {
 
 export const reportsService = {
   async getEmployeeReport(startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('time_entries')
-      .select(`
-        *,
-        user:users(first_name, last_name),
-        project:projects(name, customer:customers(name))
-      `)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date');
-
-    if (error) throw error;
-    return data;
+    return await fetchAllRows(() =>
+      supabase
+        .from('time_entries')
+        .select(`
+          *,
+          user:users(first_name, last_name),
+          project:projects(name, customer:customers(name))
+        `)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date')
+    );
   },
 
   // Get comprehensive employee analytics for all or specific employee
   async getEmployeeAnalytics(startDate: string, endDate: string, userId?: string, includeArchived: boolean = false) {
     console.log('getEmployeeAnalytics called:', { startDate, endDate, userId, includeArchived });
     
-    let query = supabase
-      .from('time_entries')
-      .select(`
-        *,
-        user:users!time_entries_user_id_fkey(id, first_name, last_name, email, archived),
-        project:projects!time_entries_project_id_fkey(id, name, project_number, location, po_afe, customer:customers!projects_customer_id_fkey(id, name))
-      `)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date');
+    const data = await fetchAllRows(() => {
+      let query = supabase
+        .from('time_entries')
+        .select(`
+          *,
+          user:users!time_entries_user_id_fkey(id, first_name, last_name, email, archived),
+          project:projects!time_entries_project_id_fkey(id, name, project_number, location, po_afe, customer:customers!projects_customer_id_fkey(id, name))
+        `)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date');
 
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      return query;
+    });
 
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error('Error fetching employee analytics:', error);
-      throw error;
-    }
-    
     // Filter out archived users if not including them
     let filteredData = data || [];
     if (!includeArchived && data) {
@@ -759,119 +753,108 @@ export const reportsService = {
 
   // Get time entries grouped by rate type for an employee
   async getEmployeeTimeBreakdown(userId: string, startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('time_entries')
-      .select(`
-        rate_type,
-        hours,
-        rate,
-        billable
-      `)
-      .eq('user_id', userId)
-      .gte('date', startDate)
-      .lte('date', endDate);
-
-    if (error) throw error;
-    return data;
+    return await fetchAllRows(() =>
+      supabase
+        .from('time_entries')
+        .select(`
+          rate_type,
+          hours,
+          rate,
+          billable
+        `)
+        .eq('user_id', userId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+    );
   },
 
   // Get service tickets for an employee (only entries with project/customer)
   async getEmployeeServiceTickets(userId: string, startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('time_entries')
-      .select(`
-        *,
-        project:projects(id, name, customer:customers(id, name))
-      `)
-      .eq('user_id', userId)
-      .eq('billable', true)
-      .not('project_id', 'is', null) // Only entries with a project can be service tickets
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date');
-
-    if (error) throw error;
-    return data;
+    return await fetchAllRows(() =>
+      supabase
+        .from('time_entries')
+        .select(`
+          *,
+          project:projects(id, name, customer:customers(id, name))
+        `)
+        .eq('user_id', userId)
+        .eq('billable', true)
+        .not('project_id', 'is', null) // Only entries with a project can be service tickets
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date')
+    );
   },
 
   // Get service ticket hours for employees (for revenue calculation)
   async getServiceTicketHours(startDate: string, endDate: string, userId?: string) {
-    let query = supabase
-      .from('service_tickets')
-      .select('id, user_id, date, total_hours, total_amount, customer_id, project_id, location, header_overrides, is_edited, edited_hours, workflow_status, rejected_at')
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .or('is_discarded.is.null,is_discarded.eq.false');
+    return await fetchAllRows(() => {
+      let query = supabase
+        .from('service_tickets')
+        .select('id, user_id, date, total_hours, total_amount, customer_id, project_id, location, header_overrides, is_edited, edited_hours, workflow_status, rejected_at')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .or('is_discarded.is.null,is_discarded.eq.false');
 
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error fetching service ticket hours:', error);
-      throw error;
-    }
-
-    return data || [];
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+      return query;
+    });
   },
 
   // Get project breakdown for an employee
   async getEmployeeProjectBreakdown(userId: string, startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('time_entries')
-      .select(`
-        project_id,
-        hours,
-        rate,
-        billable,
-        project:projects(id, name)
-      `)
-      .eq('user_id', userId)
-      .gte('date', startDate)
-      .lte('date', endDate);
-
-    if (error) throw error;
-    return data;
+    return await fetchAllRows(() =>
+      supabase
+        .from('time_entries')
+        .select(`
+          project_id,
+          hours,
+          rate,
+          billable,
+          project:projects(id, name)
+        `)
+        .eq('user_id', userId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+    );
   },
 
   // Get customer breakdown for an employee (via projects)
   async getEmployeeCustomerBreakdown(userId: string, startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('time_entries')
-      .select(`
-        hours,
-        rate,
-        billable,
-        project:projects(id, name, customer:customers(id, name))
-      `)
-      .eq('user_id', userId)
-      .gte('date', startDate)
-      .lte('date', endDate);
-
-    if (error) throw error;
-    return data;
+    return await fetchAllRows(() =>
+      supabase
+        .from('time_entries')
+        .select(`
+          hours,
+          rate,
+          billable,
+          project:projects(id, name, customer:customers(id, name))
+        `)
+        .eq('user_id', userId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+    );
   },
 
   // Get time entries for trends analysis
   async getEmployeeTrends(userId: string, startDate: string, endDate: string) {
-    const { data, error } = await supabase
-      .from('time_entries')
-      .select(`
-        date,
-        hours,
-        rate,
-        billable,
-        rate_type
-      `)
-      .eq('user_id', userId)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date');
-
-    if (error) throw error;
-    return data;
+    return await fetchAllRows(() =>
+      supabase
+        .from('time_entries')
+        .select(`
+          date,
+          hours,
+          rate,
+          billable,
+          rate_type
+        `)
+        .eq('user_id', userId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date')
+    );
   },
 };
 
@@ -883,54 +866,51 @@ export const serviceTicketsService = {
     userId?: string;
     isDemoMode?: boolean;
   }) {
-    let query = supabase
-      .from('time_entries')
-      .select(`
-        *,
-        user:users!time_entries_user_id_fkey(id, email, first_name, last_name),
-        project:projects!time_entries_project_id_fkey(
-          id,
-          name,
-          project_number,
-          shop_junior_rate,
-          shop_senior_rate,
-          ft_junior_rate,
-          ft_senior_rate,
-          travel_rate,
-          location,
-          approver,
-          po_afe,
-          cc,
-          other,
-          customer:customers!projects_customer_id_fkey(*)
-        )
-      `)
-      .eq('billable', true)
-      .not('project_id', 'is', null) // Only entries with a project can be service tickets
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: true }); // Within same date: first-entered first (input order)
+    // Paged: this drives the whole Service Tickets page, and a truncated response makes
+    // approved tickets look like drafts.
+    return await fetchAllRows(() => {
+      let query = supabase
+        .from('time_entries')
+        .select(`
+          *,
+          user:users!time_entries_user_id_fkey(id, email, first_name, last_name),
+          project:projects!time_entries_project_id_fkey(
+            id,
+            name,
+            project_number,
+            shop_junior_rate,
+            shop_senior_rate,
+            ft_junior_rate,
+            ft_senior_rate,
+            travel_rate,
+            location,
+            approver,
+            po_afe,
+            cc,
+            other,
+            customer:customers!projects_customer_id_fkey(*)
+          )
+        `)
+        .eq('billable', true)
+        .not('project_id', 'is', null) // Only entries with a project can be service tickets
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: true }); // Within same date: first-entered first (input order)
 
-    if (filters?.startDate) {
-      query = query.gte('date', filters.startDate);
-    }
-    if (filters?.endDate) {
-      query = query.lte('date', filters.endDate);
-    }
-    if (filters?.userId) {
-      query = query.eq('user_id', filters.userId);
-    }
-    // Filter by demo mode - only show demo entries in demo mode, only real entries outside
-    if (filters?.isDemoMode !== undefined) {
-      query = query.eq('is_demo', filters.isDemoMode);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-    
-    return data;
+      if (filters?.startDate) {
+        query = query.gte('date', filters.startDate);
+      }
+      if (filters?.endDate) {
+        query = query.lte('date', filters.endDate);
+      }
+      if (filters?.userId) {
+        query = query.eq('user_id', filters.userId);
+      }
+      // Filter by demo mode - only show demo entries in demo mode, only real entries outside
+      if (filters?.isDemoMode !== undefined) {
+        query = query.eq('is_demo', filters.isDemoMode);
+      }
+      return query;
+    });
   },
 
   /**
@@ -958,19 +938,17 @@ export const serviceTicketsService = {
     const minStartSequence = reservedUpTo + 1; // Start after the reserved range
     
     // Get all used sequence numbers for this employee this year
-    // Include discarded tickets since their sequence numbers are still reserved by unique constraints
-    const { data, error } = await supabase
-      .from(tableName)
-      .select('sequence_number')
-      .eq('employee_initials', initialsUpper)
-      .eq('year', year)
-      .not('sequence_number', 'is', null)
-      .order('sequence_number', { ascending: true });
-
-    if (error) {
-      console.error(`[getNextTicketNumber] Error querying ${tableName}:`, error);
-      throw error;
-    }
+    // Include discarded tickets since their sequence numbers are still reserved by unique constraints.
+    // Paged: a truncated list would hand back an already-issued number and the insert would collide.
+    const data = await fetchAllRows(() =>
+      supabase
+        .from(tableName)
+        .select('sequence_number')
+        .eq('employee_initials', initialsUpper)
+        .eq('year', year)
+        .not('sequence_number', 'is', null)
+        .order('sequence_number', { ascending: true })
+    );
 
     let nextSequence = minStartSequence;
     
@@ -1663,19 +1641,22 @@ export const serviceTicketsService = {
 
     for (const isDemo of [false, true]) {
       const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-      const { data: tickets, error: fetchError } = await supabase
-        .from(tableName)
-        .select('id, header_overrides, ticket_number')
-        .eq('customer_id', customerId)
-        .in('workflow_status', ['draft', 'rejected'])
-        .is('ticket_number', null);
-
-      if (fetchError) {
+      let tickets: { id: string; header_overrides: unknown; ticket_number: string | null }[];
+      try {
+        tickets = await fetchAllRows(() =>
+          supabase
+            .from(tableName)
+            .select('id, header_overrides, ticket_number')
+            .eq('customer_id', customerId)
+            .in('workflow_status', ['draft', 'rejected'])
+            .is('ticket_number', null)
+        );
+      } catch (fetchError) {
         console.warn('Failed to fetch draft/rejected tickets for customer sync:', fetchError);
         continue;
       }
 
-      for (const ticket of tickets || []) {
+      for (const ticket of tickets) {
         if ((ticket as any).ticket_number) continue; // Never touch approved/exported tickets
         const existing = (ticket.header_overrides as Record<string, string> | null) ?? {};
         const merged = { ...existing, ...customerOverrides };
@@ -1762,26 +1743,22 @@ export const serviceTicketsService = {
     filters?: { startDate?: string; endDate?: string }
   ) {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-    let query = supabase
-      .from(tableName)
-      .select('id, ticket_number, date, user_id, customer_id, project_id, workflow_status, total_hours, invoice_batch_date_override')
-      .in('workflow_status', ['draft', 'submitted', 'rejected'])
-      .eq('is_discarded', false)
-      .order('date', { ascending: false });
+    return await fetchAllRows(() => {
+      let query = supabase
+        .from(tableName)
+        .select('id, ticket_number, date, user_id, customer_id, project_id, workflow_status, total_hours, invoice_batch_date_override')
+        .in('workflow_status', ['draft', 'submitted', 'rejected'])
+        .eq('is_discarded', false)
+        .order('date', { ascending: false });
 
-    if (filters?.startDate) {
-      query = query.gte('date', filters.startDate);
-    }
-    if (filters?.endDate) {
-      query = query.lte('date', filters.endDate);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      console.error('Error getting pending tickets in range:', error);
-      throw error;
-    }
-    return data || [];
+      if (filters?.startDate) {
+        query = query.gte('date', filters.startDate);
+      }
+      if (filters?.endDate) {
+        query = query.lte('date', filters.endDate);
+      }
+      return query;
+    });
   },
 
   async getTicketsReadyForExport(
@@ -1789,28 +1766,23 @@ export const serviceTicketsService = {
     filters?: { startDate?: string; endDate?: string }
   ) {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
-    let query = supabase
-      .from(tableName)
-      .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, header_overrides, invoice_batch_date_override')
-      .not('workflow_status', 'in', '("draft","rejected")')
-      .eq('is_discarded', false)
-      .not('ticket_number', 'is', null)
-      .order('date', { ascending: false });
+    return await fetchAllRows(() => {
+      let query = supabase
+        .from(tableName)
+        .select('id, ticket_number, date, user_id, customer_id, project_id, location, is_edited, edited_hours, edited_descriptions, edited_entry_overrides, total_hours, header_overrides, invoice_batch_date_override')
+        .not('workflow_status', 'in', '("draft","rejected")')
+        .eq('is_discarded', false)
+        .not('ticket_number', 'is', null)
+        .order('date', { ascending: false });
 
-    if (filters?.startDate) {
-      query = query.gte('date', filters.startDate);
-    }
-    if (filters?.endDate) {
-      query = query.lte('date', filters.endDate);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error getting tickets ready for export:', error);
-      throw error;
-    }
-    return data || [];
+      if (filters?.startDate) {
+        query = query.gte('date', filters.startDate);
+      }
+      if (filters?.endDate) {
+        query = query.lte('date', filters.endDate);
+      }
+      return query;
+    });
   },
 
   /**
@@ -1824,33 +1796,27 @@ export const serviceTicketsService = {
   }, isDemo: boolean = false) {
     const tableName = isDemo ? 'service_tickets_demo' : 'service_tickets';
     
-    let query = supabase
-      .from(tableName)
-      .select('*')
-      .not('ticket_number', 'is', null)
-      .order('date', { ascending: false });
-    
-    if (filters?.startDate) {
-      query = query.gte('date', filters.startDate);
-    }
-    if (filters?.endDate) {
-      query = query.lte('date', filters.endDate);
-    }
-    if (filters?.userId) {
-      query = query.eq('user_id', filters.userId);
-    }
-    if (filters?.workflowStatus) {
-      query = query.eq('workflow_status', filters.workflowStatus);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error('Error getting service tickets:', error);
-      throw error;
-    }
-    
-    return data;
+    return await fetchAllRows(() => {
+      let query = supabase
+        .from(tableName)
+        .select('*')
+        .not('ticket_number', 'is', null)
+        .order('date', { ascending: false });
+
+      if (filters?.startDate) {
+        query = query.gte('date', filters.startDate);
+      }
+      if (filters?.endDate) {
+        query = query.lte('date', filters.endDate);
+      }
+      if (filters?.userId) {
+        query = query.eq('user_id', filters.userId);
+      }
+      if (filters?.workflowStatus) {
+        query = query.eq('workflow_status', filters.workflowStatus);
+      }
+      return query;
+    });
   },
 
   /** Count rejected tickets for a user (for sidebar notification) - excludes trashed */
@@ -3475,12 +3441,17 @@ export const invoiceForceReadyService = {
 
 export const invoicedBatchMarksService = {
   async getAll(): Promise<InvoicedBatchMarkRow[]> {
-    const { data, error } = await supabase
-      .from('invoiced_batch_marks')
-      .select('group_id, key_snapshot, marked_at, marked_by')
-      .order('marked_at', { ascending: false });
-    if (error) throw error;
-    return (data || []) as InvoicedBatchMarkRow[];
+    // Paged: this builds the invoiced-batch lock set. A truncated read would silently
+    // present locked tickets as editable. Keyed by group_id, not id.
+    const data = await fetchAllRows(
+      () =>
+        supabase
+          .from('invoiced_batch_marks')
+          .select('group_id, key_snapshot, marked_at, marked_by')
+          .order('marked_at', { ascending: false }),
+      'group_id'
+    );
+    return data as InvoicedBatchMarkRow[];
   },
 
   /**
