@@ -2657,9 +2657,12 @@ export default function ServiceTickets({ modalOnlyMode, pendingOpenRecord }: { m
    * Find a matching existing ticket record for a computed ticket.
    * Match by _matchedRecordId first (set during ticket build), then by ticket.id (standalone = record id), then by date+user+customer+project.
    */
-  const findMatchingTicketRecord = (ticket: { id?: string; _matchedRecordId?: string; date: string; userId: string; customerId: string; projectId?: string; location?: string; entryLocation?: string }) => {
-    if ((ticket as { _matchedRecordId?: string })._matchedRecordId && existingTickets) {
-      const byMatched = existingTickets.find(et => et.id === (ticket as { _matchedRecordId?: string })._matchedRecordId);
+  const findMatchingTicketRecord = (ticket: { id?: string; _matchedRecordId?: string | null; date: string; userId: string; customerId: string; projectId?: string; location?: string; entryLocation?: string }) => {
+    // null = the ticket build already decided this base ticket has no record. Don't fuzzy-match it onto a
+    // sibling's record (e.g. an approved ticket on the same day), or it shows as approved and can't be approved.
+    if (ticket._matchedRecordId === null) return null;
+    if (ticket._matchedRecordId && existingTickets) {
+      const byMatched = existingTickets.find(et => et.id === ticket._matchedRecordId);
       if (byMatched && !(byMatched as any).is_discarded) return byMatched;
     }
     if (ticket.id && existingTickets) {

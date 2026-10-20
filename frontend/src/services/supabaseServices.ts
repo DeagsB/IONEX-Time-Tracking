@@ -1340,7 +1340,7 @@ export const serviceTicketsService = {
     const buildQuery = (includeLocation: boolean) => {
       let q = supabase
         .from(tableName)
-        .select('id, header_overrides, location, workflow_status')
+        .select('id, header_overrides, location, workflow_status, ticket_number')
         .eq('date', params.date)
         .eq('user_id', params.userId)
         .eq('customer_id', params.customerId);
@@ -1352,10 +1352,15 @@ export const serviceTicketsService = {
       }
       return q;
     };
-    
+    // Only drafts are open to time entries. Submitted/approved tickets are locked to the entries they claimed, so
+    // a new group of entries on the same day must never be handed one (it would look approved as that number).
+    const isOpenRecord = (et: { ticket_number?: string | null; workflow_status?: string | null }) =>
+      !et.ticket_number && ['draft', 'rejected'].includes(et.workflow_status || 'draft');
+
     // First: try with location filter for exact match
     if (ticketLocation) {
-      const { data: locCandidates, error: locError } = await buildQuery(true);
+      const { data: locData, error: locError } = await buildQuery(true);
+      const locCandidates = locData?.filter(isOpenRecord);
       if (!locError && locCandidates?.length) {
         const match = locCandidates.find(et => getRecordGroupingKey(et) === targetBillingKey);
         if (match) return { id: match.id };
@@ -1365,8 +1370,9 @@ export const serviceTicketsService = {
     }
     
     // Fallback: search without location filter (for legacy records with empty location)
-    const { data: candidates, error: findError } = await buildQuery(false);
-    
+    const { data: allCandidates, error: findError } = await buildQuery(false);
+    const candidates = allCandidates?.filter(isOpenRecord);
+
     if (findError) {
       console.error('Error finding ticket:', findError);
       throw findError;
