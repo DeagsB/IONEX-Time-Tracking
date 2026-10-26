@@ -2621,7 +2621,9 @@ export default function Invoices() {
           : DEFAULT_RATES;
         const recLocation = rec.location || '';
         const rawStandalone: ServiceTicket & { recordId?: string; headerOverrides?: unknown; recordProjectId?: string } = {
-          id: `${rec.date}-${rec.customer_id}-${rec.user_id}-${recLocation}`,
+          // rec.id keeps this unique: date/customer/user/location alone collides when a tech has two tickets
+          // at one location (e.g. two "Spare" POs), and React leaves a ghost chip behind for duplicate keys.
+          id: `${rec.date}-${rec.customer_id}-${rec.user_id}-${recLocation}-${rec.id}`,
           date: rec.date,
           customerId: rec.customer_id || 'unassigned',
           customerName,
